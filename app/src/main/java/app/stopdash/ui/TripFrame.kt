@@ -14,7 +14,9 @@ import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.stopPlaceKey
 import java.time.Duration
 import java.time.Instant
 
@@ -95,6 +97,8 @@ internal class TripCardView(
 internal class TripOpenView(
     val framing: TripFraming,
     val closures: Map<String, DepartureRow>,
+    // Each of [closures]' cards ([tripClosureCards]), by every stop it covers.
+    val closureCards: Map<String, TripClosureCard> = emptyMap(),
     val statuses: Map<String, LineStatus>,
     val rides: List<RideLegView?>,
 )
@@ -159,7 +163,11 @@ internal fun tripFrame(
     val state = state.copy(legStatuses = legStatuses(state.statuses, legs, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
     val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded), previousOrder) }
-    val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology) }
+    // A pole's letter, sign and bearing, from its stop area's poles where they're cached (no IO).
+    val poleOf: (String, String) -> StopLocation? = { id, area ->
+        area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
+    }
+    val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology, poleOf) }
     return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView, timetablesWanted(timed.orEmpty(), state, now))
 }
 
@@ -217,14 +225,37 @@ private fun openView(
     originUnconfirmed: Boolean,
     hubOf: (String) -> String?,
     topology: RouteTopology,
+    poleOf: (String, String) -> StopLocation?,
 ): TripOpenView {
+    val rows = routeClosureRows(estimate.route, state, now, sequences, rideLines, hubOf, poleOf)
+    val closures = foldedClosures(rows, dismissed)
     return TripOpenView(
         // With a route open, only its own legs' warnings frame it.
         framing = framing(listOf(estimate), state, now, sequences, rideLines),
-        closures = routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf),
+        closures = closures,
+        closureCards = tripClosureCards(closures, rows),
         statuses = shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed),
         rides = openRides(estimate.route.legs, state, now, sequences, rideLines, dismissed, topology),
     )
+}
+
+/**
+ * One closure card on the open route: the [row] it's drawn and dismissed by, and its title
+ * ([closureTitleOf]).
+ */
+internal class TripClosureCard(val row: DepartureRow, val title: String)
+
+/**
+ * The open route's closure cards, by the stop each is drawn at ([closures], already one per notice
+ * at a place): each titled by every pole the route reaches that carries its notice ([rows], before
+ * they were folded), so a notice on two poles of one stop is headed by that stop, one on a single
+ * pole by its letter.
+ */
+internal fun tripClosureCards(closures: Map<String, DepartureRow>, rows: List<DepartureRow>): Map<String, TripClosureCard> {
+    val byNotice = rows.groupBy { stopPlaceKey(it) to it.stopDisruption }
+    return closures.mapValues { (_, row) ->
+        TripClosureCard(row, closureTitleOf(byNotice[stopPlaceKey(row) to row.stopDisruption] ?: listOf(row)))
+    }
 }
 
 /**

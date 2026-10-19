@@ -160,6 +160,7 @@ import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopLocation
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.cleanDisruptionBody
@@ -3070,8 +3071,6 @@ private fun RouteLegs(
     // never shows this one's row while its own is worked out (Codex, #543).
     val rowWork = remember(LocalTripJourney.current, routeKey(estimate.route)) { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
     val row = rememberTripRow(asCards, rideLines, state, now, sequences, dismissed, loading, routesChecking, rowWork, firstAtOnce = true)
-    // The route's stops' closure notices, worked out with the frame ([TripOpenView]).
-    val closures = view.closures
     val listState = rememberLazyListState()
     LazyColumn(
         state = listState,
@@ -3104,10 +3103,11 @@ private fun RouteLegs(
         // where a ride boards, above its departures; where it gets off, below its stops; a walk's
         // stops either side of it. A ride's other lines ([rideLines]) board and get off at their own
         // poles, so each of those counts too.
+        // Titled by every pole carrying its notice ([TripOpenView.closureCards]).
         val carded = HashSet<String>()
         fun closureCard(id: String) {
-            val closure = closures[id]?.takeIf { carded.add(id) } ?: return
-            item(key = "closure|$id") { StopClosureCard(closure, onDismissAlert?.let { dismiss -> { dismiss(closure) } }) }
+            val card = view.closureCards[id]?.takeIf { carded.add(id) } ?: return
+            item(key = "closure|$id") { StopClosureCard(card.row, onDismissAlert?.let { dismiss -> { dismiss(card.row) } }, card.title) }
         }
         estimate.route.legs.forEachIndexed { index, leg ->
             // A change on foot, as the trip decides them ([TripViewModel.State.changesOnFoot]), between two rides.
@@ -3314,7 +3314,29 @@ internal fun routeClosures(
     sequences: Map<String, LineSequence?> = emptyMap(),
     rideLines: Map<TripLeg, RideLines> = emptyMap(),
     hubOf: (String) -> String? = { null },
-): Map<String, DepartureRow> {
+): Map<String, DepartureRow> = foldedClosures(routeClosureRows(route, state, now, sequences, rideLines, hubOf), dismissed)
+
+/**
+ * [routeClosures] as one card per notice at a place, folded as the list folds them (two poles of a
+ * stop area can each carry the same area-wide notice), kept where the route first reaches it, less
+ * what the rider dismissed. A stop's card carries every notice in force there, joined, as the list's does.
+ */
+internal fun foldedClosures(rows: List<DepartureRow>, dismissed: Set<DismissedAlert>): Map<String, DepartureRow> =
+    DepartureRows.withoutDismissed(DepartureRows.stopStatusFolded(rows), dismissed).associateBy { it.stopId }
+
+/**
+ * [routeClosures]' rows before they're folded: one per stop and notice, each bus pole with its own
+ * letter, sign and bearing where [poleOf] knows the pole (from its stop area's poles).
+ */
+internal fun routeClosureRows(
+    route: TripRoute,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?> = emptyMap(),
+    rideLines: Map<TripLeg, RideLines> = emptyMap(),
+    hubOf: (String) -> String? = { null },
+    poleOf: (stopId: String, areaId: String) -> StopLocation? = { _, _ -> null },
+): List<DepartureRow> {
     val others = route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
     // Named as the route names a stop, else as the other line does.
     val names = (others + route.legs).flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
@@ -3328,13 +3350,14 @@ internal fun routeClosures(
         // Only an interchange ("HUB…") is a hub: a stop with none has its stop area as its top parent.
         val hub = (sequence?.stopHubs?.get(end.id) ?: hubOf(end.id))?.takeIf { it.startsWith(HUB_PREFIX) }.orEmpty()
         val area = sequence?.stopAreas?.get(end.id) ?: end.area
-        val stop = StopArrivals(end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices, clusterId = area, interchangeId = hub)
+        val pole = poleOf(end.id, area)
+        val stop = StopArrivals(
+            end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices, clusterId = area, interchangeId = hub,
+            stopLetter = pole?.stopLetter.orEmpty(), bearing = pole?.bearing.orEmpty(), towards = pole?.towards.orEmpty(),
+        )
         DepartureRows.across(listOf(stop), now).filter { it.stopDisruption != null }
     }
-    // One card per notice at a place, folded as the list folds them (two poles of a stop area can
-    // each carry the same area-wide notice), kept where the route first reaches it, less what the
-    // rider dismissed. A stop's card carries every notice in force there, joined, as the list's does.
-    return DepartureRows.withoutDismissed(DepartureRows.stopStatusFolded(rows), dismissed).associateBy { it.stopId }
+    return rows
 }
 
 private const val HUB_PREFIX = "HUB"
