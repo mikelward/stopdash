@@ -9,9 +9,10 @@ the same station?" and "is this the same hub?". It replaces the rules each scree
 
 Once all four phases have shipped (*Plan*):
 - **One model answers it everywhere.** `Hubs` in `:domain` says which station and which hub any
-  id belongs to. The weekly bundle refresh works membership out and ships it in the APK; the
-  device only reads it, with no request at runtime, and no screen keeps a grouping rule of its
-  own (phase 4 deletes the last).
+  id belongs to. The weekly bundle refresh works membership out and ships it in the APK, where
+  the app's build turns it and the stops into one binary asset (`StationBundle`); the device only
+  reads it, with no request at runtime, and no screen keeps a grouping rule of its own (phase 4
+  deletes the last).
 - **Three levels.** A **stand** is a platform or a pole. A **station** is the records sharing
   TfL's ICS code and a mode family (St Pancras's three records are one); for buses the same level
   is the **stop**, both directions of a road under one name. A **hub** is a TfL interchange, or
@@ -657,9 +658,10 @@ the batch").
   columns written in full, no blanks: `stops.tsv` grows from 2.2 MB to 2.9 MB raw, from 630 KB to
   760 KB compressed, so the blank-saving encoding wasn't worth a reader rule. The rules live in
   `scripts/stop_membership.py` (tests in `stop_membership_test.py`), and
-  `scripts/membership_changes.py` writes the refresh's list of regrouped ids. On the device,
-  `Hubs` (`:domain`) is built from both files by `HubsStore` at process start: about 25–55 ms on a
-  desktop JVM once the files are read, on a worker. The APK grows by about 130 KB compressed.
+  `scripts/membership_changes.py` writes the refresh's list of regrouped ids. The app's build
+  builds `Hubs` (`:domain`) from both files (`:app:stationBundle`) and ships it with the index and
+  stops as one binary asset (`StationBundle`); `HubsStore` reads that at process start, about
+  155 ms cold on a desktop JVM, on a worker, and never builds the model on the device.
   `build_stops.py` takes `--stations` (`build/stations/station_index.json` in `station-index.yml`,
   `"$INDEX"` in `station-index-refresh.yml`), writes the four columns on `B` rows in `stops.tsv`
   and `icsCode`, `station` and the model's `hub` on the `M`, `R` and `F` rows in `stops.tsv` that
@@ -704,9 +706,9 @@ the batch").
     2.2 MB `stops.tsv` (630 KB compressed). Much less compressed in the APK, since ids repeat.
     Phase 1 measures it and picks the encoding. The weekly job takes a few seconds more. £0, and no
     request at runtime.
-- **The device only reads.** `Hubs` loads those columns with the station index and stops it
-  already loads, into lookups by id, on a worker. There is no spatial pass and no rule on the
-  device.
+- **The device only reads.** The app's build turns those columns into `Hubs`'s lookups by id and
+  ships them in the station bundle (`StationBundle`); the device reads them, on a worker. There is
+  no spatial pass, no rule and no model building on the device.
 - **A TfL stop area's id resolves too**. Saved rides, avoids, pending ends and
   dismissal keys can hold an area id (`490G…`, `037G…`) rather than a pole's, and a stop joined
   from several areas takes its anchor pole's id, not theirs. So `Hubs` also keys each area id

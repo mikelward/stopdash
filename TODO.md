@@ -864,13 +864,25 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                     - [ ] Drop the fallbacks to TfL's codes and to names where the model couldn't be
                           built (maintainer, 2026-10-19: one source): with no model, an id is a station
                           of its own.
-                    - [ ] Build the bundled stops and the station model when the app is built
-                          (maintainer, 2026-10-19): a Gradle task runs `:domain`'s own readers and
-                          `Hubs.of` over `stops.tsv` and `station_index.json` and writes one compact
-                          binary asset; nearby stops and `HubsStore` load it instead of parsing the TSV
-                          and building at start (~1 s cold on the JVM), falling back to both when its
-                          revision doesn't match the bundle. A round-trip test (built then read equals
-                          built in place) keeps it honest.
+                    - [x] Build the station index, the stops and the station model when the app is
+                          built (maintainer, 2026-10-19): `:app:stationBundle` runs `:domain`'s own
+                          readers and `Hubs.of` over `station_index.json` and `stops.tsv` and writes one
+                          binary asset (`StationBundle`), the only one the app reads for them; the two
+                          source files no longer ship. The model is kept in the bundle (maintainer:
+                          ~155 ms cold on the JVM for 1.55 MB compressed, against ~260 ms and 0.86 MB
+                          building it at start, and ~750 ms and 0.83 MB before). A round-trip test holds
+                          it equal to what's built in place.
+                    - [ ] Mark the station bundle's read `@WorkerThread` (Codex on #1002): make
+                          `StationIndexStore.load` and the loaders handed to repositories and view
+                          models suspend (on `io`), so lint's `WorkerThreadCall` can see a main-thread
+                          caller. Today the read is unmarked, as the index's JSON parse it replaced was,
+                          because marking it flags every place a store is handed over as a loader.
+                    - [ ] Generate the station index and the stops together as one output
+                          (maintainer, 2026-10-19): the weekly refresh writes one file from one script
+                          run, rather than `build_station_index.py` then `build_stops.py` (which reads
+                          the index) writing two that must share a revision. Stations stop appearing
+                          twice with their own names and positions, and the station bundle is built
+                          from the one file.
                     - [ ] The name tests left: `PlaceDirect`'s and `StopLinks`' `sameStation`,
                           `OffPlan`'s name-only matches, and on the way's `sameStation` and
                           `stationPlaces` (passing a stop).

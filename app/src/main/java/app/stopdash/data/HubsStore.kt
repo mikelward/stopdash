@@ -1,7 +1,6 @@
 package app.stopdash.data
 
 import android.content.Context
-import android.os.SystemClock
 import android.util.Log
 import app.stopdash.domain.Hubs
 import app.stopdash.domain.PendingEnd
@@ -21,7 +20,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The station model ([Hubs], dev-docs/station-model.md), loaded once per process on a worker as the
- * app starts, from the bundled station index and stops it already reads, and published as [state]:
+ * app starts, from the build's station bundle ([StationBundleStore]), and published as [state]:
  * [Hubs.State.Loading] until then, then [Hubs.State.Ready] or [Hubs.State.Unavailable], once. A
  * station page reads it ([ready]) for the records its station is.
  */
@@ -74,25 +73,20 @@ object HubsStore {
 
     private fun rowsOf(hubs: Hubs?): (StationMatch) -> StationMatch = hubs?.let { it::asStopRow } ?: { it }
 
-    /** Starts the load on [scope] once per process: files on [io], the model built on [compute]. */
+    /** Starts the load on [scope] once per process, the bundle read on [io]. */
     fun warm(
         context: Context,
         scope: CoroutineScope,
         io: CoroutineDispatcher = Dispatchers.IO,
-        compute: CoroutineDispatcher = Dispatchers.Default,
     ) {
         if (!started.compareAndSet(false, true)) return
         val appContext = context.applicationContext
         scope.launch {
             mutableState.value = try {
-                val stops = BundledStopsStore.load(appContext, io)
-                val index = withContext(io) { StationIndexStore.load(appContext) }
-                withContext(compute) {
-                    val begun = SystemClock.elapsedRealtime()
-                    val hubs = Hubs.of(index, stops) { Log.w(TAG, "station model unavailable: $it") }
-                    // Static public data and a duration: nothing about the user.
-                    if (hubs != null) Log.i(TAG, "station model built in ${SystemClock.elapsedRealtime() - begun} ms")
-                    hubs?.let { Hubs.State.Ready(it) } ?: Hubs.State.Unavailable
+                // The model the build worked out ([StationBundleStore]), or none where it couldn't make one.
+                val bundle = withContext(io) { StationBundleStore.load(appContext) }
+                bundle?.hubs?.let { Hubs.State.Ready(it) } ?: Hubs.State.Unavailable.also {
+                    if (bundle != null) Log.w(TAG, "station model unavailable: the build couldn't make one")
                 }
             } catch (e: CancellationException) {
                 throw e
