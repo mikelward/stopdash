@@ -38,6 +38,12 @@ class OriginChangeTest {
     }
 
     @Test
+    fun `back returns to a station at the level it was picked at`() {
+        val kingsCross = OriginChange.Station("HUBKGX", "King's Cross & St Pancras International", toCanaryWharf, level = Pick.Level.HUB)
+        assertEquals(Pick.Level.HUB, (OriginChange.back(kingsCross) as OriginChange.Landing.Station).level)
+    }
+
+    @Test
     fun `back from a From search no trip opened goes to the list`() {
         assertNull(OriginChange.back(null))
         assertNull(OriginChange.here(null))

@@ -187,9 +187,10 @@ sealed interface TripDestination {
  * A stop the rider picked for a trip to go through (SPEC *Going via a stop*): the stop or station by
  * [stopId] as the search gave it (an interchange's "HUB…" id included) and its [name]. Every route the
  * trip lists passes it, changing there or riding through, the Planner asked via each of its stations
- * ([PlanTargets.via]). Kept with the trip while it's open, never saved.
+ * ([PlanTargets.via]). [level] is the level it was picked at, where the search row said so; null for a
+ * row that didn't, or a stop a trip's row handed in. Kept with the trip while it's open, never saved.
  */
-data class TripVia(val stopId: String, val name: String)
+data class TripVia(val stopId: String, val name: String, val level: Pick.Level? = null)
 
 /**
  * The stops a trip via a [TripVia] asks the Planner via ([ids], each station of what was picked), with [key], what
