@@ -458,6 +458,40 @@ class JourneyPlannerTest {
         }
     }
 
+    // A failed request's timing line says why, so a bug report tells a status TfL answered with from an
+    // answer StopDash couldn't read, where "Unreachable" alone said neither.
+    private fun failedLine(body: String, status: HttpStatusCode = HttpStatusCode.OK): String {
+        val warnings = mutableListOf<String>()
+        assertThrows(TflException.Unreachable::class.java) {
+            kotlinx.coroutines.runBlocking { client(body, status = status, warn = { synchronized(warnings) { warnings += it } }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF")) }
+        }
+        val line = warnings.single { it.startsWith("journey planner: ") }
+        assertTrue(line, Regex(" in \\d+ ms \\(waited \\d+ ms to send\\)$").containsMatchIn(line))
+        return line.substringBefore(" in ")
+    }
+
+    @Test
+    fun `a request TfL failed says its status`() {
+        assertEquals("journey planner: Unreachable (HTTP 500)", failedLine("{}", HttpStatusCode.InternalServerError))
+    }
+
+    @Test
+    fun `a request whose routes none read says so`() {
+        val broken = fixture.replace(Regex("\"departureTime\": \"[^\"]+\""), "\"departureTime\": \"soon\"")
+        assertEquals("journey planner: Unreachable (3 routes, none readable)", failedLine(broken))
+    }
+
+    @Test
+    fun `an answer that won't decode says where, never what it held`() {
+        // A time where an object stands, holding a place the rider might have chosen: the path is
+        // logged, the value never.
+        val broken = fixture.replaceFirst(Regex("\"departureTime\": \"[^\"]+\""), "\"departureTime\": { \"at\": \"X1 9XX\" }")
+        assertTrue("the fixture has a time to break", broken != fixture)
+        val line = failedLine(broken)
+        assertTrue(line, Regex("""^journey planner: Unreachable \(unexpected: \w+ at \$\.journeys\[0]\.legs\[0]\.departureTime\)$""").matches(line))
+        assertTrue(line, "X1 9XX" !in line)
+    }
+
     @Test
     fun `an end the Planner can't place gives no routes, not a failure`() = runTest {
         val warnings = mutableListOf<String>()
