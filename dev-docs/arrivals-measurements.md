@@ -253,6 +253,35 @@ the trains came early or late against their own listings, and whether an extra h
 spacing queue pushed a real train later. One report, judged only against what the rider saw. A
 recording at a platform with the station display noted alongside would match them.
 
+**A platform recording with the board noted alongside.** Three Northern line stations and one
+Piccadilly line platform, each polled every 10 s with `arrivals_recorder.py` while the rider
+reported each train as it came, by destination and, where visible, train number, with photos of
+the board. Stations, dates and times of day are left out (AGENTS.md *Privacy*); only intervals
+are kept.
+
+- **Close pairs at a branch merge were two real trains.** Southbound Northern trains from the
+  two northern branches listed 60 s apart, and twice in the same second, both arrived, each
+  seen by number. One of those pairs was the rider's own train, 60 s behind a train from the
+  other branch, so the app would have grayed the train the rider was on. Where two branches
+  join, a pair a minute apart is ordinary, not a copy.
+- **The feed missed real trains.** Two Piccadilly short workings arrived and were seen by
+  number, yet neither number appears anywhere in the recording. The board listed each several
+  minutes ahead, and listed both trains that followed them correctly. Earlier, one listing with
+  no destination ("Check Front of Train") was dropped a few minutes before the first short
+  working came, so it may have been that train under another id.
+- **A listing outlived its train.** A train stayed listed as approaching the first station after
+  the rider, already on the platform, saw nothing come; it was next seen at the platform two
+  stations on. The listing was late, not an extra.
+- **Answers stepped back in time.** Polls 10 s apart came from cache copies of different ages:
+  a fresh answer was followed by one whose predictions were 30 s older, and a train standing at
+  the platform was listed 40 s out again. Fixed by keeping each stop's newest answer (#994).
+- **The board ran ahead of the feed.** The feed's time for the next train was 30–90 s behind
+  what came, and it kept listing a train for up to a minute after it left. The board's minutes
+  matched the feed's fresh answers rounded to the nearest minute (60 s showed 1, 99 s 2, 369 s
+  6), but it held one train at "1 min" for nearly 3 minutes while the train ahead dwelt.
+- **Three regulation holds on the Northern line and a long dwell on the Piccadilly** slowed the
+  trains behind them; the feed's times slid later with them.
+
 ## Not yet measured
 
 - A weekend morning.

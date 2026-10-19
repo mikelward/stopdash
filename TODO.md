@@ -1926,7 +1926,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               the train that vanished was the earlier at least as often as the later, and most early
               vanishing was one train TfL listed on two lines at once (now grayed on both, outside
               the pairs).
-          - [ ] **Record a platform with its display noted alongside** (maintainer, 2026-10-18): at a
+          - [x] **Record a platform with its display noted alongside** (maintainer, 2026-10-18): at a
                 Northern line platform, TfL's own times listed four trains due within 3 minutes where
                 one came in that time (`dev-docs/arrivals-measurements.md` *Field reports*). Run
                 `arrivals_recorder.py record` on the platform while the rider notes each train as it
@@ -1937,6 +1937,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 "At Platform" against the noted arrival, and keep a pair that can't be separated
                 as unmatched rather than guess. Keep the recording and the station's name
                 outside the repository (AGENTS.md *Privacy*); only paraphrased findings go in.
+                Recorded (*Field reports*, the platform recording): close pairs at a branch merge
+                were real trains, and the feed missed two real trains outright.
+          - [ ] **Don't gray a close pair whose trains come from different branches** (awaiting a
+                product decision): where two branches join, trains a minute apart are ordinary,
+                and in the platform recording each such pair was two real trains, one of them the
+                rider's own. `DoubtfulTrains` could pass a pair whose two listings name different
+                branches or destinations, at the cost of keeping a copy TfL lists under another
+                destination. Needs more pairs from merges, and the maintainer's call.
         - [ ] **Tell a train back from the end of the line from one that moved platform** (2026-10-16
               recording): the recorder voids a train listed at two platforms of one line within
               `REAPPEARS_AFTER` (10 min). At Stockwell and Waterloo that was mostly the same train
