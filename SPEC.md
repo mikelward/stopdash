@@ -2106,13 +2106,16 @@ Planner's own time for it, as long as the rider can reach the Planner's departur
 (the legs before it, or the walk from "Here", get the rider there in time). A Tube, DLR, Overground
 or Elizabeth line leg the rider reaches past its live predictions (its trains running, just not
 predicted that far ahead) is boarded as they arrive, since those lines run every few minutes
-(maintainer, 2026-09-26) — as long as its predictions show it doing so now: several trains, none long
-after the one before, where thinning trains may be the night's last (maintainer, 2026-09-27). How far
+(maintainer, 2026-09-26) — as long as its predictions show it doing so now: two trains or more (a
+pair TfL may be tracking twice counting once), none long after the one before, where thinning trains may be the night's last (maintainer, 2026-09-27).
+Two are enough because a branch's predictions can reach only about ten minutes, with half its trains
+taking the other branch (maintainer, 2026-10-19: a Northern line branch in the morning peak, two
+trains a minute apart, withheld its route). How far
 the predictions reach is no test: TfL predicts only trains already running, so near a line's start
 they end within about a quarter of an hour all day, which withheld routes changing there. A bus
 leg is boarded on arrival the same way when its own predictions show it frequent now: TfL predicts a
-bus only about half an hour ahead, so two buses, the second soon after the first, are enough, and
-the arrival's range allows the longest wait a frequent line has (maintainer, 2026-09-27: a bus past
+bus only about half an hour ahead, so two buses, the second soon after the first, are enough; where
+two trains or buses can't say the gap between them, the arrival's range allows the longest wait a frequent line has (maintainer, 2026-09-27: a bus past
 its two predictions withheld its route). Such a frequent leg is boarded on arrival even while the
 Planner's train can still be made, when that train leaves more than the line's longer typical gap
 after the rider gets there: the Planner planned the trip leaving later, and an earlier train is the
@@ -2130,12 +2133,10 @@ its tier it sorts **after every route whose legs are all live** — unless it is
 live train, or rides a line live trains show running at the stop it boards, and gets there before
 that route **even at the latest end of its range** (maintainer, 2026-09-30: a live ride then a
 frequent bus boarded on arrival sat below a slower live route even at its worst). *Running* asks what
-boarding on arrival asks, on as few trains as a bus needs whatever the mode: a Tube, DLR, Overground,
-Elizabeth line or bus leg with two live trains or more at the stop, none long after the one before,
+boarding on arrival asks: a Tube, DLR, Overground, Elizabeth line or bus leg with two live trains or more at the stop, none long after the one before,
 though all leave before the rider gets there (maintainer, 2026-10-16: near a line's start TfL predicts
 only the trains already running, two on one branch, and a walk to the Tube timed by the Planner's
-train sat 13 minutes ahead of a live route yet below it). Two are enough because the Planner's train
-still times the leg; they only vouch that the line runs. Such a leg gives the arrival a range too:
+train sat 13 minutes ahead of a live route yet below it). Such a leg gives the arrival a range too:
 should the Planner's train not come, the next is within the line's longer typical gap of the rider
 getting there (the longest a frequent line has where its trains are too few to say), never sooner
 than the Planner's own. So an estimate

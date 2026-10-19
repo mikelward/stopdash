@@ -166,9 +166,13 @@ class TripTimingTest {
         // the longest a frequent line has of the rider getting there, boarded by 25, there by 35.
         assertEquals(Duration.ofMinutes(5), estimate.slack)
         assertEquals(at(35), estimate.latest)
-        // The Planner's own train is the latest when it leaves more than that after the rider gets there.
+        // A Planner's train leaving more than that after the rider gets there isn't the one they'd
+        // take: the line is boarded as they arrive, at 15, there by 25, the wait up to that gap.
         val far = TripRoute(listOf(twoLegs.legs[0], leg("blue", "B", "C", departs = 28, arrives = 38)))
-        assertEquals(Duration.ZERO, TripTiming.estimate(far, now, Duration.ZERO, { live[it] }).slack)
+        val early = TripTiming.estimate(far, now, Duration.ZERO, { live[it] })
+        assertEquals(at(15), early.legs[1].board)
+        assertEquals(at(25), early.arrival)
+        assertEquals(TripTiming.FREQUENT_MAX_GAP, early.slack)
         // A bus too, and the Overground, alike.
         for (mode in listOf("bus", "overground")) {
             val other = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = mode)))
@@ -248,9 +252,9 @@ class TripTimingTest {
         // Not a line with no trains (not running, or done for the night), nor one whose arrivals failed.
         assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { if (it == 0) live[0] else emptyList() }).basis)
         assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { if (it == 0) live[0] else null }).basis)
-        // Nor one whose predictions don't show it running every few minutes: too few trains, or too
-        // far apart, may be the night's last.
-        for (sparse in listOf(listOf(8L), listOf(8L, 12L), listOf(2L, 14L, 22L))) {
+        // Nor one whose predictions don't show it running every few minutes: one train alone, or
+        // trains too far apart, may be the night's last.
+        for (sparse in listOf(listOf(8L), listOf(8L, 19L), listOf(2L, 14L, 22L))) {
             val thin = mapOf(0 to listOf(train("red", 12)), 1 to sparse.map { train("blue", it) })
             assertEquals(sparse.toString(), TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { thin[it] }).basis)
         }
@@ -261,6 +265,28 @@ class TripTimingTest {
         // Nor an infrequent one, where the wait could matter.
         val rail = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = "national-rail")))
         assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(rail, now, Duration.ZERO, { live[it] }).basis)
+    }
+
+    // A Tube branch whose predictions reach ten minutes, half its trains taking the other branch,
+    // shows two (maintainer, 2026-10-19: a Northern line branch in the morning peak withheld its route).
+    @Test
+    fun `a frequent line past its two live predictions is boarded on arrival, with a range`() {
+        // Red at 12 reaches B ready at 25; blue's two predictions end at 15, the Planner's at 20 gone.
+        val live = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 14), train("blue", 15)))
+        val estimate = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] })
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
+        assertEquals(at(25), estimate.legs[1].board)
+        assertEquals(at(35), estimate.arrival)
+        // Two predictions can't say the gap between trains: the wait is up to the longest a frequent line has.
+        assertEquals(TripTiming.FREQUENT_MAX_GAP, estimate.slack)
+        assertNull(estimate.withheld)
+        // Not when the second is the later of a pair TfL may be tracking twice: one train is all that's vouched for.
+        val pair = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 14), train("blue", 15).copy(doubtful = true)))
+        assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { pair[it] }).basis)
+        // Nor does a doubtful train split the gap between two vouched ones: 14 and 23 can't say the
+        // gap, so the wait is up to the longest a frequent line has, not the 8 min a train at 15 implies.
+        val split = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 14), train("blue", 15).copy(doubtful = true), train("blue", 23)))
+        assertEquals(TripTiming.FREQUENT_MAX_GAP, TripTiming.estimate(twoLegs, now, Duration.ZERO, { split[it] }).slack)
     }
 
     @Test
@@ -358,9 +384,12 @@ class TripTimingTest {
         assertTrue(TripTiming.runsFrequently(listOf(9L, 1L, 5L).map { train("blue", it) }))
         assertTrue(TripTiming.runsFrequently(listOf(0L, 10L, 20L).map { train("blue", it) }))
         assertFalse(TripTiming.runsFrequently(listOf(0L, 10L, 21L).map { train("blue", it) }))
-        assertFalse(TripTiming.runsFrequently(listOf(1L, 2L).map { train("blue", it) }))
-        // One train listed twice isn't two: two distinct times say nothing of the gap between trains.
-        assertFalse(TripTiming.runsFrequently(listOf(1L, 1L, 4L).map { train("blue", it) }))
+        assertTrue(TripTiming.runsFrequently(listOf(1L, 2L).map { train("blue", it) }))
+        assertFalse(TripTiming.runsFrequently(listOf(1L).map { train("blue", it) }))
+        // One train listed twice isn't two, nor is a pair TfL may be tracking twice.
+        assertFalse(TripTiming.runsFrequently(listOf(1L, 1L).map { train("blue", it) }))
+        assertFalse(TripTiming.runsFrequently(listOf(train("blue", 1), train("blue", 2).copy(doubtful = true))))
+        assertTrue(TripTiming.runsFrequently(listOf(train("blue", 1), train("blue", 2).copy(doubtful = true), train("blue", 5))))
         assertFalse(TripTiming.runsFrequently(emptyList()))
     }
 
