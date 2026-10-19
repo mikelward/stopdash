@@ -250,6 +250,19 @@ class LineMapTest {
     }
 
     @Test
+    fun `a rail alert whose TfL text is only a link is placed by National Rail's words`() {
+        val link = "See https://www.nationalrail.co.uk/service-disruptions/example/"
+        val words = IncidentDetail(link, "Disruption at Hampstead expected until 20:00")
+        val status = LineStatus("northern", 9, "Service Alert", fullText = link, incidentWords = mapOf(link to words))
+        val map = LineMap.forStatus(northern(), status)!!
+        assertEquals(setOf("Hampstead"), map.rows.filter { it.marked }.mapTo(HashSet()) { it.name })
+        // Without the words, the link names nothing; and the two lay out differently, so neither stands in for the other.
+        val bare = status.copy(incidentWords = emptyMap())
+        assertTrue(LineMap.forStatus(northern(), bare)!!.rows.none { it.marked })
+        assertNotEquals(LineMap.alertKey(status), LineMap.alertKey(bare))
+    }
+
+    @Test
     fun `the alert shown is placed by its closure, or by its words beside another alert's closure`() {
         val text = "No service between Kennington and Battersea Power Station. Use Oval instead."
         val suspended = PartClosure(3, "Part Suspended", text, closure)

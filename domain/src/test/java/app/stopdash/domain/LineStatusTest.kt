@@ -3,6 +3,7 @@ package app.stopdash.domain
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -224,5 +225,18 @@ class LineStatusTest {
         val thisWeekend = listed.copy(startsOn = LocalDate.of(2026, 10, 17))
         val nextWeekend = listed.copy(startsOn = LocalDate.of(2026, 10, 24))
         assertEquals(listOf(listed, nextWeekend), line.withWorkAhead(listOf(nextWeekend, thisWeekend)).planned)
+    }
+
+    @Test
+    fun `National Rail's words lapse when they grow too old`() {
+        val link = "See https://www.nationalrail.co.uk/service-disruptions/example/"
+        val now = java.time.Instant.parse("2026-10-19T18:00:00Z")
+        val words = IncidentDetail(link, "Disruption at Herne Hill", until = now.plusSeconds(90))
+        val status = LineStatus("thameslink", 9, "Service Alert", fullText = link, incidentWords = mapOf(link to words))
+        assertEquals(java.time.Duration.ofSeconds(90), status.shownWordsLapseIn(now))
+        // Already lapsed, or no limit, or no words shown: nothing to wait for.
+        assertNull(status.shownWordsLapseIn(now.plusSeconds(90)))
+        assertNull(status.copy(incidentWords = mapOf(link to words.copy(until = null))).shownWordsLapseIn(now))
+        assertNull(status.copy(incidentWords = emptyMap()).shownWordsLapseIn(now))
     }
 }

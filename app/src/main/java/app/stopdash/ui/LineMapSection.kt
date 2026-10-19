@@ -46,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -121,6 +122,28 @@ internal class Laid(val from: LineSequence?, val statusKey: Any?, val map: LineM
 internal val LocalRiderPosition = compositionLocalOf<Coordinates?> { null }
 
 /**
+ * The words [status] shows ([LineStatus.shownText]), read afresh each time this composes, and this
+ * composed again when National Rail's words grow too old ([LineStatus.shownWordsLapseIn]): what is
+ * read from them (the stations an alert names) keys on these, so it follows the words shown, a map
+ * kept while the page was away included (Codex on #1004). Reading them is a map lookup and the clock.
+ */
+@Composable
+internal fun rememberShownWords(status: LineStatus?, now: () -> java.time.Instant = java.time.Instant::now): String? {
+    // Read again on every resume: a delay doesn't count deep sleep, which the words' age does
+    // (SteadyClock), and the device sleeps only with the screen off, so a resume follows (Codex on #1004).
+    var resumes by remember { mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { resumes++ }
+    // Bumped at the words' limit, so they're read again then; read afresh too for a new status, or a page
+    // come back (a new composition), whatever was kept for it.
+    val tick by produceState(0, status, resumes) {
+        val wait = status?.shownWordsLapseIn(now()) ?: return@produceState
+        delay(wait.toMillis().coerceAtLeast(0) + 1)
+        value++
+    }
+    return remember(status, tick, resumes) { status?.shownTextThrough(now()) }
+}
+
+/**
  * [lineId]'s map for its page (SPEC *Line page → Map*): its route data from the route pages' own
  * day-long cache ([LocalRouteStops]), loaded when the page opens and never on a refresh path, laid out
  * with [status]'s alert placed on it, the rider's [starred], [nearby] and [riding] stops kept and an alert on the
@@ -188,7 +211,11 @@ internal fun rememberLineMap(
     val here = LocalRiderPosition.current.takeIf { nearMe }
     val ownLaid = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
     val laidSlot = held?.laid ?: ownLaid
-    val laidKey = Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld, ridesOpen)
+    // Laid out again when the words shown change (National Rail's growing too old), as the stations marked
+    // are read from them.
+    val statusWords = rememberShownWords(status)
+    val quietedWords = rememberShownWords(quieted)
+    val laidKey = Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld, ridesOpen, statusWords, quietedWords)
     val laid = rememberWorked(laidSlot, laidKey, keep = { _, _ -> true }) {
         Laid(
             sequence,

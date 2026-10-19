@@ -4352,7 +4352,9 @@ surface.)
   older than the shared staleness bound (D4), counted from when the proxy fetched them by the age it
   gives, never by comparing clocks. The words carry that limit themselves, so a status kept on screen
   past it (its next refresh failed, say) shows TfL's link again, whenever TfL's own status was fetched. What an alert is stays TfL's text: a dismissal or a journey's alert holds whether the
-  words could be fetched or not, and the stations an alert names are read from TfL's words alone. A
+  words could be fetched or not. The stations an alert names are read from the words shown, so a
+  rail alert marks its stations on the line's map and a row's stops from National Rail's words, and
+  marks nothing while only TfL's link shows (maintainer, 2026-10-19). A
   proxy that can't be reached leaves TfL's link, which still opens the page.
   **Boards need no key either** (maintainer, 2026-10-17): without a key of the rider's own, every
   board (a station's, one with calling points, a followed train's) comes through the same proxy,
