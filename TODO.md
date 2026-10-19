@@ -858,8 +858,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                           (`LineSequence.stationIds`, `sameStationId`, `throughStation`): the model's
                           (`RouteStopsRepository` `model`, `withModelStations`), never the routes'
                           `icsId`; the routes' own codes only while it isn't loaded.
-                    - [ ] The name tests left: `RouteStops.sameStation` (Direct, rides, the route
-                          page), `OffPlan`'s name-only matches, and on the way's `sameStation` and
+                    - [x] A station's departures id finding its line's route (`LineSequence.callingAt`):
+                          by the model's stations where the sequence has them, the name test only
+                          without.
+                    - [ ] The name tests left: `PlaceDirect`'s and `StopLinks`' `sameStation`,
+                          `OffPlan`'s name-only matches, and on the way's `sameStation` and
                           `stationPlaces` (passing a stop).
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.

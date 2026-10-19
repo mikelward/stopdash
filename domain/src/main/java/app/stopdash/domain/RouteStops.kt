@@ -50,6 +50,9 @@ data class LineSequence(
     // Each station's TfL code (`icsId`), the same for every id TfL lists it under; never a bus
     // stop's, which it shares with the pole across the road (see [throughStation]).
     val stationCodes: Map<String, String> = emptyMap(),
+    // Whether [stationCodes] are the station model's ([withModelStations]), every stop's, so a stop with
+    // none is a station of its own; false for TfL's route codes, which name no stop outside the routes.
+    val modelStations: Boolean = false,
 ) {
     operator fun plus(other: LineSequence) =
         LineSequence(
@@ -60,6 +63,7 @@ data class LineSequence(
             stopAreas + other.stopAreas,
             stopHubs + other.stopHubs,
             stationCodes + other.stationCodes,
+            modelStations && other.modelStations,
         )
 
     // Each station code's ids on this line ([stationCodes] inverted), for [stationIds]: built once, on the
@@ -113,9 +117,10 @@ data class LineSequence(
      * This sequence as seen from [stopId], a stop departures or a journey end are listed under. TfL
      * can list a station's departures under one stop id and route the line through a sibling: St
      * Pancras's Thameslink trains depart under its domestic-platforms id, while the sequence calls at
-     * its main and low-level ids. When no route calls at [stopId], every stop on a route in the same
-     * interchange ([stopHubs]) that is the same station by name ([stopNames], or it plus a platform
-     * qualifier like "LL") becomes [stopId], so the route page, a journey starred from it, and that
+     * its main and low-level ids. When no route calls at [stopId], every stop on a route that is the same
+     * station becomes [stopId]: by the station model where the sequence was placed by it ([modelStations]),
+     * else one in the same interchange ([stopHubs]) that is the same station by name ([stopNames], or it plus
+     * a platform qualifier like "LL"), so the route page, a journey starred from it, and that
      * journey's trains all work from the id the departures carry. The name keeps another station in
      * the hub (King's Cross beside St Pancras) out, which would otherwise make the path ambiguous or
      * wrong. [stopId]'s own hub and name come from the station index ([withStations]). Unchanged
@@ -125,11 +130,16 @@ data class LineSequence(
     fun callingAt(stopId: String): LineSequence {
         val onRoute = routes.flatMapTo(HashSet()) { it.stopIds }
         if (stopId in onRoute) return this
-        val interchangeId = stopHubs[stopId].orEmpty()
-        val name = stopNames[stopId].orEmpty()
-        if (interchangeId.isBlank() || name.isBlank()) return this
-        val siblings = onRoute.filterTo(LinkedHashSet()) { id ->
-            stopHubs[id] == interchangeId && sameStation(name, stopNames[id].orEmpty())
+        // By the station model where the sequence has it: one station's other ids, never a name, and a stop it
+        // doesn't hold none (dev-docs/station-model.md, phase 2).
+        val siblings = if (modelStations) {
+            if (stationCodeOf(stopId) == null) return this
+            onRoute.filterTo(LinkedHashSet()) { sameStationId(stopId, it) }
+        } else {
+            val interchangeId = stopHubs[stopId].orEmpty()
+            val name = stopNames[stopId].orEmpty()
+            if (interchangeId.isBlank() || name.isBlank()) return this
+            onRoute.filterTo(LinkedHashSet()) { id -> stopHubs[id] == interchangeId && sameStation(name, stopNames[id].orEmpty()) }
         }
         if (siblings.isEmpty()) return this
         fun <T> firstOf(map: Map<String, T>): T? = siblings.firstNotNullOfOrNull { map[it] }
@@ -149,7 +159,7 @@ data class LineSequence(
     @WorkerThread
     fun withModelStations(stationOf: (String) -> String?): LineSequence {
         val ids = stopNames.keys + stationCodes.keys + routes.flatMap { it.stopIds }
-        return copy(stationCodes = ids.associateWith { stationOf(it).orEmpty() })
+        return copy(stationCodes = ids.associateWith { stationOf(it).orEmpty() }, modelStations = true)
     }
 
     /**
