@@ -86,6 +86,85 @@ class HubsTest {
     }
 
     @Test
+    fun `an id resolves to its station and hub, the same for every record of one station`() {
+        assertEquals(Resolved("910GHILL", "1009001:rail", "HUBEXA"), hubs.resolve("910GHILL"))
+        assertEquals("1009001:rail", hubs.resolve("910GHILLLL").station)
+        assertEquals("1009001:rail", hubs.resolve("9100HILL1").station)
+        // Another station of the hub: one hub, not one station.
+        assertEquals(Resolved("940GZZLUHIL", "1009002:tube", "HUBEXA"), hubs.resolve("940GZZLUHIL"))
+        // A pole is its bus stop, both poles alike.
+        assertEquals(Resolved("490000001B", "490G000001", "HUBEXA"), hubs.resolve("490000001B"))
+        // A whole stop area is its one stop, naming every pole of it; a stop's own id names itself.
+        assertEquals(Resolved("490G000001", "490G000001", "HUBEXA", poles = setOf("490000001A", "490000001B")), hubs.resolve("490G000001"))
+        // A hub's own id names no one station.
+        assertEquals(Resolved("HUBEXA", null, "HUBEXA"), hubs.resolve("HUBEXA"))
+    }
+
+    @Test
+    fun `an id the bundle doesn't hold resolves to itself at both levels`() {
+        assertEquals(Resolved("910GNOWHERE", "910GNOWHERE", "910GNOWHERE"), hubs.resolve("910GNOWHERE"))
+        assertEquals(Resolved.exact("490NOWHERE1"), hubs.resolve("490NOWHERE1"))
+    }
+
+    @Test
+    fun `an unbundled id compares the same whatever its case`() {
+        val lower = hubs.resolve("490nowhere1")
+        assertEquals("490nowhere1", lower.tflId)
+        assertEquals(hubs.resolve("490NOWHERE1").station, lower.station)
+        assertEquals(hubs.resolve("490NOWHERE1").hub, lower.hub)
+        assertEquals(setOf("490nowhere1"), lower.poles)
+    }
+
+    @Test
+    fun `a bundled id resolves to its station whatever its case`() {
+        val upper = hubs.resolve("910GHILL")
+        val lower = hubs.resolve("910ghill")
+        assertEquals("910ghill", lower.tflId)
+        assertEquals(upper.station, lower.station)
+        assertEquals(upper.hub, lower.hub)
+        assertEquals("1009001:rail", hubs.resolve("9100hill1").station)
+    }
+
+    @Test
+    fun `a split area resolves through the pole or point given with it, else to none of its stops`() {
+        val both = setOf("490000005A", "490000005B")
+        val areaPoles = setOf("490000005A", "490000005B")
+        val bare = hubs.resolve("490G000005")
+        assertNull(bare.station)
+        assertNull(bare.hub)
+        assertEquals(both, bare.stops)
+        assertEquals(setOf("490000005A"), bare.hubs)
+        assertEquals(areaPoles, bare.poles)
+        assertEquals("490000005B", hubs.resolve("490G000005", pole = "490000005B").station)
+        assertEquals("490000005A", hubs.resolve("490G000005", pole = "490000005B").hub)
+        // A pole outside the area is ignored, so a point decides; nothing decides with neither.
+        assertNull(hubs.resolve("490G000005", pole = "490000001A").station)
+        assertEquals("490000005B", hubs.resolve("490G000005", near = Coordinates(51.5202, -0.12)).station)
+        assertEquals("490000005A", hubs.resolve("490G000005", pole = "490000001A", near = Coordinates(51.5199, -0.12)).station)
+        // Only the area's own poles place it: another area's pole filed in Mill Lane's stop, south of
+        // both, is no pole of it, given or nearest, though it stands nearer the point than the area's own.
+        val foreign = Hubs.of(index, stops(tsv +
+            "\nS\t490000006C\tB\tMill Lane\t51.519000\t-0.120000\t490G000006\t\t\t\t\t1\t\t490000005B\t\t490000005A"))!!
+        assertEquals("490000005B", foreign.stopOf("490000006C").let { (it as Membership.Of).id })
+        assertNull(foreign.resolve("490G000005", pole = "490000006C").station)
+        assertEquals("490000005A", foreign.resolve("490G000005", near = Coordinates(51.5191, -0.12)).station)
+    }
+
+    @Test
+    fun `a call naming several records keeps them all and agrees only where they do`() {
+        val one = hubs.resolveAll(listOf("910GHILL", "910GHILLLL"))
+        assertNull("no one id to get off at", one.tflId)
+        assertEquals("1009001:rail", one.station)
+        assertEquals("HUBEXA", one.hub)
+        assertEquals(setOf("910GHILL", "910GHILLLL"), one.poles)
+        val two = hubs.resolveAll(listOf("910GHILL", "940GZZLUHIL"))
+        assertNull(two.station)
+        assertEquals("HUBEXA", two.hub)
+        assertEquals(setOf("1009001:rail", "1009002:tube"), two.stops)
+        assertEquals(hubs.resolve("910GVALE"), hubs.resolveAll(listOf("910GVALE")))
+    }
+
+    @Test
     fun `a station record the index leaves out reads its station from the stops`() {
         assertTrue(hubs.sameStation("910GVALE", "910GVALELL"))
         assertEquals(Membership.Of("910GVALE"), hubs.hubOf("910GVALELL"))

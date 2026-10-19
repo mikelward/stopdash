@@ -144,8 +144,8 @@ data class Resolved(
   `Membership.Split` for an area whose poles the model files under several stops, and
   `station-model.md` (*An id the app was handed names the area's poles*) already says how such an id
   is placed. The mapper passes the pole the feed names with it (the Planner's `individualStopId`) as
-  `pole`, else the leg's own point as `near`, and the area resolves to that pole's stop and hub. With
-  neither, `station` and `hub` are both null, even where every child stop is in one hub (Codex on
+  `pole`, else the leg's own point as `near`, and the area resolves to that pole's stop and hub (by
+  `near`, the stop of the area's own pole nearest it). With neither, `station` and `hub` are both null, even where every child stop is in one hub (Codex on
   #1005), `stops` holds every child stop, and `poles` the area's own TfL poles. A null level matches
   nothing at that level, so the id alone never arrives, replans or compares for detours, as today. An
   avoid or a closure check, which acts on every pole the id names, reads `poles`: a child stop can

@@ -1174,6 +1174,10 @@ class RouteStopsTest {
         assertTrue(loaded.sameStationId("910GHILL", "910GHILLLL"))
         assertFalse(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
         assertTrue(repository.cached("hill", "") === loaded)
+        // Each stop placed by the model too, its station and hub; an unheld stop as itself.
+        assertEquals(Resolved("910GHILLLL", "1009001:rail", "HUBEXA"), loaded.resolved["910GHILLLL"])
+        assertEquals("HUBEXA", loaded.resolved["940GZZLUHIL"]?.hub)
+        assertEquals(Resolved.exact("910GGONE"), loaded.resolvedOf("910GGONE"))
         // Asked once, not at every load.
         repository.load("hill", "")
         assertEquals(1, asks)
@@ -1215,6 +1219,9 @@ class RouteStopsTest {
         // Never the routes' own codes (maintainer, 2026-10-19: one source).
         assertFalse(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
         assertTrue(loaded.sameStationId("910GHILL", "910GHILL"))
+        // Each stop resolves to itself alone: exact ids are the fallback.
+        assertTrue(loaded.resolved.isEmpty())
+        assertEquals(Resolved.exact("910GHILLLL"), loaded.resolvedOf("910GHILLLL"))
     }
 
     @Test
