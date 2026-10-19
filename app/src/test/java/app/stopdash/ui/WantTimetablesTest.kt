@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -18,7 +19,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** A trip's timetable asks stop while the app is in the background or the trip is off screen. */
+/** A shown trip asks for its timetables each minute, and stops in the background or off screen. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 class WantTimetablesTest {
@@ -34,30 +35,40 @@ class WantTimetablesTest {
     private val key = LegTimetables.Key("northern", "940GZZLUEUS", "940GZZLUKSX")
 
     @Test
-    fun `asks while shown, nothing in the background, and again on return`() {
+    fun `asks each minute while shown, nothing in the background or off screen`() {
         val owner = FakeOwner()
         val asked = mutableListOf<Set<LegTimetables.Key>>()
         var shown by mutableStateOf(true)
+        composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             CompositionLocalProvider(LocalLifecycleOwner provides owner) {
                 if (shown) WantTimetables(setOf(key)) { asked += it }
             }
         }
-        composeRule.waitForIdle()
-        assertEquals(listOf(setOf(key)), asked)
+        composeRule.mainClock.advanceTimeByFrame()
+        assertEquals(1, asked.size)
+        composeRule.mainClock.advanceTimeBy(TIMETABLES_ASK_EVERY.toMillis())
+        assertEquals(2, asked.size)
 
+        // In the background: no more asks.
         composeRule.runOnUiThread { owner.registry.currentState = Lifecycle.State.CREATED }
-        composeRule.waitForIdle()
-        assertEquals(listOf(setOf(key), emptySet()), asked)
+        composeRule.mainClock.advanceTimeBy(TIMETABLES_ASK_EVERY.toMillis() * 3)
+        assertEquals(2, asked.size)
 
+        // Back in the foreground: asked at once, then each minute.
         composeRule.runOnUiThread { owner.registry.currentState = Lifecycle.State.RESUMED }
-        composeRule.waitForIdle()
-        assertEquals(listOf(setOf(key), emptySet(), setOf(key)), asked)
+        composeRule.mainClock.advanceTimeByFrame()
+        assertEquals(3, asked.size)
 
-        // Off screen: nothing wanted.
-        shown = false
-        composeRule.waitForIdle()
-        assertEquals(emptySet<LegTimetables.Key>(), asked.last())
+        // Off screen: no more asks.
+        composeRule.runOnUiThread {
+            shown = false
+            Snapshot.sendApplyNotifications()
+        }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.mainClock.advanceTimeBy(TIMETABLES_ASK_EVERY.toMillis() * 3)
+        assertEquals(3, asked.size)
+        assertEquals(setOf(setOf(key)), asked.toSet())
     }
 
     @Test

@@ -3449,7 +3449,7 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `a ride timetable that failed is fetched again while the same rides are wanted`() = runTest(dispatcher) {
+    fun `a ride timetable that failed is fetched again when asked once its retry is due`() = runTest(dispatcher) {
         val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
         val timetable = app.stopdash.domain.StopTimetable(listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(600))))
         var fail = true
@@ -3465,47 +3465,32 @@ class TripViewModelTest {
         val timetables = app.stopdash.domain.LegTimetables(source, clock = { clock })
         val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = timetables)
         trip.wantTimetables(setOf(key))
-        runCurrent()
+        advanceUntilIdle()
         assertEquals(1, asked)
         assertEquals(emptyMap<Any, Any>(), trip.state.value.timetables)
-        // Its retry comes due with nothing else asking: fetched again, and found.
+        // Nothing asks on its own: no request until the page asks again.
+        advanceTimeBy(timetables.retryAfter.toMillis() * 3)
+        assertEquals(1, asked)
+        // Asked again before its retry is due: not fetched.
         fail = false
-        clock = clock.plus(timetables.retryAfter)
-        advanceTimeBy(timetables.retryAfter.toMillis() + 1)
-        runCurrent()
+        clock = clock.plus(timetables.retryAfter.minusMinutes(1))
+        trip.wantTimetables(setOf(key))
+        advanceUntilIdle()
+        assertEquals(1, asked)
+        // Asked once it's due: fetched, and found.
+        clock = clock.plusSeconds(60)
+        trip.wantTimetables(setOf(key))
+        advanceUntilIdle()
         assertEquals(2, asked)
         assertEquals(mapOf(key to timetable), trip.state.value.timetables)
-        // Found, nothing more is asked.
-        advanceTimeBy(timetables.retryAfter.toMillis() * 3)
+        // Found, asking again fetches nothing.
+        trip.wantTimetables(setOf(key))
+        advanceUntilIdle()
         assertEquals(2, asked)
     }
 
     @Test
-    fun `a failed ride timetable stops being retried once nothing is wanted`() = runTest(dispatcher) {
-        val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
-        var asked = 0
-        val source = object : app.stopdash.domain.LegTimetableSource {
-            override suspend fun legTimetable(lineId: String, fromId: String, toId: String): app.stopdash.domain.StopTimetable {
-                asked++
-                throw app.stopdash.domain.TflException.Offline(null)
-            }
-        }
-        var clock = now
-        val timetables = app.stopdash.domain.LegTimetables(source, clock = { clock })
-        val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = timetables)
-        trip.wantTimetables(setOf(key))
-        runCurrent()
-        assertEquals(1, asked)
-        // The trip screen left: its retries stop.
-        trip.wantTimetables(emptySet())
-        clock = clock.plus(timetables.retryAfter.multipliedBy(3))
-        advanceTimeBy(timetables.retryAfter.toMillis() * 3)
-        runCurrent()
-        assertEquals(1, asked)
-    }
-
-    @Test
-    fun `a ride timetable fetched across the 4am change of service day is fetched again for the new day`() = runTest(dispatcher) {
+    fun `a ride timetable fetched across the 4am change of service day is fetched again at the next ask`() = runTest(dispatcher) {
         val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
         val timetable = app.stopdash.domain.StopTimetable(listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(600))))
         // 03:59 London when the fetch is asked; 04:01 when it's answered.
@@ -3521,7 +3506,12 @@ class TripViewModelTest {
         val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = app.stopdash.domain.LegTimetables(source, clock = { clock }))
         trip.wantTimetables(setOf(key))
         advanceUntilIdle()
-        // The day before's answer doesn't stand: asked again for the new day, and held.
+        // The day before's answer doesn't stand for the new day: none held.
+        assertEquals(1, asked)
+        assertEquals(emptyMap<Any, Any>(), trip.state.value.timetables)
+        // The page's next ask fetches the new day's, and it's held.
+        trip.wantTimetables(setOf(key))
+        advanceUntilIdle()
         assertEquals(2, asked)
         assertEquals(mapOf(key to timetable), trip.state.value.timetables)
     }

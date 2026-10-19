@@ -10,7 +10,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -90,22 +89,17 @@ class LegTimetablesTest {
         val source = FakeSource { throw TflException.Offline(null) }
         val timetables = LegTimetables(source, clock = { now }, warn = { warnings += it })
         timetables.fetch(listOf(key))
-        assertTrue(timetables.failed(listOf(key)))
-        assertEquals(TimetableRepository.RETRY_AFTER, timetables.retryDueIn(listOf(key)))
-        // Its retry comes due from when it failed, whoever asks after.
-        now = now.plus(Duration.ofMinutes(2))
-        assertEquals(TimetableRepository.RETRY_AFTER.minusMinutes(2), timetables.retryDueIn(listOf(key)))
-        now = now.minus(Duration.ofMinutes(2))
+        // Asked again before its retry is due: not fetched.
+        now = now.plus(TimetableRepository.RETRY_AFTER.minusMinutes(1))
         timetables.fetch(listOf(key))
         assertEquals(1, source.asked.size)
         assertEquals(emptyMap<LegTimetables.Key, StopTimetable?>(), timetables.known().timetables)
         assertEquals(listOf("timetable failed for line northern from stop 940GZZLUEUS: Offline (offline)"), warnings)
-        now = now.plus(TimetableRepository.RETRY_AFTER)
+        // Due from when it failed: fetched again.
+        now = now.plus(Duration.ofMinutes(1))
         source.answer = { throw TflException.NotFound(null) }
         timetables.fetch(listOf(key))
         assertEquals(2, source.asked.size)
-        assertFalse(timetables.failed(listOf(key)))
-        assertEquals(null, timetables.retryDueIn(listOf(key)))
         // TfL has none: answered as none, so a trip stops asking, and not asked again today.
         assertEquals(mapOf<LegTimetables.Key, StopTimetable?>(key to null), timetables.known().timetables)
         now = now.plus(TimetableRepository.RETRY_AFTER)
@@ -123,8 +117,11 @@ class LegTimetablesTest {
         }
         val timetables = LegTimetables(source, clock = { now })
         timetables.fetch(listOf(key))
-        // The day before's failure: today's first ask is due at once.
-        assertEquals(null, timetables.retryDueIn(listOf(key)))
+        // The day before's failure: today's first ask fetches at once.
+        source.answer = { timetable }
+        timetables.fetch(listOf(key))
+        assertEquals(2, source.asked.size)
+        assertEquals(mapOf(key to timetable), timetables.known().timetables)
     }
 
     @Test
