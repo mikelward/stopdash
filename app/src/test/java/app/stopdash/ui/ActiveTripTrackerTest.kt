@@ -2220,6 +2220,50 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `seen at the stop the train's calls still say is next, the trip counts on from there`() = runTest {
+        // TfL's calls for the 9 lag it a stop: they still say B is next while the rider is seen at B, so the trip
+        // counts on from B, and Show stops marks it (maintainer, 2026-10-19).
+        // Its stops named, as the Planner names them: the calls' next stop is checked against the name (Codex, #993).
+        val saved = ActiveTrip(TripRoute(listOf(ride.copy(pathNames = listOf("B", "C")))), "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = redLine
+        trains["9"] = listOf(call("B", 9), call("C", 14))
+        now = at(8)
+        // One fix there: not yet, as one can jump wide (maintainer, 2026-10-19).
+        tracker.refresh(fixAt(51.51))
+        assertEquals(2, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        assertTrue(logged.any { it.startsWith("on the way: seen 1 stop(s) past the next call on line red once") })
+        // The next refresh's fix there too: counted on from B.
+        tracker.refresh(fixAt(51.51))
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertEquals(1, tracker.trip.value?.seenAlongStop)
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals("C", riding.nextStop)
+        assertEquals(1, riding.stopsLeft)
+        assertEquals(at(14), riding.getOffAt)
+        // Said by stops and seconds, never a place.
+        assertTrue(logged.any { it.startsWith("on the way: 2 calls on line red, next due in 60 s, 2 stops left, off due in 360 s") })
+        assertTrue(logged.any { it.startsWith("on the way: seen 1 stop(s) past the next call on line red twice, counted from stop 2 of 2") })
+        assertTrue(logged.none { "51." in it })
+        // A refresh with no fix keeps it while the calls still lag: the count doesn't go back.
+        tracker.refresh()
+        assertEquals(1, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        // A fix there between two that aren't: never two in a row, so the calls' count stands.
+        val jumpy = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        jumpy.restore()
+        jumpy.refresh(fixAt(51.51))
+        jumpy.refresh(fixAt(51.5))
+        jumpy.refresh(fixAt(51.51))
+        assertEquals(2, (jumpy.progress.value as TripProgress.Riding).stopsLeft)
+        // Without a fix that places them, the calls' count stands.
+        val unseen = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        unseen.restore()
+        unseen.refresh()
+        assertEquals(2, (unseen.progress.value as TripProgress.Riding).stopsLeft)
+    }
+
+    @Test
     fun `a followed train off its way with the route unread is a failed update, not lost`() = runTest {
         // Its calls now go by Q, but the line's route can't be read to say whether that's the ride: nothing new
         // is known, so the ride stands as it was and the update says it failed (Codex, #728).

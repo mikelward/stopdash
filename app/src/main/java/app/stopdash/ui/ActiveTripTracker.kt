@@ -33,6 +33,7 @@ import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
 import java.io.IOException
 import java.time.Duration
+import kotlin.math.roundToInt
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -716,6 +717,8 @@ class ActiveTripTracker(
                 unsaved = true
             }
             _trip.value = moved.copy(alertLeft = false)
+            // A sighting is one of two only on the ride it was seen on, never across a move the rider made (Codex, #993).
+            pastSeen = null
             refollow()
             // The step moved to has no answer of its own yet: the last one's isn't passed off as its
             // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
@@ -1457,6 +1460,8 @@ class ActiveTripTracker(
         dropHeld = null
         lastFix = null
         walkPlaces = null
+        // A sighting is never one of two for another trip's ride (Codex, #993).
+        pastSeen = null
     }
 
     // The newest precise fix taken within [ESTIMATE_WITHIN], the trip's own or the app's remembered one,
@@ -1671,6 +1676,18 @@ class ActiveTripTracker(
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
         var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
+        // Counted by the train's calls: how far ahead those calls run, said by stop counts and seconds only, so a
+        // count that lags the rider can be told from one that's right (maintainer, 2026-10-19).
+        val counted = progress as? TripProgress.Riding
+        if (counted != null && !counted.byPosition && !calls.isNullOrEmpty()) {
+            val due = Duration.between(now, calls.first().expected).seconds
+            val off = counted.getOffAt?.let { Duration.between(now, it).seconds }
+            warn("on the way: ${calls.size} calls on line ${OnTheWay.followedLine(next)}, next due in $due s, ${counted.stopsLeft ?: "?"} stops left, off due in ${off ?: "?"} s")
+        }
+        // Seen past the stop those calls count to next: counted from where they're seen, as the calls lag a bus
+        // by a stop or so (maintainer, 2026-10-19).
+        if (seenRider != null && next.legIndex == trip.legIndex) seenPastCalls(next, progress, seenRider, seenAt, now)?.let { next = it }
+        progress = OnTheWay.countedOn(next, progress)
         // Calls a source answered from an earlier read (a National Rail board shared from a read before,
         // [VehicleSource.readAt]) are as old as that read: the step stands on them only as long as it
         // would have then, never renewed as live by each refresh (Codex, #883).
@@ -1855,6 +1872,40 @@ class ActiveTripTracker(
         // A "get off soon" said by that train's calls named its stop, not theirs: taken back, said again in their time.
         return if (let.warnedLeg == let.legIndex) let.copy(warnedLeg = -1, alertLeft = true) else let
     }
+
+    // [trip] keeping its rider seen past the next stop its train's calls count to ([OnTheWay.seenPastCalls]), by
+    // [rider] aged by the reads since [seenAt], on the ride's route; null when it doesn't move them on, or the route
+    // can't be read (the calls' count stands). Logged by stops, never a place.
+    private suspend fun seenPastCalls(trip: ActiveTrip, progress: TripProgress, rider: LocationFix, seenAt: Long, now: Instant): ActiveTrip? {
+        val leg = trip.leg ?: return null
+        if (progress !is TripProgress.Riding || leg.isWalk || leg.path.isEmpty()) return null
+        val sequence = routeOf(leg.lineId) ?: return null
+        val fix = rider.takeIf { preciseAllowed() }?.let { aged(it, Duration.ofMillis(elapsed() - seenAt)) } ?: return null
+        val moved = withContext(compute) { OnTheWay.seenPastCalls(trip, progress, fix, OnTheWay.ridePositions(leg, sequence), now) }
+        // Two fixes in a row, each its own refresh, before the calls are overruled, and only as far as both place
+        // them: a fix can jump wide for a moment (maintainer, 2026-10-19). One that doesn't place them past starts over.
+        val before = pastSeen
+        pastSeen = moved?.let { PastSeen(trip.startedAt, trip.legIndex, it.seenAlongStop) }
+        if (moved == null) return null
+        val behind = moved.seenAlongStop - (leg.path.size - (progress.stopsLeft ?: 0))
+        val accuracy = fix.accuracyMeters?.roundToInt() ?: "?"
+        // Only a sighting on this trip's ride counts as the first of two (Codex, #993).
+        if (before == null || before.startedAt != trip.startedAt || before.legIndex != trip.legIndex) {
+            warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId} once, fix accuracy $accuracy m: waiting for another")
+            return null
+        }
+        val confirmed = minOf(before.stop, moved.seenAlongStop)
+        if (confirmed <= trip.seenAlongStop) return null
+        warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId} twice, counted from stop ${confirmed + 1} of ${leg.path.size}, fix accuracy $accuracy m")
+        return moved.copy(seenAlongStop = confirmed)
+    }
+
+    // Where the last refresh's fix saw the rider past their train's next call ([seenPastCalls]): the trip (by when it
+    // started) and leg, and the next stop ahead of them. In memory only: a restart starts over, needing two fixes
+    // again; cleared too as a trip starts or ends ([forgetFixes]).
+    private class PastSeen(val startedAt: Instant, val legIndex: Int, val stop: Int)
+
+    @Volatile private var pastSeen: PastSeen? = null
 
     private suspend fun boardedAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): SeenAlong? {
         // On board by where they were seen, the line they were seen along ([OnTheWay.ridden]).
@@ -2570,6 +2621,8 @@ class ActiveTripTracker(
     // last known ahead of them on the ride ([TripProgress.Lost.ahead]), from the step before or where they
     // were seen, so a fork already behind them isn't offered or taken (Codex, #586).
     private fun withAhead(trip: ActiveTrip, progress: TripProgress): TripProgress {
+        // Counted by its train's calls, but seen further on: from there ([OnTheWay.countedOn]).
+        if (progress is TripProgress.Riding) return OnTheWay.countedOn(trip, progress)
         if (progress !is TripProgress.Lost || !(trip.boarded || trip.onBoardSeen)) return progress
         val ahead = listOfNotNull(progress.ahead, aheadOn(_progress.value, progress.leg), keptAhead(trip)).maxOrNull() ?: return progress
         return progress.copy(ahead = ahead)
