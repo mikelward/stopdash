@@ -1815,8 +1815,8 @@ route is expanded — as a card whose top row is its **duration · arrival** ("2
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
 for a frequent line past its predictions (below) could make it later, by a minute or more, both
 show as a **range** (maintainer, 2026-09-30: once a route can rank above a live one on its latest, a
-single estimated time hid why it sorted where it did) ("est. 41–49 min · 11:26–34", the end's hour dropped within the same hour to
-save width): from no wait up to the line's longer typical gap, the route timed again with each such
+single estimated time hid why it sorted where it did) ("est. 41–49 min · 11:26–11:34", both ends full clock times,
+maintainer, 2026-10-19): from no wait up to the line's longer typical gap, the route timed again with each such
 wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
 ("est. 41+ min · 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,

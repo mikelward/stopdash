@@ -480,8 +480,8 @@
          "est." leads, before the duration (maintainer, 2026-10-04). -->
     <string name="trip_duration_arrival_estimated">est. %1$d min · %2$s</string>
     <!-- An estimated arrival that may be some minutes later, waiting for a frequent line: the
-         duration's range, then the arrival's (%3$s–%4$s, the end without its hour when that's the
-         same: "11:26–34"). -->
+         duration's range, then the arrival's (%3$s–%4$s, both full clock times:
+         "11:26–11:34"). -->
     <string name="trip_duration_arrival_range">est. %1$d–%2$d min · %3$s–%4$s</string>
     <!-- An estimated arrival a longer wait for a frequent line could make later by an amount nothing
          times (it could miss a connection): "or later", as "+". %1$d is minutes, %2$s a clock time. -->

@@ -2384,21 +2384,21 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun an_arrivals_range_ends_in_minutes_within_its_hour() {
+    fun an_arrivals_range_ends_in_a_full_clock_time() {
         val arrival = Instant.parse("2026-09-26T10:26:00Z") // 11:26 in London
-        assertEquals("34", arrivalEnd(arrival, Duration.ofMinutes(8)))
+        assertEquals("11:34", arrivalEnd(arrival, Duration.ofMinutes(8)))
         assertEquals("12:04", arrivalEnd(Instant.parse("2026-09-26T10:56:00Z"), Duration.ofMinutes(8)))
         // Any whole minute is a range, so the order estimates rank in can be read off them; under a
         // minute there's none.
         assertEquals(null, arrivalEnd(arrival, Duration.ofSeconds(50)))
-        assertEquals("27", arrivalEnd(arrival, Duration.ofMinutes(1)))
-        assertEquals("28", arrivalEnd(arrival, Duration.ofMinutes(2)))
-        // Across the autumn clock change the hour repeats: 01:58 BST + 8 min is 01:06 GMT, shown whole.
+        assertEquals("11:27", arrivalEnd(arrival, Duration.ofMinutes(1)))
+        assertEquals("11:28", arrivalEnd(arrival, Duration.ofMinutes(2)))
+        // Across the autumn clock change the hour repeats: 01:58 BST + 8 min is 01:06 GMT.
         assertEquals("01:06", arrivalEnd(Instant.parse("2026-10-25T00:58:00Z"), Duration.ofMinutes(8)))
     }
 
     // Real predictions leave seconds on both halves: 16m30s away with 1m40s of slack is 18m10s at the
-    // latest, so the range reads 16–18 min beside 11:16–18, not 16–17.
+    // latest, so the range reads 16–18 min beside 11:16–11:18, not 16–17.
     @Test
     fun an_arrivals_range_rounds_its_latest_minutes_once() {
         val duration = Duration.ofMinutes(16).plusSeconds(30)
@@ -2407,7 +2407,7 @@ class TripScreenScreenshotTest {
         assertEquals(16, latestMinutes(duration, Duration.ZERO))
         assertEquals(3, latestMinutes(null, Duration.ofMinutes(3)))
         val arrival = Instant.parse("2026-09-26T10:16:30Z") // 11:16:30 in London
-        assertEquals("18", arrivalEnd(arrival, slack))
+        assertEquals("11:18", arrivalEnd(arrival, slack))
     }
 
     @Test
