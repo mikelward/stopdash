@@ -6,6 +6,7 @@ import app.stopdash.domain.BundledStops
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.JourneyPlanner
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.StationIndex
@@ -224,7 +225,8 @@ class LaterTripViewModelTest {
         assertEquals(31, card.minutes)
         assertEquals(
             listOf(
-                LaterTripViewModel.Row(walk = false, time = "09:05", lineId = "red", lineName = "red", mode = "tube", toName = "C", minutes = 25),
+                LaterTripViewModel.Row(walk = false, time = "09:05", lineId = "red", lineName = "red", mode = "tube", toName = "C", minutes = 25,
+                    end = LegEnd.planned(route.legs.first(), StepFree.ANY)),
                 LaterTripViewModel.Row(walk = true, time = "09:30", lineId = "", lineName = "", mode = TripLeg.WALKING, toName = "Place D", minutes = 6),
             ),
             card.rows,
@@ -647,6 +649,76 @@ class LaterTripViewModelTest {
             io.shutdown()
             workerPool.shutdown()
         }
+    }
+
+    @Test
+    fun `a listed route's last ride arrives anywhere in the destination's hub, worked out off the caller`() {
+        // Riding to Hill's rail station, in a hub with its tube station ([HillModel]); a real single-thread caller
+        // standing in for the main thread hands the request on, and the ends are worked out on the worker.
+        val main = Executors.newSingleThreadExecutor { Thread(it, "caller") }
+        val io = Executors.newSingleThreadExecutor { Thread(it, "io") }
+        val workerThreads = ThreadRecorder()
+        val workerPool = Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                workerPool.execute {
+                    workerThreads.note()
+                    block.run()
+                }
+            }
+        }
+        Dispatchers.setMain(main.asCoroutineDispatcher())
+        try {
+            val route = TripRoute(listOf(leg("walk", "A", "B", 5, 8, mode = "walking"), leg("red", "B", "910GHILL", 8, 30)))
+            val later = LaterTripViewModel(
+                Planner(mapOf("910GHILL" to listOf(route))), { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("910GHILL")),
+                arriving = { HillModel.toHill }, io = io.asCoroutineDispatcher(), compute = worker,
+            )
+            main.submit { later.show(LaterTripViewModel.Request(leave)) }.get()
+            val cards = runBlocking { withTimeout(5_000) { later.state.first { it.cards != null } } }.cards!!
+            val (walk, ride) = cards.single().rows
+            // A walk gets off nowhere; the ride anywhere in Hill's hub, its tube station too.
+            assertNull(walk.end)
+            assertTrue("${ride.end}", "940GZZLUHIL" in ride.end!!.offIds(route.legs.last()))
+            assertTrue("${workerThreads.threads()}", workerThreads.threads().isNotEmpty() && workerThreads.threads().all { it == "worker" })
+        } finally {
+            Dispatchers.setMain(dispatcher)
+            main.shutdown()
+            io.shutdown()
+            workerPool.shutdown()
+        }
+    }
+
+    @Test
+    fun `a step-free later trip, or one with no model, ends each ride where the Planner does`() = runTest(dispatcher) {
+        val route = TripRoute(listOf(leg("red", "A", "910GHILL", 5, 30)))
+        val planner = Planner(mapOf("910GHILL" to listOf(route)))
+        val modeled = LaterTripViewModel(
+            planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("910GHILL")),
+            arriving = { HillModel.toHill }, io = dispatcher, compute = dispatcher,
+        )
+        modeled.show(LaterTripViewModel.Request(leave, stepFree = StepFree.STATION))
+        advanceUntilIdle()
+        assertEquals(LegEnd.planned(route, StepFree.STATION).single().second, modeled.state.value.cards!!.single().rows.single().end)
+        // No model: the Planner's call, whatever the level.
+        val unmodeled = model(planner, listOf("910GHILL"))
+        unmodeled.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(LegEnd.planned(route, StepFree.ANY).single().second, unmodeled.state.value.cards!!.single().rows.single().end)
+    }
+
+    @Test
+    fun `an unreadable station model is said, and the rides end where the Planner does`() = runTest(dispatcher) {
+        val route = TripRoute(listOf(leg("red", "A", "910GHILL", 5, 30)))
+        val warnings = mutableListOf<String>()
+        val later = LaterTripViewModel(
+            Planner(mapOf("910GHILL" to listOf(route))), { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("910GHILL")),
+            arriving = { throw java.io.IOException("unreadable") }, io = dispatcher, compute = dispatcher, warn = { warnings += it },
+        )
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(LegEnd.planned(route, StepFree.ANY).single().second, later.state.value.cards!!.single().rows.single().end)
+        assertTrue("$warnings", warnings.any { "station model unreadable (IOException)" in it })
     }
 
     @Test

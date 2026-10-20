@@ -998,9 +998,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               (`RouteStops.forLeg`, `withRouteStops`), and the bus
                                               alerts' span (`JourneyAlerts.ridesOf`, `RouteDisruption`),
                                               which still end at the Planner's call.
-                                        - [ ] A later trip's list (`LaterTripViewModel`,
-                                              `LaterTripScreen`) taking the same `RideEnds`; it still
-                                              ends every ride where the Planner does.
+                                        - [x] A later trip's list (`LaterTripViewModel`) taking the
+                                              same `RideEnds`: the trip page's model and hubs, read on io
+                                              (`awaitDestination`), worked out with each listing on its
+                                              compute dispatcher, each ride's row carrying its end
+                                              (`Row.end`); unread until the Planner's own ride is cut and
+                                              named at its first call in the hub (the item above), as the
+                                              list shows only the Planner's rides (see *Decisions needing
+                                              review*).
                                         - [ ] On the way's stop list and ride lines
                                               (`OnTheWayScreen`'s `withRouteStops`,
                                               `RideLineChecks.running`, `ActiveTripTracker`'s
@@ -4998,9 +5003,18 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   ride, its stop list and the bus alerts still end at the Planner's call until the detour cut lands.
   Such a line never times the route, since it rides another stretch. Ends are worked out on the
   worker per plan (`RideEnds`), keyed on each last ride's raw end; a route made since (a train through
-  a change, the open route) ends where it's named to, as do a step-free trip (as on the way) and a
-  later trip's list. Alternative: switch every path, the cut included, in one PR; or resolve each
-  route as it's made. Reversible: `TripScreen`'s `rideEnds`, which defaults to the Planner's calls.
+  a change, the open route) ends where it's named to, as does a step-free trip (as on the way); a
+  later trip's list carries the same ends unread (below). Alternative: switch every path, the cut
+  included, in one PR; or resolve each route as it's made. Reversible: `TripScreen`'s `rideEnds`, which defaults to the Planner's calls.
+- [ ] **A later trip's list carries its ride ends unread** (autopilot, 2026-10-20). The list takes
+  the trip page's `RideEnds`, worked out with each listing (`Row.end`), but shows nothing new: a later
+  card is the Planner's own rides from the timetable, with no other lines or live trains to offer, so
+  the only thing an end would change is the Planner's ride's name and arrival, which the trip page
+  still shows at the Planner's call until the detour cut lands. Naming it at the hub's first call here
+  first would make a later card and the route it opens in the trip for now disagree. Alternative:
+  cut and name the later card's last ride at its first call in the hub now, ahead of the trip page;
+  or leave the list without ends until the cut. Reversible: `LaterTripViewModel`'s `arriving`, which
+  defaults to none (every ride at the Planner's call), and the unread `Row.end`.
 - [ ] **On the way reads the ride's end first, ahead of the other families** (autopilot,
   2026-10-20). The last ride on the way gets off at the followed train's first call in the
   destination's hub, while the trip screen's paths still end where the Planner does, though the

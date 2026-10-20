@@ -8,6 +8,8 @@ import app.stopdash.domain.RideLines
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 
 /**
  * A trip page's ride lines ([RideLines.of]), each ride's by the ride paired with where it gets off
@@ -99,6 +101,23 @@ internal fun rideLines(
 
 /** Where each ride of a route gets off at [stepFree]: the Planner's call ([LegEnd.planned]), where no [RideEnds] were worked out. */
 internal fun plannedEnds(stepFree: StepFree): (TripRoute) -> List<Pair<TripLeg, LegEnd>> = { route -> LegEnd.planned(route, stepFree) }
+
+/**
+ * The station model and the destination's hubs a trip's [RideEnds] are worked out through, once read (on io,
+ * by the model holding it): the trip page's ([TripViewModel.rideEnds]) and a later trip's list's
+ * ([LaterTripViewModel]) alike. Null where there's none (a place, no model), and where it couldn't be read,
+ * said to [warn] under [label], so every ride gets off where the Planner does, as with no model.
+ */
+internal suspend fun Deferred<RideEnds.Destination?>.awaitDestination(warn: (String) -> Unit, label: String): RideEnds.Destination? =
+    try {
+        await()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // The rides get off where the Planner does, as with no model: said, not dropped.
+        warn("$label: station model unreadable (${e.javaClass.simpleName})")
+        null
+    }
 
 /** [RideLines.lineIds] from a trip's [state]: the lines whose route data and status [rideLines] needs. */
 internal fun rideLineIds(routes: List<TripRoute>, state: TripViewModel.State, hidden: Set<String>): List<String> =

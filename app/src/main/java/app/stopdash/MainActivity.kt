@@ -5375,7 +5375,8 @@ class MainActivity : ComponentActivity() {
         // (planned to the id picked) for a bus stop, an interchange, still planned member by member, or a place.
         var planTargets: suspend () -> List<String>? = { null }
         // The model and the destination's matchable hubs, for where each route's last ride arrives by hub on the
-        // trip page, read off the main thread by the trip's model. None for a place, which has no hub.
+        // trip page and a later trip's list, read off the main thread by the trip's models. None for a place,
+        // which has no hub.
         var arriving: suspend () -> RideEnds.Destination? = { null }
         if (favorite != null) {
             destinations = listOf(favorite)
@@ -5611,6 +5612,8 @@ class MainActivity : ComponentActivity() {
                             destinationIds = destinationIds,
                             arrivalIds = arrivalIds,
                             planTargets = planTargets,
+                            // Where each listed ride gets off, a last ride arriving at the destination's hub, as for the trip for now.
+                            arriving = arriving,
                             warn = ::logDepartureWarning,
                             // The bus stops towards the destination a plan from here asks via, as for the trip for now.
                             stations = { StationIndexStore.load(appContext) },

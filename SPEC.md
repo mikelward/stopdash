@@ -2500,8 +2500,11 @@ too, as far as which lines and trains take the last ride: another line of the ri
 another station of the destination's hub shows on its card and open route, ending and named at its first call there, a train is judged to get the rider there by
 calling anywhere in the hub, and a train through a change counts as a route of its own where it
 reaches the hub at another station. The Planner's own ride still shows ending at its own call (the
-detour cut is to come), and so do the stop lists and bus alerts; a step-free trip, and a later
-trip's list, still end every ride where the Planner does. Which rides arrive by hub is worked out
+detour cut is to come), and so do the stop lists and bus alerts; a step-free trip still ends every
+ride where the Planner does. A later trip's list works out where each ride gets off the same way,
+with its plan, but as it shows only the Planner's own rides from the timetable, nothing live, each
+still reads as ending at the Planner's call until that ride is cut and named at its first call in the
+hub, there and on the trip page alike. Which rides arrive by hub is worked out
 off the main thread through the station model as the routes come in, each ride ending at the
 Planner's call meanwhile. The route
 as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,
