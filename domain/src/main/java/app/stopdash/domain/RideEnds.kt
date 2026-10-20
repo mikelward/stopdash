@@ -3,10 +3,10 @@ package app.stopdash.domain
 import androidx.annotation.WorkerThread
 
 /**
- * Where each ride of a trip's routes gets off ([LegEnd]), as the trip page reads it (TODO.md, *Arriving by
- * hub at the first call*): a last ride whose Planner's call is in the destination's hubs gets off at its
- * first call anywhere in them ([hub], with every TfL id of their stations and stops), and every other ride
- * where the Planner gets it off ([LegEnd.planned]).
+ * Where each ride of a trip's routes gets off ([LegEnd]), as the trip page and a later trip's list read it
+ * (TODO.md, *Arriving by hub at the first call*): a last ride whose Planner's call is in the destination's
+ * hubs gets off at its first call anywhere in them ([hub], with every TfL id of their stations and stops),
+ * and every other ride where the Planner gets it off ([LegEnd.planned]).
  *
  * Which rides arrive by hub is worked out through the station model on a worker ([of]: [LegEnd.of], then
  * [Hubs.idsOf]) for the routes a plan brings, each by its last ride's raw end ([TripLeg.toId],

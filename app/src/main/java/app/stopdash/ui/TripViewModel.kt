@@ -1000,15 +1000,7 @@ class TripViewModel(
      * shows come in and reads the answer as it builds the page.
      */
     suspend fun rideEnds(routes: List<TripRoute>, stepFree: StepFree): RideEnds {
-        val at = try {
-            arrivingAt.await()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // The rides get off where the Planner does, as with no model: said, not dropped.
-            warn("trip ride ends: station model unreadable (${e.javaClass.simpleName})")
-            null
-        } ?: return RideEnds.planned(stepFree)
+        val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return RideEnds.planned(stepFree)
         return withContext(compute) { RideEnds.of(routes, stepFree, at) }
     }
 

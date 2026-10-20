@@ -309,7 +309,11 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    its compute dispatcher (`LegEnd.of`, then `Hubs.idsOf` into the hub end's `LegEnd.ids`), keyed on
    each last ride's raw end, and the screen reads it as it builds the page; `RideLines.runTo` and
    `DirectTrips` match a hub end by `LegEnd.offIds`. The Planner's own ride, its stop list and the
-   bus alerts still end at its call until the detour cut.
+   bus alerts still end at its call until the detour cut. A later trip's list takes the same
+   `RideEnds` (2026-10-20): `LaterTripViewModel` reads the same model and hubs on io
+   (`awaitDestination`, shared with `TripViewModel.rideEnds`) and works them out with each listing on
+   its compute dispatcher, each ride's row carrying its `LegEnd`; nothing on the list reads it until
+   the detour cut names the Planner's own ride at its first call in the hub.
    - **Who asks.** `DirectTrips`, `RideLines`, `RouteStops.forLeg`, `FavoriteJourney` and on the
      way's arrival check (`OnTheWay.endedAtDestination`) ask "first call whose hub is one of the
      destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only; and the

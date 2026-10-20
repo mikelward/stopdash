@@ -7,8 +7,10 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.BundledStops
 import app.stopdash.domain.FinalStop
 import app.stopdash.domain.JourneyPlanner
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.RefusedStops
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TflException
@@ -47,8 +49,9 @@ import kotlinx.coroutines.sync.withLock
  *
  * Everything the screen draws is worked out here, on [compute] (AGENTS.md *Main thread*): the routes
  * riding a hidden mode or an avoided line, and the detours another route beats, are left out; the rest
- * are listed as [TripTime.ordered] lists them, each a [Card] with its keys and rows. [show] does
- * nothing on its caller's thread but hand the request on. Neither end nor the time is logged.
+ * are listed as [TripTime.ordered] lists them, each a [Card] with its keys and rows, each ride's row with
+ * where it gets off as the trip page works it out ([RideEnds]). [show] does nothing on its caller's thread
+ * but hand the request on. Neither end nor the time is logged.
  */
 class LaterTripViewModel(
     private val planner: JourneyPlanner,
@@ -63,6 +66,10 @@ class LaterTripViewModel(
     // As the trip for now's ([TripViewModel.planTargets]): where the Planner is asked to plan to, from the station
     // model, read on [io]; null to plan to [destinations] as they are.
     planTargets: suspend () -> List<String>? = { null },
+    // As the trip for now's ([TripViewModel.rideEnds]): the station model and the destination's matchable hubs,
+    // for where each listed route's last ride gets off by arriving at them, read on [io] once. Null where no ride
+    // arrives by hub (a place, no model): each gets off where the Planner does.
+    arriving: suspend () -> RideEnds.Destination? = { null },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
@@ -113,7 +120,13 @@ class LaterTripViewModel(
         val rows: List<Row>,
     )
 
-    /** A ride (its departure, line, and where it gets off) or a walk (where to, and its minutes). */
+    /**
+     * A ride (its departure, line, and where it gets off) or a walk (where to, and its minutes). A ride's [end]
+     * is where it gets off as the trip page has it ([RideEnds]): a last ride the Planner gets off in the
+     * destination's hubs gets off at its first call anywhere in them. Its name ([toName]) is the Planner's
+     * call's until the Planner's own ride is cut and named at that first call (TODO.md, *Arriving by hub*),
+     * on the trip page and here alike. Null for a walk, which gets off nowhere.
+     */
     data class Row(
         val walk: Boolean,
         val time: String,
@@ -122,6 +135,7 @@ class LaterTripViewModel(
         val mode: String,
         val toName: String,
         val minutes: Int,
+        val end: LegEnd? = null,
     )
 
     data class State(
@@ -168,6 +182,9 @@ class LaterTripViewModel(
     private val destinationStops = viewModelScope.async(io) {
         destinations.filterIsInstance<TripDestination.Stop>().associate { it.id to it.id } + destinationIds + arrivalIds().orEmpty()
     }
+
+    // The model and the destination's hubs each listed route's last ride may arrive at ([arriving]), read once on [io].
+    private val arrivingAt = viewModelScope.async(io) { arriving() }
 
     // Where each plan asks the Planner to plan to ([planTargets]), read once on [io].
     private val targets = viewModelScope.async(io) {
@@ -226,7 +243,7 @@ class LaterTripViewModel(
                 // hand are listed again. A plan still running publishes for this request too.
                 val held = _state.value
                 val routes = raw
-                _state.value = held.copy(request = request, cards = if (changed && routes != null) listed(routes, request.time, leftOut, destinationStops.await()) else held.cards)
+                _state.value = held.copy(request = request, cards = if (changed && routes != null) listed(routes, request, leftOut, destinationStops.await(), destination()) else held.cards)
                 false
             } else {
                 planned = request
@@ -275,7 +292,7 @@ class LaterTripViewModel(
                 raw = routes
                 _state.value = State(
                     request = latest ?: request,
-                    cards = listed(routes, request.time, excluded.orEmpty(), destinationStops.await()),
+                    cards = listed(routes, request, excluded.orEmpty(), destinationStops.await(), destination()),
                     incomplete = stationsMissed,
                     routesMissed = routesMissed,
                 )
@@ -283,13 +300,20 @@ class LaterTripViewModel(
         }
     }
 
-    // On [compute]: the routes keeping to the time and not riding what's [leftOut], less the detours the rest
-    // beat, in order, as cards.
+    // The station model and hubs the listed rides' ends are worked out through ([arriving]), once read.
+    private suspend fun destination(): RideEnds.Destination? = arrivingAt.awaitDestination(warn, "later trip ride ends")
+
+    // On [compute]: the routes keeping to [request]'s time and not riding what's [leftOut], less the detours the
+    // rest beat, in order, as cards, each ride getting off where [RideEnds] has it at [request]'s step-free level
+    // through [destination].
     @WorkerThread
-    private fun listed(routes: List<TripRoute>, time: TripTime, leftOut: Set<String>, stops: Map<String, String>): List<Card> {
+    private fun listed(routes: List<TripRoute>, request: Request, leftOut: Set<String>, stops: Map<String, String>, destination: RideEnds.Destination?): List<Card> {
+        val time = request.time
         val kept = withoutDetours(routes.filter { it.legs.isNotEmpty() && time.keeps(it) && !AvoidedLines.drops(it, leftOut) }, stops.keys, stops)
+        val ordered = TripTime.ordered(kept, time)
+        val ends = RideEnds.of(ordered, request.stepFree, destination)
         // A route the same as another in every leg's times is one card: the list's keys stay unique.
-        return TripTime.ordered(kept, time).map(::cardOf).distinctBy { it.listKey }
+        return ordered.map { cardOf(it, ends) }.distinctBy { it.listKey }
     }
 
     // One destination's routes, and whether its request via the last stop failed (they stand, in part).
@@ -341,12 +365,17 @@ class LaterTripViewModel(
     }
 
     companion object {
-        /** [route] as its card draws it: its times in London, its keys and a row per leg. */
+        /**
+         * [route] as its card draws it: its times in London, its keys and a row per leg, each ride's with where
+         * it gets off as [ends] has it (by default where the Planner gets it off).
+         */
         @WorkerThread
-        internal fun cardOf(route: TripRoute): Card {
+        internal fun cardOf(route: TripRoute, ends: RideEnds = RideEnds.planned(StepFree.DEFAULT)): Card {
             val first = route.legs.first()
             val last = route.legs.last()
             val key = routeKey(route)
+            // Each ride's end, in order: the legs that aren't walks take them in turn.
+            val rideEnds = ends.ends(route).iterator()
             return Card(
                 route = route,
                 routeKey = key,
@@ -365,6 +394,7 @@ class LaterTripViewModel(
                         mode = leg.mode,
                         toName = leg.toName,
                         minutes = leg.run.toMinutes().toInt().coerceAtLeast(1),
+                        end = if (leg.isWalk) null else rideEnds.next().second,
                     )
                 },
             )
