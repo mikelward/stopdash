@@ -6,7 +6,6 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HeldTrains
 import app.stopdash.domain.HubInfo
-import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineRef
@@ -57,7 +56,6 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.StopTimetable
 import app.stopdash.domain.TimetableSource
 import app.stopdash.domain.LegTimetableSource
-import app.stopdash.domain.place
 import app.stopdash.domain.riderLineName
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -151,11 +149,6 @@ class KtorTflClient(
     // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
     // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
     private val stationOf: (String) -> String? = { null },
-    // The station model, for placing each planned leg's stops, each followed vehicle's calls and each
-    // departure's terminus where the answer enters the app ([Hubs.place], [VehicleCall.place],
-    // [Departure.destinationPlace]); waited for as [HubsStore.ready] does. None by default (tests, the other
-    // clients): they go unplaced.
-    private val hubs: suspend () -> Hubs? = { null },
     // The bundled station index, for the far ends of each line a stop is the terminus of
     // ([StationIndex.terminusEnds]), so a train TfL lists there as arriving is relabeled as the
     // departure it becomes ([Turnback]). Looked up here, where the answer is decoded, off the main
@@ -408,7 +401,7 @@ class KtorTflClient(
         via: String?,
         at: TripTime?,
         progress: (String?) -> Unit,
-    ): List<TripRoute> = placed(
+    ): List<TripRoute> =
         tflRequest { key ->
             progress(null)
             val dto = try {
@@ -458,16 +451,7 @@ class KtorTflClient(
                 warn("$source: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
             }
             routes
-        },
-    )
-
-    // [routes] with each leg placed by the station model ([Hubs.place]), waited for out of the request's
-    // slot, so a model still loading holds no request back; as given where there's none in time, each id
-    // then its own station and hub.
-    private suspend fun placed(routes: List<TripRoute>): List<TripRoute> {
-        val model = hubs() ?: return routes
-        return withContext(decodeDispatcher) { routes.map { model.place(it) } }
-    }
+        }
 
     // The Planner's `mode` list: [modes]' own, less [leaveOut].
     private fun plannerModes(modes: TripModes, leaveOut: Set<String>): String =
@@ -577,11 +561,8 @@ class KtorTflClient(
             PostcodeResolution.None -> emptyList()
         }
 
-    override suspend fun arrivals(stopId: String): List<Departure> = coroutineScope {
-        // The station model, for each train's terminus ([Departure.destinationPlace]): asked for alongside the
-        // request, so one still loading holds the board back only by what it takes beyond TfL's answer.
-        val model = async { hubs() }
-        val departures = tflRequest { key ->
+    override suspend fun arrivals(stopId: String): List<Departure> =
+        tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$stopId/Arrivals") {
                 applyAppKey(key)
             }.body<List<TflArrivalDto>>()
@@ -596,9 +577,6 @@ class KtorTflClient(
                 }
                 .let(DepartureRows::inferDirections)
         }
-        val placing = model.await() ?: return@coroutineScope departures
-        withContext(decodeDispatcher) { placing.place(departures) }
-    }
 
     // The answer's departures, or the stop's last answer's when this one is an older cache copy, and said
     // so with how much older: a stop stepping back in time is what the debug log should show.
@@ -677,8 +655,8 @@ class KtorTflClient(
         return result.departures
     }
 
-    override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> {
-        val calls = tflRequest { key ->
+    override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> =
+        tflRequest { key ->
             httpClient.get("$baseUrl/Vehicle/${vehicleId.encodeURLPathPart()}/Arrivals") {
                 applyAppKey(key)
             }.body<List<TflArrivalDto>>()
@@ -686,12 +664,6 @@ class KtorTflClient(
                 .map { it.toVehicleCall() }
                 .sortedBy { it.expected }
         }
-        // Each call's stop placed by the station model ([VehicleCall.place]), waited for out of the request's
-        // slot as a plan's legs are ([placed]); none to place, nothing waits.
-        if (calls.isEmpty()) return calls
-        val model = hubs() ?: return calls
-        return withContext(decodeDispatcher) { calls.map { it.copy(place = model.resolve(it.stopId)) } }
-    }
 
     override suspend fun nearbyStops(
         latitude: Double,

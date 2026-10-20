@@ -1,12 +1,18 @@
 package app.stopdash.domain
 
+import java.io.BufferedReader
+import java.io.StringReader
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Synthetic records: a hub HUBA holding stations STA1 and STA2, and a hub HUBB. */
+/**
+ * Synthetic records: a hub HUBA holding stations STA1 and STA2, and a hub HUBB, as [Resolved] values;
+ * and a station model ([hubs]) around the obviously-fake (51.5, -0.12), as `HubsTest` builds it, for the
+ * ends a route's rides get off at, resolved from their raw ids.
+ */
 class LegEndTest {
     private val a1 = Resolved(tflId = "910GA1", station = "STA1", hub = "HUBA")
     private val a1Other = Resolved(tflId = "940GA1", station = "STA1", hub = "HUBA")
@@ -14,10 +20,49 @@ class LegEndTest {
     private val b = Resolved(tflId = "910GB", station = "STB", hub = "HUBB")
     private val at = Instant.parse("2026-01-01T09:00:00Z")
 
-    private fun ride(to: Resolved, mode: String = "tube") = TripLeg(
-        mode = mode, lineId = "l", lineName = "L", fromId = "910GFROM", fromName = "", toId = to.tflId!!, toName = "",
-        departure = at, arrival = at.plusSeconds(600), placed = mapOf(to.tflId!! to to),
+    // Hill: a hub HUBEXA of a rail station (records 910GHILL and 910GHILLLL) and a tube station
+    // (940GZZLUHIL), with a bus stop of two poles (area 490G000001); Vale, a station and hub of its own;
+    // and an area 490G000005 the model split into two stops.
+    private val index = StationIndex(
+        listOf(
+            IndexedStation("910GHILL", "Hill", listOf("national-rail"), "HUBEXA", 51.500, -0.120,
+                icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+            IndexedStation("910GHILLLL", "Hill LL", listOf("national-rail"), "HUBEXA", 51.502, -0.120,
+                icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+            IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
+                icsCode = "1009002", station = "1009002:tube", modelHub = "HUBEXA"),
+            IndexedStation("910GVALE", "Vale", listOf("national-rail"), latitude = 51.53, longitude = -0.12,
+                station = "910GVALE", modelHub = "910GVALE"),
+            IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),
+        ),
+        revision = "abc",
     )
+    private val hubs = Hubs.of(
+        index,
+        BundledStops.read(
+            BufferedReader(
+                StringReader(
+                    listOf(
+                        "# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc",
+                        "L\t1\tbus\t1",
+                        "S\t490000001A\tB\tHill Station\t51.500500\t-0.120000\t490G000001\t\tA\t\t\t1\t1009001\t490G000001\t1009001:rail\tHUBEXA",
+                        "S\t490000001B\tB\tHill Station\t51.500700\t-0.120000\t490G000001\t\tB\t\t\t1\t1009001\t490G000001\t1009001:rail\tHUBEXA",
+                        "S\t490000005A\tB\tHigh Road\t51.520000\t-0.120000\t490G000005\t\t\t\t\t1\t\t490000005A\t\t490000005A",
+                        "S\t490000005B\tB\tMill Lane\t51.520300\t-0.120000\t490G000005\t\t\t\t\t1\t\t490000005B\t\t490000005A",
+                    ).joinToString("\n"),
+                ),
+            ),
+        ),
+    )!!
+
+    // A ride getting off at [toId], as the Planner names it: raw ids only.
+    private fun ride(toId: String, mode: String = "tube", toArea: String = "") = TripLeg(
+        mode = mode, lineId = "l", lineName = "L", fromId = "910GFROM", fromName = "", toId = toId, toName = "",
+        departure = at, arrival = at.plusSeconds(600), toArea = toArea,
+    )
+
+    // [leg] with its end moved to the pole [pole] its bus uses, as [onPoles] moves it.
+    private fun moved(leg: TripLeg, pole: String) = leg.copy(toId = pole, plannedToId = leg.toId)
 
     private fun walk() = TripLeg(
         mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "x", fromName = "", toId = "y", toName = "",
@@ -72,13 +117,28 @@ class LegEndTest {
     }
 
     @Test
-    fun `a last ride ending at an unplaced split area keeps the Planner's call`() {
-        val area = Resolved(
-            tflId = "490GAREA", station = null, hub = null,
-            stops = setOf("STA1", "STB"), hubs = setOf("HUBA", "HUBB"), poles = setOf("490A", "490B"),
+    fun `a ride's end resolves through the model from the leg's raw ids`() {
+        // A middle ride getting off at Hill's low-level record: the rail station's, as the model files it,
+        // so the other record gets the ride off there and the tube station of the same hub doesn't.
+        val first = ride("910GHILLLL")
+        val pairs = LegEnd.of(TripRoute(listOf(first, ride("910GVALE"))), StepFree.ANY, setOf("910GVALE"), hubs)
+        val end = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("1009001:rail"))
+        assertEquals(end, pairs[0].second)
+        assertTrue(end.endsAt(hubs.resolve("910GHILL")))
+        assertFalse(end.endsAt(hubs.resolve("940GZZLUHIL")))
+        // The last ride, into the destination's hub, ends at it.
+        assertEquals(LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("910GVALE")), pairs[1].second)
+        // With no model, each id is only itself, as a ride's planned end ([LegEnd.planned]) has it.
+        assertEquals(
+            LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("910GHILLLL")),
+            LegEnd.of(TripRoute(listOf(first, ride("910GVALE"))), StepFree.ANY, setOf("910GVALE"), null)[0].second,
         )
-        val pairs = LegEnd.of(TripRoute(listOf(ride(area, mode = "bus"))), StepFree.ANY, setOf("HUBA"))
-        assertEquals(LegEnd.Level.POLE, pairs.single().second.level)
+    }
+
+    @Test
+    fun `a last ride ending at a split area with no pole or point keeps the Planner's call`() {
+        val pairs = LegEnd.of(TripRoute(listOf(ride("490G000005", mode = "bus"))), StepFree.ANY, setOf("490000005A"), hubs)
+        assertEquals(LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000005A", "490000005B")), pairs.single().second)
     }
 
     @Test
@@ -92,108 +152,69 @@ class LegEndTest {
 
     @Test
     fun `a route's middle ride ends at its call and the last at the destination's hubs`() {
-        val first = ride(b)
-        val last = ride(a1)
-        val pairs = LegEnd.of(TripRoute(listOf(walk(), first, walk(), last)), StepFree.FULLY, setOf("HUBA"))
+        val first = ride("910GVALE")
+        val last = ride("910GHILL")
+        val pairs = LegEnd.of(TripRoute(listOf(walk(), first, walk(), last)), StepFree.FULLY, setOf("HUBEXA"), hubs)
         assertEquals(listOf(first, last), pairs.map { it.first })
-        assertEquals(LegEnd(StepFree.FULLY, LegEnd.Level.STOP, setOf("STB")), pairs[0].second)
-        assertEquals(LegEnd(StepFree.FULLY, LegEnd.Level.HUB, setOf("HUBA")), pairs[1].second)
+        assertEquals(LegEnd(StepFree.FULLY, LegEnd.Level.STOP, setOf("910GVALE")), pairs[0].second)
+        assertEquals(LegEnd(StepFree.FULLY, LegEnd.Level.HUB, setOf("HUBEXA")), pairs[1].second)
     }
 
     @Test
     fun `a last ride the Planner gets off outside the destination's hubs ends at its call`() {
-        val last = ride(b, mode = "bus")
-        val pairs = LegEnd.of(TripRoute(listOf(last, walk())), StepFree.ANY, setOf("HUBA"))
-        assertEquals(LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("STB")), pairs.single().second)
+        val last = ride("910GVALE", mode = "bus")
+        val pairs = LegEnd.of(TripRoute(listOf(last, walk())), StepFree.ANY, setOf("HUBEXA"), hubs)
+        assertEquals(LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("910GVALE")), pairs.single().second)
     }
 
     @Test
     fun `the same leg last in one route and in the middle of another is two pairs`() {
-        val leg = ride(a1)
-        val asLast = LegEnd.of(TripRoute(listOf(leg)), StepFree.ANY, setOf("HUBA")).single()
-        val asMiddle = LegEnd.of(TripRoute(listOf(leg, ride(b))), StepFree.ANY, setOf("HUBB")).first()
+        val leg = ride("910GHILL")
+        val asLast = LegEnd.of(TripRoute(listOf(leg)), StepFree.ANY, setOf("HUBEXA"), hubs).single()
+        val asMiddle = LegEnd.of(TripRoute(listOf(leg, ride("910GVALE"))), StepFree.ANY, setOf("910GVALE"), hubs).first()
         assertTrue(asLast != asMiddle)
     }
 
     @Test
-    fun `a ride's planned end is the station of the Planner's call`() {
-        val end = LegEnd.planned(ride(a1), StepFree.STATION)
-        assertEquals(LegEnd(StepFree.STATION, LegEnd.Level.STOP, setOf("STA1")), end)
-        // Another record of that station still gets the ride off there; the hub's other station doesn't.
-        assertTrue(end.endsAt(a1Other))
-        assertFalse(end.endsAt(a2))
+    fun `a ride's planned end is the Planner's call by its own id`() {
+        // Worked out with no model at hand: the call's raw id, the same wherever the leg is.
+        val end = LegEnd.planned(ride("910GHILL"), StepFree.STATION)
+        assertEquals(LegEnd(StepFree.STATION, LegEnd.Level.STOP, setOf("910GHILL")), end)
+        assertEquals(end, LegEnd.planned(ride("910GHILL"), StepFree.STATION))
+        // A bus moved to its route's pole: that pole alone.
+        assertEquals(
+            LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000001A")),
+            LegEnd.planned(moved(ride("490000001B", mode = "bus", toArea = "490G000001"), "490000001A"), StepFree.ANY),
+        )
     }
-
-    @Test
-    fun `a ride the model didn't place ends at its own id`() {
-        val unplaced = ride(b).copy(placed = emptyMap())
-        assertEquals(LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("910GB")), LegEnd.planned(unplaced, StepFree.ANY))
-    }
-
-    // Bus 1 north from the pair 490G00000002 to the pair 490G00000001 (each a road's two poles, A
-    // northbound, B southbound), then on to a bus station's stands 490000003A and 490000003B, in no
-    // pair, which share a name. The Planner names the southbound poles, as placed where they entered.
-    private val road = LineSequence(
-        routes = listOf(
-            LineRoute("North", listOf("490000002A", "490000001A", "490000003A")),
-            LineRoute("South", listOf("490000003B", "490000001B", "490000002B")),
-        ),
-        stopNames = mapOf(
-            "490000002A" to "Two", "490000002B" to "Two", "490000001A" to "One", "490000001B" to "One",
-            "490000003A" to "Three", "490000003B" to "Three",
-        ),
-        stopAreas = mapOf(
-            "490000002A" to "490G00000002", "490000002B" to "490G00000002",
-            "490000001A" to "490G00000001", "490000001B" to "490G00000001",
-        ),
-    )
-    private val pole1B = Resolved(tflId = "490000001B", station = "STOP1", hub = "HUB1")
-    private val pair1 = Resolved(tflId = "490G00000001", station = "STOP1", hub = "HUB1", poles = setOf("490000001A", "490000001B"))
-
-    private fun bus(toId: String, toArea: String, placed: Map<String, Resolved>) = TripLeg(
-        mode = "bus", lineId = "1", lineName = "1", fromId = "490000002B", fromName = "Two",
-        toId = toId, toName = road.stopNames.getValue(toId),
-        departure = at, arrival = at.plusSeconds(600), path = listOf("490G00000001", toArea.ifEmpty { toId }).distinct(),
-        fromArea = "490G00000002", toArea = toArea, placed = placed,
-    )
-
-    // [leg] moved to the poles its bus uses, as the trip holds it once the line's route is in.
-    private fun poled(leg: TripLeg): TripLeg = onPoles(leg, mapOf("1" to road)).also { assertTrue(it.plannedToId.isNotEmpty()) }
 
     @Test
     fun `a bus moved to its route's pole gets off at the Planner's stop`() {
-        val ride = poled(bus("490000001B", "490G00000001", mapOf("490000001B" to pole1B, "490G00000001" to pair1)))
-        assertEquals("490000001A", ride.toId)
-        val end = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("STOP1"))
-        assertEquals(end, LegEnd.planned(ride, StepFree.ANY))
-        assertTrue(end.endsAt(Resolved(tflId = "490000001A", station = "STOP1", hub = "HUB1")))
-        assertEquals(end, LegEnd.of(TripRoute(listOf(ride, walk())), StepFree.ANY, setOf("HUB2")).single().second)
+        val ride = moved(ride("490000001B", mode = "bus", toArea = "490G000001"), "490000001A")
+        val end = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("490G000001"))
+        assertEquals(end, LegEnd.of(TripRoute(listOf(ride, walk())), StepFree.ANY, setOf("910GVALE"), hubs).single().second)
+        assertTrue(end.endsAt(hubs.resolve("490000001A")))
         // As the last ride into the destination's hub, by the pair's hub.
         assertEquals(
-            LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUB1")),
-            LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("HUB1")).single().second,
+            LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBEXA")),
+            LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("HUBEXA"), hubs).single().second,
         )
     }
 
     @Test
     fun `a bus moved within a pair the model split gets off at its own pole`() {
-        // The pair's poles are in two stops; the Planner's is in STOP1S, the bus's may be in STOP1N.
-        val split = pair1.copy(station = "STOP1S", hub = "HUB1", stops = setOf("STOP1N", "STOP1S"), hubs = setOf("HUB1"))
-        val ride = poled(bus("490000001B", "490G00000001", mapOf("490000001B" to pole1B.copy(station = "STOP1S"), "490G00000001" to split)))
-        val end = LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000001A"))
-        assertEquals(end, LegEnd.planned(ride, StepFree.ANY))
-        assertEquals(end, LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("HUB1")).single().second)
-        assertTrue(end.endsAt(Resolved(tflId = "490000001A", station = "STOP1N", hub = "HUB1")))
-        assertFalse(end.endsAt(Resolved(tflId = "490000001B", station = "STOP1S", hub = "HUB1")))
+        // The area's poles are in two stops; the Planner's is in one, the bus's in the other.
+        val ride = moved(ride("490000005A", mode = "bus", toArea = "490G000005"), "490000005B")
+        val end = LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000005B"))
+        assertEquals(end, LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("490000005A"), hubs).single().second)
+        assertTrue(end.endsAt(hubs.resolve("490000005B")))
+        assertFalse(end.endsAt(hubs.resolve("490000005A")))
     }
 
     @Test
-    fun `a bus moved to another stand of its bus station gets off at that stand`() {
-        val stand = Resolved(tflId = "490000003B", station = "STAND3B", hub = "HUB3")
-        val ride = poled(bus("490000003B", "", mapOf("490000003B" to stand)))
-        assertEquals("490000003A", ride.toId)
-        val end = LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000003A"))
-        assertEquals(end, LegEnd.planned(ride, StepFree.ANY))
-        assertEquals(end, LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("HUB3")).single().second)
+    fun `a bus moved to another stand with no pair gets off at that stand`() {
+        val ride = moved(ride("490000001B", mode = "bus"), "490000001A")
+        val end = LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000001A"))
+        assertEquals(end, LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("HUBEXA"), hubs).single().second)
     }
 }

@@ -44,16 +44,6 @@ class DarwinBoardDtoTest {
     }
 
     @Test
-    fun `a train's terminus is placed by the station model with its board`() {
-        val board = board().toBoard(stopIdFor = { "910G$it" }, placeFor = { records -> app.stopdash.domain.Resolved(records.single(), "station:" + records.single(), "HUB") })
-        board.departures.filter { it.destinationId.isNotBlank() }.also { assertTrue(it.isNotEmpty()) }.forEach {
-            assertEquals("station:" + it.destinationId, it.destinationPlace?.station)
-        }
-        // Without a model, unplaced.
-        assertTrue(board().toBoard(stopIdFor = { "910G$it" }).departures.all { it.destinationPlace == null })
-    }
-
-    @Test
     fun `a portion that won't run today is no way to reach its stops`() {
         fun point(crs: String) = DarwinCallingPointDto(crs, crs)
         val ids = mapOf("WOK" to setOf("910GWOKING"), "GLD" to setOf("910GGUILDFD"), "BSK" to setOf("910GBSNGSTK"))
@@ -62,8 +52,7 @@ class DarwinBoardDtoTest {
                 DarwinCallingPointsDto(listOf(point("WOK"), point("GLD"))),
                 DarwinCallingPointsDto(listOf(point("BSK")), assocIsCancelled = true),
             ),
-            stopIdsFor = { ids[it].orEmpty() },
-        )
+        ) { ids[it].orEmpty() }
         assertEquals(listOf(CallingPortion(setOf("910GWOKING", "910GGUILDFD"), complete = true)), portions)
         // No portion that can be ridden: it reaches none of its stops, a sure miss, never left to the route.
         val none = callingPortions(
@@ -71,12 +60,11 @@ class DarwinBoardDtoTest {
                 DarwinCallingPointsDto(listOf(point("BSK")), assocIsCancelled = true),
                 DarwinCallingPointsDto(listOf(point("WOK")), serviceChangeRequired = true),
             ),
-            stopIdsFor = { ids[it].orEmpty() },
-        )
+        ) { ids[it].orEmpty() }
         assertEquals(listOf(CallingPortion(emptySet(), complete = true)), none)
         assertEquals(false, app.stopdash.domain.DirectTrips.calling(none, setOf("910GBSNGSTK")))
         // No calling points at all is still no answer.
-        assertEquals(emptyList<CallingPortion>(), callingPortions(emptyList(), stopIdsFor = { ids[it].orEmpty() }))
+        assertEquals(emptyList<CallingPortion>(), callingPortions(emptyList()) { ids[it].orEmpty() })
     }
 
     @Test
@@ -88,28 +76,8 @@ class DarwinBoardDtoTest {
                 DarwinCallingPointsDto(listOf(point("WOK"))),
                 DarwinCallingPointsDto(listOf(point("BSK")), serviceChangeRequired = true),
             ),
-            stopIdsFor = { ids[it].orEmpty() },
-        )
+        ) { ids[it].orEmpty() }
         assertEquals(listOf(CallingPortion(setOf("910GWOKING"), complete = true)), portions)
-    }
-
-    @Test
-    fun `a portion's calls are placed in calling order, a stop with no record kept in its place`() {
-        fun point(crs: String) = DarwinCallingPointDto(crs, crs)
-        val ids = mapOf("WOK" to setOf("910GWOKING"), "GLD" to setOf("910GGUILDFD"))
-        val lists = listOf(DarwinCallingPointsDto(listOf(point("GLD"), point("XXX"), point("WOK"))))
-        val placed = callingPortions(lists, stopIdsFor = { ids[it].orEmpty() }) { records ->
-            app.stopdash.domain.Resolved(null, "station:" + records.single(), "HUB", poles = records)
-        }.single()
-        assertEquals(listOf("station:910GGUILDFD", null, "station:910GWOKING"), placed.calls.map { it?.station })
-        assertEquals(setOf("910GWOKING"), placed.calls.last()?.poles)
-        // A portion of nothing but stops with no record, with a model: each kept, in order, unlike no model.
-        val unknown = callingPortions(listOf(DarwinCallingPointsDto(listOf(point("XXX"), point("YYY")))), stopIdsFor = { emptySet() }) { null }
-        assertEquals(listOf(null, null), unknown.single().calls)
-        // Without a model nothing is placed, and the portion is as before.
-        val unplaced = callingPortions(lists, stopIdsFor = { ids[it].orEmpty() }).single()
-        assertEquals(emptyList<app.stopdash.domain.Resolved?>(), unplaced.calls)
-        assertEquals(CallingPortion(setOf("910GWOKING", "910GGUILDFD"), complete = false), unplaced)
     }
 
     @Test

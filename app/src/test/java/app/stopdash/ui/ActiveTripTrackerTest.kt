@@ -186,12 +186,8 @@ class ActiveTripTrackerTest {
         forgetting: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(dispatcher),
         preciseAllowed: () -> Boolean = { true },
         railArrivals: (suspend (String) -> app.stopdash.domain.RideArrivals)? = null,
-        hubs: suspend () -> app.stopdash.domain.Hubs? = { null },
-        currentHubs: () -> app.stopdash.domain.Hubs? = { null },
         load: () -> ActiveTrip? = { null },
     ) = ActiveTripTracker(
-        hubs = hubs,
-        currentHubs = currentHubs,
         remembered = remembered,
         forgetting = forgetting,
         preciseAllowed = preciseAllowed,
@@ -6287,49 +6283,6 @@ class ActiveTripTrackerTest {
         tracker.end()
         assertNull(tracker.trip.value)
         assertNull(kept)
-    }
-
-    // A model holding the trip's last stop, C, as a station of hub HUBC: synthetic records.
-    private val model = app.stopdash.domain.Hubs.of(
-        app.stopdash.domain.StationIndex(
-            listOf(
-                app.stopdash.domain.IndexedStation("C", "C", listOf("tube"), "HUBC", icsCode = "1", station = "1:tube", modelHub = "HUBC"),
-                app.stopdash.domain.IndexedStation("HUBC", "C", listOf("tube")),
-            ),
-            revision = "abc",
-        ),
-        app.stopdash.domain.BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
-    )!!
-
-    @Test
-    fun `a kept trip's legs are placed by the station model as it comes back`() = runTest {
-        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "3", boarded = true)
-        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved }, hubs = { model })
-        tracker.restore()
-        val back = tracker.trip.value!!
-        assertEquals("HUBC", back.route.legs.last().placeOf("C").hub)
-        // Placed, not changed: the trip is the one kept.
-        assertEquals(saved, back.copy(route = saved.route))
-    }
-
-    @Test
-    fun `a trip that came back before the station model loaded is placed once it has`() = runTest {
-        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "3", boarded = true)
-        var loaded: app.stopdash.domain.Hubs? = null
-        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved }, hubs = { loaded }, currentHubs = { loaded })
-        tracker.restore()
-        // Unplaced meanwhile: each id is only itself.
-        assertEquals(app.stopdash.domain.Resolved.exact("C"), tracker.trip.value!!.route.legs.last().placeOf("C"))
-        loaded = model
-        tracker.refresh()
-        assertEquals("HUBC", tracker.trip.value!!.route.legs.last().placeOf("C").hub)
-    }
-
-    @Test
-    fun `a trip started is placed by the station model`() = runTest {
-        val tracker = tracker(StandardTestDispatcher(testScheduler), currentHubs = { model })
-        tracker.start(route, "C", readyAt = t0)
-        assertEquals("HUBC", tracker.trip.value!!.route.legs.last().placeOf("C").hub)
     }
 
     // The first stop placed, and a rider seen on its forecourt: synthetic positions.

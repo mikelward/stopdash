@@ -36,7 +36,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -526,7 +525,6 @@ class KtorTflClientTest {
         trainSpacing: suspend () -> Boolean = { true },
         // The answer for each request, where it depends on the request; [body] otherwise.
         bodyFor: ((HttpRequestData) -> String)? = null,
-        hubs: app.stopdash.domain.Hubs? = null,
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
@@ -541,28 +539,7 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex, trainSpacing = trainSpacing, hubs = { hubs })
-    }
-
-    @Test
-    fun `each departure's terminus is placed by the station model as the board comes in`() = runTest {
-        val dir = listOf(java.io.File("src/main/assets/stations"), java.io.File("app/src/main/assets/stations")).first { it.exists() }
-        val model = checkNotNull(
-            app.stopdash.domain.Hubs.of(
-                StationIndexStore.parse(java.io.File(dir, "station_index.json").readText()),
-                java.io.File(dir, "stops.tsv").bufferedReader().use { app.stopdash.domain.BundledStops.read(it) },
-            ),
-        )
-        // The first train runs to Walthamstow Central, named by its terminus id.
-        val named = arrivalsJson.replaceFirst("\"modeName\": \"tube\"", "\"modeName\": \"tube\", \"destinationNaptanId\": \"940GZZLUWWL\"")
-        val departures = client(named, hubs = model).arrivals("940GZZLUVIC")
-        val toWalthamstow = departures.single { it.destinationId == "940GZZLUWWL" }
-        assertEquals(model.resolve("940GZZLUWWL"), toWalthamstow.destinationPlace)
-        assertNotNull(toWalthamstow.destinationPlace?.station)
-        // One with no terminus id has nothing to place.
-        assertTrue(departures.filter { it.destinationId.isBlank() }.all { it.destinationPlace == null })
-        // No model: unplaced.
-        assertTrue(client(named).arrivals("940GZZLUVIC").all { it.destinationPlace == null })
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex, trainSpacing = trainSpacing)
     }
 
     @Test
