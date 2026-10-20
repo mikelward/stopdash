@@ -43,6 +43,12 @@ exercises the whole spine the widget later renders from.
       in 30 runs alone (half under full CPU load) or 8 full-suite runs; run alone, every dispatch to the
       worker comes from the test thread or the worker itself, which `close` drains, so the late one came
       from some third thread not yet found.
+- [ ] Fix the flaky `QuietConnectionsTest."a trip's plan waiting on a connection that went quiet is asked
+      once more, with a rate token, and answers"`. It failed once in a full `./gradlew test` run on
+      2026-10-20 ("the plan was asked twice, not a third time": expected 2 plan requests, got 3) and
+      passed when rerun and in the next full run, on a branch that doesn't touch the network layer. A
+      third ask suggests the quiet-connection timer fired twice against the real clock: drive it from an
+      injected clock and test dispatcher so the order is fixed, not with retries or a longer timeout.
 - [x] Trip page: work out its per-tick values off the main thread too. Each tick's estimates, cards,
       open route, what frames them, and each card's alerts, notices and times are one frame worked out on
       the page's worker (`tripFrame`), drawn against its own state and time.
