@@ -20,6 +20,11 @@ import java.time.Instant
  *
  * [fromAt] is where the leg boards, as the Planner places the stop (a public stop position, null when
  * it gives none): a trip on the way sees from it whether the rider left on the train.
+ *
+ * [placed] is each id the leg names (its ends, their stop pairs, the stops the Planner named and its
+ * path) as the station model placed it where the leg entered the app ([Hubs.place]): read through
+ * [placeOf]. Kept by id rather than by end, so a copy that moves an end to another id can't carry the
+ * old end's place with it. Not kept on disk: a restored leg is placed again.
  */
 data class TripLeg(
     val mode: String,
@@ -44,7 +49,14 @@ data class TripLeg(
     // ([onPoles]): empty while it hasn't. What the leg is known by, so a move keeps its identity.
     val plannedFromId: String = "",
     val plannedToId: String = "",
+    val placed: Map<String, Resolved> = emptyMap(),
 ) {
+    /**
+     * [id] as the model placed it when the leg entered the app; an id it wasn't placed with (none were,
+     * where there was no model) is its own station and hub ([Resolved.exact]), matching only itself.
+     */
+    fun placeOf(id: String): Resolved = placed[id] ?: Resolved.exact(id)
+
     val isWalk: Boolean get() = mode.equals(WALKING, ignoreCase = true)
 
     /** A bus ride, whose stop the Planner can name on the wrong pole or stand ([onPoles]). */

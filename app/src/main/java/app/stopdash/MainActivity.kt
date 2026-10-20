@@ -6303,6 +6303,8 @@ class MainActivity : ComponentActivity() {
                 // A train the Planner names by its platform alone leaves from the station the
                 // bundled index lists that platform under.
                 stationOf = { StationIndexStore.load(context.applicationContext).stationOf(it) },
+                // Each planned leg's stops placed by the station model as the answer comes in.
+                hubs = HubsStore::ready,
                 // A trip's boards read a terminus's arriving trains as the departures they become,
                 // as the main screen does ([Turnback]), so a trip can take the train it shows.
                 stationIndex = { StationIndexStore.load(context.applicationContext) },
@@ -6332,6 +6334,9 @@ class MainActivity : ComponentActivity() {
                     },
                     load = store::load,
                     save = store::save,
+                    // Its planner legs placed by the station model, as a trip just planned is.
+                    hubs = HubsStore::ready,
+                    currentHubs = HubsStore::current,
                     // TfL alone for a TfL ride, so a Darwin board spends none of the rail key's quota there; a
                     // National Rail ride's with its station's board, as the trip's cards read it, calling points
                     // and all.

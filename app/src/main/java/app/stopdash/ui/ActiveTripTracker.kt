@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.annotation.VisibleForTesting
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Pick
 import app.stopdash.domain.ToChoice
@@ -31,6 +32,7 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
+import app.stopdash.domain.place
 import java.io.IOException
 import java.time.Duration
 import kotlin.math.roundToInt
@@ -98,6 +100,11 @@ class ActiveTripTracker(
     // they're in one interchange when a trip starts ([OnTheWay.changesOnFoot]). Getting it may read
     // the asset, so it's called on [io].
     private val stations: () -> StationIndex = { StationIndex.EMPTY },
+    // The station model, for placing the trip's planner legs ([Hubs.place]) as a trip is restored or
+    // started: [hubs] waits for one still loading, bounded as [HubsStore.ready] is; [currentHubs] is it if
+    // loaded now, which places on a later refresh a trip that came in before it was.
+    private val hubs: suspend () -> Hubs? = { null },
+    private val currentHubs: () -> Hubs? = { null },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -533,6 +540,16 @@ class ActiveTripTracker(
     // only: after a restart a ride's direction is learned again, and meanwhile isn't known.
     private val rideDirections = HashMap<Int, String>()
 
+    // Whether the trip's legs were placed by the station model ([Hubs.place]): false while none had loaded
+    // when it came in, so the next refresh places them once it has. In memory, as the places are.
+    private var placedByModel = false
+
+    // The trip with its legs placed by [model], noted as placed; as it is where there's none yet.
+    private fun placedBy(model: Hubs?, trip: ActiveTrip): ActiveTrip {
+        placedByModel = model != null
+        return model?.place(trip) ?: trip
+    }
+
     /** Read the kept trip, once; a trip started meanwhile wins. */
     /** Reads the kept trip, once; false when it couldn't be read, to be tried again. */
     suspend fun restore(): Boolean = withContext(compute) { lock.withLock { restoreLocked() } }
@@ -560,6 +577,8 @@ class ActiveTripTracker(
             return true
         }
         if (_trip.value == null) {
+            // Placed as a trip just planned is, so it compares the same way after a restart.
+            val model = hubs()
             // A "route disruption" heard before the restart may still be up: the next check keeps it,
             // or takes it down. What it says is heard, whether or not the trip kept so before the app
             // died or a save failed: it's read back from the notification itself ([disruptionsShown]),
@@ -572,12 +591,13 @@ class ActiveTripTracker(
             // A move saved just before the app died, before it could take back the "get off soon"
             // for the leg left ([goTo]): taken back now. Marked on the trip, not guessed from its
             // warning, which also lags an alert said just before the app died (Codex, PR #351).
-            val alertTaken = if (kept.alertLeft) {
+            val placed = placedBy(model, kept)
+            val alertTaken = if (placed.alertLeft) {
                 onGetOffSoonDone()
                 unsaved = true
-                kept.copy(alertLeft = false)
+                placed.copy(alertLeft = false)
             } else {
-                kept
+                placed
             }
             val trip = if (alertTaken.disruptionsHeard.containsAll(shown)) {
                 alertTaken
@@ -638,7 +658,7 @@ class ActiveTripTracker(
                 // Which walks are changes on foot, decided once now and kept with the trip, so its steps
                 // never change on the way. Off the caller's thread: it may read the station index.
                 planned.copy(onFootChanges = withContext(io) { OnTheWay.changesOnFoot(planned.route, stations()) })
-            }
+            }.let { planned -> placedBy(currentHubs(), planned) }
             _updatedAt.value = null
             _answeredAt.value = null
             boardSeenRide = null
@@ -1050,6 +1070,12 @@ class ActiveTripTracker(
     // [refresh]'s work, under [lock].
     private suspend fun refreshLocked(rider: LocationFix?, asked: Long) {
         railChecks = 0
+        // A trip restored or started before the station model loaded, placed now it has.
+        if (!placedByModel) {
+            val trip = _trip.value
+            val model = currentHubs()
+            if (trip != null && model != null) _trip.value = placedBy(model, trip)
+        }
         // The fix aged while this waited behind another refresh: one no longer fresh enough is
         // no evidence the rider was left behind ([OnTheWay.sureEnough]).
         // Precise location taken away since the fix came: it isn't used, and nothing kept stays (Codex, #542).

@@ -42,6 +42,9 @@ internal data class OpenRoute(val plan: String, val at: Int = -1, val ride: Trip
             departure = first.departure,
             arrival = first.departure + first.run + second.run,
             changeAfter = second.changeAfter,
+            // Its stops placed as the plan's two rides were ([TripLeg.placed]): the train through runs
+            // their stops, and one read back from saved state ([parse]) comes unplaced.
+            placed = first.placed + second.placed + ride.placed,
         )
         return TripRoute(route.legs.take(at) + joined + route.legs.drop(at + 2))
     }

@@ -1,7 +1,9 @@
 package app.stopdash.data
 
+import app.stopdash.domain.BundledStops
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FinalStop
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
@@ -784,6 +786,37 @@ class JourneyPlannerTest {
         warnings.clear()
         assertEquals(listOf("46"), planner { null }.fewestChangesVia(from, to, "490G000672").map { it.rides.single().lineId })
         assertEquals(listOf("journey planner (fewest changes via a stop): 2 of 3 routes unreadable"), warnings.untimed())
+    }
+
+    @Test
+    fun `a planned leg's stops are placed by the station model as the answer comes in`() = runTest {
+        // The same recorded answer: Thameslink from St Pancras's low-level platforms.
+        val via = checkNotNull(javaClass.getResource("/fixtures/journey_results_euston_to_st_pauls_via.json")).readText()
+        val dir = listOf(File("src/main/assets/stations"), File("app/src/main/assets/stations")).first { it.exists() }
+        val index = StationIndexStore.parse(File(dir, "station_index.json").readText())
+        val model = checkNotNull(Hubs.of(index, File(dir, "stops.tsv").bufferedReader().use { BundledStops.read(it) }))
+        fun planner(hubs: Hubs?): KtorTflClient {
+            val engine = MockEngine { respond(ByteReadChannel(via), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")) }
+            val http = HttpClient(engine) {
+                expectSuccess = true
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
+            return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, stationOf = index::stationOf, hubs = { hubs })
+        }
+        val from = TripOrigin.Here(Coordinates(51.5282, -0.1337))
+        val to = TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's")
+        val ride = planner(model).fewestChangesVia(from, to, "490G000672").first { it.rides.single().lineId == "thameslink" }.rides.single()
+        // Boarding at St Pancras: one of its records, in the King's Cross hub.
+        val boarding = ride.placeOf(ride.fromId)
+        assertEquals(model.resolve("910GSTPX").station, boarding.station)
+        assertEquals("HUBKGX", boarding.hub)
+        assertEquals("910GSTPXBOX", boarding.tflId)
+        // Its other end too, and every call on its way.
+        assertTrue(ride.toId in ride.placed)
+        assertTrue(ride.path.all { it in ride.placed })
+        // No model in time: unplaced, each id only itself.
+        val unplaced = planner(null).fewestChangesVia(from, to, "490G000672").first { it.rides.single().lineId == "thameslink" }.rides.single()
+        assertTrue(unplaced.placed.isEmpty())
     }
 
     @Test
