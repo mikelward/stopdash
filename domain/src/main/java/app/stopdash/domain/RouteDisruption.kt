@@ -346,7 +346,7 @@ object RouteDisruption {
         DismissedAlert.ofLineStatus(status).let { "line/$legIndex/${it.alertKey}/${it.contentSignature}" }
 
     /**
-     * Whether a bus line's alert ([status], its own words) puts it off [leg]'s ride, on its line's routes
+     * Whether a bus line's alert ([status], its own words) puts it off [ride], on its line's routes
      * ([sequence]) (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose
      * ("not serving stops between Bank Station and Moorgate Station"), and an alert at the far end of
      * a long route says nothing of the rider's part of it. Off only where every way a route of the line
@@ -358,29 +358,30 @@ object RouteDisruption {
      * text, no route, a ride no route runs, an alert that gives no stretch on a route, or several under
      * way whose words weren't all kept.
      * Buses only: a tube or rail line's delays spread along it, so naming a station elsewhere doesn't
-     * keep them off the ride, and its part closures are placed by TfL itself ([lineSignal]).
+     * keep them off the ride, and its part closures are placed by TfL itself ([lineSignal]). By the pair,
+     * the ride and where it gets off ([LegEnd]), as its span is ([ridesOf]).
      */
     @WorkerThread
-    fun offRide(leg: TripLeg, status: LineStatus, sequence: LineSequence?): Boolean {
-        if (!leg.mode.equals(BUS, ignoreCase = true) || sequence == null) return false
+    fun offRide(ride: Pair<TripLeg, LegEnd>, status: LineStatus, sequence: LineSequence?): Boolean {
+        if (!ride.first.mode.equals(BUS, ignoreCase = true) || sequence == null) return false
         // Every way a route could run the ride, its ends matched as bus placement matches them
         // ([ridesOf]): the stop, its pair, or a stand of the same name (Codex, PR #455).
-        val rides = ridesOf(leg, sequence)
+        val rides = ridesOf(ride, sequence)
         return alertsOf(status).let { alerts -> alerts.isNotEmpty() && alerts.all { (alert, directions) -> alertOffRide(alert, directions, rides, sequence) } }
     }
 
     /**
-     * The alerts under way on a bus line of several ([LineStatus.underWay]) that may reach [leg]'s ride,
+     * The alerts under way on a bus line of several ([LineStatus.underWay]) that may reach [ride],
      * each as a status of its own, on its own words: what's left once each one [offRide] would leave out
      * is. Each is its own signal, dismissed on its own (maintainer, 2026-10-03: Keep going lets go of the
      * one seen, and the others still show). With no route to place them on, every one may. Null where
-     * they can't be told apart ([splits]).
+     * they can't be told apart ([splits]). By the pair, as [offRide] is.
      */
     @WorkerThread
-    fun alertsOnRide(leg: TripLeg, status: LineStatus, sequence: LineSequence?): List<LineStatus>? {
-        if (!splits(leg, status)) return null
+    fun alertsOnRide(ride: Pair<TripLeg, LegEnd>, status: LineStatus, sequence: LineSequence?): List<LineStatus>? {
+        if (!splits(ride.first, status)) return null
         if (sequence == null) return alertsOf(status).map { it.first }
-        val rides = ridesOf(leg, sequence)
+        val rides = ridesOf(ride, sequence)
         return alertsOf(status).filterNot { (alert, directions) -> alertOffRide(alert, directions, rides, sequence) }.map { it.first }
     }
 
@@ -633,13 +634,16 @@ object RouteDisruption {
             val status = shown[ride.lineId] ?: return@flatMap emptyList()
             val way = directions[i]?.let(status::forDirection) ?: status
             val sequence = sequences[ride.lineId]
+            // Where the ride gets off, for its span ([offRide]): the Planner's call at the trip's level
+            // ([LegEnd.planned]), until arriving by hub reads the end; a trip kept by an older build asks none.
+            val rideEnd = ride to LegEnd.planned(ride, trip.stepFree ?: StepFree.DEFAULT)
             // Several alerts under way on a bus line: each that may reach the ride is a signal of its own,
             // named and keyed for itself, so dismissing the one seen leaves the others (maintainer,
             // 2026-10-03). Split before any dismissal is weighed: the one shown dismissed on the list
             // doesn't take the rest with it (Codex on #519). One that never alerts (minor delays) is left
             // out, as for any line, unless TfL places it as a part closure on the ride's stretch: then
             // it's High and placed, as [lineSignal] has it (Codex on #519).
-            alertsOnRide(ride, way, sequence)?.let { each ->
+            alertsOnRide(rideEnd, way, sequence)?.let { each ->
                 // Each alert left out is told, for the log (Codex on #519).
                 repeat(alertsOf(way).size - each.size) { leftOff(i) }
                 val calls = rideCalls(ride)
@@ -655,7 +659,7 @@ object RouteDisruption {
             }
             val signal = lineSignal(i, ride, way, dismissedOn(trip, i, way, dismissed)) ?: return@flatMap emptyList()
             if (signal.placed) return@flatMap listOf(signal)
-            if (offRide(ride, signal.status, sequence)) {
+            if (offRide(rideEnd, signal.status, sequence)) {
                 leftOff(i)
                 return@flatMap emptyList()
             }

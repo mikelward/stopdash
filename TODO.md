@@ -959,8 +959,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           a ride's form of `judge`, `routeAt` and `settledByStops`, and
                                           the trip page's verdicts warmed and read by each ride's end
                                           as its ride lines pair it (`TripRideLines.endsOf`).
-                                    - [ ] The favorite alerts' disruption span
-                                          (`JourneyAlerts.ridesOn`, `ridesOf`).
+                                    - [x] The favorite alerts' disruption span
+                                          (`JourneyAlerts.ridesOn`, `ridesOf`), by the pair:
+                                          `ridesOf`, `JourneyAlerts.onRide` and `towardRide`, and
+                                          with them `RouteDisruption.offRide` and `alertsOnRide`
+                                          (on the way's line signals) and the trip page's
+                                          `onBusRides` and `legStatuses`, each ride getting off
+                                          where it's named to (`LegEnd.planned`).
+                                    - [ ] The trip page's placed bus statuses
+                                          (`State.legStatuses`, `legStatus`) keyed on the pair:
+                                          still by the leg alone, lossless while every ride ends
+                                          where the Planner does.
                                     - [ ] Reading the end: the first call in the destination's hubs.
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on

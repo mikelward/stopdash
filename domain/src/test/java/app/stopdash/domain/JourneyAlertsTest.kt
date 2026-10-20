@@ -685,6 +685,43 @@ class JourneyAlertsTest {
         assertEquals("Diversion", alertsFor(busRide("b3", "b6"), several).single().description)
     }
 
+    // [from] to [to] on the bus route as a trip's leg names it, getting off where the Planner does or at a
+    // made-up hub, for the span's ends (dev-docs/station-resolution.md, phase 2).
+    private fun busLeg(from: String, to: String) =
+        TripLeg("bus", "99", "99", from, busRoute.stopNames.getValue(from), to, busRoute.stopNames.getValue(to), java.time.Instant.EPOCH, java.time.Instant.EPOCH)
+    private fun planned(leg: TripLeg) = leg to LegEnd.planned(leg, StepFree.DEFAULT)
+    private fun atHub(leg: TripLeg) = leg to LegEnd(StepFree.DEFAULT, LegEnd.Level.HUB, setOf("HUBX"))
+
+    @Test
+    fun `a ride ending at a hub is spanned as the Planner's call`() {
+        // Nothing reads the end yet: a hub end places an alert as the Planner's call does, off the ride and on it.
+        val off = busLeg("b4", "b6")
+        val through = busLeg("b1", "b6")
+        assertEquals(ridesOf(planned(off), busRoute), ridesOf(atHub(off), busRoute))
+        assertNull(JourneyAlerts.onRide(diverted, listOf(listOf(planned(off))), busRoute))
+        assertNull(JourneyAlerts.onRide(diverted, listOf(listOf(atHub(off))), busRoute))
+        assertEquals(diverted, JourneyAlerts.onRide(diverted, listOf(listOf(planned(through))), busRoute))
+        assertEquals(diverted, JourneyAlerts.onRide(diverted, listOf(listOf(atHub(through))), busRoute))
+        // And reads the way the route runs it alike.
+        val oneWay = busRoute.copy(routes = listOf(busRoute.routes.single().copy(direction = "outbound")))
+        val good = LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service")
+        val split = diverted.copy(byDirection = mapOf("outbound" to good, "inbound" to diverted))
+        assertEquals(good, JourneyAlerts.towardRide(split, listOf(planned(off)), oneWay))
+        assertEquals(good, JourneyAlerts.towardRide(split, listOf(atHub(off)), oneWay))
+    }
+
+    @Test
+    fun `two favorites riding one leg with different ends stay apart`() {
+        // The ride is keyed on where it gets off, never on the leg alone: one leg, two ends, two rides.
+        val leg = busLeg("b4", "b6")
+        assertEquals(2, setOf(planned(leg), atHub(leg)).size)
+        // Each favorite's way is spanned by its own ride's end, and both stay off the stretch.
+        assertNull(JourneyAlerts.onRide(diverted, listOf(listOf(planned(leg)), listOf(atHub(leg))), busRoute))
+        // A way the route doesn't run keeps the alert on, whichever end the other way's ride has.
+        val elsewhere = busLeg("b4", "b6").copy(fromId = "x1", toId = "x2", fromName = "Nowhere", toName = "Elsewhere")
+        assertEquals(diverted, JourneyAlerts.onRide(diverted, listOf(listOf(atHub(leg)), listOf(planned(elsewhere))), busRoute))
+    }
+
     @Test
     fun `a route is read only for a bus ride's line with an alert a route could place`() {
         val ride = busRide("b4", "b6")

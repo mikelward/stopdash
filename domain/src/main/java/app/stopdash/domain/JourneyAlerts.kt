@@ -510,16 +510,18 @@ object JourneyAlerts {
         if (lineId == journey.lineId) journey.mode else modes[lineId].orEmpty()
 
     /**
-     * [status] as it bears on a favorite ride's [ways] (each open direction's rides on the line, [ridesOn]),
+     * [status] as it bears on a favorite ride's [ways] (each open direction's rides on the line, each with
+     * where it gets off, [ridesOn]),
      * weighed as a trip weighs a bus line's alerts on its line's route ([sequence]): null where every alert
      * under way is off every ride the route runs ([RouteDisruption.offRide]), such as a diversion at the far
      * end of a long bus route (maintainer, 2026-10-15); the worst of those that may reach one where several
      * are under way and the one shown doesn't ([RouteDisruption.alertsOnRide]); else [status]. A ride the
      * route doesn't run (a pin's far-end stop another line gets off at) isn't one of them, but unknown is
-     * on: no route, or a direction none of whose rides it runs.
+     * on: no route, or a direction none of whose rides it runs. Each ride is spanned by where it gets off
+     * ([ridesOf]), so none has a form without its [LegEnd] (dev-docs/station-resolution.md, phase 2).
      */
     @WorkerThread
-    fun onRide(status: LineStatus, ways: List<List<TripLeg>>, sequence: LineSequence?): LineStatus? {
+    fun onRide(status: LineStatus, ways: List<List<Pair<TripLeg, LegEnd>>>, sequence: LineSequence?): LineStatus? {
         if (sequence == null || ways.isEmpty()) return status
         val placed = ways.map { rides -> rides.filter { ridesOf(it, sequence).isNotEmpty() } }
         if (placed.any { it.isEmpty() }) return status
@@ -532,13 +534,13 @@ object JourneyAlerts {
 
     /**
      * [status] as it reads for the way one of a favorite ride's open ways goes on its line's route
-     * ([sequence]), its [rides] on the line ([ridesOn]): the direction's own ([LineStatus.forDirection])
+     * ([sequence]), its [rides] on the line with where each gets off ([ridesOn]): the direction's own ([LineStatus.forDirection])
      * where TfL split the line's alerts by direction and every route running the rides goes one way, as a
      * trip reads a train's (maintainer, 2026-10-20: a suspension northbound only alerted the ride south).
      * Unknown keeps the line-wide status: no split, no route, or rides no route runs or runs both ways.
      */
     @WorkerThread
-    fun towardRide(status: LineStatus, rides: List<TripLeg>, sequence: LineSequence?): LineStatus {
+    fun towardRide(status: LineStatus, rides: List<Pair<TripLeg, LegEnd>>, sequence: LineSequence?): LineStatus {
         if (status.byDirection.isEmpty() || sequence == null) return status
         val directions = rides.flatMap { ridesOf(it, sequence) }.mapTo(HashSet()) { it.first.direction }
         return directions.singleOrNull()?.takeIf { it.isNotBlank() }?.let(status::forDirection) ?: status
@@ -549,15 +551,18 @@ object JourneyAlerts {
     private fun waysOf(journey: FavoriteJourney, origins: Set<String>): List<FavoriteJourney> =
         origins.map { if (it == journey.to.stopId) journey.reversed() else journey }.distinct().ifEmpty { listOf(journey) }
 
-    // The rides [way] takes on [lineId] by [mode]: from its ends as saved ([rideOf]), and from each of [pins]
-    // for this way that boards [lineId], at its own pole, to each far-end stop its departures get off at
-    // (maintainer, 2026-10-15: a line pinned beside the ride may use poles the saved ends' areas don't hold).
-    private fun ridesOn(way: FavoriteJourney, lineId: String, mode: String, pins: List<WidgetJourney>): List<TripLeg> {
+    // The rides [way] takes on [lineId] by [mode], each with where it gets off: from its ends as saved
+    // ([rideOf]), and from each of [pins] for this way that boards [lineId], at its own pole, to each far-end
+    // stop its departures get off at (maintainer, 2026-10-15: a line pinned beside the ride may use poles
+    // the saved ends' areas don't hold). Each gets off where it's named to ([LegEnd.planned]: the saved end
+    // or the pin's far-end stop), until arriving by hub reads the end; a favorite keeps no step-free
+    // setting, so it asks none ([StepFree.DEFAULT]).
+    private fun ridesOn(way: FavoriteJourney, lineId: String, mode: String, pins: List<WidgetJourney>): List<Pair<TripLeg, LegEnd>> {
         val saved = rideOf(way, lineId, mode)
         val pinned = pins
             .filter { pin -> pin.shownFrom == way.from.stopId && pin.calls.any { it.lineId == lineId } }
             .flatMap { pin -> pin.alightIds.map { off -> saved.copy(fromId = pin.originId, toId = off, fromArea = "", toArea = "") } }
-        return (listOf(saved) + pinned).distinct()
+        return (listOf(saved) + pinned).distinct().map { it to LegEnd.planned(it, StepFree.DEFAULT) }
     }
 
     // [way] as a ride on [lineId] by [mode]: its ends as saved, as a trip's leg names them, for [onRide] to
