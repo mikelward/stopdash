@@ -4007,6 +4007,11 @@ Builds on Phase 1's minimal line-status marking.
         gets 08:00–10:00 and the way back 16:00–18:00; the end nearer Home (a favorite place) is the
         likely signal for which is which.
   - [ ] **Open the journey from its notification**, not just the app.
+  - [ ] **Place a tube or rail part closure on the ride** (maintainer, 2026-10-20). Since 2026-10-20 an
+        alert TfL scopes to the other direction no longer alerts a ride on any mode, but a both-ways tube or
+        rail part closure still alerts a ride that never reaches its stretch: the check places only a bus
+        alert by its words, never a closure by the sections TfL gives, as a trip does
+        (`LineStatus.coversRide`).
   - [ ] **Play declaration for background location** before release: alerts fire only in London, and the
         widget follows the rider (SPEC D1), both of which need `ACCESS_BACKGROUND_LOCATION`; Play asks for
         a declaration and a demo video of the features that use it, and may refuse it. Play rejected the

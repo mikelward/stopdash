@@ -775,7 +775,8 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         }
         val statuses = lineStatuses(context, lines.values.flatten().toSet()) ?: return Answer(emptyList(), lines)
         val current = LineStatus.asOf(statuses.associateBy { it.lineId }, now)
-        // A bus line's alert lies somewhere along its route, so the route says whether it's on the ride.
+        // A bus line's alert lies somewhere along its route, and an alert TfL scopes to one direction runs
+        // one way along it, so the route says whether it's on the ride.
         val modes = JourneyAlerts.lineModes(snapshot)
         val routes = routes(context, JourneyAlerts.routesToRead(active, lines, current, modes))
         return Answer(JourneyAlerts.results(
@@ -795,7 +796,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
 
     /**
      * The routes of [lineIds], through the app's route cache ([MainActivity.routeStops]), which keeps each
-     * line's for a day and shares it with every screen: at most a request or two per bus line a day, and
+     * line's for a day and shares it with every screen: at most a request or two per line a day, and
      * only while an alert it could place is under way. One that can't be read is left out, so its line's
      * alerts stand, as they did before routes were read.
      */
@@ -805,7 +806,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         // that a cold start runs can get here first, so it waits a moment for it rather than ask keyless,
         // under the shared quota (Codex on #866).
         if (withTimeoutOrNull(KEY_WAIT_MILLIS) { UserApiKeySetting.isLoaded.first { it } } == null) {
-            logJourneyAlertWarning("key not read in time, a bus line's route asked for without it")
+            logJourneyAlertWarning("key not read in time, a line's route asked for without it")
         }
         val repository = MainActivity.routeStops(context)
         val read = HashMap<String, LineSequence>()
@@ -816,7 +817,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 throw e
             } catch (e: Exception) {
                 // Its alerts stand as TfL gave them: an alert that can't be placed is never dropped.
-                logJourneyAlertWarning("a bus line's route not read, its alerts stand: ${e::class.simpleName}")
+                logJourneyAlertWarning("a line's route not read, its alerts stand: ${e::class.simpleName}")
             }
         }
         return read

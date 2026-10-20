@@ -428,7 +428,8 @@ object JourneyAlerts {
      * nothing it didn't hear (SPEC principle 1), so the journey keeps whatever it last showed.
      * [names] gives a line's rider-facing name where known. A bus line's alert whose stretch lies off
      * the ride each open direction takes, on the line's route in [routes], isn't the journey's
-     * ([onRide]); a line is ridden as the journey's mode where it was saved on it, else as [modes] says,
+     * ([onRide]), nor is any line's alert TfL scopes to the direction the ride doesn't go ([towardRide]);
+     * a line is ridden as the journey's mode where it was saved on it, else as [modes] says,
      * from the journey's ends and from the poles its [pins] board and get off at ([ridesOn]).
      */
     @WorkerThread
@@ -462,7 +463,14 @@ object JourneyAlerts {
             .filter { it.disrupted }
             .mapNotNull { status ->
                 val mode = modeOf(journey, status.lineId, modes)
-                onRide(status, ways.map { ridesOn(it, status.lineId, mode, pins[journey.key].orEmpty()) }, routes[status.lineId])
+                val sequence = routes[status.lineId]
+                // Each open way read for its own direction and placed on its own ride, then the worst that
+                // reaches one: picked first, a worse alert off its ride would hide a lesser one on the
+                // other's (Codex on #1020).
+                ways.mapNotNull { way ->
+                    val rides = ridesOn(way, status.lineId, mode, pins[journey.key].orEmpty())
+                    towardRide(status, rides, sequence).takeIf { it.disrupted }?.let { onRide(it, listOf(rides), sequence) }
+                }.minByOrNull { it.severity }
             }
             .sortedWith(compareBy<LineStatus> { it.severity }.thenBy { it.lineId })
             .map { status ->
@@ -475,9 +483,10 @@ object JourneyAlerts {
     }
 
     /**
-     * The lines whose routes [results] would weigh a bus alert on ([onRide]): each journey's bus lines
-     * among [lines] ([modeOf]) whose status in [statuses] has an alert under way that a route could place
-     * ([RouteDisruption.placeable]). None other is worth a request: a tube line's delays spread along it.
+     * The lines whose routes [results] would weigh an alert on: each journey's lines among [lines] whose
+     * status in [statuses] TfL split by direction ([towardRide]), and its bus lines ([modeOf]) with an alert
+     * under way that a route could place ([RouteDisruption.placeable], [onRide]). None other is worth a
+     * request: a tube line's delays spread along it.
      */
     @WorkerThread
     fun routesToRead(
@@ -488,8 +497,10 @@ object JourneyAlerts {
     ): Set<String> =
         journeys.flatMapTo(LinkedHashSet()) { journey ->
             lines[journey.key].orEmpty().filter { line ->
-                modeOf(journey, line, modes).equals("bus", ignoreCase = true) &&
-                    statuses[line]?.let { it.disrupted && RouteDisruption.placeable(it) } == true
+                val status = statuses[line]?.takeIf { it.disrupted } ?: return@filter false
+                // Any mode's alert TfL split by direction: the route says which way the ride goes ([towardRide]).
+                status.byDirection.isNotEmpty() ||
+                    modeOf(journey, line, modes).equals("bus", ignoreCase = true) && RouteDisruption.placeable(status)
             }
         }
 
@@ -517,6 +528,20 @@ object JourneyAlerts {
         val on = rides.flatMap { RouteDisruption.alertsOnRide(it, status, sequence) ?: return status }
         if (on.any { it.description == status.description && it.fullText == status.fullText }) return status
         return on.minByOrNull { it.severity } ?: status
+    }
+
+    /**
+     * [status] as it reads for the way one of a favorite ride's open ways goes on its line's route
+     * ([sequence]), its [rides] on the line ([ridesOn]): the direction's own ([LineStatus.forDirection])
+     * where TfL split the line's alerts by direction and every route running the rides goes one way, as a
+     * trip reads a train's (maintainer, 2026-10-20: a suspension northbound only alerted the ride south).
+     * Unknown keeps the line-wide status: no split, no route, or rides no route runs or runs both ways.
+     */
+    @WorkerThread
+    fun towardRide(status: LineStatus, rides: List<TripLeg>, sequence: LineSequence?): LineStatus {
+        if (status.byDirection.isEmpty() || sequence == null) return status
+        val directions = rides.flatMap { ridesOf(it, sequence) }.mapTo(HashSet()) { it.first.direction }
+        return directions.singleOrNull()?.takeIf { it.isNotBlank() }?.let(status::forDirection) ?: status
     }
 
     // The ways [journey] is watched now: each open direction ([directionsOf], by its origin's stop), or as

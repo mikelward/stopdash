@@ -695,4 +695,66 @@ class JourneyAlertsTest {
         assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("99" to LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service"))))
         assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("99" to diverted.copy(soleAlert = false))))
     }
+
+    @Test
+    fun `a tube suspension TfL scopes to the other way doesn't alert a ride`() {
+        // A part suspension northbound only alerted the ride south (maintainer, 2026-10-20). Made-up stops.
+        val tube = LineSequence(
+            listOf(
+                LineRoute("North - South", listOf("t1", "t2", "t3", "t4"), direction = "outbound"),
+                LineRoute("South - North", listOf("t4", "t3", "t2", "t1"), direction = "inbound"),
+            ),
+            mapOf("t1" to "North End", "t2" to "Alpha", "t3" to "Beta", "t4" to "South End"),
+        )
+        val south = FavoriteJourney(JourneyEnd("t1", "North End"), JourneyEnd("t3", "Beta"), "tl", "Tube Line", "tube")
+        val words = "Tube Line: No service between Beta and South End northbound only. GOOD SERVICE on the rest of the line."
+        val alert = LineAlert(4, "Part Suspended", words, setOf("inbound"))
+        val good = LineStatus("tl", LineStatus.GOOD_SERVICE, "Good Service")
+        val northOnly = LineStatus(
+            "tl", 4, "Part Suspended", words, soleAlert = true, underWay = listOf(alert),
+            byDirection = mapOf("inbound" to LineStatus("tl", 4, "Part Suspended", words, soleAlert = true, underWay = listOf(alert)), "outbound" to good),
+        )
+        val routes = mapOf("tl" to tube)
+        assertTrue(alertsFor(south, northOnly, routes = routes).isEmpty())
+        // The way back, north, is alerted; so is the journey with both ways open.
+        assertEquals(listOf("Part Suspended"), alertsFor(south, northOnly, routes = routes, origins = setOf("t3")).map { it.description })
+        assertEquals(1, alertsFor(south, northOnly, routes = routes, origins = setOf("t1", "t3")).size)
+        // Unknown is on: no route read, a ride the route doesn't run, or no split by direction.
+        assertEquals(1, alertsFor(south, northOnly, routes = emptyMap()).size)
+        assertEquals(1, alertsFor(south.copy(to = JourneyEnd("x9", "Elsewhere")), northOnly, routes = routes).size)
+        assertEquals(1, alertsFor(south, northOnly.copy(byDirection = emptyMap()), routes = routes).size)
+        // The route is read for it, whatever the mode; not for a line whose alerts TfL didn't split.
+        val lines = mapOf(south.key to setOf("tl"))
+        assertEquals(setOf("tl"), JourneyAlerts.routesToRead(listOf(south), lines, mapOf("tl" to northOnly)))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(south), lines, mapOf("tl" to northOnly.copy(byDirection = emptyMap()))))
+    }
+
+    @Test
+    fun `each open way is placed on its own ride before the worst is picked`() {
+        // Both ways open, each with an alert TfL scoped to it: the worse, off its ride, mustn't hide the
+        // lesser that reaches the other (Codex on #1020).
+        val bothWays = busRoute.copy(
+            routes = listOf(
+                busRoute.routes.single().copy(direction = "outbound"),
+                LineRoute("North End - Bank", listOf("n6", "n5", "n4", "n3", "n2", "n1"), direction = "inbound"),
+            ),
+            stopNames = busRoute.stopNames + mapOf("n4" to "Alpha Rd", "n6" to "North End Stand"),
+            stopAreas = mapOf("b4" to "A4", "n4" to "A4", "b6" to "A6", "n6" to "A6"),
+        )
+        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), "99", "99", "bus")
+        val delays = "Route 99: minor delays southbound due to roadworks."
+        val out = LineAlert(6, "Diversion", southEnd, setOf("outbound"))
+        val back = LineAlert(9, "Minor Delays", delays, setOf("inbound"))
+        val status = LineStatus(
+            "99", 6, "Diversion", southEnd, underWay = listOf(out, back),
+            byDirection = mapOf(
+                "outbound" to LineStatus("99", 6, "Diversion", southEnd, soleAlert = true, underWay = listOf(out)),
+                "inbound" to LineStatus("99", 9, "Minor Delays", delays, soleAlert = true, underWay = listOf(back)),
+            ),
+        )
+        val routes = mapOf("99" to bothWays)
+        assertEquals(listOf("Minor Delays"), alertsFor(ride, status, routes = routes, origins = setOf("b4", "b6")).map { it.description })
+        // The way there alone: its diversion is off the ride, and the way back's delays aren't its.
+        assertTrue(alertsFor(ride, status, routes = routes).isEmpty())
+    }
 }
