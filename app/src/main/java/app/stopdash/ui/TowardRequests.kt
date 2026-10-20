@@ -17,7 +17,10 @@ import app.stopdash.domain.TripTime
 import app.stopdash.domain.WalkingSpeed
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -108,39 +111,57 @@ internal class TowardRequests(
                     } else {
                         ask.via
                     }
-                    // The stop the answer came via, the next one after a refusal.
-                    var viaStop = first
-                    val answer = try {
-                        try {
-                            via(first)
-                        } catch (e: TflException.NotFound) {
-                            // The Planner found no route through it, though it may plan from it readily: remembered, and the
-                            // next stop for its lines asked, once.
-                            refused.add(first, destination, choices)
-                            val then = next?.takeIf { it != first } ?: run {
-                                warn("$label via a stop towards the destination: no route through it")
-                                return@launch
+                    // The next stop for its lines, should [first] be refused. Asked alongside once [first] is slow to
+                    // answer, not only after its refusal: the Planner has taken 7 s to refuse a stop it finds no route
+                    // through, the next stop then asked from scratch. Its answer counts only after that refusal.
+                    val then = next?.takeIf { it != first }
+                    // The stop the answer came via, and the answer or the request's failure.
+                    val (viaStop, answer) = coroutineScope {
+                        val spare = then?.let { stop -> async(start = CoroutineStart.LAZY) { attempt { via(stop) } } }
+                        val early = spare?.let {
+                            launch {
+                                delay(SPARE_AFTER_MILLIS)
+                                warn("$label via a stop towards the destination: slow to answer, so the next stop asked alongside")
+                                it.start()
                             }
-                            warn("$label via a stop towards the destination: no route through it; asking the next stop")
-                            viaStop = then
-                            via(then)
                         }
-                    } catch (e: TflException.NotFound) {
-                        next?.let { refused.add(it, destination, choices) }
-                        warn("$label via a stop towards the destination: no route through the next stop either")
-                        return@launch
-                    } catch (e: TflException) {
-                        warn("$label via a stop towards the destination failed: ${e::class.simpleName}")
-                        stood = false
+                        val own = attempt { via(first) }
+                        early?.cancel()
+                        if (own.exceptionOrNull() is TflException.NotFound && spare != null) {
+                            // The Planner found no route through it, though it may plan from it readily: remembered, and
+                            // the next stop for its lines asked (or, already asked, awaited), once.
+                            refused.add(first, destination, choices)
+                            warn("$label via a stop towards the destination: no route through it; asking the next stop")
+                            then to spare.await()
+                        } else {
+                            spare?.cancel()
+                            first to own
+                        }
+                    }
+                    val routes = answer.getOrElse { e ->
+                        when {
+                            e !is TflException.NotFound -> {
+                                warn("$label via a stop towards the destination failed: ${e::class.simpleName}")
+                                stood = false
+                            }
+                            viaStop == first -> {
+                                refused.add(first, destination, choices)
+                                warn("$label via a stop towards the destination: no route through it")
+                            }
+                            else -> {
+                                refused.add(viaStop, destination, choices)
+                                warn("$label via a stop towards the destination: no route through the next stop either")
+                            }
+                        }
                         return@launch
                     }
                     val found = withContext(compute) {
-                        val rides = TowardStops.ridesFrom(answer, viaStop)
+                        val rides = TowardStops.ridesFrom(routes, viaStop)
                         // The soonest by the Planner's times, its every departure: the card it gets is the one asked for.
                         val soonest = rides.minByOrNull { it.legs.last().arrival }?.let(::routeKey)
                         rides.map { if (routeKey(it) == soonest) it.copy(towardStop = true) else it }
                     }
-                    warn("$label via a stop towards the destination: ${found.size} of ${answer.size} routes ride a bus from there")
+                    warn("$label via a stop towards the destination: ${found.size} of ${routes.size} routes ride a bus from there")
                     if (found.isNotEmpty()) add(found)
                 }
             }
@@ -148,7 +169,19 @@ internal class TowardRequests(
         return stood
     }
 
+    // The Planner's answer, or its failure ([TflException]): a request alongside another that fails never cancels it.
+    private suspend fun attempt(ask: suspend () -> List<TripRoute>): Result<List<TripRoute>> =
+        try {
+            Result.success(ask())
+        } catch (e: TflException) {
+            Result.failure(e)
+        }
+
     private companion object {
+        // How long a request via a stop runs before the next stop for its lines is asked alongside, in case it's
+        // refused: past most answers the Planner gives (about 1 to 2.5 s), well short of a slow refusal.
+        const val SPARE_AFTER_MILLIS = 3_000L
+
         // The NaPTAN stop type of a bus stop, as the bundled stops are searched by.
         const val BUS_STOP_TYPE = "NaptanPublicBusCoachTram"
 
