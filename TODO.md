@@ -987,7 +987,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               trip (see *Decisions needing review*).
                                         - [x] The trip page's ride lines and verdicts: `RideEnds`
                                               (`LegEnd.of`, then `Hubs.idsOf` into `LegEnd.ids`), worked
-                                              out by `TripViewModel.rideEnds` on its compute dispatcher as
+                                              out by `TripViewModel.shownRoutes` on its compute dispatcher as
                                               the screen's placed routes come in, the Planner's calls
                                               meanwhile; `RideLines.runTo` (`of`, `through`, `throughWays`)
                                               and `DirectTrips.judge`/`settledByStops` read it
@@ -998,20 +998,40 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               hub reaches. `TripVerdicts` and the bus statuses key on the
                                               same ends (`TripRideLines.endsOf`); not on a step-free trip
                                               (see *Decisions needing review*).
-                                        - [ ] The rest of the trip page's paths reading the end: the
-                                              Planner's own last ride cut and named at its first call
-                                              in the hub (the detour cut, below), its stop list
-                                              (`RouteStops.forLeg`, `withRouteStops`), and the bus
-                                              alerts' span (`JourneyAlerts.ridesOf`, `RouteDisruption`),
-                                              which still end at the Planner's call.
+                                        - [x] The rest of the trip page's paths reading the end: the
+                                              Planner's own last ride drawn cut and named at its first
+                                              call in the hub (`RideEnds.cut`, in `ShownRoutes`, worked out
+                                              by `TripViewModel.shownRoutes` on its compute dispatcher), so
+                                              its card, stop count, stop list (`RouteStops.forLeg`,
+                                              `withRouteStops`) and bus alerts' span
+                                              (`JourneyAlerts.ridesOf`, `RouteDisruption`) end there; the
+                                              walks after it aren't drawn, a fare stays only for a bus,
+                                              and the ride keeps its Planner arrival at the old end (see
+                                              *Decisions needing review*). The routes the trip holds,
+                                              keeps and starts stay the Planner's. Not on a step-free trip.
+                                        - [ ] The trip's fetch cap (`TripViewModel.bestOf` over the routes
+                                              as planned) and the page's (over the routes as drawn) can
+                                              part where a cut drops a walk on (an earlier arrival) or a
+                                              train's fare (another cheapest): a route drawn into the
+                                              page's few but outside the trip's is timed from the
+                                              timetable until a refresh fetches it. Rank both by the
+                                              routes as planned (`TripRoute.drawnFrom`).
+                                        - [ ] A cut ride timed at its cut call: its arrival withheld
+                                              until then (dev-docs/station-resolution.md, the detour
+                                              cut), or timed from the Planner's own times there where a
+                                              timetable gives them, in place of the old end's arrival it
+                                              keeps for now.
+                                        - [ ] A Direct row's route (`TripViewModel.findDirect`) cut at
+                                              the hub's first call like the plan's own routes, where a
+                                              Direct row to a stop can arrive by hub; today only the
+                                              plan's answers are cut.
                                         - [x] A later trip's list (`LaterTripViewModel`) taking the
                                               same `RideEnds`: the trip page's model and hubs, read on io
                                               (`awaitDestination`), worked out with each listing on its
                                               compute dispatcher, each ride's row carrying its end
-                                              (`Row.end`); unread until the Planner's own ride is cut and
-                                              named at its first call in the hub (the item above), as the
-                                              list shows only the Planner's rides (see *Decisions needing
-                                              review*).
+                                              (`Row.end`), and its rides cut and named at the hub's first
+                                              call as the trip page cuts them (`RideEnds.cut`), so a card
+                                              names the ride where the trip page does.
                                         - [ ] On the way's stop list and ride lines
                                               (`OnTheWayScreen`'s `withRouteStops`,
                                               `RideLineChecks.running`, `ActiveTripTracker`'s
@@ -5050,22 +5070,71 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 - [ ] **The trip page reads the last ride's hub end for its ride lines and verdicts first**
   (autopilot, 2026-10-20). Another line reaching another station of the destination's hub shows on
-  the card and a train calling anywhere in the hub is judged to get there, while the Planner's own
-  ride, its stop list and the bus alerts still end at the Planner's call until the detour cut lands.
-  Such a line never times the route, since it rides another stretch. Ends are worked out on the
+  the card and a train calling anywhere in the hub is judged to get there; the Planner's own ride, its
+  stop list and the bus alerts have since followed (below). Such a line never times the route, since
+  it rides another stretch. Ends are worked out on the
   worker per plan (`RideEnds`), keyed on each last ride's raw end; a route made since (a train through
   a change, the open route) ends where it's named to, as does a step-free trip (as on the way); a
   later trip's list carries the same ends unread (below). Alternative: switch every path, the cut
-  included, in one PR; or resolve each route as it's made. Reversible: `TripScreen`'s `rideEnds`, which defaults to the Planner's calls.
-- [ ] **A later trip's list carries its ride ends unread** (autopilot, 2026-10-20). The list takes
-  the trip page's `RideEnds`, worked out with each listing (`Row.end`), but shows nothing new: a later
-  card is the Planner's own rides from the timetable, with no other lines or live trains to offer, so
-  the only thing an end would change is the Planner's ride's name and arrival, which the trip page
-  still shows at the Planner's call until the detour cut lands. Naming it at the hub's first call here
-  first would make a later card and the route it opens in the trip for now disagree. Alternative:
-  cut and name the later card's last ride at its first call in the hub now, ahead of the trip page;
-  or leave the list without ends until the cut. Reversible: `LaterTripViewModel`'s `arriving`, which
-  defaults to none (every ride at the Planner's call), and the unread `Row.end`.
+  included, in one PR; or resolve each route as it's made. Reversible: `TripScreen`'s `shownRoutes`, which defaults to the Planner's calls.
+- [x] **A later trip's list carries its ride ends unread** (autopilot, 2026-10-20). Superseded the same
+  day: the list's rides are now drawn cut and named at the hub's first call as the trip page's are
+  (`RideEnds.cut`, below), so a later card and the route it opens name one stop.
+- [ ] **A last ride cut at the hub's first call keeps the Planner's arrival at its old end**
+  (autopilot, 2026-10-20). The Planner's own last ride arriving by hub is cut and named at its first
+  call in the destination's hubs (`RideEnds.cut`), on the trip page and a later trip's list alike, but
+  the Planner timed only the whole ride, so the route keeps its arrival at the old end: the latest the
+  rider gets there, earlier in fact, and the route is ranked and capped by it as before. The design
+  (dev-docs/station-resolution.md, the detour cut) withholds a cut ride's arrival until it's timed at
+  the cut call; doing that here would leave every such route untimed and ranked last. A fare stays
+  only for a bus (every London bus one fare); a train's is cleared, as the Planner priced it to the old
+  end. A first call at the Planner's own station or stop, at a bus stop's area (both its poles), or
+  with no name leaves the ride as planned; the walks after a cut go, since the rider has arrived.
+  Alternative: withhold the arrival (and rank the route after the timed ones) until the ride is timed
+  at the cut call; or estimate it from the stops left. Reversible: `RideEnds.cut`, one function, run
+  where the trip page's routes are drawn (`ShownRoutes`) and where a later listing's cards are made.
+- [ ] **A cut ride is cut only as it's shown, never in the routes the trip holds** (maintainer,
+  2026-10-21; recorded here for review of what followed from it). The first cut rewrote the plan's
+  routes as each answer landed and kept the Planner's legs in a second copy beside them
+  (`TripRoute.planned`) for a trip started from one; review found three paths dropping that copy (a
+  Start losing the full legs, the placed copy left on the Planner's poles, the trains through a change
+  and the open route made without it), one class of bug, so the maintainer chose to cut only for
+  display: the trip page and a later card work the cut out from the unchanged route off the main
+  thread (`ShownRoutes`, `LaterTripViewModel.listed`), and the trip, the plan kept for reuse, a Start
+  and On the way read the Planner's route. What followed: the page holds its last frame, or draws
+  none, while a placed plan's drawn routes are worked out, so a ride's end never moves under the
+  rider; a route drawn cut is its route as planned by key (below); a train through a change made from a
+  cut route starts made again from the route as planned, its walk on kept; a Direct row's route is never
+  drawn cut, as before; and the trip and a later trip's list choose and order their
+  routes as planned (the detours another route beats, a later list's time window), drawing only the
+  cards cut. Alternative: keep cutting the stored
+  routes with the Planner's copy beside them. Reversible: `ShownRoutes` and the one `RideEnds.cut`.
+- [ ] **A route drawn cut is its planned route, by key** (autopilot, 2026-10-21). Codex found a third
+  bug in mapping a cut copy, keyed by its own drawn legs, back to its plan (after the open route's
+  step-free re-key and a later card's planned key): two plans cutting to the same legs shared one
+  drawn key, which recorded whichever plan came first, so the card the ranking showed could open,
+  keep open and start the other. So the class is deleted: the cut copy names the route it's drawn
+  from (`TripRoute.drawnFrom`) and `routeKey` reads that route's legs, so opening, saving, ranking,
+  the trip's fetches, a later card's key and Start all use the plan's key, and the drawn→planned key
+  map (`ShownRoutes.storedKey`), the open route's second key (`OpenRoute.stored`, `among`) and a later
+  card's (`Card.plannedKey`) are gone. Two plans cut alike are no longer drawn once: both stay, in the
+  Planner's order; the trip page's card grouping (`tripCards`) still shows the best of routes alike as
+  one card, as for any, and it opens its own plan. Trains through a change follow the same rule
+  (Codex, a fourth finding: made from the cut copies, an open one kept the cut end and was rebuilt
+  into its uncut plan as `[train to Hill East, walk from Hill]`): each is made from the routes as
+  planned, getting off at the second ride's Planner's call with its walk on (`plannedThroughWays`),
+  and drawn cut where its last ride arrives by hub, the copy naming that train (`drawnFrom`), so the
+  open route saves the uncut train, Start hands on a connected route and a step-free change draws it
+  uncut; the rebuild in `ShownRoutes.plannedOf` is gone. The draw cuts at the train's first call in
+  the hubs as `RideLines.through` always has (any of the hubs' ids), not by `RideEnds.cut`: that reads
+  the station model, so it would move the trains through (built in composition, from live boards)
+  onto the worker, where a first try held the page's live state a hop behind and broke four
+  screen tests; alternative: that move. A line reaching only another station of the hubs still
+  makes a route arriving there, its walk on dropped as the rider has arrived.
+  Alternative: keep drawn keys and carry the planned identity through each path (the estimate, the
+  card, the open route, Start). Reversible: one field set in `RideEnds.cut` and `plannedThroughWays`
+  and read in `routeKey`; dropping it brings back drawn keys, and building trains through from
+  `ShownRoutes.state` again brings back the old through routes.
 - [ ] **On the way reads the ride's end first, ahead of the other families** (autopilot,
   2026-10-20). The last ride on the way gets off at the followed train's first call in the
   destination's hub, while the trip screen's paths still end where the Planner does, though the

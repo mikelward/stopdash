@@ -10,7 +10,7 @@ import java.io.StringReader
 
 /**
  * A synthetic station model ([Hubs]) around the obviously-fake (51.5, -0.12) (SPEC *Privacy*): Hill, a hub
- * HUBEXA of a rail station (910GHILL) and a tube station (940GZZLUHIL), and Vale, a station of its own; for
+ * HUBEXA of a rail station (910GHILL) and two tube stations (940GZZLUHIL, and Hill East, 940GZZLUHLE), and Vale, a station of its own; for
  * where the trip page's rides get off ([RideEnds]).
  */
 internal object HillModel {
@@ -21,6 +21,8 @@ internal object HillModel {
                     icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
                 IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
                     icsCode = "1009002", station = "1009002:tube", modelHub = "HUBEXA"),
+                IndexedStation("940GZZLUHLE", "Hill East", listOf("tube"), "HUBEXA", 51.503, -0.119,
+                    icsCode = "1009003", station = "1009003:tube", modelHub = "HUBEXA"),
                 IndexedStation("910GVALE", "Vale", listOf("national-rail"), latitude = 51.53, longitude = -0.12,
                     station = "910GVALE", modelHub = "910GVALE"),
                 IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),

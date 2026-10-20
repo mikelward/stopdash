@@ -319,8 +319,11 @@ class TripScreenScreenshotTest {
         held: MutableState<TripViewModel.State>? = null,
         onListShown: (String) -> Unit = {},
         layoutDirection: LayoutDirection? = null,
-        // Where each ride gets off ([TripScreen]'s `rideEnds`); the Planner's call by default.
-        rideEnds: (suspend (List<TripRoute>, StepFree) -> RideEnds)? = null,
+        // The station model and hubs the routes are drawn through ([TripScreen]'s `shownRoutes`): each last ride
+        // arriving by hub cut at its first call there, and where every ride gets off. As planned by default.
+        arriving: RideEnds.Destination? = null,
+        // The step-free level, should a test change it; the default if none.
+        stepFree: MutableState<StepFree>? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -340,7 +343,8 @@ class TripScreenScreenshotTest {
                         menu = menu,
                         ends = ends,
                         onListShown = onListShown,
-                        rideEnds = rideEnds ?: { _, level -> RideEnds.planned(level) },
+                        shownRoutes = { placed, level -> ShownRoutes.of(placed, level, arriving) },
+                        stepFree = stepFree?.value ?: StepFree.DEFAULT,
                     )
                 }
             }
@@ -1188,6 +1192,71 @@ class TripScreenScreenshotTest {
             gate.countDown()
             worker.close()
         }
+    }
+
+    @Test
+    fun an_open_train_reaching_only_another_station_of_the_hubs_closes_at_a_step_free_level() {
+        // Red from A to M, then blue on to Hill, calling at Hill East first, and a walk on; yellow from A runs through
+        // M to Hill East and ends there, never reaching the Planner's end. Made-up stops and lines (Hill model).
+        val red = TripLeg(
+            mode = "tube", lineId = "red", lineName = "red", fromId = "A", fromName = "A", toId = "M", toName = "M",
+            departure = now, arrival = now.plusSeconds(120), path = listOf("M"), pathNames = listOf("M"),
+        )
+        val blue = TripLeg(
+            mode = "tube", lineId = "blue", lineName = "blue", fromId = "M", fromName = "M", toId = "940GZZLUHIL", toName = "Hill",
+            departure = now.plusSeconds(300), arrival = now.plusSeconds(600),
+            path = listOf("940GZZLUHLE", "B", "940GZZLUHIL"), pathNames = listOf("Hill East", "Bee", "Hill"),
+        )
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "940GZZLUHIL", "Hill", "910GHILL", "Hill", now.plusSeconds(600), now.plusSeconds(780))
+        val yellow = mapOf(
+            "yellow" to LineSequence(
+                routes = listOf(LineRoute("r", listOf("A", "M", "940GZZLUHLE"))),
+                stopNames = mapOf("A" to "A", "M" to "M", "940GZZLUHLE" to "Hill East"),
+            ),
+        )
+        val hill = TripViewModel.State(
+            routes = listOf(TripRoute(listOf(red, blue, walkOn), fare = TripFare(290))),
+            plannedAt = now,
+            live = mapOf("A" to TripViewModel.StopLive(listOf(Departure("yellow", "yellow", "", "Hill East", null, now, mode = "tube")), now)),
+        )
+        val cut = ShownRoutes.of(hill, StepFree.ANY, HillModel.toHill)
+        val through = withThroughRoutes(cut.state, StepFree.ANY, yellow, ends = cut.ends::ends, planned = cut.of)
+            .routes.orEmpty().single { it.legs.first().lineId == "yellow" }
+        val opened = openRouteOf(through, cut.of, StepFree.ANY, yellow, ends = cut.ends::ends).encode()
+        val openRoute = mutableStateOf<String?>(opened)
+        var notPlanned = 0
+        val level = mutableStateOf(StepFree.ANY)
+        // The page's lines, each run as planned: red A to M, blue M to Hill, and yellow.
+        val hillLines = yellow + mapOf(
+            "red" to LineSequence(routes = listOf(LineRoute("r", listOf("A", "M"))), stopNames = mapOf("A" to "A", "M" to "M")),
+            "blue" to LineSequence(
+                routes = listOf(LineRoute("r", listOf("M", "940GZZLUHLE", "B", "940GZZLUHIL"))),
+                stopNames = mapOf("M" to "M", "940GZZLUHLE" to "Hill East", "B" to "Bee", "940GZZLUHIL" to "Hill"),
+            ),
+        )
+        val hillSource = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = hillLines.getValue(lineId)
+        }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Hill", state = hill, now = now, access = Duration.ZERO,
+                    routeStops = RouteStopsRepository(hillSource), onBack = {}, onRetry = {}, openRoute = openRoute,
+                    onOpenNotPlanned = { notPlanned++ },
+                    shownRoutes = { placed, at -> ShownRoutes.of(placed, at, HillModel.toHill) },
+                    stepFree = level.value,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // At Any, arriving by hub, it's offered: open.
+        assertEquals(opened, openRoute.value)
+        assertEquals(0, notPlanned)
+        // Step-free, the Planner's call is the one checked: it isn't offered, so it closes, and says why.
+        level.value = StepFree.STATION
+        composeRule.waitForIdle()
+        composeRule.waitUntil(timeoutMillis = 5_000) { openRoute.value == null }
+        assertEquals(1, notPlanned)
     }
 
     @Test
@@ -3811,11 +3880,91 @@ class TripScreenScreenshotTest {
             ),
             BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
         )!!
-        show(state, routeStops = RouteStopsRepository(withTestLine), rideEnds = { routes, level -> RideEnds.of(routes, level, RideEnds.Destination(model, setOf("HUBCAW"))) })
+        show(state, routeStops = RouteStopsRepository(withTestLine), arriving = RideEnds.Destination(model, setOf("HUBCAW")))
         // The card's pill names both lines as one ("Jubilee or Test Line").
         composeRule.onAllNodes(hasClickAction() and hasContentDescription("Test Line", substring = true) and !hasTestTag("tripDisruptions"))
             .onFirst().assertExists()
         captureSnapshot("trip-routes-arriving-by-hub.png")
+    }
+
+    // A trip to Canary Wharf whose last ride, a made-up tube line from Stratford, calls at Canary Wharf's Elizabeth
+    // line station on its way to the Jubilee's: the trip arrives anywhere in its interchange, so the ride is drawn
+    // ending at the first ([ShownRoutes]). The plan as the trip keeps it, as the Planner gave it.
+    private class CutToCanaryWharf(val state: TripViewModel.State, val routeStops: RouteStopsRepository, val arriving: RideEnds.Destination)
+
+    private fun cutToCanaryWharf(): CutToCanaryWharf {
+        val testLine = LineSequence(
+            routes = listOf(LineRoute("Stratford ↔ Canary Wharf", listOf(stratfordTube.first, canaryWharfXr.first, "stop1", canaryWharf.first))),
+            stopNames = mapOf(stratfordTube.first to "Stratford", canaryWharfXr.first to "Canary Wharf (Elizabeth line)", "stop1" to "Somewhere", canaryWharf.first to "Canary Wharf"),
+        )
+        val withTestLine = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                if (lineId == "testline") testLine else sequences.getValue(lineId)
+        }
+        val route = TripRoute(
+            listOf(
+                viaStratford.legs.first(),
+                leg("tube", "testline", "Test Line", stratfordTube, canaryWharf, 28, 37, 3).copy(
+                    path = listOf(canaryWharfXr.first, "stop1", canaryWharf.first),
+                    pathNames = listOf("Canary Wharf (Elizabeth line)", "Somewhere", "Canary Wharf"),
+                ),
+            ),
+        )
+        // Canary Wharf's interchange: its Jubilee and Elizabeth line stations (the model's own ids, a made-up position).
+        val model = Hubs.of(
+            StationIndex(
+                listOf(
+                    IndexedStation(canaryWharf.first, "Canary Wharf", listOf("tube"), "HUBCAW", 51.5, -0.12, station = "CAW:tube", modelHub = "HUBCAW"),
+                    IndexedStation(canaryWharfXr.first, "Canary Wharf", listOf("elizabeth-line"), "HUBCAW", 51.5, -0.12, station = "CAW:xr", modelHub = "HUBCAW"),
+                    IndexedStation("HUBCAW", "Canary Wharf", listOf("tube", "elizabeth-line")),
+                ),
+                revision = "abc",
+            ),
+            BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
+        )!!
+        val toCanaryWharf = RideEnds.Destination(model, setOf("HUBCAW"))
+        // Its stops checked open, the station it's drawn getting off at too, as the screen hands the trip to check.
+        val drawn = RideEnds.cut(listOf(route), StepFree.ANY, toCanaryWharf).single()
+        val atStratford = live.getValue(stratfordTube.first)
+        val withTrain = live + (stratfordTube.first to atStratford.copy(departures = listOf(train("testline", "Test Line", "tube", "Canary Wharf", 30, "Platform 1"))))
+        val state = planned.copy(
+            routes = listOf(route), live = withTrain, closures = checkedOpen(route, drawn),
+            statuses = planned.statuses + ("testline" to LineStatus("testline", LineStatus.GOOD_SERVICE, "Good Service")),
+        )
+        return CutToCanaryWharf(state, RouteStopsRepository(withTestLine), toCanaryWharf)
+    }
+
+    @Test
+    fun a_last_ride_arriving_by_hub_is_cut_and_named_at_its_first_call_there() {
+        val trip = cutToCanaryWharf()
+        show(trip.state, routeStops = trip.routeStops, arriving = trip.arriving)
+        // The ride is named where it gets off, the first of the interchange's stations it calls at.
+        composeRule.onAllNodes(hasText("Canary Wharf (Elizabeth line)"), useUnmergedTree = true).onFirst().assertExists()
+        captureSnapshot("trip-routes-cut-at-the-hub.png")
+    }
+
+    @Test
+    fun an_open_route_drawn_cut_stays_open_across_a_step_free_change_that_still_plans_it() {
+        // Open with its last ride drawn cut; then step-free, which draws no cut, and back: each re-plan still
+        // offers the same route as planned, drawn under another key, so it stays open (SPEC *hold still*).
+        val trip = cutToCanaryWharf()
+        val held = mutableStateOf(trip.state)
+        val level = mutableStateOf(StepFree.ANY)
+        show(trip.state, routeStops = trip.routeStops, held = held, arriving = trip.arriving, stepFree = level)
+        composeRule.onAllNodes(hasClickAction() and hasContentDescription("Test Line", substring = true) and !hasTestTag("tripDisruptions"))
+            .onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1 stop to Canary Wharf (Elizabeth line)").assertIsDisplayed()
+        level.value = StepFree.STATION
+        held.value = trip.state.copy(plannedAt = now.plusSeconds(1))
+        composeRule.waitForIdle()
+        // Still open, now drawn as planned: on to the Jubilee's Canary Wharf.
+        composeRule.onNodeWithText("3 stops to Canary Wharf").assertIsDisplayed()
+        level.value = StepFree.ANY
+        held.value = trip.state.copy(plannedAt = now.plusSeconds(2))
+        composeRule.waitForIdle()
+        // And drawn cut again, still open.
+        composeRule.onNodeWithText("1 stop to Canary Wharf (Elizabeth line)").assertIsDisplayed()
     }
 
     @Test

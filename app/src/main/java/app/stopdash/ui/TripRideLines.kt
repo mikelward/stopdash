@@ -104,7 +104,7 @@ internal fun plannedEnds(stepFree: StepFree): (TripRoute) -> List<Pair<TripLeg, 
 
 /**
  * The station model and the destination's hubs a trip's [RideEnds] are worked out through, once read (on io,
- * by the model holding it): the trip page's ([TripViewModel.rideEnds]) and a later trip's list's
+ * by the model holding it): the trip page's ([TripViewModel.shownRoutes]) and a later trip's list's
  * ([LaterTripViewModel]) alike. Null where there's none (a place, no model), and where it couldn't be read,
  * said to [warn] under [label], so every ride gets off where the Planner does, as with no model.
  */
@@ -125,11 +125,15 @@ internal fun rideLineIds(routes: List<TripRoute>, state: TripViewModel.State, hi
 
 /**
  * [state] with the routes its timed routes offer with a change left out ([RideLines.through]): a
- * train that runs on through the change is a route of its own, with one ride fewer, getting off where
- * the second ride does at [stepFree] ([ends], as the ride lines have it). One already
- * planned (the same lines and stops, [routeKey]) is left to the Planner's copy. The [open] route is
- * among them too, kept whole ([OpenRoute]), whether or not these routes make it now: its train may
- * not be predicted, or its change be past the cap ([TripViewModel.bestOf]).
+ * train that runs on through the change is a route of its own, with one ride fewer. Each is made from the routes
+ * as planned ([planned], [plannedThroughWays]), getting off where the second ride's Planner's call is with its
+ * walk on, and drawn as a plan is: where its last ride arrives by hub ([ends]), cut at its first call there, the
+ * copy naming the train as planned it's drawn from ([TripRoute.drawnFrom]) and being that route by key
+ * ([routeKey]), so what's opened, saved and started is the train to the Planner's end with its walk on. One
+ * already planned or drawn (the same lines and stops, [routeKey], [legsKey]) is left to the Planner's copy. The
+ * [open] route (as planned, [OpenRoute.routeIn], [openRef] saying where it's made) is among them too, kept whole
+ * and drawn the same way, whether or not these routes make it now: its train may not be predicted, or its change
+ * be past the cap ([TripViewModel.bestOf]).
  */
 internal fun withThroughRoutes(
     state: TripViewModel.State,
@@ -138,15 +142,99 @@ internal fun withThroughRoutes(
     hidden: Set<String> = emptySet(),
     open: TripRoute? = null,
     ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
+    // The routes as planned the trains through are made from: [state]'s own where they're drawn as planned.
+    planned: TripViewModel.State = state,
+    // What the open route is ([OpenRoute]): for a train through, the plan and leg it's made from.
+    openRef: OpenRoute? = null,
 ): TripViewModel.State {
     val routes = state.routes ?: return state
-    val timed = TripViewModel.bestOf(state.shownRoutes(hidden).orEmpty(), direct = state.directKeys, delayed = state.delayedLines)
     val keys = routes.mapTo(HashSet(), ::routeKey)
-    val through = RideLines.through(timed, ends, state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
-        .filter { routeKey(it) !in keys }
-    // The open route, unless it's planned or made now (the same route, freshly timed).
+    // A route drawn cut is its plan by key ([routeKey]), so one drawn the same as another is told by its legs.
+    val drawn = routes.mapTo(HashSet(), ::legsKey)
+    val through = plannedThroughWays(planned, stepFree, sequences, hidden, ends).map { it.route }
+        .filter { routeKey(it) !in keys && legsKey(it) !in drawn }
+    // The open route, unless it's planned or made now (the same route, freshly timed), or it reaches only another
+    // station of the hubs at a level that doesn't arrive by hub ([hubOnlyUnchecked]): gone, as it isn't made now.
     val kept = open?.takeIf { route -> routeKey(route).let { key -> key !in keys && through.none { routeKey(it) == key } } }
+        ?.takeUnless { openRef != null && hubOnlyUnchecked(openRef, planned.routes.orEmpty(), ends) }
+        ?.let { route -> openRef?.let { drawnAtHub(route, it, planned.routes.orEmpty(), ends) } ?: route }
     return if (through.isEmpty() && kept == null) state else state.copy(routes = routes + through + listOfNotNull(kept))
+}
+
+/**
+ * The trains through a change [state]'s timed routes offer ([RideLines.throughWays]), each [RideLines.Through.route]
+ * as drawn: made from the route as planned, getting off where the second ride's Planner's call is with the walk
+ * on from there kept, so the train as planned runs on end to end. Where its last ride arrives by hub ([ends]), it's
+ * drawn ending at its first call in the destination's hubs, its legs after that gone, as a plan's is
+ * ([RideEnds.cut]): the copy names the train as planned it's drawn from ([TripRoute.drawnFrom]). A line that reaches
+ * only another station of the hubs is a route arriving there, as planned and drawn, the walk on from the old end
+ * gone, since the rider has arrived (dev-docs/station-resolution.md, phase 2).
+ */
+internal fun plannedThroughWays(
+    state: TripViewModel.State,
+    stepFree: StepFree,
+    sequences: Map<String, LineSequence?>,
+    hidden: Set<String> = emptySet(),
+    ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
+): List<RideLines.Through> {
+    val timed = TripViewModel.bestOf(state.shownRoutes(hidden).orEmpty(), direct = state.directKeys, delayed = state.delayedLines)
+    val arrivals = state.live.mapValues { it.value.departures }
+    val asPlanned = RideLines.throughWays(timed, plannedEnds(stepFree), arrivals, state.areaPoles, sequences, hidden)
+    // Each by the route it's made from, where, and its line.
+    fun wayOf(way: RideLines.Through) = Triple(way.from, way.at, way.route.legs[way.at].lineId)
+    val byWay = asPlanned.associateBy(::wayOf)
+    val byHub = RideLines.throughWays(timed, ends, arrivals, state.areaPoles, sequences, hidden)
+    val drawn = byHub.mapTo(HashSet(), ::wayOf)
+    val shown = byHub.map { way ->
+        val legs = way.route.legs
+        val asPlannedWay = byWay[wayOf(way)]
+        when {
+            asPlannedWay != null && asPlannedWay.route == way.route -> asPlannedWay
+            // A ride before the last: getting off by hub only ever moves a last ride.
+            legs.drop(way.at + 1).any { !it.isWalk } -> asPlannedWay ?: way
+            // Arriving by hub: nothing after it is ridden from where it's drawn getting off.
+            else -> way.copy(route = TripRoute(legs.take(way.at + 1), drawnFrom = asPlannedWay?.route))
+        }
+    }
+    return (shown + asPlanned.filter { wayOf(it) !in drawn }).distinctBy { routeKey(it.route) }
+}
+
+/**
+ * Whether [open], a train through a change opened reaching only another station of the destination's hubs (its ride
+ * found again only short of the plan's legs after its second ride, [OpenRoute.endsShort]), isn't offered where
+ * [ends] gets that second ride off: anywhere but by hub, as at a step-free level, the Planner's call is the one
+ * checked, so a step-free trip ends where the Planner's does (SPEC *Step-free*). Any other open route: false.
+ * One look up of the plan, as [drawnAtHub]'s: [withThroughRoutes] calls it where it's still worked out in composition
+ * (TODO.md, the trains through a change off the main thread); the screen's close calls it on its worker.
+ */
+internal fun hubOnlyUnchecked(open: OpenRoute, planned: List<TripRoute>, ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>): Boolean {
+    if (!open.endsShort(planned)) return false
+    val plan = planned.firstOrNull { routeKey(it) == open.plan } ?: return false
+    val second = plan.legs.getOrNull(open.at + 1) ?: return false
+    return ends(plan).firstOrNull { it.first == second }?.second?.level != LegEnd.Level.HUB
+}
+
+// [route], a train through a change as planned that the open route [open] names, drawn as one made now would be
+// ([plannedThroughWays]): where the second ride of the plan it's made from arrives by hub ([ends]), its last ride
+// cut at its first call in the hubs, the walk on gone, the copy naming [route] ([TripRoute.drawnFrom]).
+private fun drawnAtHub(route: TripRoute, open: OpenRoute, planned: List<TripRoute>, ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>): TripRoute {
+    val plan = planned.firstOrNull { routeKey(it) == open.plan } ?: return route
+    val second = plan.legs.getOrNull(open.at + 1) ?: return route
+    val end = ends(plan).firstOrNull { it.first == second }?.second ?: return route
+    if (end.level != LegEnd.Level.HUB) return route
+    val ride = route.legs.getOrNull(open.at)?.takeIf { !it.isWalk } ?: return route
+    if (route.legs.drop(open.at + 1).any { !it.isWalk }) return route
+    val ids = end.offIds(second)
+    val first = ride.path.indexOfFirst { it in ids }
+    if (first < 0 || first == ride.path.lastIndex) return route
+    val cut = ride.copy(
+        toId = ride.path[first],
+        toName = ride.pathNames.getOrNull(first)?.takeIf { it.isNotBlank() } ?: ride.toName,
+        path = ride.path.take(first + 1),
+        pathNames = ride.pathNames.take(first + 1),
+        changeAfter = java.time.Duration.ZERO,
+    )
+    return TripRoute(route.legs.take(open.at) + cut, drawnFrom = route)
 }
 
 /**
@@ -176,16 +264,14 @@ internal fun openRoutesOf(
     hidden: Set<String> = emptySet(),
     ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
 ): Map<String, OpenRoute> {
-    val shown = state.shownRoutes(hidden).orEmpty()
-    val planned = shown.mapTo(HashSet(), ::routeKey)
+    val planned = state.shownRoutes(hidden).orEmpty().mapTo(HashSet(), ::routeKey)
     val keys = routes.map(::routeKey).distinct()
-    val ways by lazy {
-        RideLines.throughWays(TripViewModel.bestOf(shown, direct = state.directKeys, delayed = state.delayedLines), ends, state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
-            .associateBy { routeKey(it.route) }
-    }
+    // Made as [withThroughRoutes] made them, from the routes as planned: a copy drawn cut is its train as planned
+    // by key ([routeKey]), so it opens the train to the Planner's end.
+    val ways by lazy { plannedThroughWays(state, stepFree, sequences, hidden, ends).associateBy { routeKey(it.route) } }
     return keys.associateWith { key ->
         if (key in planned) return@associateWith OpenRoute(key)
         // None: a route no plan offers, so the open route closes as soon as it's settled ([openRouteGone]).
-        ways[key]?.let { OpenRoute(routeKey(it.from), it.at, it.route.legs[it.at], key) } ?: OpenRoute(key)
+        ways[key]?.let { OpenRoute(routeKey(it.from), it.at, (it.route.drawnFrom ?: it.route).legs[it.at], key) } ?: OpenRoute(key)
     }
 }

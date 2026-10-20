@@ -2477,7 +2477,7 @@ one: a route riding a hidden mode never takes out one they can, and showing the 
 back what it beats. When the station model's phase 2 ships, a route that reaches the complex and rides on is no longer dropped
 or shown whole: it's kept but cut at its first call anywhere in the destination's hub that meets the
 trip's step-free level with today's lifts, the legs after it dropped, showing no fare (the Planner
-priced the whole detour) and, where the Planner gives no time there, no arrival time until a followed train times it, since the rider gets off there (`dev-docs/station-resolution.md`). The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
+priced the whole detour) and, where the Planner gives no time there, no arrival time until a followed train times it, since the rider gets off there (`dev-docs/station-resolution.md`). Built so far: a last ride the Planner gets off in the hub is shown cut at an earlier call in it, the route itself kept as planned, keeping meanwhile its arrival at the old end, the latest the rider gets there (below, with On the way). The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
 the Planner's timetable are timed, and an opened route besides; routes show as each answer lands. If some stations (or a station's records or bus stop) can't be planned to, the others'
 routes stand and the trip says "Couldn't plan every route", with a retry; only a whole plan is
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and
@@ -2506,14 +2506,21 @@ today's lifts yet, so it ends where the Planner, who checked, does. The trip scr
 too, as far as which lines and trains take the last ride: another line of the ride's mode reaching
 another station of the destination's hub shows on its card and open route, ending and named at its first call there, a train is judged to get the rider there by
 calling anywhere in the hub, and a train through a change counts as a route of its own where it
-reaches the hub at another station. The Planner's own ride still shows ending at its own call (the
-detour cut is to come), and so do the stop lists and bus alerts; a step-free trip still ends every
-ride where the Planner does. A later trip's list works out where each ride gets off the same way,
-with its plan, but as it shows only the Planner's own rides from the timetable, nothing live, each
-still reads as ending at the Planner's call until that ride is cut and named at its first call in the
-hub, there and on the trip page alike. Which rides arrive by hub is worked out
-off the main thread through the station model as the routes come in, each ride ending at the
-Planner's call meanwhile. The route
+reaches the hub at another station. The Planner's own last ride is shown cut there too: where it
+calls at another station of the destination's hub before the one the Planner gets it off at, it ends
+and is named at that first call, by one TfL id (never a bus stop's area, which names both its poles),
+its stop list ends there, its bus alerts span only that far, and any walk planned on from the old end
+isn't shown. The Planner timed only the whole ride, so the route keeps its arrival at the old end, the
+latest the rider gets there, until the ride can be timed at that call (see `TODO.md`); a fare the
+Planner gave is kept only for a bus, every London bus costing the same. The cut is only how the route
+is shown (maintainer, 2026-10-21): the route itself stays as the Planner gave it, so a trip started
+from it, the plan kept for reuse and the trip's fetches read the Planner's route, and On the way moves
+the end itself (below). A route shown cut is that route wherever it's opened, kept open, ranked or
+started, so two routes the cut shows alike stay two, each opening its own. A second copy kept in step with the shown one went wrong three ways in
+review. A later trip's list shows its rides cut the same way, so its card and the trip page name one
+stop. A step-free trip still ends every ride where the Planner does. Which rides arrive by hub is worked out
+off the main thread through the station model as the routes come in, the page holding what it last
+showed, or showing nothing yet, meanwhile, so no ride's end moves under the rider. The route
 as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,
 or a step taken. A ride before the last only passes them, on to its change.
 
@@ -2568,6 +2575,8 @@ adult pay as you go fare at the time planned for, Hopper discounts taken off. Da
 aren't counted, as the Planner doesn't count them. A route the Planner didn't price (one leaving the
 pay as you go area) shows no fare rather than a guess, and so does a route StopDash puts together
 itself from the Planner's rides (a train through in place of a change): the Planner never priced it.
+Nor does a route whose last train is cut at an earlier station of the destination's interchange, which
+the Planner priced to its old end; a bus cut there keeps its fare, every London bus costing the same.
 The one exception is a London bus route the Planner left unpriced while pricing the same buses
 elsewhere in the plan (maintainer, 2026-10-15, after a one-bus card came up blank beside priced cards
 on that bus): every TfL bus costs the same and the Hopper covers every bus boarded within the hour of

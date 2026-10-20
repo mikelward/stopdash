@@ -66,7 +66,7 @@ class LaterTripViewModel(
     // As the trip for now's ([TripViewModel.planTargets]): where the Planner is asked to plan to, from the station
     // model, read on [io]; null to plan to [destinations] as they are.
     planTargets: suspend () -> List<String>? = { null },
-    // As the trip for now's ([TripViewModel.rideEnds]): the station model and the destination's matchable hubs,
+    // As the trip for now's ([TripViewModel.shownRoutes]): the station model and the destination's matchable hubs,
     // for where each listed route's last ride gets off by arriving at them, read on [io] once. Null where no ride
     // arrives by hub (a place, no model): each gets off where the Planner does.
     arriving: suspend () -> RideEnds.Destination? = { null },
@@ -107,8 +107,9 @@ class LaterTripViewModel(
     }
 
     /**
-     * One route as listed: [route] itself, [routeKey] to open it by in the trip for now, [listKey] for
-     * the list (one route at two departures is two cards), and what its card draws.
+     * One route as listed: [route] as drawn ([RideEnds.cut]), [routeKey] to open it by in the trip for now (the
+     * route as the Planner gave it, which that trip holds and fetches for, however it's drawn), [listKey] for the
+     * list (one route at two departures is two cards), and what its card draws.
      */
     data class Card(
         val route: TripRoute,
@@ -123,9 +124,8 @@ class LaterTripViewModel(
     /**
      * A ride (its departure, line, and where it gets off) or a walk (where to, and its minutes). A ride's [end]
      * is where it gets off as the trip page has it ([RideEnds]): a last ride the Planner gets off in the
-     * destination's hubs gets off at its first call anywhere in them. Its name ([toName]) is the Planner's
-     * call's until the Planner's own ride is cut and named at that first call (TODO.md, *Arriving by hub*),
-     * on the trip page and here alike. Null for a walk, which gets off nowhere.
+     * destination's hubs gets off at its first call anywhere in them, and the card draws the ride cut and named
+     * there ([toName], [RideEnds.cut]), as the trip page does. Null for a walk, which gets off nowhere.
      */
     data class Row(
         val walk: Boolean,
@@ -304,15 +304,17 @@ class LaterTripViewModel(
     private suspend fun destination(): RideEnds.Destination? = arrivingAt.awaitDestination(warn, "later trip ride ends")
 
     // On [compute]: the routes keeping to [request]'s time and not riding what's [leftOut], less the detours the
-    // rest beat, in order, as cards, each ride getting off where [RideEnds] has it at [request]'s step-free level
-    // through [destination].
+    // rest beat, in order, as cards, each as the trip for now draws it: its last ride arriving by hub cut and named
+    // at its first call there ([RideEnds.cut]), and each ride getting off where [RideEnds] has it at [request]'s
+    // step-free level through [destination]. The routes as planned are never changed.
     @WorkerThread
     private fun listed(routes: List<TripRoute>, request: Request, leftOut: Set<String>, stops: Map<String, String>, destination: RideEnds.Destination?): List<Card> {
         val time = request.time
         val kept = withoutDetours(routes.filter { it.legs.isNotEmpty() && time.keeps(it) && !AvoidedLines.drops(it, leftOut) }, stops.keys, stops)
-        val ordered = TripTime.ordered(kept, time)
+        val ordered = RideEnds.cut(TripTime.ordered(kept, time), request.stepFree, destination)
         val ends = RideEnds.of(ordered, request.stepFree, destination)
-        // A route the same as another in every leg's times is one card: the list's keys stay unique.
+        // A route the same as another in every leg's times is one card: the list's keys stay unique. Two plans the cut
+        // draws alike are two cards, each opening its own plan ([routeKey]).
         return ordered.map { cardOf(it, ends) }.distinctBy { it.listKey }
     }
 
@@ -367,7 +369,8 @@ class LaterTripViewModel(
     companion object {
         /**
          * [route] as its card draws it: its times in London, its keys and a row per leg, each ride's with where
-         * it gets off as [ends] has it (by default where the Planner gets it off).
+         * it gets off as [ends] has it (by default where the Planner gets it off). A route drawn cut ([RideEnds.cut])
+         * is keyed as the route as planned it's drawn from ([routeKey]).
          */
         @WorkerThread
         internal fun cardOf(route: TripRoute, ends: RideEnds = RideEnds.planned(StepFree.DEFAULT)): Card {

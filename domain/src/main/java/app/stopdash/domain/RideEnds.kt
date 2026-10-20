@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import androidx.annotation.WorkerThread
+import java.time.Duration
 
 /**
  * Where each ride of a trip's routes gets off ([LegEnd]), as the trip page and a later trip's list read it
@@ -14,6 +15,9 @@ import androidx.annotation.WorkerThread
  * as a page is built. A route made since (a train through a change, its ride already cut at its first
  * call in the hub by [RideLines.through]) gets off where it's named to, as does every ride of a trip with
  * no model or no hub to arrive at.
+ *
+ * The Planner's own last ride arriving by hub is shown cut at its first call in the hubs ([cut]): a copy for the
+ * page to draw, worked out from the route as planned, which is kept, started and asked for as the Planner gave it.
  *
  * Not on a step-free trip: none of the hub's other calls is checked against today's lifts yet, so a
  * step-free ride still gets off where the Planner, who checked, does (TODO.md, *Decisions needing review*).
@@ -69,6 +73,61 @@ class RideEnds private constructor(
                 if (hub == null) hub = end.copy(ids = destination.model.idsOf(end).keys)
             }
             return if (hub == null) planned(stepFree) else RideEnds(stepFree, hub, arriving)
+        }
+
+        /**
+         * [routes] as a trip page and a later trip's list show them, in order, one for each: each whose last ride
+         * arrives by hub ([of]) a copy cut at that ride's first call in the destination's hubs where the Planner gets
+         * it off later, at another station or bus stop of them: the ride gets off and is named there, its stop list
+         * ends there, and the legs after it (a walk on within the hub) go, since the rider has arrived
+         * (dev-docs/station-resolution.md, phase 2). Only for drawing: the route itself is never changed, so a trip
+         * started from it, the plan kept for reuse and On the way (which moves the end itself,
+         * [OnTheWay.arrivingIds]) all read the Planner's; the copy names it ([TripRoute.drawnFrom]), so it is that
+         * route wherever routes are told apart, and two routes cut alike stay two, each its own. Every other route is
+         * the same object: no destination, no hub to arrive at, a step-free trip (as [of]), a first call in the hubs
+         * at the Planner's own station or stop, or one naming no one TfL id to get off at (a bus stop area, its two
+         * poles) or no name, where the ride doesn't move.
+         *
+         * The cut ride keeps the Planner's arrival at the call it no longer reaches, the latest it gets there,
+         * since the Planner timed only the whole ride (TODO.md, *Decisions needing review*); a fare is kept only
+         * for a bus, every London bus costing the same ([BusFare]), as the Planner priced the ride to its old end.
+         * Work over the routes and their calls: off the main thread.
+         */
+        @WorkerThread
+        fun cut(routes: List<TripRoute>, stepFree: StepFree, destination: Destination?): List<TripRoute> {
+            if (destination == null || destination.hubs.isEmpty() || stepFree != StepFree.ANY) return routes
+            val model = destination.model
+            return routes.map { route -> cutAt(route, stepFree, destination.hubs, model) ?: route }
+        }
+
+        // [route] cut at its last ride's first call in [destinationHubs] ([cut]), or null where it isn't.
+        @WorkerThread
+        private fun cutAt(route: TripRoute, stepFree: StepFree, destinationHubs: Set<String>, model: Hubs): TripRoute? {
+            val (ride, end) = LegEnd.of(route, stepFree, destinationHubs, model).lastOrNull() ?: return null
+            if (end.level != LegEnd.Level.HUB) return null
+            // Where the Planner gets it off, as [LegEnd.of] resolved it: by its pole and point, never its raw area.
+            val own = LegEnd.callOf(ride, model).station ?: return null
+            val first = ride.path.indexOfFirst { end.endsAt(model.resolve(it)) }
+            if (first < 0) return null
+            val call = model.resolve(ride.path[first])
+            // Its own station or stop (another of its records or platforms, the other side of its road): already there.
+            if (call.station == own) return null
+            // One TfL id to get off at, or the ride doesn't move: a stop area names its poles (*The first call must be one TfL id*).
+            val id = call.tflId?.takeIf { call.poles == setOf(it) } ?: return null
+            val name = ride.pathNames.getOrNull(first)?.takeIf { it.isNotBlank() } ?: return null
+            val cut = ride.copy(
+                toId = id,
+                toName = name,
+                path = ride.path.take(first + 1),
+                pathNames = ride.pathNames.take(first + 1),
+                changeAfter = Duration.ZERO,
+                // Its stop pair and position were the Planner's end's.
+                toArea = "",
+                toAt = null,
+                plannedToId = "",
+            )
+            val last = route.legs.indexOfLast { !it.isWalk }
+            return route.copy(legs = route.legs.take(last) + cut, fare = route.fare?.takeIf { ride.isBus }, drawnFrom = route)
         }
 
         // A ride's raw end, as [LegEnd.of] resolves it: the same in every copy of the ride a refresh times anew.

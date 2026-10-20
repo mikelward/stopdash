@@ -17,7 +17,8 @@ import kotlinx.serialization.json.Json
  * train through a change ([RideLines.through]) that train's [ride], standing in for the plan's two
  * rides from leg [at]. So an open train through a change stays open while the plan offers the change
  * it runs through, whether a train is predicted now or not (maintainer, 2026-09-29): its leg reads
- * "–", as a line with no trains does on the list. Saved as text ([encode]): a planned route by its key
+ * "–", as a line with no trains does on the list. A route drawn cut ([ShownRoutes]) is keyed as its route as
+ * planned ([routeKey]), so it stays open drawn cut or not. Saved as text ([encode]): a planned route by its key
  * alone.
  */
 internal data class OpenRoute(val plan: String, val at: Int = -1, val ride: TripLeg? = null, val key: String = plan) {
@@ -29,10 +30,34 @@ internal data class OpenRoute(val plan: String, val at: Int = -1, val ride: Trip
      * change that a new plan offers as a route of its own, too), the Planner's copy; otherwise the
      * plan's copy of the route it's made from (its walks and times as planned at the current pace),
      * with the train through in place of the two rides it joins, on the Planner's times for them
-     * without the change, as [RideLines.through] gives it.
+     * without the change, as [RideLines.through] gives it; one that was opened arriving at another station of the
+     * destination's hubs ([plannedThroughWays]) ends there, as it was opened.
      */
     fun routeIn(routes: List<TripRoute>): TripRoute? {
         routes.firstOrNull { routeKey(it) == key }?.let { return it }
+        val (whole, short) = rebuilt(routes) ?: return null
+        // A line reaching only another station of the destination's hubs was opened arriving there, with the plan's
+        // legs after its second ride dropped ([plannedThroughWays]): found again the same, not spliced onto a walk
+        // from a station it never reaches.
+        if (legsKey(whole) == key) return whole
+        return short.takeIf { legsKey(it) == key } ?: whole
+    }
+
+    /**
+     * Whether this is a train through a change opened arriving at another station of the destination's hubs
+     * ([plannedThroughWays]): one [routes] find again only with the plan's legs after its second ride dropped
+     * ([routeIn]). Judged by key, as [routeIn] is, not by the station it gets off at: a train reaching the Planner's
+     * station can get off there under a sibling id or stop area ([RideLines] `runTo`).
+     */
+    fun endsShort(routes: List<TripRoute>): Boolean {
+        if (routes.any { routeKey(it) == key }) return false
+        val (whole, short) = rebuilt(routes) ?: return false
+        return legsKey(whole) != key && legsKey(short) == key
+    }
+
+    // The plan's copy of the route it's made from with [ride] in place of the two rides it joins, on the Planner's
+    // times for them without the change: whole, and with the plan's legs after the second ride dropped.
+    private fun rebuilt(routes: List<TripRoute>): Pair<TripRoute, TripRoute>? {
         val ride = ride ?: return null
         val route = routes.firstOrNull { routeKey(it) == plan } ?: return null
         val first = route.legs.getOrNull(at) ?: return null
@@ -43,7 +68,7 @@ internal data class OpenRoute(val plan: String, val at: Int = -1, val ride: Trip
             arrival = first.departure + first.run + second.run,
             changeAfter = second.changeAfter,
         )
-        return TripRoute(route.legs.take(at) + joined + route.legs.drop(at + 2))
+        return TripRoute(route.legs.take(at) + joined + route.legs.drop(at + 2)) to TripRoute(route.legs.take(at) + joined)
     }
 
     /** As saved ([parse]): the plan's key for a planned route, else the train through with it. */

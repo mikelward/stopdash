@@ -160,7 +160,7 @@ class TripViewModel(
     // Null to plan to [destinations] as they are (an interchange's members, a stop, a place, no model).
     private val planTargets: suspend () -> List<String>? = { null },
     // The station model and the destination's matchable hubs ([Hubs.destinationHubs]), for where each route's
-    // last ride gets off by arriving at them ([rideEnds]), read on [io] once. Null where no ride arrives by hub
+    // last ride gets off by arriving at them ([shownRoutes]), read on [io] once. Null where no ride arrives by hub
     // (a place, no model): each gets off where the Planner does.
     private val arriving: suspend () -> RideEnds.Destination? = { null },
     // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
@@ -495,7 +495,8 @@ class TripViewModel(
     }
 
     // The planned routes the open one can be ([OpenRoute.keys]): fetched for past the cap ([bestOf]),
-    // with their boarding stops' every pole, where a train through a change boards too.
+    // with their boarding stops' every pole, where a train through a change boards too. A route the screen
+    // draws cut is keyed as its route as planned ([routeKey]), so these are this trip's own routes' keys.
     private fun openKeys(): Set<String> = OpenRoute.parse(openRoute.value)?.keys.orEmpty()
 
     // The routes a refresh fetches for and checks ([refreshLive]): those shown, less a hidden mode's,
@@ -524,7 +525,8 @@ class TripViewModel(
      * A plan past [PLAN_REUSE], or none, reads as planning from this moment: the trip shows again with its
      * refresh only about to start, and the open route is judged gone only on a settled plan, never against
      * the old one before the fresh one lands. After a failed plan the tap plans again, as Retry does: the rider
-     * asked for a route live, and a refresh alone never re-plans a failure.
+     * asked for a route live, and a refresh alone never re-plans a failure. [key] is the route as the Planner gave
+     * it, however its card draws it ([routeKey]): the route this trip holds and fetches for on the first refresh.
      */
     fun openPlanned(key: String) {
         val held = _state.value
@@ -994,14 +996,17 @@ class TripViewModel(
     private val arrivingAt = viewModelScope.async(io) { arriving() }
 
     /**
-     * Where each ride of [routes] gets off at [stepFree] ([RideEnds]): a last ride the Planner gets off in the
-     * destination's hubs at its first call anywhere in them, worked out through the station model on [compute]
-     * once it's in, and every other ride where the Planner gets it off. The screen asks as the routes it
-     * shows come in and reads the answer as it builds the page.
+     * [placed]'s routes as the screen draws them at [stepFree] ([ShownRoutes]): each last ride the Planner gets
+     * off in the destination's hubs getting off at its first call anywhere in them, shown cut and named there
+     * ([RideEnds.cut]), worked out through the station model on [compute] once it's in; every other ride where the
+     * Planner gets it off. Only drawn: this trip's routes stay as the Planner gave them. The screen asks as the
+     * routes it shows come in and reads the answer as it builds the page. A route drawn cut is keyed as its route
+     * as planned ([routeKey]), so the route open on it is one of this trip's ([openKeys]).
      */
-    suspend fun rideEnds(routes: List<TripRoute>, stepFree: StepFree): RideEnds {
-        val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return RideEnds.planned(stepFree)
-        return withContext(compute) { RideEnds.of(routes, stepFree, at) }
+    internal suspend fun shownRoutes(placed: State, stepFree: StepFree): ShownRoutes {
+        if (placed.routes.isNullOrEmpty()) return ShownRoutes.planned(placed, stepFree)
+        val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return ShownRoutes.planned(placed, stepFree)
+        return withContext(compute) { ShownRoutes.of(placed, stepFree, at) }
     }
 
     /**

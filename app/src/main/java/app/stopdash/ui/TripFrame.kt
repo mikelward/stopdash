@@ -29,7 +29,9 @@ import java.time.Instant
  * near-me list's rows, #524).
  *
  * [estimates]: every route timed, the open one kept; [cards] the list's cards; [open] the route opened
- * ([openKey]), if the plan still offers it. [shownStops]: the stops only the screen can name, for the trip to check.
+ * ([openKey]), if the plan still offers it, and [starts] the route a Start of it starts: as the Planner gave it,
+ * never the copy drawn cut at the destination's hub ([ShownRoutes.plannedOf]). [shownStops]: the stops only the
+ * screen can name, for the trip to check.
  * [list] and [openView] are what the list's cards and the open route draw, each with its own
  * framing ([TripFraming]), so a frame held while a route is opened or closed frames whichever is shown.
  */
@@ -49,6 +51,7 @@ internal class TripFrame(
     val openView: TripOpenView?,
     // The rides whose timetable the estimates asked for and the trip hasn't got ([timetablesWanted]).
     val timetablesWanted: Set<LegTimetables.Key> = emptySet(),
+    val starts: TripRoute? = open?.route,
 )
 
 /**
@@ -131,6 +134,9 @@ internal fun tripFrame(
     previousOrder: CardOrder? = null,
     // How an open ride's stop cards group a branching line's trains ([stopCard]).
     topology: RouteTopology = RouteTopology.EMPTY,
+    // The routes as drawn ([poled] among them, [ShownRoutes.state]): a tapped card opens from those as planned
+    // ([ShownRoutes.of]), and a Start starts the route as planned ([ShownRoutes.plannedOf]).
+    shown: ShownRoutes? = null,
 ): TripFrame {
     val timed = tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
     // Those whose trains through a change are predicted ([TripTiming.withoutUnvouchedLegs]).
@@ -165,13 +171,14 @@ internal fun tripFrame(
     val rides = estimates.orEmpty().flatMap { rideLines.endsOf(it.route) }.flatMap(rideLines::linesOf).distinct()
     val state = state.copy(legStatuses = legStatuses(state.statuses, rides, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
-    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, stepFree, sequences, excluded, rideLines::endsOf), previousOrder) }
+    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, shown?.of ?: poled, stepFree, sequences, excluded, rideLines::endsOf), previousOrder) }
     // A pole's letter, sign and bearing, from its stop area's poles where they're cached (no IO).
     val poleOf: (String, String) -> StopLocation? = { id, area ->
         area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
     }
     val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology, poleOf) }
-    return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView, timetablesWanted(timed.orEmpty(), state, now))
+    val starts = open?.route?.let { route -> shown?.plannedOf(route) ?: route }
+    return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView, timetablesWanted(timed.orEmpty(), state, now), starts)
 }
 
 /**

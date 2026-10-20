@@ -8,8 +8,8 @@ import java.io.StringReader
  * the tests of where a ride gets off (SPEC *Privacy*: no real stop or neighborhood).
  */
 internal object HillHubs {
-    // Hill: a hub HUBEXA of a rail station (records 910GHILL and 910GHILLLL) and a tube station
-    // (940GZZLUHIL), with a bus stop of two poles (area 490G000001); Vale, a station and hub of its own;
+    // Hill: a hub HUBEXA of a rail station (records 910GHILL and 910GHILLLL) and two tube stations
+    // (940GZZLUHIL and Hill East, 940GZZLUHLE), with a bus stop of two poles (area 490G000001); Vale, a station and hub of its own;
     // and an area 490G000005 the model split into two stops, each a hub of its own.
     private val index = StationIndex(
         listOf(
@@ -19,6 +19,8 @@ internal object HillHubs {
                 icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
             IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
                 icsCode = "1009002", station = "1009002:tube", modelHub = "HUBEXA"),
+            IndexedStation("940GZZLUHLE", "Hill East", listOf("tube"), "HUBEXA", 51.503, -0.119,
+                icsCode = "1009003", station = "1009003:tube", modelHub = "HUBEXA"),
             IndexedStation("910GVALE", "Vale", listOf("national-rail"), latitude = 51.53, longitude = -0.12,
                 station = "910GVALE", modelHub = "910GVALE"),
             IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),

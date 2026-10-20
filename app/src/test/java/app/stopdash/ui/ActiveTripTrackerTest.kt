@@ -359,6 +359,23 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a trip started from a route drawn cut keeps the route as the Planner gave it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // To Hill's tube station, calling at Hill East first, another station of its hub ([HillModel]); a walk on.
+        val loop = ride.copy(toId = "940GZZLUHIL", toName = "Hill", path = listOf("B", "940GZZLUHLE", "940GZZLUHIL"), pathNames = listOf("B", "Hill East", "Hill"))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "940GZZLUHIL", "Hill", "910GHILL", "Hill", at(15), at(18))
+        val planned = TripRoute(listOf(loop, walkOn))
+        // The trip page draws it cut at Hill East ([ShownRoutes]); its Start hands on the route as planned.
+        val shown = ShownRoutes.of(TripViewModel.State(routes = listOf(planned)), StepFree.ANY, HillModel.toHill)
+        val drawn = shown.state.routes.orEmpty().single()
+        assertEquals("940GZZLUHLE", drawn.legs.single().toId)
+        tracker.start(shown.plannedOf(drawn), "Hill", readyAt = now)
+        // Kept whole, as the Planner gave it: On the way moves the end itself ([OnTheWay.arrivingIds]).
+        assertEquals(planned.legs, kept?.route?.legs)
+        assertEquals(null, kept?.plannedLegs)
+    }
+
+    @Test
     fun `a started trip keeps its destination as chosen`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         val destinations = listOf(TripDestination.Stop("C"), TripDestination.Stop("C2"))
