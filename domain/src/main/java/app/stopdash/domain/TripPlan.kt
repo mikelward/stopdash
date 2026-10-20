@@ -69,8 +69,17 @@ data class TripLeg(
  * offered when asked via a bus stop towards the destination ([TowardStops]): listed whatever another
  * route beats it by, and timed past the cap on routes timed (maintainer, 2026-10-15), so the bus the
  * Planner's own requests passed over always has its card.
+ *
+ * [drawnFrom] is the route as the Planner gave it where this is only a copy drawn from it ([RideEnds.cut]), null
+ * otherwise: a drawn copy is that route wherever a route is told apart (opened, saved, ranked, fetched for,
+ * started), its legs only how it's drawn.
  */
-data class TripRoute(val legs: List<TripLeg>, val fare: TripFare? = null, val towardStop: Boolean = false) {
+data class TripRoute(
+    val legs: List<TripLeg>,
+    val fare: TripFare? = null,
+    val towardStop: Boolean = false,
+    val drawnFrom: TripRoute? = null,
+) {
     /** The legs ridden, walks left out: the line pills a route shows. */
     val rides: List<TripLeg> get() = legs.filterNot { it.isWalk }
 

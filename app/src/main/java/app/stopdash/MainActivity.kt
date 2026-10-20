@@ -5749,8 +5749,8 @@ class MainActivity : ComponentActivity() {
         TripScreen(
             title = title,
             journey = tripKey,
-            // Where each ride gets off, a last ride arriving at the destination's hub, worked out off the main thread.
-            rideEnds = trip::rideEnds,
+            // The routes as drawn, a last ride arriving at the destination's hub cut at its first call there, worked out off the main thread.
+            shownRoutes = trip::shownRoutes,
             state = tripState,
             now = now,
             access = access,

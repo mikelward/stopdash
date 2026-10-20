@@ -690,6 +690,33 @@ class LaterTripViewModelTest {
     }
 
     @Test
+    fun `a listed route's last ride arriving by hub is cut and named at its first call there`() = runTest(dispatcher) {
+        // To Hill's tube station, calling at Hill East, another station of its hub ([HillModel]), on the way.
+        val loop = leg("circle", "A", "940GZZLUHIL", 5, 30).copy(
+            path = listOf("940GZZLUAAA", "940GZZLUHLE", "940GZZLUHIL"),
+            pathNames = listOf("Aye", "Hill East", "Hill"),
+        )
+        val planner = Planner(mapOf("940GZZLUHIL" to listOf(TripRoute(listOf(loop)))))
+        fun listed(stepFree: StepFree): LaterTripViewModel.Card {
+            val later = LaterTripViewModel(
+                planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("940GZZLUHIL")),
+                arriving = { HillModel.toHill }, io = dispatcher, compute = dispatcher,
+            )
+            later.show(LaterTripViewModel.Request(leave, stepFree = stepFree))
+            advanceUntilIdle()
+            return later.state.value.cards!!.single()
+        }
+        val card = listed(StepFree.ANY)
+        val row = card.rows.single()
+        assertEquals("Hill East", row.toName)
+        assertEquals("940GZZLUHLE", card.route.legs.single().toId)
+        // Still arriving by hub, at that call.
+        assertTrue("${row.end}", "940GZZLUHLE" in row.end!!.offIds(card.route.legs.single()))
+        // A step-free trip keeps the Planner's call.
+        assertEquals("940GZZLUHIL", listed(StepFree.STATION).rows.single().toName)
+    }
+
+    @Test
     fun `a step-free later trip, or one with no model, ends each ride where the Planner does`() = runTest(dispatcher) {
         val route = TripRoute(listOf(leg("red", "A", "910GHILL", 5, 30)))
         val planner = Planner(mapOf("910GHILL" to listOf(route)))

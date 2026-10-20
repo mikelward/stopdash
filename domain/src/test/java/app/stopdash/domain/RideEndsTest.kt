@@ -74,4 +74,120 @@ class RideEndsTest {
         // Mill Lane's stop is outside the destination's hub, so it gets off where the Planner does.
         assertEquals(LegEnd.planned(toMillLane, StepFree.ANY), ends.ends(toMillLane))
     }
+
+    // A tube ride to Hill calling at Hill East first, then out of the hub and back (a loop).
+    private fun loop(vararg after: TripLeg) = TripRoute(
+        listOf(
+            ride("940GZZLUFRM", "940GZZLUHIL", mode = "tube").copy(
+                toName = "Hill",
+                path = listOf("940GZZLUAAA", "940GZZLUHLE", "940GZZLUBBB", "940GZZLUHIL"),
+                pathNames = listOf("Aye", "Hill East", "Bee", "Hill"),
+                toAt = Coordinates(51.501, -0.121),
+            ),
+        ) + after,
+        fare = TripFare(290),
+    )
+
+    @Test
+    fun `the Planner's last ride arriving by hub is cut and named at its first call there`() {
+        val route = loop(walk())
+        val cut = RideEnds.cut(listOf(route), StepFree.ANY, toHill).single()
+        val ride = cut.legs.single()
+        assertEquals("940GZZLUHLE", ride.toId)
+        assertEquals("Hill East", ride.toName)
+        // Its stop list ends there, and so its stop count.
+        assertEquals(listOf("940GZZLUAAA", "940GZZLUHLE"), ride.path)
+        assertEquals(listOf("Aye", "Hill East"), ride.pathNames)
+        assertEquals(2, ride.stops)
+        // The Planner's end's position and pair go with it; its arrival stays the latest it gets there.
+        assertEquals(null, ride.toAt)
+        assertEquals("", ride.toArea)
+        assertEquals(route.legs[0].arrival, ride.arrival)
+        // The Planner priced the train to its old end.
+        assertEquals(null, cut.fare)
+        // A copy to draw, naming the route it's drawn from: the route as the Planner gave it is never changed.
+        assertTrue(cut.drawnFrom === route)
+        assertEquals(loop(walk()), route)
+        assertEquals("940GZZLUHIL", route.legs[0].toId)
+        assertEquals(TripFare(290), route.fare)
+        // Worked out again for the cut route, it still arrives by hub, at that call.
+        val ends = RideEnds.of(listOf(cut), StepFree.ANY, toHill)
+        val (_, end) = ends.ends(cut).single()
+        assertEquals(LegEnd.Level.HUB, end.level)
+        assertTrue("940GZZLUHLE" in end.offIds(ride))
+    }
+
+    @Test
+    fun `a bus cut at a pole keeps its fare`() {
+        val bus = TripRoute(
+            listOf(
+                ride("490000009Z", "940GZZLUHIL", mode = "bus").copy(
+                    path = listOf("490000001A", "940GZZLUHIL"),
+                    pathNames = listOf("Hill Station", "Hill"),
+                ),
+            ),
+            fare = TripFare(175),
+        )
+        val cut = RideEnds.cut(listOf(bus), StepFree.ANY, toHill).single()
+        assertEquals("490000001A", cut.legs.single().toId)
+        assertEquals(TripFare(175), cut.fare)
+    }
+
+    @Test
+    fun `a ride stays as planned where it has no first call in the hubs to move to`() {
+        val route = loop()
+        // A step-free trip, no model, or no hub to arrive at.
+        // The same object, not a copy, as it isn't cut.
+        assertTrue(RideEnds.cut(listOf(route), StepFree.STATION, toHill).single() === route)
+        assertEquals(listOf(route), RideEnds.cut(listOf(route), StepFree.STATION, toHill))
+        assertEquals(listOf(route), RideEnds.cut(listOf(route), StepFree.ANY, null))
+        assertEquals(listOf(route), RideEnds.cut(listOf(route), StepFree.ANY, RideEnds.Destination(hubs, setOf("910GVALE"))))
+        // Its first call in the hub is its own station (another of its records).
+        val own = TripRoute(
+            listOf(
+                ride("910GFROM", "910GHILL").copy(path = listOf("910GAAA", "910GHILLLL", "910GHILL"), pathNames = listOf("Aye", "Hill LL", "Hill")),
+            ),
+        )
+        assertEquals(listOf(own), RideEnds.cut(listOf(own), StepFree.ANY, toHill))
+        // A first call naming the bus stop's area, its two poles: no one TfL id to get off at.
+        val area = TripRoute(
+            listOf(
+                ride("910GFROM", "940GZZLUHIL", mode = "bus").copy(path = listOf("490G000001", "940GZZLUHIL"), pathNames = listOf("Hill Station", "Hill")),
+            ),
+        )
+        assertEquals(listOf(area), RideEnds.cut(listOf(area), StepFree.ANY, toHill))
+        // A call the Planner didn't name: nothing to show where the ride gets off.
+        val unnamed = TripRoute(listOf(route.legs[0].copy(pathNames = emptyList())))
+        assertEquals(listOf(unnamed), RideEnds.cut(listOf(unnamed), StepFree.ANY, toHill))
+        // A middle ride ending in the hub changes there, as planned.
+        val change = TripRoute(route.legs + ride("940GZZLUHIL", "910GVALE"))
+        assertEquals(listOf(change), RideEnds.cut(listOf(change), StepFree.ANY, toHill))
+    }
+
+    @Test
+    fun `a bus alert past the hub's first call is off the cut ride`() {
+        // A bus to Hill calling first at Hill Station's pole, then on through a diverted stretch to its end. Made-up words.
+        val sequence = LineSequence(
+            listOf(LineRoute("Start - Gamma Terrace", listOf("490000009Z", "490000001A", "490000007B", "940GZZLUHIL"))),
+            mapOf("490000009Z" to "Start", "490000001A" to "Hill Station", "490000007B" to "Beta Road", "940GZZLUHIL" to "Gamma Terrace"),
+        )
+        val alert = LineStatus(
+            "l", 6, "Diversion",
+            "EXAMPLE - ROUTE L is on diversion. Buses are not serving stops between 'Beta Road' and 'Gamma Terrace'.",
+            soleAlert = true,
+        )
+        val bus = TripRoute(
+            listOf(
+                ride("490000009Z", "940GZZLUHIL", mode = "bus").copy(
+                    path = listOf("490000001A", "490000007B", "940GZZLUHIL"),
+                    pathNames = listOf("Hill Station", "Beta Road", "Gamma Terrace"),
+                ),
+            ),
+        )
+        // As the Planner gave it, the ride runs through the stretch.
+        assertFalse(RouteDisruption.offRide(RideEnds.of(listOf(bus), StepFree.ANY, toHill).ends(bus).single(), alert, sequence))
+        // Cut at Hill Station, it gets off before it.
+        val cut = RideEnds.cut(listOf(bus), StepFree.ANY, toHill).single()
+        assertTrue(RouteDisruption.offRide(RideEnds.of(listOf(cut), StepFree.ANY, toHill).ends(cut).single(), alert, sequence))
+    }
 }

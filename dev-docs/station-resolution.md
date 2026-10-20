@@ -305,15 +305,40 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    end) when a check runs, keeps it only while the planned route is the same, and the train's first
    call in the hub by one TfL id ends the ride, a step-free trip excepted until its lift check
    lands (`TODO.md`, *Decisions needing review*). The trip page's ride lines and verdicts follow
-   (2026-10-20): `TripViewModel.rideEnds` works out a `RideEnds` for the screen's placed routes on
+   (2026-10-20): `TripViewModel.shownRoutes` works out a `RideEnds` for the screen's placed routes on
    its compute dispatcher (`LegEnd.of`, then `Hubs.idsOf` into the hub end's `LegEnd.ids`), keyed on
    each last ride's raw end, and the screen reads it as it builds the page; `RideLines.runTo` and
-   `DirectTrips` match a hub end by `LegEnd.offIds`. The Planner's own ride, its stop list and the
-   bus alerts still end at its call until the detour cut. A later trip's list takes the same
-   `RideEnds` (2026-10-20): `LaterTripViewModel` reads the same model and hubs on io
-   (`awaitDestination`, shared with `TripViewModel.rideEnds`) and works them out with each listing on
-   its compute dispatcher, each ride's row carrying its `LegEnd`; nothing on the list reads it until
-   the detour cut names the Planner's own ride at its first call in the hub.
+   `DirectTrips` match a hub end by `LegEnd.offIds`. The Planner's own last ride follows, drawn only
+   (maintainer, 2026-10-21): `RideEnds.cut` gives a copy of each route to draw, on the compute
+   dispatcher, cutting a last ride arriving by hub at its first path call in the destination's hubs
+   (`LegEnd.endsAt`, each call resolved through the model) where that call is another station or stop
+   than the Planner's own end (`LegEnd.callOf`, by its pole and point, never its raw area), names one
+   TfL id (`Resolved.poles` holds it alone: a bus stop area naming both poles doesn't move the ride)
+   and has a name; the walks after it aren't drawn, and a fare stays only for a bus. The trip page
+   draws from `ShownRoutes` (the routes as placed, cut, and the `RideEnds` of the cut copies), worked
+   out per placed state off the main thread and read by the page, which holds its last frame (or draws
+   none) until they're in, so a ride's end never moves under the rider. Everything it draws reads the
+   cut copy: the card's name and stop count, the stop list (`RouteStops.forLeg`, `withRouteStops`),
+   the bus alerts' span (`JourneyAlerts.ridesOf`, `RouteDisruption`). The trains through a change are
+   made from the routes as planned, to the second ride's Planner's call with the walk on
+   (`plannedThroughWays`), and drawn cut at their first call in the hubs, naming the train as planned
+   (`TripRoute.drawnFrom`), so the open
+   route saves and finds again the train as planned (`OpenRoute.routeIn`). The routes the
+   trip holds are never changed: the plan kept for reuse and the routes it fetches for are the
+   Planner's, a cut copy names the route it's drawn from (`TripRoute.drawnFrom`) and is that route by
+   key (`routeKey`), so it's opened, kept open, ranked and fetched for as the plan, two plans cut alike
+   staying two, and a Start starts the route as planned (`TripFrame.starts`,
+   `ShownRoutes.plannedOf`, a train through likewise), which On the way moves the end of
+   itself (`OnTheWay.arrivingIds`, `endedAtDestination`). An earlier cut of the stored routes, with a
+   second copy of the Planner's legs carried beside them (`TripRoute.planned`), lost those legs in
+   three places in review: every path making a route had to carry the copy. The ride keeps the
+   Planner's arrival at its old end (*Decisions needing review*): the arrival withheld until the ride
+   is timed at the cut call, as the detour cut below has it, is still to come, with the rest of the
+   detour cut. A later trip's list takes the same `RideEnds` (2026-10-20): `LaterTripViewModel` reads
+   the same model and hubs on io (`awaitDestination`, shared with `TripViewModel.shownRoutes`) and,
+   on its compute dispatcher, draws each listing's cards from the routes cut as the trip page draws
+   them, each ride's row carrying its `LegEnd`, so its cards name the ride where the trip page does;
+   which routes are listed, and in what order, is judged on the routes as planned.
    - **Who asks.** `DirectTrips`, `RideLines`, `RouteStops.forLeg`, `FavoriteJourney` and on the
      way's arrival check (`OnTheWay.endedAtDestination`) ask "first call whose hub is one of the
      destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only; and the

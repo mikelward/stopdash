@@ -16,8 +16,9 @@ import androidx.annotation.WorkerThread
  *
  * A hub end is read where the last ride gets off by arriving at the destination's hub: by On the way
  * ([OnTheWay.arrivingIds]), and on the trip page by its verdicts and ride lines through [ids] ([RideEnds],
- * [offIds]). Every other end still gets off where the Planner's call is until its paths read it (TODO.md,
- * *Arriving by hub at the first call*).
+ * [offIds]), the Planner's own ride drawn cut and named at its first call there ([RideEnds.cut], the route
+ * itself unchanged), so the stop list and alerts it shows end there too. Every other end still gets off where the
+ * Planner's call is until its paths read it (TODO.md, *Arriving by hub at the first call*).
  *
  * [ids] are the TfL ids a hub end gets off at, every one of its hubs' stations and stops ([Hubs.idsOf]),
  * worked out through the model where the end is read ([RideEnds.of]); empty where they weren't, when the
@@ -124,7 +125,7 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
          * Planner's pole's stop. With no model, as [unresolvedCallOf].
          */
         @WorkerThread
-        private fun callOf(ride: TripLeg, hubs: Hubs?): Resolved {
+        internal fun callOf(ride: TripLeg, hubs: Hubs?): Resolved {
             if (hubs == null) return unresolvedCallOf(ride)
             if (ride.plannedToId.isEmpty()) return hubs.resolve(ride.toId, near = ride.toAt)
             val pair = ride.toArea.takeIf { it.isNotBlank() }?.let { hubs.resolve(it, pole = ride.plannedToId, near = ride.toAt) }

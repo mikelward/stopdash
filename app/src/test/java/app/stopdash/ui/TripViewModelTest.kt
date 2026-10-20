@@ -30,6 +30,7 @@ import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
@@ -624,7 +625,7 @@ class TripViewModelTest {
             FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("910GHILL")),
             clock = { now }, io = dispatcher, compute = worker, arriving = { HillModel.toHill },
         )
-        val ends = async { trip.rideEnds(listOf(route), StepFree.ANY) }
+        val ends = async { trip.shownRoutes(TripViewModel.State(routes = listOf(route)), StepFree.ANY).ends }
         advanceUntilIdle()
         // The model is in, but the ends are the worker's to work out.
         assertTrue("nothing handed to the worker", held.isNotEmpty())
@@ -656,7 +657,82 @@ class TripViewModelTest {
             FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("910GHILL")),
             clock = { now }, io = dispatcher, compute = dispatcher,
         )
-        assertEquals(LegEnd.planned(route, StepFree.ANY), unmodeled.rideEnds(listOf(route), StepFree.ANY).ends(route))
+        assertEquals(LegEnd.planned(route, StepFree.ANY), unmodeled.shownRoutes(TripViewModel.State(routes = listOf(route)), StepFree.ANY).ends.ends(route))
+    }
+
+    @Test
+    fun `a last ride arriving by hub is drawn cut at its first call there, the plan kept as the Planner gave it`() = runTest(dispatcher) {
+        // To Hill's tube station, calling at Hill East first, another station of its hub ([HillModel]), then out
+        // of the hub and back; a walk on within it.
+        val loop = leg("circle", "A", "940GZZLUHIL", 0, 20).copy(
+            path = listOf("940GZZLUAAA", "940GZZLUHLE", "940GZZLUBBB", "940GZZLUHIL"),
+            pathNames = listOf("Aye", "Hill East", "Bee", "Hill"),
+        )
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "940GZZLUHIL", "Hill", "910GHILL", "Hill", at(20), at(24))
+        val planned = TripRoute(listOf(loop, walkOn))
+        val plans = TripPlans()
+        fun tripAt(stepFree: StepFree, worker: CoroutineDispatcher = dispatcher) = TripViewModel(
+            FakePlanner(listOf(planned)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("940GZZLUHIL")),
+            clock = { now }, plans = plans, io = dispatcher, compute = worker, arriving = { HillModel.toHill }, stepFree = stepFree,
+        )
+        // Worked out on a worker thread, never the caller's.
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val ranOn = java.util.Collections.synchronizedList(mutableListOf<Thread>())
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                try {
+                    executor.execute {
+                        ranOn += Thread.currentThread()
+                        block.run()
+                    }
+                } catch (e: java.util.concurrent.RejectedExecutionException) {
+                    // Stopped: what the cleared model winds down runs where it's resumed, canceled anyway.
+                    block.run()
+                }
+            }
+        }
+        // Owned by a store so the model's work is cancelled before the worker stops.
+        val store = ViewModelStore()
+        try {
+            val trip = ViewModelProvider.create(store, viewModelFactory { initializer { tripAt(StepFree.ANY, worker) } })[TripViewModel::class]
+            trip.refresh()
+            val held = trip.state.first { it.routes != null && !it.planning }
+            // The trip keeps the route as the Planner gave it, ride and walk on: what's started and kept for reuse.
+            assertEquals(listOf(planned), held.routes)
+            ranOn.clear()
+            val shown = trip.shownRoutes(held, StepFree.ANY)
+            val caller = Thread.currentThread()
+            // Read under its lock: the worker may still be appending to it.
+            val seen = synchronized(ranOn) { ranOn.toList() }
+            assertTrue("$seen", seen.isNotEmpty() && seen.none { it === caller })
+            // Drawn cut at Hill East, the walk on gone.
+            val drawn = shown.state.routes.orEmpty().single()
+            val ride = drawn.legs.single()
+            assertEquals("940GZZLUHLE", ride.toId)
+            assertEquals("Hill East", ride.toName)
+            assertEquals(listOf("940GZZLUAAA", "940GZZLUHLE"), ride.path)
+            // Still arriving by hub, at that call.
+            val (_, end) = shown.ends.ends(drawn).single()
+            assertTrue("940GZZLUHLE" in end.offIds(ride))
+            // A Start of it starts the route as planned; it is that route by key.
+            assertTrue(shown.plannedOf(drawn) === planned)
+            assertEquals(routeKey(planned), routeKey(drawn))
+            // Nothing the trip holds moved.
+            assertEquals(listOf(planned), trip.state.value.routes)
+        } finally {
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
+        }
+        // The plan kept for reuse is the Planner's too.
+        assertEquals(listOf(planned), plans.get("A", listOf(TripDestination.Stop("940GZZLUHIL")), stepFree = StepFree.ANY)?.first)
+        // A step-free trip keeps the Planner's call: the hub's other calls aren't checked against today's lifts yet.
+        val stepFree = tripAt(StepFree.STATION)
+        stepFree.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(planned), stepFree.state.value.routes)
+        assertEquals(listOf(planned), stepFree.shownRoutes(stepFree.state.value, StepFree.STATION).state.routes)
     }
 
     @Test
@@ -4183,6 +4259,37 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertEquals(1, planner.calls)
         assertEquals(routeKey(route), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a cut later card's route opened before the page draws it is fetched on the first refresh`() = runTest(dispatcher) {
+        // The cap's worth of routes to Hill's tube station arriving sooner, and one boarding at Z that calls at Hill
+        // East first, another station of Hill's hub ([HillModel]), so its later card draws it cut there.
+        val sooner = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "940GZZLUHIL", 5, 10L + i))) }
+        val loop = TripRoute(
+            listOf(
+                leg("circle", "Z", "940GZZLUHIL", 5, 40).copy(
+                    path = listOf("940GZZLUAAA", "940GZZLUHLE", "940GZZLUBBB", "940GZZLUHIL"),
+                    pathNames = listOf("Aye", "Hill East", "Bee", "Hill"),
+                ),
+            ),
+        )
+        val drawn = RideEnds.cut(listOf(loop), StepFree.ANY, HillModel.toHill).single()
+        assertNotEquals(loop.legs, drawn.legs)
+        // Its card is keyed as the route as planned, however it's drawn.
+        val card = LaterTripViewModel.cardOf(drawn)
+        assertEquals(routeKey(loop), card.routeKey)
+        val client = FakeClient(mutableMapOf())
+        // Nothing has drawn the trip's routes ([TripViewModel.shownRoutes] never asked).
+        val trip = model(FakePlanner(sooner + loop), client, toIds = listOf("940GZZLUHIL"))
+        trip.openPlanned(card.routeKey)
+        advanceUntilIdle()
+        assertEquals(sooner + loop, trip.state.value.routes)
+        // Fetched past the cap on this first refresh, by its key.
+        assertTrue("${client.asked}", "Z" in client.asked)
+        // Open by that key, which the page draws cut.
+        assertEquals(card.routeKey, OpenRoute.parse(trip.openRoute.value)?.key)
+        assertEquals(drawn, OpenRoute.parse(trip.openRoute.value)?.routeIn(listOf(drawn)))
     }
 
     @Test
