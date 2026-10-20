@@ -514,6 +514,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   branch TfL shows for it (where the vehicle ends, never where you get off),
 - **a tube train re-timed to space out a bunched queue**: by the stop ID, line id, platform number,
   TfL's id for the train, and how many seconds later it's shown,
+- **a tube train marked held**, as one standing still while its time slides: by the stop ID, line id,
+  TfL's id for the train, and where TfL says the train is (e.g. "At Camden Town": where the
+  vehicle stands, never where you get off),
 - **what a trip's *Direct* section shows, when that changes**: each row by its line id and the
   stop ID it boards at, and why it says it couldn't check every line (by line id, or the stop IDs
   whose arrivals didn't come) — never the place or any stop near it,

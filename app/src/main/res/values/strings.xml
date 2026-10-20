@@ -522,11 +522,17 @@
     <string name="trip_train_checking_description">%1$s to %2$s, checking route</string>
     <!-- The same for a train predicted too soon behind another to both be there, shown grayed. -->
     <string name="trip_train_doubtful_description">%1$s to %2$s, may not be running</string>
+    <!-- TODO: translate -->
+    <!-- The same for a train standing still while its predicted time slides later, shown grayed. -->
+    <string name="trip_train_held_description" tools:ignore="MissingTranslation">%1$s to %2$s, held</string>
     <!-- One time in a countdown read aloud when some of its times leave before the rider can get
          there: minutes to the train, then whether it can be caught. Joined with ", ". -->
     <string name="countdown_time_description">%1$s min</string>
     <string name="countdown_time_unusable_description">%1$s min, can\'t catch</string>
     <string name="countdown_time_doubtful_description">%1$s min, may not be running</string>
+    <!-- TODO: translate -->
+    <!-- A train standing still while its predicted time slides later, shown grayed. -->
+    <string name="countdown_time_held_description" tools:ignore="MissingTranslation">%1$s min, held</string>
     <!-- A National Rail train its board lists as canceled, in a countdown in place of its minutes. -->
     <string name="countdown_canceled">Canceled</string>
     <!-- A National Rail train its board lists as delayed with no estimate, in a countdown in place of

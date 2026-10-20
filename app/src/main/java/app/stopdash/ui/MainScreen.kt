@@ -6881,7 +6881,7 @@ internal fun CountdownLabel(
     val early = grayBefore?.let { ready ->
         entries.map { (it as? Countdown.Entry.Timed)?.departure?.expectedArrival?.isBefore(ready) == true }
     }
-    // A train that may not run is grayed too ([DoubtfulTrains]).
+    // A train that may not run is grayed too ([DoubtfulTrains]), and one held ([HeldTrains]).
     val grayed = entries.map { (it as? Countdown.Entry.Timed)?.departure?.grayed == true }
     // Each entry's own text, the "min" unit written once after the last number, as
     // [Countdown.mergedLabel] writes them.
@@ -6892,7 +6892,7 @@ internal fun CountdownLabel(
             is Countdown.Entry.Untimed -> if (entry.train.canceled) canceled else delayed
         }
     }
-    // Gray alone doesn't reach a screen reader: each time too soon to catch, or that may not run, says
+    // Gray alone doesn't reach a screen reader: each time too soon to catch, that may not run, or held, says
     // so, as a trip's list card says it of its trains.
     val spoken = if (stale || ((early == null || early.none { it }) && grayed.none { it } && untimed.isEmpty())) null
     else spokenCountdown(entries, now, early)
@@ -6927,7 +6927,8 @@ internal fun CountdownLabel(
 }
 
 /**
- * A countdown's [parts] as "3 · 5 min", the time of a train that may not run grayed ([DoubtfulTrains]),
+ * A countdown's [parts] as "3 · 5 min", the time of a train that may not run ([DoubtfulTrains]) or is held
+ * ([HeldTrains]) grayed,
  * with what a screen reader says of it when one is grayed (null otherwise, so the text is read as it is).
  */
 @Composable
@@ -6935,8 +6936,9 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
     val gray = MaterialTheme.colorScheme.outline
     val plain = stringResource(R.string.countdown_time_description)
     val doubtful = stringResource(R.string.countdown_time_doubtful_description)
+    val held = stringResource(R.string.countdown_time_held_description)
     // Built once per change of the times, not on every recomposition.
-    return remember(parts, gray, plain, doubtful) {
+    return remember(parts, gray, plain, doubtful, held) {
         val text = buildAnnotatedString {
             parts.forEachIndexed { i, part ->
                 if (i > 0) append(" · ")
@@ -6945,7 +6947,9 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
             if (parts.isNotEmpty()) append(" min")
         }
         val spoken = if (parts.none { it.grayed }) null
-        else parts.joinToString(", ") { (if (it.doubtful) doubtful else plain).format(it.minutes.toString()) }
+        else parts.joinToString(", ") {
+            (if (it.doubtful) doubtful else if (it.held) held else plain).format(it.minutes.toString())
+        }
         text to spoken
     }
 }
@@ -6963,6 +6967,7 @@ internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early
                 when {
                     early?.getOrNull(i) == true -> R.string.countdown_time_unusable_description
                     entry.departure.mayNotRun -> R.string.countdown_time_doubtful_description
+                    entry.departure.held -> R.string.countdown_time_held_description
                     else -> R.string.countdown_time_description
                 },
                 Countdown.minutes(entry.departure.expectedArrival, now).toString(),

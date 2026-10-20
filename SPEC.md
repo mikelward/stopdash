@@ -735,6 +735,20 @@ listings are grayed and read as maybe not running, however far out. As with the 
 trip on either line follows another train first. These listings are left out of the close-pair rule
 above, so a train next to one isn't grayed because of it. Each is noted in the debug log as on two lines.
 
+**A held tube train is grayed, its time kept** (maintainer, 2026-10-20). Gray means a time stopdash
+doesn't believe and has no good correction for. When a train is held (regulated at a platform, or
+stopped short of one for the train ahead), TfL goes on timing it as if it were moving: its time slides
+later answer after answer while TfL places it in the same spot. A tube train is **held** once TfL has
+placed it at the same location for **two minutes** and its time has slid later at **half the clock's
+pace or more** over that time, while it is still a minute or more away. In a two-hour recording of
+every line at seven stations, the times this marks came a median six and a half minutes after the time
+shown, against about a minute for the rest, and were too spread to correct
+(`dev-docs/arrivals-measurements.md`). A train standing still whose time still counts down
+isn't marked. It's read aloud as held ("3 min, held"); unlike a train that may not run, a trip still
+counts on it. Only TfL's own prediction times are compared, so an older cache copy moves nothing.
+The widget and watch show these times as usual. Each one marked is noted in the debug log with where
+TfL had it.
+
 **Bunched tube trains are spaced out** (maintainer, 2026-10-13). TfL
 times each train as if the line ahead were clear, so a queue reads as due within a minute of each
 other (0 · 0 · 1 · 2 · 2 min) when the trains come about two minutes apart. Each train of a line at one
