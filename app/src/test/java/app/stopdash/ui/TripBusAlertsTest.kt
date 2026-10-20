@@ -96,7 +96,7 @@ class TripBusAlertsTest {
         val near = leg("n1", "n3")
         val planned = LegEnd.planned(near, StepFree.DEFAULT)
         // Its last ride's call is in the destination's hub ([LegEnd.of]): it gets off anywhere in it.
-        val hub = LegEnd.of(app.stopdash.domain.TripRoute(listOf(near)), StepFree.DEFAULT, setOf("N3")).single().second
+        val hub = LegEnd.of(app.stopdash.domain.TripRoute(listOf(near)), StepFree.DEFAULT, setOf("N3"), hubs = null).single().second
         assertEquals(LegEnd.Level.HUB, hub.level)
         val byPlanned = TripViewModel.State(statuses = mapOf("99" to diversion)).let {
             it.copy(legStatuses = legStatuses(it.statuses, listOf(near to planned), mapOf("99" to route)))

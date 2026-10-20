@@ -116,8 +116,9 @@ class Hubs private constructor(
     }
 
     /**
-     * [id] as the model places it ([Resolved]): its station (or bus stop) and hub, worked out once where
-     * the id enters the app. A stop area the bundle split ([Membership.Split]) is placed through what
+     * [id] as the model places it ([Resolved]): its station (or bus stop) and hub, worked out when a
+     * check that reads it runs, from the raw id its feed kept (dev-docs/station-resolution.md, *Where
+     * it's resolved*). A stop area the bundle split ([Membership.Split]) is placed through what
      * came with it: the [pole] the feed names with it, else the child stop nearest [near]; with
      * neither, its station and hub are null, and [Resolved.stops] and [Resolved.hubs] hold every child's,
      * [Resolved.poles] the area's own. An id the bundle doesn't hold is its own station and hub.
@@ -411,7 +412,7 @@ class Hubs private constructor(
     }
 
     /**
-     * The destination's matchable hubs (dev-docs/station-resolution.md, *Where it's built*): the hubs a
+     * The destination's matchable hubs (dev-docs/station-resolution.md, *Where it's resolved*): the hubs a
      * trip's last ride may get off in, at its first call in one of them. For [id] ([name]) picked at
      * [level], or as a pick saved without one reads ([picked]):
      * - a station, stop or interchange the model places: its one hub;

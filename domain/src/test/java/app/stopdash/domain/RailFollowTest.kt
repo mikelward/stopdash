@@ -119,24 +119,9 @@ class RailFollowTest {
         assertEquals("", RailFollow.calls(run("STP"), "STP", { emptySet() })!!.first().stopId)
         // One TfL lists under several ids (St Pancras's three) names none of them, and is at each.
         val stPancras = setOf("910GSTPX", "910GSTPXBOX", "910GSTPADOM")
-        val there = RailFollow.calls(run("STP"), "STP", stopIdsFor = { if (it == "STP") stPancras else idsOf(it) })!!.first()
+        val there = RailFollow.calls(run("STP"), "STP") { if (it == "STP") stPancras else idsOf(it) }!!.first()
         assertEquals("", there.stopId)
         assertEquals(stPancras, there.stationIds)
-    }
-
-    @Test
-    fun `each call's station is placed by the model where it comes in, none without one`() {
-        val stPancras = setOf("910GSTPX", "910GSTPXBOX", "910GSTPADOM")
-        val ids: (String) -> Set<String> = { if (it == "STP") stPancras else idsOf(it) }
-        val placed = RailFollow.calls(run("STP"), "STP", ids) { records -> Resolved(null, "station:" + records.min(), "HUBKGX", poles = records) }!!
-        // St Pancras's three records, as one placed station with all three kept.
-        assertEquals("station:910GSTPADOM", placed.first().place?.station)
-        assertEquals(stPancras, placed.first().place?.poles)
-        assertEquals("station:910GFRNDNLT", placed[1].place?.station)
-        // A station with no TfL id has nothing to place.
-        assertNull(RailFollow.calls(run("STP"), "STP", { emptySet() }) { Resolved(null, "x", "x") }!!.first().place)
-        // Without a model, unplaced.
-        assertTrue(RailFollow.calls(run("STP"), "STP", ids)!!.all { it.place == null })
     }
 
     @Test

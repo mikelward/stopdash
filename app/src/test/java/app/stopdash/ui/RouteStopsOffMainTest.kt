@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithText
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
-import app.stopdash.domain.Resolved
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteSequenceSource
@@ -104,38 +103,6 @@ class RouteStopsOffMainTest {
         assertEquals(listOf("s1", "s2", "s3"), (state as RouteStopsUi.Loaded).stops.map { it.id })
         val loadedOn = threads.threads()
         assertTrue("loaded on $loadedOn", loadedOn.isNotEmpty() && loadedOn.all { it.startsWith("test-worker") })
-    }
-
-    @Test
-    fun aLegsEnd_isWorkedOutOnTheWorker() {
-        val threads = ThreadRecorder()
-        val departs = Instant.parse("2026-09-18T08:05:00Z")
-        // Public names, synthetic ids. Where the leg gets off ([LegEnd.planned]) reads the Planner's call from the
-        // leg's places, so each read notes the thread it ran on; composition hashes the leg but never reads them.
-        val leg = TripLeg(
-            "tube", "victoria", "Victoria", "s1", "Victoria", "s3", "Walthamstow Central",
-            departs, departs.plusSeconds(600), path = listOf("s2", "s3"), headings = listOf("Walthamstow Central"),
-            placed = NotedReads(mapOf("s3" to Resolved.exact("s3")), threads),
-        )
-        var state: RouteStopsUi = RouteStopsUi.Hidden
-        composeRule.setContent {
-            CompositionLocalProvider(LocalRouteStops provides victoriaLine(), LocalWorker provides worker) {
-                state = rememberLegRouteStops(leg, StepFree.ANY, retry = 0)
-            }
-        }
-        composeRule.waitUntil(timeoutMillis = 5_000) { state !is RouteStopsUi.Loading }
-
-        assertTrue("$state", state is RouteStopsUi.Loaded)
-        val readOn = threads.threads()
-        assertTrue("read on $readOn", readOn.isNotEmpty() && readOn.all { it.startsWith("test-worker") })
-    }
-
-    /** [base], noting on [threads] the thread each lookup runs on. */
-    private class NotedReads(private val base: Map<String, Resolved>, private val threads: ThreadRecorder) : Map<String, Resolved> by base {
-        override fun get(key: String): Resolved? {
-            threads.note()
-            return base[key]
-        }
     }
 
     @Test

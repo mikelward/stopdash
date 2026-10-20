@@ -6182,8 +6182,6 @@ class MainActivity : ComponentActivity() {
                 stationIndex = { StationIndexStore.load(context.applicationContext) },
                 // National Rail's words where TfL's status is only a link to its page (SPEC *National Rail*).
                 proxyUrl = { BuildConfig.PROXY_URL },
-                // Each train's terminus placed by the station model as the board comes in.
-                hubs = HubsStore::ready,
             ),
             rail = railBoards(context),
             codes = { RailStationCodesStore.load(context.applicationContext) },
@@ -6201,8 +6199,6 @@ class MainActivity : ComponentActivity() {
             warn = ::logDepartureWarning,
             stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
             stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
-            // Each train's calling points placed by the station model as the board comes in.
-            hubs = HubsStore::ready,
             // Without a key of the rider's own, the boards come through stopdash's proxy. A board asked for
             // before the saved key, if any, is read back waits for it, so it goes the right way.
             proxyUrl = { StopdashProxy.url },
@@ -6316,8 +6312,6 @@ class MainActivity : ComponentActivity() {
                 // A train the Planner names by its platform alone leaves from the station the
                 // bundled index lists that platform under.
                 stationOf = { StationIndexStore.load(context.applicationContext).stationOf(it) },
-                // Each planned leg's stops placed by the station model as the answer comes in.
-                hubs = HubsStore::ready,
                 // A trip's boards read a terminus's arriving trains as the departures they become,
                 // as the main screen does ([Turnback]), so a trip can take the train it shows.
                 stationIndex = { StationIndexStore.load(context.applicationContext) },
@@ -6347,9 +6341,6 @@ class MainActivity : ComponentActivity() {
                     },
                     load = store::load,
                     save = store::save,
-                    // Its planner legs placed by the station model, as a trip just planned is.
-                    hubs = HubsStore::ready,
-                    currentHubs = HubsStore::current,
                     // TfL alone for a TfL ride, so a Darwin board spends none of the rail key's quota there; a
                     // National Rail ride's with its station's board, as the trip's cards read it, calling points
                     // and all.
@@ -6363,8 +6354,6 @@ class MainActivity : ComponentActivity() {
                         tfl = planner,
                         runs = railBoards(context.applicationContext)::runs,
                         stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
-                        // Each call's station placed by the station model as the calls come in.
-                        hubs = HubsStore::ready,
                         warn = ::logDepartureWarning,
                     ),
                     stationPlaces = planner::stationPlaces,

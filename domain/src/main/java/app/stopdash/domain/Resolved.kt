@@ -1,12 +1,14 @@
 package app.stopdash.domain
 
 /**
- * A TfL id with its places in the station model, resolved once where it entered the app
- * (dev-docs/station-resolution.md). Compare [station] or [hub], chosen per question; [tflId] is for
- * what TfL itself needs: requests, predictions and closures.
+ * A TfL id with its places in the station model, resolved when a check that reads it runs, from the
+ * raw id its feed kept; never stored on a feed (dev-docs/station-resolution.md, *Where it's
+ * resolved*). Compare [station] or [hub], chosen per question; [tflId] is for what TfL itself needs:
+ * requests, predictions and closures.
  *
  * Built by [Hubs.resolve] (one id) or [Hubs.resolveAll] (a call naming several records), or [exact]
- * where there's no model. Not read by any feature yet: phase 2 points arriving at it.
+ * where there's no model. Read by a ride's end ([LegEnd.of]), itself not read by any feature yet:
+ * phase 2 points arriving at it.
  */
 data class Resolved(
     /** As TfL gave it; null for a call naming several records, which names no one id. */

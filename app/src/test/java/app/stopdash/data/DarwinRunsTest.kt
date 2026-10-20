@@ -80,9 +80,9 @@ class DarwinRunsTest {
         assertEquals(listOf("ZFD", "CTK"), run.next.map { it.crs })
         assertTrue(run.throughTerminus)
         // So its calls are every one it has left: a stop past City Thameslink is one it won't call at.
-        assertEquals(listOf(false, false, true), RailFollow.calls(run, "STP", stopIdsFor = { emptySet() })!!.map { it.endsRun })
+        assertEquals(listOf(false, false, true), RailFollow.calls(run, "STP") { emptySet() }!!.map { it.endsRun })
         // Running through, "Delayed" at Gatwick leaves what's past it unknown: none ends its run.
-        assertTrue(RailFollow.calls(board().toRuns().first(), "STP", stopIdsFor = { emptySet() })!!.none { it.endsRun })
+        assertTrue(RailFollow.calls(board().toRuns().first(), "STP") { emptySet() }!!.none { it.endsRun })
         // Canceled here with no stops after given, where it ends isn't known.
         val bare = first.copy(isCancelled = true, etd = "Cancelled", subsequentCallingPoints = null)
         assertEquals(false, dto.copy(trainServices = listOf(bare)).toRuns().single().throughTerminus)
@@ -158,7 +158,7 @@ class DarwinRunsTest {
         val short = dto.copy(trainServices = listOf(cut)).toRuns().single()
         assertEquals(listOf("CTK"), short.next.map { it.crs })
         assertEquals(false, short.throughTerminus)
-        assertTrue(RailFollow.calls(short, "STP", stopIdsFor = { emptySet() })!!.none { it.endsRun })
+        assertTrue(RailFollow.calls(short, "STP") { emptySet() }!!.none { it.endsRun })
         // ...or with St Albans, which it hasn't left, "???" before the board.
         val held = cut.copy(
             subsequentCallingPoints = first.subsequentCallingPoints!!.map { list ->
@@ -170,7 +170,7 @@ class DarwinRunsTest {
         )
         val before = dto.copy(trainServices = listOf(held)).toRuns().single()
         assertEquals(false, before.throughTerminus)
-        assertTrue(RailFollow.calls(before, "BDM", stopIdsFor = { emptySet() })!!.none { it.endsRun })
+        assertTrue(RailFollow.calls(before, "BDM") { emptySet() }!!.none { it.endsRun })
         // One it was canceled at is no call to give: the run still ends where its calls do.
         val canceled = cut.copy(
             subsequentCallingPoints = first.subsequentCallingPoints!!.map { list ->
@@ -259,7 +259,7 @@ class DarwinRunsTest {
         assertEquals(RailPoint("SAC", "St Albans City", bst("16:52"), bst("16:58"), left = false), run.previous[2])
         // Gone from Luton with no time reported there: gone all the same.
         assertEquals(RailPoint("LUT", "Luton", bst("16:38"), null, left = true), run.previous[1])
-        assertEquals(listOf("SAC", "STP"), RailFollow.calls(run, "LUT", stopIdsFor = { setOf(it) })!!.take(2).map { it.stopId })
+        assertEquals(listOf("SAC", "STP"), RailFollow.calls(run, "LUT") { setOf(it) }!!.take(2).map { it.stopId })
     }
 
     @Test
@@ -282,7 +282,7 @@ class DarwinRunsTest {
         assertEquals(listOf("BDM", "LUT", "SAC"), run.previous.map { it.crs })
         assertEquals(listOf(listOf(RailPoint("HPD", "Harpenden", bst("16:45"), bst("16:46")))), run.joining)
         // Picked on the joining portion, its calls are that portion's, then the first one's on, never Luton.
-        assertEquals(listOf("HPD", "SAC", "STP"), RailFollow.calls(run, "HPD", stopIdsFor = { setOf(it) })!!.take(3).map { it.stopId })
+        assertEquals(listOf("HPD", "SAC", "STP"), RailFollow.calls(run, "HPD") { setOf(it) }!!.take(3).map { it.stopId })
     }
 
     @Test

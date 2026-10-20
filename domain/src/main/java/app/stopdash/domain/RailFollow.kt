@@ -112,21 +112,15 @@ object RailFollow {
      * station with none is matched by its name.
      */
     @WorkerThread
-    fun calls(
-        run: RailRun,
-        fromCrs: String,
-        stopIdsFor: (String) -> Set<String>,
-        // Each call's station as the model places its records ([VehicleCall.place]); null without one.
-        placeFor: (Set<String>) -> Resolved? = { null },
-    ): List<VehicleCall>? {
+    fun calls(run: RailRun, fromCrs: String, stopIdsFor: (String) -> Set<String>): List<VehicleCall>? {
         val before = notLeft(run, fromCrs)
         if (before.any { it.expected == null }) return null
         val here = if (run.canceled && run.atCrs != fromCrs) {
             emptyList()
         } else {
-            listOf(callAt(run.atCrs, run.atName, run.platform, run.expected ?: return null, stopIdsFor, placeFor))
+            listOf(callAt(run.atCrs, run.atName, run.platform, run.expected ?: return null, stopIdsFor))
         }
-        val calls = before.map { callAt(it.crs, it.name, null, it.expected!!, stopIdsFor, placeFor) } + here + ahead(run.next, stopIdsFor, placeFor)
+        val calls = before.map { callAt(it.crs, it.name, null, it.expected!!, stopIdsFor) } + here + ahead(run.next, stopIdsFor)
         val all = run.throughTerminus && run.next.all { it.expected != null }
         // None left, an empty list carries no mark: every stop on canceled, its run ended before here, it's empty;
         // with what's past here unknown, nothing is known (Codex, #883).
@@ -154,22 +148,15 @@ object RailFollow {
     }
 
     // [points]' calls up to the first without an estimate.
-    private fun ahead(points: List<RailPoint>, stopIdsFor: (String) -> Set<String>, placeFor: (Set<String>) -> Resolved?): List<VehicleCall> =
-        points.takeWhile { it.expected != null }.map { callAt(it.crs, it.name, null, it.expected!!, stopIdsFor, placeFor) }
+    private fun ahead(points: List<RailPoint>, stopIdsFor: (String) -> Set<String>): List<VehicleCall> =
+        points.takeWhile { it.expected != null }.map { callAt(it.crs, it.name, null, it.expected!!, stopIdsFor) }
 
     // A call at the station with [crs], by its one TfL id where it has one, and by every id it has
     // ([VehicleCall.stationIds]): St Pancras's three are one station to a train, whichever of them the
     // trip's stop is named by.
-    private fun callAt(
-        crs: String,
-        name: String,
-        platform: String?,
-        at: Instant,
-        stopIdsFor: (String) -> Set<String>,
-        placeFor: (Set<String>) -> Resolved?,
-    ): VehicleCall {
+    private fun callAt(crs: String, name: String, platform: String?, at: Instant, stopIdsFor: (String) -> Set<String>): VehicleCall {
         val ids = stopIdsFor(crs)
-        return VehicleCall(ids.singleOrNull().orEmpty(), name, platform, at, ids, place = ids.takeIf { it.isNotEmpty() }?.let(placeFor))
+        return VehicleCall(ids.singleOrNull().orEmpty(), name, platform, at, ids)
     }
 
     /**
@@ -244,9 +231,6 @@ class RailVehicles(
     private val runs: suspend (String, String, Int) -> RailRuns?,
     // Every TfL stop id of a station code, as a trip names its stops.
     private val stopIdsFor: (String) -> Set<String>,
-    // The station model, placing each call's station as the calls come in ([VehicleCall.place]); null while
-    // none has loaded, the calls then unplaced. Asked once per lookup.
-    private val hubs: suspend () -> Hubs? = { null },
     private val clock: () -> Instant = Instant::now,
     // Coarse facts only: a station code and an error kind, never where the rider gets off.
     private val warn: (String) -> Unit = {},
@@ -308,8 +292,7 @@ class RailVehicles(
             // Listed with no time here: canceled where it was picked, so not one to board there, as TfL says of a
             // train it no longer knows; or "Delayed", here or at a stop it hasn't left before, nothing known, a
             // failed update. Canceled at a station further on, it calls on past it ([RailFollow.calls], Codex, #883).
-            val model = hubs()
-            val calls = RailFollow.calls(found, key.fromCrs, stopIdsFor) { ids -> model?.resolveAll(ids) } ?: run {
+            val calls = RailFollow.calls(found, key.fromCrs, stopIdsFor) ?: run {
                 if (found.canceled && found.atCrs == key.fromCrs) throw TflException.NotFound(null)
                 throw TflException.Unreachable("no estimate on its way to ${found.atCrs}", null)
             }

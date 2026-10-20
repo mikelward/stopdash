@@ -1,7 +1,5 @@
 package app.stopdash.data
 
-import app.stopdash.domain.BundledStops
-import app.stopdash.domain.Hubs
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -13,12 +11,10 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.ByteReadChannel
-import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,12 +23,7 @@ import org.junit.Test
 class VehicleCallsTest {
     private val fixture = checkNotNull(javaClass.getResource("/fixtures/vehicle_arrivals_jubilee.json")).readText()
 
-    private fun client(
-        body: String,
-        status: HttpStatusCode = HttpStatusCode.OK,
-        capture: (HttpRequestData) -> Unit = {},
-        hubs: Hubs? = null,
-    ): KtorTflClient {
+    private fun client(body: String, status: HttpStatusCode = HttpStatusCode.OK, capture: (HttpRequestData) -> Unit = {}): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
             respond(ByteReadChannel(body), status, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -41,7 +32,7 @@ class VehicleCallsTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" }, hubs = { hubs })
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" })
     }
 
     @Test
@@ -63,21 +54,6 @@ class VehicleCallsTest {
         // isn't the train's last stop.
         assertEquals("Kilburn", calls.last().stopName)
         assertTrue(calls.zipWithNext().all { (a, b) -> !b.expected.isBefore(a.expected) })
-    }
-
-    @Test
-    fun `each call's stop is placed by the station model as the calls come in`() = runTest {
-        val dir = listOf(File("src/main/assets/stations"), File("app/src/main/assets/stations")).first { it.exists() }
-        val model = checkNotNull(
-            Hubs.of(StationIndexStore.parse(File(dir, "station_index.json").readText()), File(dir, "stops.tsv").bufferedReader().use { BundledStops.read(it) }),
-        )
-        val calls = client(fixture, hubs = model).vehicleCalls("162", "jubilee")
-        assertTrue(calls.all { it.place == model.resolve(it.stopId) })
-        // Canada Water's tube station, in its hub.
-        assertNotNull(calls.first().place?.station)
-        assertNotNull(calls.first().place?.hub)
-        // No model: unplaced.
-        assertTrue(client(fixture).vehicleCalls("162", "jubilee").all { it.place == null })
     }
 
     @Test
