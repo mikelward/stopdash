@@ -940,7 +940,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                 - [x] A destination's matchable hubs (`Hubs.destinationHubs`),
                                       unread.
                                 - [ ] Arriving by hub at the first call, every ride-end path taking
-                                      a `LegEnd`.
+                                      a `LegEnd`, in at the bottom one family at a time, each unread
+                                      and ending where the Planner does (`LegEnd.planned`) until the
+                                      last lands (see *Decisions needing review*):
+                                    - [x] A ride's stop list (`RouteStops.forLeg`, `withRouteStops`):
+                                          the trip screen's line page and on the way's stop list.
+                                    - [ ] `RideLines` (`runTo`, `polesToRead`, `of`, `through`,
+                                          `throughWays`), `of` keyed on the pair.
+                                    - [ ] `DirectTrips.judge` and `TripVerdicts`, keyed on the pair.
+                                    - [ ] The favorite alerts' disruption span
+                                          (`JourneyAlerts.ridesOn`, `ridesOf`).
+                                    - [ ] Reading the end: the first call in the destination's hubs.
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
@@ -4913,6 +4923,15 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
+  (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path
+  at once, so no path is missed; that is too big for one PR, so each family takes its `LegEnd` in
+  its own PR (`RouteStops.forLeg` and `withRouteStops` first, the smallest, with two callers), every
+  caller supplying the Planner's call (`LegEnd.planned`), and none reads it until the last family
+  has it, so no path ends by hub while another still ends by the Planner. A line page or stop list
+  without a trip level asks none (`StepFree.DEFAULT`): the trip screen passes its setting, on the
+  way its trip's, an older trip's unknown read as none. Alternative: every family in one PR, or
+  each family reading its end as it lands. Reversible: nothing reads the end yet.
 - [ ] **Nearby, place and journey-end stops aren't stamped with their places** (autopilot,
   2026-10-20). They come through five lookup paths (`OnDeviceStopFinder`, `CachingStopFinder`,
   `PlaceStopsFinder`, `JourneyEndStops`, the station-area cache), the shape that drew four findings

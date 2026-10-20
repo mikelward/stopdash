@@ -143,6 +143,7 @@ import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyAlerts
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.AlertStart
 import app.stopdash.domain.AroundDelays
@@ -1593,7 +1594,7 @@ private fun TripContent(
                 { planned -> dismiss(detailRow.copy(status = null, stopDisruption = null, plannedAlerts = listOf(planned))) }
             },
             loadRouteStops = if (detailRow.upcoming.isEmpty()) {
-                detailLeg?.let { leg -> { retry: Int -> rememberLegRouteStops(leg, retry) } }
+                detailLeg?.let { leg -> { retry: Int -> rememberLegRouteStops(leg, stepFree, retry) } }
             } else {
                 null
             },
@@ -4962,12 +4963,13 @@ internal fun legRows(
 
 /**
  * A leg's stops on its line ([fetched]) for a page with no train to follow ([RouteStops.forLeg]),
- * from the pole its bus uses ([onPoles]) where the Planner named the other side of the road.
+ * from the pole its bus uses ([onPoles]) where the Planner named the other side of the road, to
+ * where it gets off ([end]).
  */
-internal fun legStops(planned: TripLeg, fetched: LineSequence): RouteStopsUi {
+internal fun legStops(planned: TripLeg, end: LegEnd, fetched: LineSequence): RouteStopsUi {
     val leg = onPoles(planned, mapOf(planned.lineId to fetched))
     val sequence = fetched.callingAt(leg.fromId)
-    return when (val resolution = RouteStops.forLeg(sequence, leg)) {
+    return when (val resolution = RouteStops.forLeg(sequence, leg, end)) {
         is RouteStops.Resolution.Found -> RouteStopsUi.Loaded(
             resolution.stops,
             resolution.stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
@@ -4978,20 +4980,21 @@ internal fun legStops(planned: TripLeg, fetched: LineSequence): RouteStopsUi {
 }
 
 /**
- * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops], loaded and matched off the
- * main thread ([LocalWorker]); a failed load says why and loads again on [retry], as a row's stop
- * list does ([rememberRouteStops]).
+ * [leg]'s stops to where it gets off at [stepFree] ([LegEnd.planned], [legStops]) from the line's route in
+ * [LocalRouteStops], loaded and matched off the main thread ([LocalWorker]), its end worked out there too,
+ * so composition only reads and dispatches; a failed load says why and loads again on [retry], as a row's
+ * stop list does ([rememberRouteStops]).
  */
 @Composable
-internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
+internal fun rememberLegRouteStops(leg: TripLeg, stepFree: StepFree, retry: Int): RouteStopsUi {
     val repository = LocalRouteStops.current ?: return RouteStopsUi.Hidden
     val worker = LocalWorker.current
-    return key(repository, leg, worker) {
+    return key(repository, leg, stepFree, worker) {
         val state by produceState<RouteStopsUi>(RouteStopsUi.Loading, retry) {
             if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
             value = RouteStopsUi.Loading
             value = try {
-                withContext(worker) { legStops(leg, repository.load(leg.lineId, "")) }
+                withContext(worker) { legStops(leg, LegEnd.planned(leg, stepFree), repository.load(leg.lineId, "")) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {

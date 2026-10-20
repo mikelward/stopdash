@@ -652,9 +652,15 @@ object RouteStops {
      * gets off. [boarding] is already [LineSequence.callingAt] the boarding stop; where it gets off
      * keeps the id the route calls at, the station's other id matched below, so the list ends where the
      * train calls (its arrival is predicted there).
+     *
+     * [end] is where the ride gets off ([LegEnd]): every caller supplies one, so none can be missed when
+     * arriving by hub moves the ride's end onto it (dev-docs/station-resolution.md, phase 2). Not read
+     * yet: the list still ends where the Planner's [TripLeg.toId] is, which is what every caller's end
+     * ([LegEnd.planned]) names today.
      */
+    @Suppress("UNUSED_PARAMETER")
     @WorkerThread
-    fun forLeg(boarding: LineSequence, leg: TripLeg): Resolution {
+    fun forLeg(boarding: LineSequence, leg: TripLeg, end: LegEnd): Resolution {
         val sequence = boarding
         fun exactly(id: String) = id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
         // Failing that id on every way from the boarding stop, another id of its station ([LineSequence.sameStationId]):
