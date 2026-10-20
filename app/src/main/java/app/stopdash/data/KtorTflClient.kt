@@ -150,9 +150,9 @@ class KtorTflClient(
     // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
     // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
     private val stationOf: (String) -> String? = { null },
-    // The station model, for placing each planned leg's stops where the Planner's answer enters the app
-    // ([Hubs.place]); waited for as [HubsStore.ready] does. None by default (tests, the other clients): the
-    // legs go unplaced.
+    // The station model, for placing each planned leg's stops and each followed vehicle's calls where the
+    // answer enters the app ([Hubs.place], [VehicleCall.place]); waited for as [HubsStore.ready] does. None by
+    // default (tests, the other clients): they go unplaced.
     private val hubs: suspend () -> Hubs? = { null },
     // The bundled station index, for the far ends of each line a stop is the terminus of
     // ([StationIndex.terminusEnds]), so a train TfL lists there as arriving is relabeled as the
@@ -647,8 +647,8 @@ class KtorTflClient(
         return result.departures
     }
 
-    override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> =
-        tflRequest { key ->
+    override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> {
+        val calls = tflRequest { key ->
             httpClient.get("$baseUrl/Vehicle/${vehicleId.encodeURLPathPart()}/Arrivals") {
                 applyAppKey(key)
             }.body<List<TflArrivalDto>>()
@@ -656,6 +656,12 @@ class KtorTflClient(
                 .map { it.toVehicleCall() }
                 .sortedBy { it.expected }
         }
+        // Each call's stop placed by the station model ([VehicleCall.place]), waited for out of the request's
+        // slot as a plan's legs are ([placed]); none to place, nothing waits.
+        if (calls.isEmpty()) return calls
+        val model = hubs() ?: return calls
+        return withContext(decodeDispatcher) { calls.map { it.copy(place = model.resolve(it.stopId)) } }
+    }
 
     override suspend fun nearbyStops(
         latitude: Double,

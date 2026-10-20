@@ -44,17 +44,23 @@ interface RailBoardSource {
  * Where one portion of a National Rail train stops after its board's station, as TfL stop ids
  * ([RailStationCodes.stopIdsFor]); [complete] when every one of them had an id, so a station missing
  * from [stops] is one it doesn't stop at, not one that couldn't be named.
+ *
+ * [calls] is the same stops in Darwin's calling order, each placed by the station model where the board
+ * came in ([Hubs.resolveAll] over its station's records, which its [Resolved.poles] keep): null for a
+ * stop whose code names no TfL record, kept in its place so what comes before a call is known, every
+ * one of them where none had a record. Empty where there was no model.
  */
-data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
+data class CallingPortion(val stops: Set<String>, val complete: Boolean, val calls: List<Resolved?> = emptyList()) {
     // Worked out once, where the portion is built (off the main thread): a train is a map key on the trip
     // page's render path ([app.stopdash.domain.Departure]'s hash takes in its portions), and a set's own
     // hash walks every stop each time it's asked (Codex, #650). Equal portions still hash alike.
-    private val hash = 31 * stops.hashCode() + complete.hashCode()
+    private val hash = 31 * (31 * stops.hashCode() + complete.hashCode()) + calls.hashCode()
 
     override fun hashCode(): Int = hash
 
     override fun equals(other: Any?): Boolean =
-        this === other || other is CallingPortion && hash == other.hash && complete == other.complete && stops == other.stops
+        this === other || other is CallingPortion && hash == other.hash && complete == other.complete && stops == other.stops &&
+            calls == other.calls
 }
 
 /**

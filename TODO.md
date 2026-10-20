@@ -907,7 +907,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                             - [x] Planner legs placed where they come in (`Hubs.place`,
                                   `TripLeg.placed`): the Planner's answer, and an active trip restored
                                   or started, placed again by a refresh once the model loads. Unread.
-                            - [ ] Vehicle calls and National Rail calling points (an ordered list).
+                            - [x] Vehicle calls and National Rail calling points placed where they
+                                  come in (`VehicleCall.place`; `CallingPortion.calls`, in calling
+                                  order, a stop with no record kept in its place). Unread.
                             - [ ] An arrival's destination and nearby, place and journey-end stops.
                             - [ ] The ends (`LegEnd`), step-free, and arriving by hub.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on

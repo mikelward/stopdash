@@ -11,6 +11,9 @@ import java.time.Instant
  * [endsRun] marks the train's last call where it's known to be: no call follows, so a stop missing from
  * the calls before it is one the train won't call at (a National Rail train's, whose board gives its
  * stops through where it now ends, Codex, #883). Never for TfL's, a prediction window.
+ * [place] is the call's stop as the station model placed it where the call came in ([Hubs.resolve], or
+ * [Hubs.resolveAll] for a National Rail call's [stationIds]); null where there was no model, the call
+ * then only its own ids.
  */
 data class VehicleCall(
     val stopId: String,
@@ -19,6 +22,7 @@ data class VehicleCall(
     val expected: Instant,
     val stationIds: Set<String> = emptySet(),
     val endsRun: Boolean = false,
+    val place: Resolved? = null,
 )
 
 /**
