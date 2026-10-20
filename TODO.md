@@ -903,6 +903,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                           above.
                         - [x] Phase 1: `Resolved`, `Hubs.resolve` and `resolveAll`, and route
                               sequences carrying each stop resolved (`LineSequence.resolved`), unread.
+                        - [ ] Phase 2, in PRs (see *Decisions needing review*):
+                            - [x] Planner legs placed where they come in (`Hubs.place`,
+                                  `TripLeg.placed`): the Planner's answer, and an active trip restored
+                                  or started, placed again by a refresh once the model loads. Unread.
+                            - [ ] Vehicle calls and National Rail calling points (an ordered list).
+                            - [ ] An arrival's destination and nearby, place and journey-end stops.
+                            - [ ] The ends (`LegEnd`), step-free, and arriving by hub.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
@@ -4837,6 +4844,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **Phase 2 of the station resolution lands in several PRs, the feeds first, and a planner leg keeps
+  its places by id** (autopilot, 2026-10-20). The design's phase 2 is one step; it's split so each PR
+  stays reviewable: the feeds it reads placed first, unread (planner legs, then vehicle calls and
+  National Rail boards, then arrivals' destination and stop lookups), then the ends and the switch. A
+  leg's places are a map from each id it names to its `Resolved` (`TripLeg.placed`), not a field per end,
+  so a copy that moves an end to another id (a bus's other pole) can't carry the old end's place; an id
+  it wasn't placed with reads as only itself. Alternatives: one phase-2 PR; a `Resolved` field per end.
+  Reversible: unread until the switch.
 - [ ] **A detour is cut at the destination hub, not dropped or shown whole** (autopilot,
   2026-10-19; Codex on #1005). `SPEC.md` drops a detour another route beats and keeps one nothing
   beats (maintainer, 2026-09-27); with arrival at the first call in the destination hub, phase 2

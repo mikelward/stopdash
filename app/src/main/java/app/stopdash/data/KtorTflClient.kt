@@ -5,6 +5,7 @@ import app.stopdash.domain.BusFare
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HubInfo
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineRef
@@ -55,6 +56,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.StopTimetable
 import app.stopdash.domain.TimetableSource
 import app.stopdash.domain.LegTimetableSource
+import app.stopdash.domain.place
 import app.stopdash.domain.riderLineName
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -148,6 +150,10 @@ class KtorTflClient(
     // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
     // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
     private val stationOf: (String) -> String? = { null },
+    // The station model, for placing each planned leg's stops where the Planner's answer enters the app
+    // ([Hubs.place]); waited for as [HubsStore.ready] does. None by default (tests, the other clients): the
+    // legs go unplaced.
+    private val hubs: suspend () -> Hubs? = { null },
     // The bundled station index, for the far ends of each line a stop is the terminus of
     // ([StationIndex.terminusEnds]), so a train TfL lists there as arriving is relabeled as the
     // departure it becomes ([Turnback]). Looked up here, where the answer is decoded, off the main
@@ -397,7 +403,7 @@ class KtorTflClient(
         via: String?,
         at: TripTime?,
         progress: (String?) -> Unit,
-    ): List<TripRoute> =
+    ): List<TripRoute> = placed(
         tflRequest { key ->
             progress(null)
             val dto = try {
@@ -447,7 +453,16 @@ class KtorTflClient(
                 warn("$source: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
             }
             routes
-        }
+        },
+    )
+
+    // [routes] with each leg placed by the station model ([Hubs.place]), waited for out of the request's
+    // slot, so a model still loading holds no request back; as given where there's none in time, each id
+    // then its own station and hub.
+    private suspend fun placed(routes: List<TripRoute>): List<TripRoute> {
+        val model = hubs() ?: return routes
+        return withContext(decodeDispatcher) { routes.map { model.place(it) } }
+    }
 
     // The Planner's `mode` list: [modes]' own, less [leaveOut].
     private fun plannerModes(modes: TripModes, leaveOut: Set<String>): String =
