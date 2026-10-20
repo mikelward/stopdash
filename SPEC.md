@@ -3958,12 +3958,16 @@ new request, and the numbers stay honest.
 A prediction whose countdown reaches zero is **dropped from the list client-side** — never
 shown as negative time for a service that has already gone — so the next departure advances
 between fetches without waiting for one. The one exception is a **Tube train on the in-app
-board**, kept for **30 seconds** past its time, grayed at "0" and read as "due" (maintainer,
+board** (and the route page a list row opens), kept for **30 seconds** past its time, grayed at "0" and read as "due" (maintainer,
 2026-10-20): measured against the feed, trains came a median half a minute after the last time
 shown for them, but the feed itself runs about a minute behind a moving train, so the real
 lateness is smaller (`dev-docs/arrivals-measurements.md`). Buses and other modes go at their
-time; so does a train on the widget and the watch, which gray nothing, and a trip still judges a
-train gone at its time.
+time; so does a train on the widget and the watch, which gray nothing, and a trip and a journey
+card still judge a train gone at its time. The board's rows are worked out once, at one instant,
+and everything beside them (the journey cards, the "?" rows, a platform view, a route page) reads
+those same rows, so none judges a train by another clock. A route page opened from a journey card
+shows the card's own trains, the ones it counts on, so no just-due one; opened from the list, the
+list's, a just-due "0" included (maintainer, 2026-10-20).
 
 "Too old to trust" is **one shared policy, not a per-surface judgment**: a single
 staleness threshold, applied identically by every surface, beyond which countdowns are

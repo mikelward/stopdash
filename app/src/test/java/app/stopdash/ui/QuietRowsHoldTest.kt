@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.EmptyTimes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StopArrivals
@@ -38,19 +39,16 @@ class QuietRowsHoldTest {
     private val stopId = "940GZZLUKSX"
     private val distances = mapOf(stopId to 100.0)
 
-    private fun inputs(at: Instant) = QuietInputs(
-        stops = listOf(
+    private fun inputs(at: Instant): QuietInputs {
+        val stops = listOf(
             StopArrivals(
                 stopId, "King's Cross St. Pancras", departures = emptyList(), fetchedAt = at,
                 lines = listOf(LineRef("northern", "Northern", "tube")),
             ),
-        ),
-        lineStatuses = emptyMap(),
-        determinedLineIds = setOf("northern"),
-        now = fetched,
-        stopDistanceMeters = distances,
-        hiddenModes = emptySet(),
-    )
+        )
+        val candidates = DepartureRows.quietCandidates(stops, at, emptyMap(), setOf("northern"), distances)
+        return QuietInputs(candidates, revision = 1, source = stops, now = fetched, stopDistanceMeters = distances)
+    }
 
     @Test
     fun a_new_snapshot_reads_not_yet_until_its_quiet_rows_are_in_never_the_list_without_them() {
@@ -86,7 +84,7 @@ class QuietRowsHoldTest {
         assertEquals(listOf("northern"), rows?.map { it.lineId })
     }
 
-    // Both passes on the worker: the candidates, then each list's merge, which starts once they're in.
+    // Each list's merge with the candidates, on the worker.
     private fun settle(scheduler: TestCoroutineScheduler) {
         repeat(2) {
             scheduler.advanceUntilIdle()

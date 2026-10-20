@@ -38,8 +38,15 @@ internal class ListInputs(val listKey: Any?, val parts: Inputs) {
 /**
  * The list's rows before the timetable's "?" rows and the stars ([listRowsOf]).
  *
- * [all]: every loaded stop's rows, dismissed alerts out and a bus alert wholly behind its stop
- * unflagged: what the journey cards and an opened route page read. [nearby]: the near-me list's own
+ * The board's rows are built once, here, at [now] ([board]: every loaded stop's, a Tube train just past its
+ * time kept a moment, grayed, [Countdown.onBoard]); every board-side reader takes them from here, so none
+ * judges a train by another set or another instant than the list beside it.
+ *
+ * [all]: [board], dismissed alerts out and a bus alert wholly behind its stop unflagged: what an opened
+ * route page reads. [forCards]: [all] as the journey cards read it, judging a train gone at its time
+ * ([DepartureRows.withoutPastDue]). [quietCandidates]: the near-me list's possible "?" rows from the same
+ * build ([DepartureRows.quietCandidatesOf]), with their mark ids ([quietIds]); null where a list adds
+ * none (no distances, or stops or closure checks still out). [nearby]: the near-me list's own
  * stops, a line once from its nearest stop and closest first, with dismissed alerts still in (a
  * dismissed closure keeps its place's heading). [shared]: the notices TfL filed against more than
  * one stop of a place. [marked]: [nearby] less dismissed alerts, unflagged as [all] is.
@@ -63,6 +70,15 @@ internal class ListRows(
     val destinationsUnknown: Set<String>,
     val placeModes: Map<String, Set<String>> = emptyMap(),
     val byKey: RowsByKey = RowsByKey.NONE,
+    val board: List<DepartureRow> = all,
+    val forCards: List<DepartureRow> = all,
+    val quietCandidates: List<DepartureRow>? = null,
+    val quietIds: Set<String> = emptySet(),
+    // Moves on only when [quietIds] does, worked out here against the last rows: a key composition compares in
+    // constant time, so the boards are watched again only when the candidates change.
+    val quietRevision: Long = 0,
+    // [forCards] found by identity, for a route page opened from a journey card ([byKey] is [all]'s).
+    val cardsByKey: RowsByKey = RowsByKey.NONE,
 )
 
 /**
@@ -238,15 +254,34 @@ internal fun listRowsOf(
     journeyDestinationsUnknown: Set<String> = emptySet(),
     // A station opened from one of its interchange's names ([StationLead]).
     stationLead: StationLead? = null,
+    // The list's rows worked out last, whose [ListRows.quietRevision] this one keeps while its candidates are
+    // the same.
+    last: ListRows? = null,
 ): ListRows {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
-    val all = DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(stops, now, lineStatuses), dismissed), alertSequences)
+    // Every stop's rows, once, with the quiet ones a near-me list may add: a Tube train just past its time
+    // kept a moment, grayed ([Countdown.onBoard]). Each stop's rows are its own, so a reader of some stops
+    // takes theirs from these.
+    val built = DepartureRows.across(stops, now, lineStatuses, quietRows = true, grace = true)
+    val board = built.filterNot { it.quiet }
+    val all = DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(board, dismissed), alertSequences)
     // A near-me list shows its nearby stops only: a journey's farther origin, fetched for its card,
     // isn't one of them (SPEC *Journeys*).
-    val shownStops = if (stopDistanceMeters.isEmpty()) stops else stops.filter { it.stopId in stopDistanceMeters }
-    // The board's rows keep a Tube train just past its time a moment, grayed ([Countdown.onBoard]).
-    val across = HiddenModes.rows(DepartureRows.across(shownStops, now, lineStatuses, grace = true), hiddenModes)
+    val shownRows = if (stopDistanceMeters.isEmpty()) board else board.filter { it.stopId in stopDistanceMeters }
+    val across = HiddenModes.rows(shownRows, hiddenModes)
+    // Not while nearby stops are still loading: one of them may have trains for a line that would
+    // otherwise read "?" at a stop already in. Nor while a stop's closure check is out: a closed
+    // station's timetable trains aren't due, so "?" waits until it's known.
+    val quietCandidates =
+        if (stopDistanceMeters.isEmpty() || source.pendingStops.isNotEmpty() || source.closurePending.isNotEmpty()) {
+            null
+        } else {
+            DepartureRows.quietCandidatesOf(
+                built.filter { it.stopId in stopDistanceMeters }, source.determinedLineIds, stopDistanceMeters, hiddenModes,
+                dismissed, source.stopsDisruptionUnknown, stationLead,
+            )
+        }
     // A "near me now" list (distances present) shows a line once, from its nearest stop, then orders
     // closest-stop-first (soonest breaks a same-stop tie). A location-free list keeps across's
     // soonest-first order (D1).
@@ -272,7 +307,24 @@ internal fun listRowsOf(
     val destinationClosures = DepartureRows.withoutDismissed(DepartureRows.across(journeyDestinationStops, now), dismissed)
         .filter { it.stopDisruption != null }
     val modes = placeModes(stops).mapValues { (_, modes) -> modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) } }
-    return ListRows(source, now, all, nearby, shared, marked, destinationClosures, journeyDestinationsUnknown, modes, RowsByKey.of(all))
+    // A disrupted line whose only train is just past its time keeps the status row a card shows without it.
+    val quietIds = quietCandidates.orEmpty().mapTo(HashSet(), ::quietId)
+    val forCards = DepartureRows.withAlertsBehind(
+        DepartureRows.withoutDismissed(DepartureRows.withoutPastDue(board, stops, now, lineStatuses), dismissed), alertSequences,
+    )
+    return ListRows(
+        source, now, all, nearby, shared, marked, destinationClosures, journeyDestinationsUnknown, modes, RowsByKey.of(all),
+        board = board,
+        forCards = forCards,
+        quietCandidates = quietCandidates,
+        quietIds = quietIds,
+        quietRevision = when {
+            last == null -> 1L
+            last.quietIds == quietIds -> last.quietRevision
+            else -> last.quietRevision + 1
+        },
+        cardsByKey = RowsByKey.of(forCards),
+    )
 }
 
 /**
@@ -313,8 +365,17 @@ internal fun shownRowsOf(
         ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),
         rideMeters(cards, stopDistanceMeters),
         RowsByKey.of(rows),
+        // A card's row opens its route page with the card's own trains, the ones it counts on: no just-due
+        // train, which the list's page keeps (maintainer, 2026-10-20).
         RowsByKey.of(journeyRowsShown),
     )
+}
+
+/** [stops]' board rows: from [board], built already, else built at [now] ([DepartureRows.across] with `grace`). */
+private fun platformRowsOf(stops: List<StopArrivals>, board: List<DepartureRow>?, now: Instant, lineStatuses: Map<String, LineStatus>): List<DepartureRow> {
+    if (board == null) return DepartureRows.across(stops, now, lineStatuses, grace = true)
+    val ids = stops.mapTo(HashSet()) { it.stopId }
+    return board.filter { it.stopId in ids }
 }
 
 /**
@@ -344,6 +405,9 @@ internal fun platformViewOf(
     topology: RouteTopology = RouteTopology.EMPTY,
     // The near-me list's distances, for the stop "Show on map" shows; empty off it (D1).
     stopDistanceMeters: Map<String, Double> = emptyMap(),
+    // The drawn list's own rows of every stop ([ListRows.board]), built at [now] from [source]: the view's are
+    // taken from these, so it shows the same trains as the list it opened from. Null builds them here.
+    board: List<DepartureRow>? = null,
 ): PlatformView {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
@@ -354,7 +418,7 @@ internal fun platformViewOf(
         else stops.filter { it.stopId in ids }
     val stopRows = DepartureRows.pinStarred(
         DepartureRows.withAlertsBehind(
-            DepartureRows.withoutDismissed(HiddenModes.rows(DepartureRows.across(platformStops, now, lineStatuses, grace = true), hiddenModes), dismissed),
+            DepartureRows.withoutDismissed(HiddenModes.rows(platformRowsOf(platformStops, board, now, lineStatuses), hiddenModes), dismissed),
             alertSequences,
         ),
         starred,

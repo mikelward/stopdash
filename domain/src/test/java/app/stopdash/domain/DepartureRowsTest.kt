@@ -3008,4 +3008,42 @@ class DepartureRowsTest {
         assertEquals(listOf(next), row.upcoming)
         assertEquals(Countdown.staleLabel(listOf(next)), Countdown.staleLabel(row.upcoming))
     }
+
+    @Test
+    fun `the board's rows read as a card reads them are the rows without the grace, a disrupted line's status kept`() {
+        val statuses = mapOf("victoria" to LineStatus("victoria", 6, "Severe Delays"))
+        val lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("northern", "Northern", "tube"))
+        val stop = StopArrivals(
+            "940GZZLUEUS", "Euston",
+            listOf(
+                // Victoria's one train is just past its time; Northern's has one after it too.
+                departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = 0, platform = "Southbound - Platform 5"),
+                departure("northern", "Northern", "outbound", "Morden", offsetSeconds = 0, platform = "Southbound - Platform 2"),
+                departure("northern", "Northern", "outbound", "Morden", offsetSeconds = 200, platform = "Southbound - Platform 2"),
+            ),
+            fetchedAt = now, lines = lines,
+        )
+        val later = now.plusSeconds(10)
+        val board = DepartureRows.across(listOf(stop), later, statuses, grace = true)
+        // The board keeps Victoria's train, so no status row stands in for it there.
+        assertTrue(board.none { it.lineId == "victoria" && it.status != null && it.upcoming.isEmpty() })
+        val forCards = DepartureRows.withoutPastDue(board, listOf(stop), later, statuses)
+        assertEquals(DepartureRows.across(listOf(stop), later, statuses), forCards)
+        assertTrue(forCards.any { it.lineId == "victoria" && it.status != null && it.upcoming.isEmpty() })
+    }
+
+    @Test
+    fun `a card's rows get no status row a failed refresh couldn't stand behind, as without the grace`() {
+        val statuses = mapOf("victoria" to LineStatus("victoria", 6, "Severe Delays"))
+        // A refresh failed: the predictions are carried from before, not current.
+        val stop = StopArrivals(
+            "940GZZLUEUS", "Euston",
+            listOf(departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = 0, platform = "Southbound - Platform 5")),
+            fetchedAt = now, lines = listOf(LineRef("victoria", "Victoria", "tube")), arrivalsFresh = false,
+        )
+        val later = now.plusSeconds(10)
+        val forCards = DepartureRows.withoutPastDue(DepartureRows.across(listOf(stop), later, statuses, grace = true), listOf(stop), later, statuses)
+        assertEquals(DepartureRows.across(listOf(stop), later, statuses), forCards)
+        assertTrue(forCards.none { it.lineId == "victoria" && it.status != null && it.upcoming.isEmpty() })
+    }
 }
