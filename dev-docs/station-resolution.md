@@ -300,7 +300,11 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    Cross hub; Paddington's two stations share a hub but not a station; an unbundled id resolves to
    itself.
 2. **Arriving by hub, first call.** Replaces the older plan's arrival steps (`station-model.md`
-   *Plan*, phases 2 and 3).
+   *Plan*, phases 2 and 3). On the way reads its last ride's end first (2026-10-20): the tracker
+   resolves it through the model (`OnTheWay.arrivingIds`: `LegEnd.of`, then `Hubs.idsOf` for a hub
+   end) when a check runs, keeps it only while the planned route is the same, and the train's first
+   call in the hub by one TfL id ends the ride, a step-free trip excepted until its lift check
+   lands (`TODO.md`, *Decisions needing review*).
    - **Who asks.** `DirectTrips`, `RideLines`, `RouteStops.forLeg`, `FavoriteJourney` and on the
      way's arrival check (`OnTheWay.endedAtDestination`) ask "first call whose hub is one of the
      destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only; and the

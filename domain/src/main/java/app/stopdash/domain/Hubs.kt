@@ -412,6 +412,34 @@ class Hubs private constructor(
     }
 
     /**
+     * Every TfL id a ride ending at [end] gets off at ([LegEnd.endsAt]), each to the station or stop it
+     * belongs to, the shape [idsOf] gives a pick: a hub end's every station and stop of its hubs; a stop
+     * end's station (its records, their platforms and its own bus stops) or bus stop (its poles and whole
+     * areas); a pole end's poles, each to its stop. A place the bundle doesn't hold is its own. An id
+     * outside the map is the caller's to place, as a platform added since the bundle was built
+     * ([arrivalOf]).
+     */
+    @WorkerThread
+    fun idsOf(end: LegEnd): Map<String, String> {
+        val ids = LinkedHashMap<String, String>()
+        for (place in end.places) {
+            when (end.level) {
+                LegEnd.Level.HUB -> hubMembers[place]?.let { members ->
+                    members.stations.forEach { addStation(ids, it) }
+                    members.stops.forEach { addStop(ids, it) }
+                } ?: ids.put(place, place)
+                LegEnd.Level.STOP -> when (place) {
+                    in recordsOfStation -> addStation(ids, place)
+                    in hubOfStop -> addStop(ids, place)
+                    else -> ids[place] = place
+                }
+                LegEnd.Level.POLE -> ids[place] = stopOfPole[place] ?: place
+            }
+        }
+        return ids
+    }
+
+    /**
      * The destination's matchable hubs (dev-docs/station-resolution.md, *Where it's resolved*): the hubs a
      * trip's last ride may get off in, at its first call in one of them. For [id] ([name]) picked at
      * [level], or as a pick saved without one reads ([picked]):
@@ -423,7 +451,7 @@ class Hubs private constructor(
      *   Planner's call. A split area's [Resolved.hubs] are for dismissal alone.
      * A station's [Pick.extraStopId] (passed as [extraStopId], or read back by [picked]) adds its stop's
      * hub, wherever a later bundle files it, as its arrival ids ([idsOf]) take that stop.
-     * Not read by any feature yet: phase 2 points arriving at it.
+     * Read by On the way's last ride ([OnTheWay.arrivingIds]).
      */
     @WorkerThread
     fun destinationHubs(

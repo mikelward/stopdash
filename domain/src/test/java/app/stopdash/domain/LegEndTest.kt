@@ -217,4 +217,54 @@ class LegEndTest {
         val end = LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000001A"))
         assertEquals(end, LegEnd.of(TripRoute(listOf(ride)), StepFree.ANY, setOf("HUBEXA"), hubs).single().second)
     }
+
+    @Test
+    fun `a hub end's ids are every station and stop of the hub, each to its own`() {
+        val ids = hubs.idsOf(LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBEXA")))
+        assertEquals("1009001:rail", ids["910GHILL"])
+        assertEquals("1009001:rail", ids["910GHILLLL"])
+        assertEquals("1009002:tube", ids["940GZZLUHIL"])
+        assertEquals("490G000001", ids["490000001A"])
+        assertFalse("910GVALE" in ids)
+    }
+
+    @Test
+    fun `a stop end's ids are its station's alone, and a pole end's its poles`() {
+        val station = hubs.idsOf(LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("1009001:rail")))
+        assertTrue("910GHILL" in station && "910GHILLLL" in station)
+        assertFalse("940GZZLUHIL" in station)
+        assertEquals(mapOf("490000001A" to "490G000001"), hubs.idsOf(LegEnd(StepFree.ANY, LegEnd.Level.POLE, setOf("490000001A"))))
+        // A place the bundle doesn't hold is its own.
+        assertEquals(mapOf("910GNONE" to "910GNONE"), hubs.idsOf(LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("910GNONE"))))
+    }
+
+    // A trip on the way to Hill's tube station, its last ride getting off where the Planner names, [stepFree] as planned.
+    private fun toHill(last: TripLeg, stepFree: StepFree?, stopId: String = "940GZZLUHIL") = ActiveTrip(
+        TripRoute(listOf(last, walk())), "Hill", startedAt = at, destinationIds = mapOf(stopId to stopId),
+        destinationStopId = stopId, destinationLevel = Pick.Level.STATION, stepFree = stepFree,
+    )
+
+    @Test
+    fun `On the way's last ride arrives anywhere in the destination's hub`() {
+        // Planned to Hill's rail station, a ride to the tube station's hub: every station and stop of it.
+        val ids = OnTheWay.arrivingIds(toHill(ride("910GHILL", mode = "national-rail"), StepFree.ANY), hubs)
+        assertEquals("1009001:rail", ids["910GHILLLL"])
+        assertEquals("1009002:tube", ids["940GZZLUHIL"])
+        // An end already moved still reads the route as planned.
+        val moved = toHill(ride("910GHILLLL", mode = "national-rail"), StepFree.ANY)
+            .copy(plannedLegs = toHill(ride("910GHILL", mode = "national-rail"), StepFree.ANY).route.legs)
+        assertEquals(ids, OnTheWay.arrivingIds(moved, hubs))
+    }
+
+    @Test
+    fun `On the way's last ride arrives by hub only where the trip isn't step-free and the Planner's call is in it`() {
+        val last = ride("910GHILL", mode = "national-rail")
+        // Step-free, or a trip kept before its level was: the hub's other calls aren't checked against lifts yet.
+        assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, StepFree.STATION), hubs))
+        assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, null), hubs))
+        // The Planner gets off at Vale, outside the destination's hub, and walks on.
+        assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(ride("910GVALE", mode = "national-rail"), StepFree.ANY), hubs))
+        // A trip to a place, which has no hub.
+        assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, StepFree.ANY, stopId = ""), hubs))
+    }
 }

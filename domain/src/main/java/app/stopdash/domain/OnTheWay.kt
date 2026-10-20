@@ -83,8 +83,8 @@ data class ActiveTrip(
     val destinationLevel: Pick.Level? = null,
     // How step-free the trip was planned to be (its trip list's setting when Start was tapped), so the
     // phase-2 arrival and lift checks (dev-docs/station-resolution.md *Step-free*) still have it after a
-    // restart. Null where it isn't known (a trip kept by an older build), which never widens a check.
-    // Not read yet.
+    // restart. Null where it isn't known (a trip kept by an older build), which never widens a check:
+    // only a trip known not to be step-free arrives at its destination's hub ([OnTheWay.arrivingIds]).
     val stepFree: StepFree? = null,
     // The walks that are changes on foot ([OnTheWay.changesOnFoot]), by leg index: decided once when
     // the trip starts, so its steps never change on the way. Null on a trip kept by an older build,
@@ -737,8 +737,21 @@ object OnTheWay {
      * passed, while the train's next stop is still on the leg, unless their last ends its run
      * ([VehicleCall.endsRun]), when it's a stop the train won't call at; and an empty list ends a ride
      * only once the rider was seen due off.
+     *
+     * [arriving] is where the trip's last ride gets off by arriving at the destination's hub, beyond
+     * [ActiveTrip.destinationIds]: every TfL id of the hub's stations and stops, each to its station or
+     * stop ([Hubs.idsOf] of the ride's [LegEnd]), resolved through the station model when the check runs
+     * (dev-docs/station-resolution.md, *Where it's resolved*). Empty where the ride ends where the
+     * Planner's call is. Only a call naming one TfL id ([VehicleCall.stopId]) arrives by it, never a
+     * National Rail call naming its station's several records (*The first call must be one TfL id*).
      */
-    fun advance(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant, atBoarding: Boolean = false): Pair<ActiveTrip, TripProgress> {
+    fun advance(
+        trip: ActiveTrip,
+        calls: List<VehicleCall>?,
+        now: Instant,
+        atBoarding: Boolean = false,
+        arriving: Map<String, String> = emptyMap(),
+    ): Pair<ActiveTrip, TripProgress> {
         // Checked against the ride as the followed train's line runs it ([ridden]).
         val leg = ridden(trip)
         // On board by the rider's word while the train still stands at the boarding stop ([atStep]):
@@ -748,7 +761,7 @@ object OnTheWay {
         // after they were seen due off, still says they got off.
         var on = trip
         val ahead = if (leg != null && !leg.isWalk && trip.boarded && calls != null) {
-            val boarding = boardedCall(trip, leg, calls, now)
+            val boarding = boardedCall(trip, leg, calls, now, arriving)
             if (boarding >= 0) {
                 // Kept up to date while it stands there, as a train still to come is: one held at the
                 // platform stays the call they boarded at however late it runs, where the next lap
@@ -763,7 +776,7 @@ object OnTheWay {
         } else {
             calls
         }
-        return advanceAlong(on, ahead, now, atBoarding)
+        return advanceAlong(on, ahead, now, atBoarding, arriving)
     }
 
     /**
@@ -782,12 +795,18 @@ object OnTheWay {
         return near(fix, at, MISSED_WITHIN_METERS)
     }
 
-    private fun advanceAlong(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant, atBoarding: Boolean): Pair<ActiveTrip, TripProgress> {
+    private fun advanceAlong(
+        trip: ActiveTrip,
+        calls: List<VehicleCall>?,
+        now: Instant,
+        atBoarding: Boolean,
+        arriving: Map<String, String>,
+    ): Pair<ActiveTrip, TripProgress> {
         val leg = trip.leg ?: return trip to TripProgress.Arrived
         if (leg.isWalk) {
             val until = trip.legStartedAt.plus(leg.run)
             // A walk within one place is no step of its own: straight on to boarding the ride after it.
-            if (changesOnFoot(trip, trip.legIndex)) return advanceAlong(pastChange(trip, trip.legStartedAt), calls, now, atBoarding)
+            if (changesOnFoot(trip, trip.legIndex)) return advanceAlong(pastChange(trip, trip.legStartedAt), calls, now, atBoarding, arriving)
             // The walk to the destination ends when the rider is seen there ([seen]), not on its time,
             // up to [END_WALK_GRACE] past it (maintainer, 2026-10-03).
             return if (now.isBefore(until) || walksToEnd(trip, now)) trip to TripProgress.Walking(leg, until) else nextLeg(trip, now)
@@ -815,7 +834,7 @@ object OnTheWay {
                 // Its calls from there leaving the leg before the stop (a diversion, a short working):
                 // not a train the rider can take.
                 val ahead = calls.drop(boarding + 1)
-                val off = ahead.indexOfFirst { arrivesAt(trip, on, it) }
+                val off = ahead.indexOfFirst { arrivesAt(trip, on, it, arriving) }
                 // Every call it has left, none where the rider gets off: cut short of it, or not calling there.
                 if (off < 0 && allCalls(calls)) return trip to TripProgress.Lost(leg)
                 if (!keepsToLeg(on, if (off >= 0) ahead.take(off) else ahead)) return trip to TripProgress.Lost(leg)
@@ -823,8 +842,8 @@ object OnTheWay {
             }
         }
         // On board and due first at another of the destination's stops: the ride ends there.
-        endedAtDestination(trip, on, calls)?.let { return advanceAlong(it, calls, now, atBoarding) }
-        val off = calls.indexOfFirst { arrivesAt(trip, on, it) }
+        endedAtDestination(trip, on, calls, arriving)?.let { return advanceAlong(it, calls, now, atBoarding, arriving) }
+        val off = calls.indexOfFirst { arrivesAt(trip, on, it, arriving) }
         // The stop again a lap later, after the rider was seen due there by now: they got off. A lap
         // is told from a delay by order, not time: the next lap reaches the stop only after coming
         // round through the boarding stop again, where a held train still has only the leg ahead.
@@ -869,14 +888,36 @@ object OnTheWay {
     // pole of its pair that the followed train was found calling at ([ActiveTrip.vehicleOffId]).
     // Once the end is moved to one of the destination's stops ([endedAtDestination]), another of them
     // never stands in for it by name.
-    private fun arrivesAt(trip: ActiveTrip, leg: TripLeg, call: VehicleCall): Boolean =
-        (callsTo(call, leg) && !elsewhereInDestination(trip, leg, call)) ||
+    private fun arrivesAt(trip: ActiveTrip, leg: TripLeg, call: VehicleCall, arriving: Map<String, String>): Boolean =
+        (callsTo(call, leg) && !elsewhereInDestination(trip, leg, call, arriving)) ||
             (trip.vehicleOffId.isNotEmpty() && call.stopId == trip.vehicleOffId)
 
     /**
+     * Where [trip]'s last ride gets off by arriving at the destination's hub, as [advance] reads it
+     * (`arriving`): every TfL id of the hub's stations and stops ([Hubs.idsOf]), each to its station or
+     * stop, where the ride's end is the destination's hubs ([LegEnd.of], resolved through [hubs] now). The
+     * route as planned is read ([ActiveTrip.plannedLegs]), so an end already moved keeps its hub. Empty
+     * (the ride ends at the destination's own stops, as before) for a trip to a place or kept before its
+     * destination was, a last ride the Planner gets off outside the hub, and a step-free trip, or one whose
+     * level isn't known: none of the hub's other calls is checked against its lifts yet, so a step-free
+     * ride still gets off where the Planner, who checked, does (TODO.md, *Decisions needing review*).
+     * Works over the route and the hub's ids: off the main thread.
+     */
+    @WorkerThread
+    fun arrivingIds(trip: ActiveTrip, hubs: Hubs): Map<String, String> {
+        if (trip.stepFree != StepFree.ANY || trip.destinationStopId.isBlank()) return emptyMap()
+        val plannedTo = trip.destinations.mapNotNull { (it as? TripDestination.Stop)?.id }
+        val destinationHubs = hubs.destinationHubs(trip.destinationStopId, trip.destinationName, trip.destinationLevel, plannedTo)
+        if (destinationHubs.isEmpty()) return emptyMap()
+        val end = LegEnd.of(TripRoute(trip.plannedLegs ?: trip.route.legs), StepFree.ANY, destinationHubs, hubs).lastOrNull()?.second
+        return if (end?.level == LegEnd.Level.HUB) hubs.idsOf(end) else emptyMap()
+    }
+
+    /**
      * [trip] with its last ride ending where its followed train's calls [ride] (those ahead, once on
-     * board) first reach one of the destination's stops ([ActiveTrip.destinationIds]): a route kept
-     * riding on past another of the station's records gets off there (Codex, #981). The end moves
+     * board) first reach one of the destination's stops ([ActiveTrip.destinationIds]), or anywhere in its
+     * hub where the ride arrives by hub ([arriving], [advance]): a route kept riding on past another of
+     * the station's records, or another station of the hub, gets off there (Codex, #981). The end moves
      * there, as a bus's does to the pole its route uses ([onPoles]), and the walks after it go, since
      * they set off from the old end: so every step, Next and the stop named read where the rider now
      * gets off (maintainer, 2026-10-19). The route as planned is kept ([ActiveTrip.plannedLegs]) and put
@@ -884,29 +925,29 @@ object OnTheWay {
      * step taken (Codex, #982). Null when there's no such stop before the end, the train leaves the
      * ride on its way there, or the ride isn't the last.
      */
-    private fun endedAtDestination(trip: ActiveTrip, on: TripLeg, ride: List<VehicleCall>): ActiveTrip? {
-        if (trip.destinationIds.isEmpty() || !lastRide(trip)) return null
-        val end = ride.indexOfFirst { arrivesAt(trip, on, it) }
+    private fun endedAtDestination(trip: ActiveTrip, on: TripLeg, ride: List<VehicleCall>, arriving: Map<String, String>): ActiveTrip? {
+        if ((trip.destinationIds.isEmpty() && arriving.isEmpty()) || !lastRide(trip)) return null
+        val end = ride.indexOfFirst { arrivesAt(trip, on, it, arriving) }
         // The end itself, matched by name and known to the destination by another id, moves to that id.
         val at = ride.indexOfFirst {
-            destinationIdOf(trip, it) != null && !callsFrom(it, on) && !atEnd(on, it) &&
+            destinationIdOf(trip, it, arriving) != null && !callsFrom(it, on) && !atEnd(on, it) &&
                 (trip.vehicleOffId.isEmpty() || it.stopId != trip.vehicleOffId)
         }
         if (at < 0 || (end in 0 until at)) return null
         val call = ride[at]
-        val id = destinationIdOf(trip, call) ?: return null
+        val id = destinationIdOf(trip, call, arriving) ?: return null
         if (!keepsToLeg(on, ride.take(at))) return null
         // The end not among the calls, gone by or still beyond them: it only moves back along the ride's
         // path, never on past an end already moved, so both have to be on it.
         if (end < 0) {
-            val endAt = pathIndex(trip, on, on.toId, null, on.toName)
-            val callAt = pathIndex(trip, on, id, call)
+            val endAt = pathIndex(trip, on, on.toId, null, arriving, on.toName)
+            val callAt = pathIndex(trip, on, id, call, arriving)
             if (endAt < 0 || callAt !in 0 until endAt) return null
         }
         val planned = trip.leg ?: return null
         return trip.copy(
-            route = trip.route.copy(legs = trip.route.legs.take(trip.legIndex) + endedAt(trip, planned, id, call)),
-            vehicleLeg = trip.vehicleLeg?.let { endedAt(trip, it, id, call) }, vehicleOffId = "",
+            route = trip.route.copy(legs = trip.route.legs.take(trip.legIndex) + endedAt(trip, planned, id, call, arriving)),
+            vehicleLeg = trip.vehicleLeg?.let { endedAt(trip, it, id, call, arriving) }, vehicleOffId = "",
             plannedLegs = trip.plannedLegs ?: trip.route.legs,
         )
     }
@@ -914,8 +955,8 @@ object OnTheWay {
     // [leg] ending at the destination's stop [id], where [call] is: its path cut there, keyed still by
     // the stop the Planner named ([TripLeg.plannedToId]). Where it is, its pair and the change after it
     // were the planned end's, so they go.
-    private fun endedAt(trip: ActiveTrip, leg: TripLeg, id: String, call: VehicleCall): TripLeg {
-        val cut = pathIndex(trip, leg, id, call)
+    private fun endedAt(trip: ActiveTrip, leg: TripLeg, id: String, call: VehicleCall, arriving: Map<String, String>): TripLeg {
+        val cut = pathIndex(trip, leg, id, call, arriving)
         return leg.copy(
             toId = id, toName = call.stopName.ifBlank { leg.toName },
             arrival = call.expected.takeIf { it.isAfter(leg.departure) } ?: leg.arrival,
@@ -928,15 +969,22 @@ object OnTheWay {
 
     // Where on [leg]'s path the destination's stop [id] (where [call] is, if known) comes: by its id, a
     // National Rail call's station ids, or another id the destination holds under the same station or
-    // stop ([ActiveTrip.destinationIds]): a bus path's stop area, or a platform the path names where the
-    // call (or the leg's own end, [name]) names its station, told by its name (Codex, #982). -1 when it
-    // isn't on it.
-    private fun pathIndex(trip: ActiveTrip, leg: TripLeg, id: String, call: VehicleCall?, name: String? = call?.stopName): Int {
-        val stop = trip.destinationIds.arrivalOf(id)
+    // stop ([ActiveTrip.destinationIds], or [arriving]'s): a bus path's stop area, or a platform the path
+    // names where the call (or the leg's own end, [name]) names its station, told by its name (Codex, #982).
+    // -1 when it isn't on it.
+    private fun pathIndex(
+        trip: ActiveTrip,
+        leg: TripLeg,
+        id: String,
+        call: VehicleCall?,
+        arriving: Map<String, String>,
+        name: String? = call?.stopName,
+    ): Int {
+        val stop = arrivalOf(trip, arriving, id)
         return leg.path.indices.indexOfFirst { i ->
             val at = leg.path[i]
             samePlace(at, id) || (call != null && (samePlace(at, call.stopId) || at in call.stationIds)) ||
-                (stop != null && trip.destinationIds.arrivalOf(at) == stop &&
+                (stop != null && arrivalOf(trip, arriving, at) == stop &&
                     (at.startsWith(STOP_AREA_PREFIX) || (!name.isNullOrBlank() && sameStopName(leg.pathNames.getOrNull(i), name))))
         }
     }
@@ -951,24 +999,31 @@ object OnTheWay {
 
     // Whether [leg], [trip]'s last ride, has had its end moved to one of the destination's stops
     // ([endedAtDestination]).
-    private fun movedEnd(trip: ActiveTrip, leg: TripLeg): Boolean =
-        trip.plannedLegs != null && lastRide(trip) && trip.destinationIds.arrivalOf(leg.toId) != null
+    private fun movedEnd(trip: ActiveTrip, leg: TripLeg, arriving: Map<String, String>): Boolean =
+        trip.plannedLegs != null && lastRide(trip) && arrivalOf(trip, arriving, leg.toId) != null
 
     // [trip] with its route as planned, its last ride's end moved back ([ActiveTrip.plannedLegs]).
     private fun asPlanned(trip: ActiveTrip): ActiveTrip =
         trip.plannedLegs?.let { trip.copy(route = trip.route.copy(legs = it), plannedLegs = null) } ?: trip
 
     // Whether [call] is at another of the destination's stops than [leg]'s moved end.
-    private fun elsewhereInDestination(trip: ActiveTrip, leg: TripLeg, call: VehicleCall): Boolean =
-        movedEnd(trip, leg) && destinationIdOf(trip, call) != null && !atEnd(leg, call)
+    private fun elsewhereInDestination(trip: ActiveTrip, leg: TripLeg, call: VehicleCall, arriving: Map<String, String>): Boolean =
+        movedEnd(trip, leg, arriving) && destinationIdOf(trip, call, arriving) != null && !atEnd(leg, call)
 
     // Whether the leg [trip] is on is its last ride: only walks, if anything, follow it.
     private fun lastRide(trip: ActiveTrip): Boolean = trip.route.legs.drop(trip.legIndex + 1).all { it.isWalk }
 
     // The id of [trip]'s destination [call] is at, by its own id or a National Rail call's station's, a
-    // platform the bundle doesn't hold counting as its station's ([arrivalOf]); null for none.
-    private fun destinationIdOf(trip: ActiveTrip, call: VehicleCall): String? =
-        call.stopId.takeIf { trip.destinationIds.arrivalOf(it) != null } ?: call.stationIds.firstOrNull { trip.destinationIds.arrivalOf(it) != null }
+    // platform the bundle doesn't hold counting as its station's ([arrivalOf]); null for none. Its hub's
+    // other places ([arriving]) only by the call's own id: a National Rail call names several records, so
+    // no one id to get off at (dev-docs/station-resolution.md, *The first call must be one TfL id*).
+    private fun destinationIdOf(trip: ActiveTrip, call: VehicleCall, arriving: Map<String, String>): String? =
+        call.stopId.takeIf { it.isNotBlank() && arrivalOf(trip, arriving, it) != null }
+            ?: call.stationIds.firstOrNull { trip.destinationIds.arrivalOf(it) != null }
+
+    // The destination's station or stop [id] is at: by the trip's own arrival ids, else by its hub's ([arriving]).
+    private fun arrivalOf(trip: ActiveTrip, arriving: Map<String, String>, id: String): String? =
+        trip.destinationIds.arrivalOf(id) ?: arriving.arrivalOf(id)
 
     /**
      * When the change onto [trip]'s ride ends, while the rider is still making it: a ride straight
@@ -2930,7 +2985,7 @@ object OnTheWay {
     // holds: a train still standing there was seen there at each refresh, where on a tight loop the
     // next lap's call there can come round within the ride's planned time (Codex, PR #384). -1 when
     // there's none, as once the call is gone or only the next lap's is there.
-    private fun boardedCall(trip: ActiveTrip, leg: TripLeg, calls: List<VehicleCall>, now: Instant): Int {
+    private fun boardedCall(trip: ActiveTrip, leg: TripLeg, calls: List<VehicleCall>, now: Instant, arriving: Map<String, String>): Int {
         // When they boarded: their word ([atStep] starts the leg then), or when the train left with them.
         val since = listOfNotNull(trip.boardedAt, trip.legStartedAt).max()
         val lastSeen = trip.boardsAt?.plus(LATE_BY)
@@ -2938,7 +2993,7 @@ object OnTheWay {
         for (i in calls.indices) {
             val call = calls[i]
             if (callsFrom(call, leg)) return if (call.expected.isAfter(latest)) -1 else i
-            if (call.expected.isAfter(since) && (onPath(leg, call) >= 0 || arrivesAt(trip, leg, call))) return -1
+            if (call.expected.isAfter(since) && (onPath(leg, call) >= 0 || arrivesAt(trip, leg, call, arriving))) return -1
         }
         return -1
     }
