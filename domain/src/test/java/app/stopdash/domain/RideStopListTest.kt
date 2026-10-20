@@ -147,11 +147,11 @@ class RideStopListTest {
             stopNames = ids.zip(names).toMap(),
         )
         val bare = victoria.copy(path = emptyList(), pathNames = emptyList(), headings = listOf("Walthamstow Central"))
-        val ride = withRouteStops(bare, sequence)
+        val ride = withRouteStops(bare, LegEnd.planned(bare, StepFree.ANY), sequence)
         assertEquals(ids.subList(1, 6), ride.path)
         assertEquals(listOf("Victoria", "Green Park", "Oxford Circus", "Warren Street", "Euston", "King's Cross St. Pancras"), rideStopList(ride, null, boarded = false)!!.names)
         // Where the route can't place it, unchanged: no list rather than a guess.
-        assertEquals(bare, withRouteStops(bare, sequence.copy(routes = emptyList())))
+        assertEquals(bare, withRouteStops(bare, LegEnd.planned(bare, StepFree.ANY), sequence.copy(routes = emptyList())))
     }
 
     @Test
@@ -167,7 +167,7 @@ class RideStopListTest {
             "national-rail", "thameslink", "Thameslink", "910GBLFR", "Blackfriars", "910GSTPANCR", "St Pancras International", now, now.plusSeconds(600),
             headings = listOf("Kentish Town"),
         )
-        assertEquals(listOf("910GFRNDNLT", "910GSTPXBOX"), withRouteStops(leg, sequence).path)
+        assertEquals(listOf("910GFRNDNLT", "910GSTPXBOX"), withRouteStops(leg, LegEnd.planned(leg, StepFree.ANY), sequence).path)
     }
 
     @Test
@@ -183,7 +183,7 @@ class RideStopListTest {
             "bus", "example", "73", "490EXAMPLE1", "Euston", "490EXAMPLE9", "VICTORIA BUS STATION", now, now.plusSeconds(600),
         )
         assertEquals("490EXAMPLE3", onPoles(bus, mapOf("example" to sequence)).toId)
-        assertEquals(ids.subList(1, 3), withRouteStops(bus, sequence).path)
+        assertEquals(ids.subList(1, 3), withRouteStops(bus, LegEnd.planned(bus, StepFree.ANY), sequence).path)
     }
 
     @Test

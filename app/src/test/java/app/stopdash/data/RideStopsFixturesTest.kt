@@ -1,5 +1,7 @@
 package app.stopdash.data
 
+import app.stopdash.domain.LegEnd
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.lineStopNames
 import app.stopdash.domain.rideStopList
@@ -43,7 +45,7 @@ class RideStopsFixturesTest {
         val circle = json.decodeFromString<TflRouteSequenceDto>(
             checkNotNull(javaClass.getResource("/fixtures/route_sequence_circle.json")).readText(),
         ).toLineSequence()
-        val ride = withRouteStops(leg, circle)
+        val ride = withRouteStops(leg, LegEnd.planned(leg, StepFree.ANY), circle)
         assertTrue(ride.path.isNotEmpty())
         val list = checkNotNull(rideStopList(ride, null, boarded = false, lineStopNames(circle)))
         assertEquals(listOf("Euston Square", "King's Cross St Pancras", "Farringdon", "Barbican"), list.names)

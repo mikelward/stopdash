@@ -1,8 +1,10 @@
 package app.stopdash.data
 
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteStops
+import app.stopdash.domain.StepFree
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -176,7 +178,7 @@ class RouteSequenceTest {
         val leg = json.decodeFromString<TflJourneyResultsDto>(planned).toRoutes(Instant.parse("2026-09-26T19:00:00Z"))
             .first().rides.single()
         assertEquals(listOf("High Barnet"), leg.headings)
-        val stops = (RouteStops.forLeg(northern.callingAt(KENNINGTON), leg) as RouteStops.Resolution.Found).stops.map { it.name }
+        val stops = (RouteStops.forLeg(northern.callingAt(KENNINGTON), leg, LegEnd.planned(leg, StepFree.ANY)) as RouteStops.Resolution.Found).stops.map { it.name }
         assertEquals("Kennington", stops.first())
         assertTrue("Charing Cross" in stops)
         assertTrue("Bank" !in stops)

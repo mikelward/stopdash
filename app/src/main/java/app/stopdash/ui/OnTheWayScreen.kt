@@ -93,10 +93,12 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DoubledTrains
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RideStopList
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.lineStopNames
 import app.stopdash.domain.rideStopList
 import app.stopdash.domain.withRouteStops
@@ -388,7 +390,10 @@ internal fun OnTheWayScreen(
         // Seen on board, or the rider said so: a train that only left with no sign of them on it leaves them where it
         // boards, as the step does (Codex, #968).
         val stopsBoarded = stopsAtHand && trip?.onBoardSeen == true
-        val rideStops = rememberRideStops(stopsOn, stopsProgress, stopsBoarded, stopsOpen, stale = !current)
+        // The level the ride gets off at, worked out with its list off the main thread ([rememberRideStops]); an older
+        // trip that kept no step-free level counts as asking none.
+        val stopsLevel = trip?.stepFree ?: StepFree.DEFAULT
+        val rideStops = rememberRideStops(stopsOn, stopsLevel, stopsProgress, stopsBoarded, stopsOpen, stale = !current)
         val stopsRail = stopsOn?.let { railColorFor(it) }
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
@@ -2211,7 +2216,7 @@ internal fun fromTfl(progress: TripProgress?): Boolean =
  * refresh (Codex, #968). Null while closed, or until the ride's first list is in.
  */
 @Composable
-private fun rememberRideStops(on: TripLeg?, progress: TripProgress?, boarded: Boolean, open: Boolean, stale: Boolean): StopsShown? {
+private fun rememberRideStops(on: TripLeg?, stepFree: StepFree, progress: TripProgress?, boarded: Boolean, open: Boolean, stale: Boolean): StopsShown? {
     val repository = LocalRouteStops.current
     val worker = LocalWorker.current
     var shown by remember { mutableStateOf<Pair<TripLeg, StopsShown>?>(null) }
@@ -2254,7 +2259,7 @@ private fun rememberRideStops(on: TripLeg?, progress: TripProgress?, boarded: Bo
     // another list of the same names. Kept as the pair, so it vouches for that held list alone (Codex, #968).
     var samePath by remember { mutableStateOf<Pair<TripLeg, TripLeg>?>(null) }
     // By identity: a ride's, a progress's or a route's equality walks its stops, which composition doesn't.
-    LaunchedEffect(ByIdentity(on), ByIdentity(progress), boarded, open, stale, ByIdentity(routeRead), repository, worker) {
+    LaunchedEffect(ByIdentity(on), stepFree, ByIdentity(progress), boarded, open, stale, ByIdentity(routeRead), repository, worker) {
         if (on == null || !open) {
             shown = null
             reads.close(worker)
@@ -2280,7 +2285,8 @@ private fun rememberRideStops(on: TripLeg?, progress: TripProgress?, boarded: Bo
             needed = true
         }
         val sequence = read?.sequence?.takeIf { needed }
-        val ride = sequence?.let { withContext(worker) { withRouteStops(on, it) } } ?: on
+        // Where it gets off ([LegEnd.planned]: the Planner's call, as before arriving by hub) is worked out on the worker too.
+        val ride = sequence?.let { seq -> withContext(worker) { withRouteStops(on, LegEnd.planned(on, stepFree), seq) } } ?: on
         var list = withContext(worker) { rideStopList(ride, progress, boarded, if (needed) read!!.names else emptyMap(), stale) }
         if (list?.missing == true && !needed) {
             if (readable && read == null) {

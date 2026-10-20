@@ -103,15 +103,16 @@ fun rideStopList(
 /**
  * [ride] with the stops it calls at from [sequence], where the Planner listed none: the line's way from where it
  * boards through where it gets off, by its station, its stop area or, failing both, its name. Unchanged where
- * it has stops already, or the route can't place it. Walks the route: off the main thread.
+ * it has stops already, or the route can't place it. [end] is where the ride gets off ([RouteStops.forLeg]'s).
+ * Walks the route: off the main thread.
  */
 @WorkerThread
-fun withRouteStops(ride: TripLeg, sequence: LineSequence): TripLeg {
+fun withRouteStops(ride: TripLeg, end: LegEnd, sequence: LineSequence): TripLeg {
     if (ride.path.isNotEmpty()) return ride
     // The line's way from where it boards, as a trip's leg places it ([onPoles], [RouteStops.forLeg]).
     val leg = onPoles(ride, mapOf(ride.lineId to sequence))
     val route = sequence.callingAt(leg.fromId)
-    val found = RouteStops.forLeg(route, leg) as? RouteStops.Resolution.Found ?: return ride
+    val found = RouteStops.forLeg(route, leg, end) as? RouteStops.Resolution.Found ?: return ride
     // By id, by another id of its station (St Pancras's low level for its main id; Codex, #968), then stop area.
     // Where it gets off as placed on the route's poles ([onPoles] may pick another stand of a bus station), or as planned.
     val offIds = listOf(leg.toId, ride.toId).filter { it.isNotEmpty() }.distinct()

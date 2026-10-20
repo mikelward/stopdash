@@ -19,6 +19,7 @@ import app.stopdash.domain.Dismissed
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
@@ -5011,7 +5012,7 @@ class TripViewModelTest {
     fun `a bus leg's line page lists the stops from the pole its bus uses`() {
         // Its route loaded only for the page (the trip's load failed): the Planner's pole is the
         // other side of the road, which the northbound route never calls at.
-        val stops = legStops(plannerBus, road) as RouteStopsUi.Loaded
+        val stops = legStops(plannerBus, LegEnd.planned(plannerBus, StepFree.ANY), road) as RouteStopsUi.Loaded
         assertEquals(listOf("Bn", "Xn", "Cn"), stops.stops.map { it.id })
     }
 

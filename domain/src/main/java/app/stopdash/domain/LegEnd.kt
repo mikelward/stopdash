@@ -58,6 +58,13 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
                 ?: LegEnd(stepFree, Level.POLE, call.poles)
 
         /**
+         * Getting [ride] off where the Planner does ([at] its own call for it, as the station model placed
+         * it, [callOf]): the end every ride had before arriving by hub, and still a middle
+         * ride's. For a path holding one ride and not its route; [of] pairs a route's rides.
+         */
+        fun planned(ride: TripLeg, stepFree: StepFree): LegEnd = at(callOf(ride), stepFree)
+
+        /**
          * Each ride of [route] with where it gets off, in order; walks are left out, as they get off
          * nowhere. A middle ride ends at the Planner's call ([at]). The last ride ends at the
          * destination's [destinationHubs] where the Planner's own call for it is in one of them, and
@@ -68,7 +75,7 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
         fun of(route: TripRoute, stepFree: StepFree, destinationHubs: Set<String>): List<Pair<TripLeg, LegEnd>> {
             val rides = route.rides
             return rides.mapIndexed { index, ride ->
-                val call = ride.placeOf(ride.toId)
+                val call = callOf(ride)
                 val end = if (index == rides.lastIndex && call.hub != null && call.hub in destinationHubs) {
                     LegEnd(stepFree, Level.HUB, destinationHubs)
                 } else {
@@ -76,6 +83,22 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
                 }
                 ride to end
             }
+        }
+
+        /**
+         * The Planner's call for where [ride] gets off, as the model placed it. A bus [onPoles] moved to
+         * its route's pole wasn't placed at that pole ([TripLeg.placed] is by id), so it gets off at the
+         * Planner's stop pair where the model holds the pair as one stop with that pole in it: both
+         * directions of one road, the stop the Planner's pole is at. Otherwise (a pair the model split,
+         * whose poles can be in different stops, a bus station's stand, which no pair vouches for, or a
+         * pair the model doesn't hold) at that pole alone, never at the Planner's pole's stop.
+         */
+        private fun callOf(ride: TripLeg): Resolved {
+            ride.placed[ride.toId]?.let { return it }
+            if (ride.plannedToId.isEmpty()) return Resolved.exact(ride.toId)
+            val pair = ride.placed[ride.toArea]
+            if (pair?.station != null && pair.stops == setOf(pair.station) && ride.toId in pair.poles) return pair
+            return Resolved(tflId = ride.toId, station = null, hub = null)
         }
     }
 }
