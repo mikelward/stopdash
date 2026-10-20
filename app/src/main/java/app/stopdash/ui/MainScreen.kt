@@ -757,10 +757,9 @@ fun MainScreen(
     // Whether they're still being worked out as things stand: a bus journey with poles checks meanwhile,
     // and the cards wait (below).
     val siblingsPending = listWork.siblings.value?.key != siblingsWanted
-    // Each journey's far end this way round: its own stop, and the stops the route places it at (a
-    // bus's other poles), whose closure the card shows.
+    // Each journey's far end this way round, whose closure the card shows ([farEndIds]).
     val journeyDestinationIds = remember(cardJourneys, journeySegments) {
-        cardJourneys.associate { j -> j.key to (setOf(j.to.stopId) + journeySegments[j.key]?.destinationIds.orEmpty()) }
+        cardJourneys.associate { j -> j.key to farEndIds(j, journeySegments[j.key]) }
     }
     // The stops the journeys are fetched from, and each one's boarding stops ([journeyStopsOf]), worked
     // out on the list's worker, the last answer standing in meanwhile; none until the origins are in.

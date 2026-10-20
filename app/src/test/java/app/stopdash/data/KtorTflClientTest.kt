@@ -1271,6 +1271,48 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a station's closures are its own, not its interchange's other stops'`() = runTest {
+        // TfL answers a station's family with its whole interchange: the tube station sits under the hub
+        // beside the hub's bus stops. A bus stop's closure there isn't the station's (#1008's journey).
+        val json = """
+            {
+              "naptanId": "HUBKGX",
+              "disruptions": [ { "description": "Interchange works this weekend" } ],
+              "children": [
+                {
+                  "naptanId": "490G00005909",
+                  "disruptions": [],
+                  "children": [
+                    { "naptanId": "490001172X", "disruptions": [ { "description": "Bus Stop Closed" } ], "children": [] }
+                  ]
+                },
+                {
+                  "naptanId": "940GZZLUKSX",
+                  "disruptions": [],
+                  "children": [
+                    { "naptanId": "9400ZZLUKSX1", "disruptions": [ { "description": "Lift out of service" } ], "children": [] }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        // Its own platform's notice and the interchange-wide one, never the bus stop's.
+        assertEquals(
+            listOf("Interchange works this weekend", "Lift out of service"),
+            client(json).stopDisruptions("940GZZLUKSX").map { it.description },
+        )
+        // Both directions: the bus stop's own lookup still has its closure, and the hub's has them all.
+        assertEquals(
+            listOf("Interchange works this weekend", "Bus Stop Closed"),
+            client(json).stopDisruptions("490001172X").map { it.description },
+        )
+        assertEquals(3, client(json).stopDisruptions("HUBKGX").size)
+        // A tree that doesn't name the stop is taken whole, so nothing is lost to an odd shape.
+        assertEquals(3, client(json).stopDisruptions("940GZZLUOXC").size)
+    }
+
+    @Test
     fun `maps a recorded bus closure's window`() = runTest {
         val warnings = mutableListOf<String>()
         val disruptions = client(busClosureJson, warn = { warnings += it }).stopDisruptions("490012149N")

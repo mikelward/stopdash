@@ -266,7 +266,7 @@ class JourneyCardStateTest {
             JourneyCardState.Checking("test"),
             closures = listOf(listOf(k), listOf(k, k), listOf(k, l), listOf(k, s)),
         )
-        assertEquals(listOf("$kx – Stop K", "$kx – Stop K", "Pentonville Road", kx), card.closureTitles)
+        assertEquals(listOf("Pentonville Road – Stop K", "Pentonville Road – Stop K", "Pentonville Road", kx), card.closureTitles)
         // Both directions: a station's notice (no pole) keeps the place's name.
         assertEquals(kx, closureTitleOf(listOf(row("940GZZLUKSX", "King's Cross St. Pancras", ""))))
         // A trip reaching two poles of one place with one notice draws one card (folded to K), titled by both.
@@ -277,5 +277,18 @@ class JourneyCardStateTest {
         assertEquals("Pentonville Road", cards.getValue(k.stopId).title)
         // Both directions: another place's pole keeps its own card, by its letter.
         assertEquals("Elsewhere – Stop Z", cards.getValue(other.stopId).title)
+    }
+
+    @Test
+    fun `a journey's far end is where its route gets off, not the interchange it was saved as`() {
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("940GZZLUHGT", "Highgate"),
+            app.stopdash.domain.JourneyEnd("HUBKGX", "King's X & St Pancras Intl"),
+            "northern",
+        )
+        // Placed on its route: the station the train calls at, so the hub's bus stops' closures stay off it.
+        assertEquals(setOf("940GZZLUKSX"), farEndIds(ride, app.stopdash.domain.JourneySegment("940GZZLUHGT", setOf("940GZZLUKSX"))))
+        // Both directions: before its route is in, its own saved stop is all there is to check.
+        assertEquals(setOf("HUBKGX"), farEndIds(ride, null))
     }
 }

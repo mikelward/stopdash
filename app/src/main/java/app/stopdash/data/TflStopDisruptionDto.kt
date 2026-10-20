@@ -32,9 +32,29 @@ data class TflStopDisruptionDto(
  */
 @Serializable
 data class TflDisruptedPointFamilyDto(
+    // The stop point this node is: the requested stop sits somewhere in the tree, not always at its root.
+    val naptanId: String = "",
     val disruptions: List<TflStopDisruptionDto> = emptyList(),
     val children: List<TflDisruptedPointFamilyDto> = emptyList(),
 )
+
+/**
+ * [stopId]'s own disruptions from its family tree: its node's subtree (its platforms and entrances),
+ * plus any recorded against the nodes above it (an interchange-wide notice). TfL answers a station's
+ * family with its whole interchange (King's Cross St. Pancras's tube station comes back under
+ * `HUBKGX`, beside the hub's bus stops and rail stations), so taking the whole tree would show a bus
+ * stop's "Bus Stop Closed" as the tube station's. A tree that doesn't name [stopId] is taken whole,
+ * so a notice is never lost to an unexpected shape (SPEC principle 1).
+ */
+fun TflDisruptedPointFamilyDto.disruptionsFor(stopId: String, onBadDate: (String) -> Unit = {}): List<StopDisruption> {
+    val path = pathTo(stopId) ?: return allDisruptions(onBadDate)
+    val above = path.dropLast(1).flatMap { node -> node.disruptions.mapNotNull { it.toStopDisruptionOrNull(onBadDate) } }
+    return (above + path.last().allDisruptions(onBadDate)).distinct()
+}
+
+// The nodes from this one down to [stopId]'s, or null when it isn't in this subtree.
+private fun TflDisruptedPointFamilyDto.pathTo(stopId: String): List<TflDisruptedPointFamilyDto>? =
+    if (naptanId == stopId) listOf(this) else children.firstNotNullOfOrNull { it.pathTo(stopId) }?.let { listOf(this) + it }
 
 /**
  * Every non-blank disruption across the family tree, mapped to the domain [StopDisruption].

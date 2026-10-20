@@ -3931,14 +3931,13 @@ Builds on Phase 1's minimal line-status marking.
       and walk `children`, collecting each node's `disruptions` (drop blanks, dedupe by text).
       The test fixture had been the wrong (flat) shape, which is why this shipped green; it now
       records the real family tree. Line-status path was not implicated (batched call succeeds).
-- [ ] **A journey's closure card: only stops its trains use, named by the stop itself** (maintainer,
+- [x] **A journey's closure card: only stops its trains use, named by the stop itself** (maintainer,
       2026-10-19). A Northern line journey to King's Cross & St Pancras showed "King's Cross & St
-      Pancras International / Bus Stop Closed": a bus pole's closure in the far end's interchange, on a
-      ride no departure of which uses that pole. Wanted: no card when the closed stop isn't on any
-      direct trip there; where it is, the group header unchanged and the card naming the stop
-      ("‹its stop name› – Stop ‹letter›" / "Bus Stop Closed"), not the interchange. #1006 named the pole after
-      the interchange; this follows it. Start from `JourneyCard`'s `destinationIds` (its far-end stops
-      plus `reached`), which takes in the hub's poles whatever the ride's mode.
+      Pancras International / Bus Stop Closed": TfL answers a station's family closure lookup with its
+      whole interchange, so a hub bus stop's closure was read as the tube station's. Done: a stop's
+      closures are its own subtree of the family tree plus anything recorded above it
+      (`disruptionsFor`), and a single pole's card is titled by its own stop name ("‹its stop name› –
+      Stop ‹letter›"), the group header unchanged.
 - [ ] **Show a chip per disruption condition, not just the single most-severe one**
       (requested 2026-09-20). Today `mostSevereDisruption` collapses coexisting statuses to
       one label; the maintainer wants to revisit that — show a chip for each condition a line

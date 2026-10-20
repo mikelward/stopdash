@@ -1048,7 +1048,7 @@ class KtorTflClient(
                 parameter("getFamily", true)
                 parameter("includeRouteBlockedStops", true)
                 applyAppKey(key)
-            }.body<TflDisruptedPointFamilyDto>().allDisruptions { raw ->
+            }.body<TflDisruptedPointFamilyDto>().disruptionsFor(stopId) { raw ->
                 // Length only: the raw value is TfL's, but a bare fact keeps the log coarse.
                 warn("stop disruption for stop $stopId: unparseable date (${raw.length} chars), window left open")
             }
