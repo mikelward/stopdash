@@ -930,7 +930,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                   has the phase-2 checks resolve through the model when they run
                                   (planner legs already keep the pole and point a split area
                                   needs). Decide before the switch reads any place.
-                            - [ ] The ends (`LegEnd`), step-free, and arriving by hub.
+                            - [ ] The ends (`LegEnd`), step-free, and arriving by hub:
+                                - [x] `LegEnd` and `LegEnd.of` (a route's rides paired with where
+                                      each gets off), unread; walks get no pair (see *Decisions
+                                      needing review*).
+                                - [ ] The trip's step-free level on `ActiveTrip`.
+                                - [ ] Arriving by hub at the first call, every ride-end path taking
+                                      a `LegEnd`.
+                                - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
@@ -4885,6 +4892,12 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   conversion to a `StopRef` or `DirectTrips.End` that still holds its position. Alternative: resolve each stop
   where it comes in, in `NearbyStopsCache` and in each finder's mapper, and resolve it again once the
   model loads, as the other feeds are. Reversible: nothing reads it yet.
+- [ ] **A route's walks get no `LegEnd`; a ride ending at a split area the model couldn't place ends at
+  its poles** (autopilot, 2026-10-20). `LegEnd.of` pairs only the rides, since only a ride gets off at a
+  call; a walk keeps its Planner ends. A ride whose Planner call is a split stop area with no pole or
+  point (`Resolved.station` null) ends at that area's own TfL ids, never at a child stop or hub it may
+  not be (Codex on #1014). Alternatives: pair every leg, walks included; or end such a ride nowhere and
+  let the caller fall back. Reversible: unread until the switch.
 - [ ] **Feeds keep their places stamped where they come in, but a departures snapshot read back
   doesn't** (maintainer left it to the agent, 2026-10-20, with a to-do to reconsider; autopilot
   for the snapshot). Live boards, planner legs and calls are placed as #1009–#1011 built them. A
