@@ -8,7 +8,6 @@ import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
-import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteStopsRepository
@@ -40,7 +39,7 @@ internal class TripFrame(
     val now: Instant,
     val access: Duration,
     val sequences: Map<String, LineSequence?>,
-    val rideLines: Map<TripLeg, RideLines>,
+    val rideLines: TripRideLines,
     val estimates: List<TripTiming.Estimate>?,
     val cards: List<List<TripTiming.Estimate>>?,
     val open: TripTiming.Estimate?,
@@ -115,7 +114,7 @@ internal fun tripFrame(
     sequences: Map<String, LineSequence?>,
     excluded: Set<String>,
     originUnconfirmed: Boolean,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     plannedLegs: Set<TripLeg>,
     openKey: String?,
     dismissed: Set<DismissedAlert>,
@@ -162,7 +161,7 @@ internal fun tripFrame(
     val hubOf: (String) -> String? = { routeStops?.hubOf(it) }
     // Each bus leg's alerts placed on its ride ([legStatuses]), for the open route's rows and the line
     // pages they open, which the page builds as it draws.
-    val legs = estimates.orEmpty().flatMap { it.route.rides }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
+    val legs = estimates.orEmpty().flatMap { rideLines.ridesOf(it.route) }.flatMap { it.legs }.distinct()
     val state = state.copy(legStatuses = legStatuses(state.statuses, legs, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
     val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, stepFree, sequences, excluded), previousOrder) }
@@ -189,7 +188,7 @@ private fun listView(
     now: Instant,
     access: Duration,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     dismissed: Set<DismissedAlert>,
     loading: Set<String>,
     hubOf: (String) -> String?,
@@ -222,7 +221,7 @@ private fun openView(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     dismissed: Set<DismissedAlert>,
     loading: Set<String>,
     originUnconfirmed: Boolean,
@@ -238,7 +237,7 @@ private fun openView(
         closures = closures,
         closureCards = tripClosureCards(closures, rows),
         statuses = shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed),
-        rides = openRides(estimate.route.legs, state, now, sequences, rideLines, dismissed, topology),
+        rides = openRides(estimate.route, state, now, sequences, rideLines, dismissed, topology),
     )
 }
 
@@ -262,21 +261,24 @@ internal fun tripClosureCards(closures: Map<String, DepartureRow>, rows: List<De
 }
 
 /**
- * Each of [legs]' rides as the open route draws it ([rideLegView]); null for a walk. Only the rider's
+ * Each of [route]'s rides as the open route draws it ([rideLegView]); null for a walk. Only the rider's
  * next ride counts down: they aren't at a later one's stop yet.
  */
 private fun openRides(
-    legs: List<TripLeg>,
+    route: TripRoute,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     dismissed: Set<DismissedAlert>,
     topology: RouteTopology,
 ): List<RideLegView?> {
+    val legs = route.legs
     val nextRide = legs.indexOfFirst { !it.isWalk }
+    // Each leg's lines, by where [route] gets it off.
+    val ridden = rideLines.legsOf(route)
     return legs.mapIndexed { index, leg ->
-        if (leg.isWalk) null else rideLegView(rideLines[leg] ?: RideLines.only(leg), state, now, sequences, dismissed, countsDown = index == nextRide, topology = topology)
+        if (leg.isWalk) null else rideLegView(ridden[index], state, now, sequences, dismissed, countsDown = index == nextRide, topology = topology)
     }
 }
 
@@ -285,7 +287,7 @@ private fun framing(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
 ): TripFraming = TripFraming(
     tripCheckState(state, shown, now, sequences, rideLines),
     tripMisses(state, shown, now, sequences, rideLines),

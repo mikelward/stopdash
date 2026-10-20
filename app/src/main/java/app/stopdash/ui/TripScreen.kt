@@ -230,7 +230,8 @@ internal fun rideTrains(
     leg: TripLeg,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines>,
+    // The ride's lines, by where its route gets it off ([TripRideLines.of]).
+    lines: RideLines,
 ): List<Departure>? {
     val found = timingLines(state, leg, now, lines).map { legTrains(state, it, now, sequences) }
     return if (found.all { it == null }) null else found.flatMap { it.orEmpty() }.distinct()
@@ -244,7 +245,7 @@ internal fun lineStopsOpen(state: TripViewModel.State, now: Instant): (TripLeg) 
  * The lines whose trains may time [leg]'s ride: one list for [rideTrains] and [ridePredicted], so
  * the reason a withheld arrival gives always describes the trains that timed it.
  */
-private fun timingLines(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): List<TripLeg> =
+private fun timingLines(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: RideLines): List<TripLeg> =
     // Another line times the ride only once checked as running, from stops checked open
     // ([RideLines.vouched]): a suspended line's predictions, one never checked, or one from a closed
     // stop mustn't make a route read as live. The Planner's own is held to the same once another line
@@ -252,7 +253,7 @@ private fun timingLines(state: TripViewModel.State, leg: TripLeg, now: Instant, 
     // Nor from a pole whose refresh failed: its held predictions would pass for current. The
     // Planner's line keeps its own rule, its held trains timing the ride as they age, though only
     // trains from a stop that refreshed show the ride running every few minutes ([rideRefreshed]).
-    (lines[leg] ?: RideLines.only(leg)).timedRunning(rideStatuses(state), lineStopsOpen(state, now))
+    lines.timedRunning(rideStatuses(state), lineStopsOpen(state, now))
         .filter { it == leg || state.live[it.fromId]?.failed != true }
 
 /**
@@ -261,7 +262,7 @@ private fun timingLines(state: TripViewModel.State, leg: TripLeg, now: Instant, 
  * ride isn't judged at the Planner's pole alone, so a failure there doesn't withhold a ride another
  * line keeps timing from fresh arrivals (Codex on #309).
  */
-internal fun rideCurrent(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Boolean =
+internal fun rideCurrent(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: RideLines): Boolean =
     state.live[leg.fromId]?.failed != true ||
         timingLines(state, leg, now, lines).any { it != leg && state.live[it.fromId]?.failed == false }
 
@@ -275,7 +276,7 @@ internal fun rideRefreshed(
     leg: TripLeg,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines>,
+    lines: RideLines,
 ): List<Departure> =
     timingLines(state, leg, now, lines).filter { state.live[it.fromId]?.failed != true }
         .flatMap { legTrains(state, it, now, sequences).orEmpty() }.distinct()
@@ -294,8 +295,8 @@ internal fun rideStatuses(state: TripViewModel.State): Map<String, LineStatus> =
  * times of its own to give, timetabled or live: only a train of a line that takes the ride times it
  * then (Codex on #382).
  */
-internal fun plannerVouched(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Boolean =
-    leg.isWalk || (lines[leg] ?: RideLines.only(leg)).vouched(leg, rideStatuses(state), lineStopsOpen(state, now))
+internal fun plannerVouched(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: RideLines): Boolean =
+    leg.isWalk || lines.vouched(leg, rideStatuses(state), lineStopsOpen(state, now))
 
 /**
  * Whether a line other than [leg]'s own may take and time its ride ([RideLines.othersTime]: checked
@@ -303,15 +304,15 @@ internal fun plannerVouched(state: TripViewModel.State, leg: TripLeg, now: Insta
  * line alone (Codex on #309). Its trains' freshness isn't asked: that times the route, it doesn't
  * decide whether the ride can be taken.
  */
-internal fun otherLineRuns(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Boolean =
-    !leg.isWalk && (lines[leg] ?: RideLines.only(leg)).othersTime(rideStatuses(state), lineStopsOpen(state, now))
+internal fun otherLineRuns(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: RideLines): Boolean =
+    !leg.isWalk && lines.othersTime(rideStatuses(state), lineStopsOpen(state, now))
 
 /**
  * How many trains [leg]'s timing lines ([rideTrains]) have predicted at their boarding stops, before
  * any route check: for the reason a withheld arrival gives ([TripTiming.Withheld]), so trains a
  * route couldn't vouch for read apart from none predicted. Stale arrivals (D4) count none.
  */
-internal fun ridePredicted(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Int {
+internal fun ridePredicted(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: RideLines): Int {
     if (leg.isWalk) return 0
     return timingLines(state, leg, now, lines).sumOf { line ->
         val stop = state.live[line.fromId] ?: return@sumOf 0
@@ -444,11 +445,11 @@ private fun placeLeg(placement: Int, leg: TripLeg): Int = (placement * 31 + leg.
 internal fun warmVerdicts(
     state: TripViewModel.State,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     // False once the warm-up is superseded: it then stops, leaving the newer one's verdicts in place.
     active: () -> Boolean = { true },
 ): Boolean {
-    val legs = (state.routes.orEmpty().flatMap { it.legs } + rideLines.values.flatMap { it.legs }).filterNot { it.isWalk }.distinct()
+    val legs = (state.routes.orEmpty().flatMap { it.legs } + rideLines.all.flatMap { it.legs }).filterNot { it.isWalk }.distinct()
     if (!active()) return false
     TripVerdicts.makeRoom(legs, active)
     var warmed = false
@@ -635,7 +636,7 @@ internal fun tripCheckState(
     estimates: List<TripTiming.Estimate>,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines> = emptyMap(),
+    lines: TripRideLines = TripRideLines.NONE,
 ): TripMessage? {
     val results = legChecks(state, estimates, now, sequences, lines)
     return when {
@@ -656,7 +657,7 @@ internal fun tripMisses(
     estimates: List<TripTiming.Estimate>,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines> = emptyMap(),
+    lines: TripRideLines = TripRideLines.NONE,
 ): Set<RouteMiss> = legChecks(state, estimates, now, sequences, lines).flatMapTo(LinkedHashSet()) { it.misses }
 
 // Each ridden leg's live trains, and each of its other lines' ([lines]), judged on their route: legs
@@ -666,7 +667,7 @@ private fun legChecks(
     estimates: List<TripTiming.Estimate>,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines>,
+    lines: TripRideLines,
 ): List<DirectTrips.Result> = legResults(state, estimates, now, sequences, lines).map { it.second }
 
 // [legChecks]' results, each with the leg it judged.
@@ -675,7 +676,7 @@ private fun legResults(
     estimates: List<TripTiming.Estimate>,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines>,
+    lines: TripRideLines,
 ): List<Pair<TripLeg, DirectTrips.Result>> {
     val windows = catchWindows(estimates)
     val statuses = rideStatuses(state)
@@ -684,8 +685,8 @@ private fun legResults(
     // ride may be taken on it, as the cards decide ([RideLines.vouched]): a suspended line, or one whose
     // stops are closed, has no train the rider could take. Its status row says why on its own.
     val legWindows = LinkedHashMap<TripLeg, MutableList<CatchWindow>>()
-    for (ride in estimates.flatMap { it.route.rides }.distinct()) {
-        val rideLines = lines[ride] ?: RideLines.only(ride)
+    for ((ride, end) in estimates.flatMap { lines.endsOf(it.route) }.distinct()) {
+        val rideLines = lines.of(ride to end)
         for (leg in rideLines.legs) {
             val open = legWindows.getOrPut(leg) { ArrayList() }
             if (rideLines.vouched(leg, statuses, stopsOpen)) open += windows[ride].orEmpty()
@@ -742,7 +743,7 @@ internal fun trainsUnchecked(
     estimates: List<TripTiming.Estimate>,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    lines: Map<TripLeg, RideLines>,
+    lines: TripRideLines,
 ): List<TripLeg> = legResults(state, estimates, now, sequences, lines)
     .filter { (_, result) -> result.unresolved && !result.pending }
     .map { it.first }
@@ -812,7 +813,7 @@ internal fun tripEstimates(
     originUnconfirmed: Boolean = false,
     // A trip page passes its own, worked out at its step-free level ([tripFrame]); without one, a trip
     // asking none ([StepFree.DEFAULT]).
-    lines: Map<TripLeg, RideLines> = rideLines(state.routes.orEmpty(), state, StepFree.DEFAULT, sequences, hidden),
+    lines: TripRideLines = rideLines(state.routes.orEmpty(), state, StepFree.DEFAULT, sequences, hidden),
     // The open route's key: timed past the cap while the plan offers it ([TripViewModel.bestOf]).
     keep: String? = null,
     // Every leg the Planner planned, when some routes ride one it didn't (a train through a change):
@@ -831,19 +832,21 @@ internal fun tripEstimates(
     val unknown = state.statusUnknown +
         routes.flatMap { route -> route.rides.map { it.lineId } }.filterNot { it in state.statuses }
     val estimates = routes.map { route ->
+        // Each leg's lines, by where this route gets it off.
+        val ridden = lines.legsOf(route)
         TripTiming.estimate(
-            route, now, access, { index -> rideTrains(state, route.legs[index], now, sequences, lines) }, notRunning, unknown,
-            current = { index -> rideCurrent(state, route.legs[index], now, lines) },
-            refreshed = { index -> rideRefreshed(state, route.legs[index], now, sequences, lines) },
-            predicted = { index -> ridePredicted(state, route.legs[index], now, lines) },
+            route, now, access, { index -> rideTrains(state, route.legs[index], now, sequences, ridden[index]) }, notRunning, unknown,
+            current = { index -> rideCurrent(state, route.legs[index], now, ridden[index]) },
+            refreshed = { index -> rideRefreshed(state, route.legs[index], now, sequences, ridden[index]) },
+            predicted = { index -> ridePredicted(state, route.legs[index], now, ridden[index]) },
             // Nor one whose Planner line another line stands in for, unless it's running ([plannerVouched]).
-            timetabled = { index -> (planned == null || route.legs[index] in planned) && plannerVouched(state, route.legs[index], now, lines) },
+            timetabled = { index -> (planned == null || route.legs[index] in planned) && plannerVouched(state, route.legs[index], now, ridden[index]) },
             // A stop it boards or gets off at closed ranks it below every usable route, as a line
             // not running does; one not yet checked, with the unchecked (SPEC *Trips with a change*).
             // A bus stop is judged at its pole once its line's route gives one ([endPole]).
             stops = TripClosures.standing(route, state.closures, state.closuresUnknown, now) { end -> endPole(route, end, sequences) },
             // A ride another running line can take and time isn't sunk by its Planner line's status.
-            otherLine = { index -> otherLineRuns(state, route.legs[index], now, lines) },
+            otherLine = { index -> otherLineRuns(state, route.legs[index], now, ridden[index]) },
             delayed = delayed,
             // How often its line runs past its live predictions, by its timetable on a good service.
             schedule = { index -> rideSchedule(state, route.legs[index], now) },
@@ -1511,8 +1514,8 @@ private fun TripContent(
     // line row opens its page too, as a row on the main screen does).
     val detailLegs = remember(open, estimates, rideLines) {
         // Every line of each ride ([RideLines]): a row of one the Planner didn't name opens its page too.
-        (open?.let { listOf(it) } ?: estimates.orEmpty()).flatMap { it.route.rides }.distinct()
-            .flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
+        (open?.let { listOf(it) } ?: estimates.orEmpty()).flatMap { rideLines.ridesOf(it.route) }.distinct()
+            .flatMap { it.legs }.distinct()
     }
     val detailLeg = detailLegs.firstOrNull { tripLegKey(it) == detailLegKey }
     val detailRow = if (detailKey == null || detailLeg == null) {
@@ -1528,7 +1531,8 @@ private fun TripContent(
         val live = legRows(state, detailLeg, now, sequences, withUnchecked = true)
         // Another line not yet checked as running has its no-trains row on the open route though its
         // trains are in ([rideLegRows]): that row opens its page too, as a list card's rows still do.
-        val ride = rideLines.values.firstOrNull { detailLeg in it.legs } ?: RideLines.only(detailLeg)
+        // The page is opened from a line, not a route: the first ride's lines, at whichever end, that hold it.
+        val ride = rideLines.all.firstOrNull { detailLeg in it.legs } ?: RideLines.only(detailLeg)
         val statusRow = withDismissedMarked(legStatusRow(state, detailLeg, now), alerts.dismissed)
         val rows = when {
             live.isEmpty() -> listOf(statusRow)
@@ -2011,9 +2015,9 @@ private fun TripContent(
  * The boarding stops of [estimates]' rides whose last refresh failed, by name: every line of each ride
  * ([RideLines]), so another line's trains held from a pole that failed never read as fresh.
  */
-internal fun failedStops(estimates: List<TripTiming.Estimate>, state: TripViewModel.State, rideLines: Map<TripLeg, RideLines>): List<String> =
-    estimates.flatMap { it.route.rides }
-        .flatMap { ride -> rideLines[ride]?.legs ?: listOf(ride) }
+internal fun failedStops(estimates: List<TripTiming.Estimate>, state: TripViewModel.State, rideLines: TripRideLines): List<String> =
+    estimates.flatMap { rideLines.ridesOf(it.route) }
+        .flatMap { it.legs }
         .filter { state.live[it.fromId]?.failed == true }
         .map { it.fromName }
         .distinct()
@@ -2297,7 +2301,7 @@ private fun RouteList(
     // The list as the page's frame worked it out ([TripListView]): its cards, each with what it draws.
     view: TripListView,
     // Each ride's lines ([rideLines]), shown together on its pill, their trains together.
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     state: TripViewModel.State,
     // The frame's own time ([TripFrame.now]), which its cards were worked out for.
     now: Instant,
@@ -2495,11 +2499,11 @@ private fun RouteLabelHeader(labels: List<RouteLabel>) {
  * routes' ride there ([RideLines]), the best route's own first. None ranks above another; each is a
  * way between the same two stops.
  */
-internal fun cardRideLines(card: List<TripTiming.Estimate>, index: Int, rideLines: Map<TripLeg, RideLines>): List<TripLeg> =
-    card.mapNotNull { it.route.rides.getOrNull(index) }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinctBy { it.lineId }
+internal fun cardRideLines(card: List<TripTiming.Estimate>, index: Int, rideLines: TripRideLines): List<TripLeg> =
+    card.mapNotNull { rideLines.endsOf(it.route).getOrNull(index) }.flatMap { rideLines.of(it).legs }.distinctBy { it.lineId }
 
 /** The lines of [card]'s ride [index] as its pill draws them ([cardRideLines]). */
-internal fun cardRidePill(card: List<TripTiming.Estimate>, index: Int, rideLines: Map<TripLeg, RideLines>): List<LineRef> =
+internal fun cardRidePill(card: List<TripTiming.Estimate>, index: Int, rideLines: TripRideLines): List<LineRef> =
     cardRideLines(card, index, rideLines).map { LineRef(it.lineId, it.lineName, it.mode) }
 
 /**
@@ -2508,7 +2512,7 @@ internal fun cardRidePill(card: List<TripTiming.Estimate>, index: Int, rideLines
  * stop names line up (maintainer, 2026-10-04: a cut pill's row stood out to the right). Every lone
  * pill is one width, so only each distinct cut pill is measured besides. Measures text: on a worker only.
  */
-internal fun pillSlotWidthPx(cards: List<List<TripTiming.Estimate>>, rideLines: Map<TripLeg, RideLines>, widthPx: (List<LineRef>) -> Int): Int? =
+internal fun pillSlotWidthPx(cards: List<List<TripTiming.Estimate>>, rideLines: TripRideLines, widthPx: (List<LineRef>) -> Int): Int? =
     cards.asSequence()
         .flatMap { card -> card.first().route.rides.indices.asSequence().map { cardRidePill(card, it, rideLines) } }
         .distinctBy { pill -> if (pill.size == 1) emptyList() else cutPillCodes(pill) }
@@ -2526,7 +2530,7 @@ internal class CardPillWidths(val list: TripListView, val pillWidth: PillWidth, 
 
 /** [list]'s cards' pill columns ([pillSlotWidthPx]), one per card. Measures text: on a worker only. */
 @WorkerThread
-internal fun cardPillWidths(list: TripListView, rideLines: Map<TripLeg, RideLines>, pillWidth: PillWidth): CardPillWidths {
+internal fun cardPillWidths(list: TripListView, rideLines: TripRideLines, pillWidth: PillWidth): CardPillWidths {
     val measure = pillWidth.measure()
     return CardPillWidths(list, pillWidth, list.cards.associate { cardKey(it.card.first().route) to pillSlotWidthPx(listOf(it.card), rideLines, measure) })
 }
@@ -2564,10 +2568,10 @@ private fun rememberPillWidth(): PillWidth {
 }
 
 /** Every line any route on a trip's card rides, in the order they're ridden, for its "Hide ‹line›" items. */
-internal fun cardLines(card: List<TripTiming.Estimate>, rideLines: Map<TripLeg, RideLines> = emptyMap()): List<LineRef> =
+internal fun cardLines(card: List<TripTiming.Estimate>, rideLines: TripRideLines = TripRideLines.NONE): List<LineRef> =
     card.asSequence()
         // Every line a ride's pill names ([RideLines]), so each can be hidden from where it shows.
-        .flatMap { estimate -> estimate.route.rides.asSequence().flatMap { ride -> (rideLines[ride]?.legs ?: listOf(ride)).asSequence() } }
+        .flatMap { estimate -> rideLines.ridesOf(estimate.route).asSequence().flatMap { it.legs.asSequence() } }
         .filter { it.lineId.isNotBlank() }
         .map { LineRef(it.lineId, it.lineName, it.mode) }
         .distinctBy { it.id.lowercase() }
@@ -2591,7 +2595,7 @@ internal fun cardModes(card: List<TripTiming.Estimate>): List<String> =
 @Composable
 private fun RouteSummary(
     card: List<TripTiming.Estimate>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     statuses: Map<String, LineStatus>,
     modifier: Modifier = Modifier,
 ) {
@@ -2676,7 +2680,7 @@ internal fun cardTimes(
     now: Instant,
     access: Duration,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines> = emptyMap(),
+    rideLines: TripRideLines = TripRideLines.NONE,
 ): CardTimes {
     val trains = ArrayList<Departure>()
     val usable = HashSet<Departure>()
@@ -2684,14 +2688,14 @@ internal fun cardTimes(
     var loading = false
     // Every line of each route's first ride ([RideLines]): each is a way between the same two stops.
     val lines = card.flatMap { estimate ->
-        estimate.route.rides.firstOrNull()?.let { ride -> (rideLines[ride]?.legs ?: listOf(ride)).map { it to ride } }.orEmpty()
+        rideLines.endsOf(estimate.route).firstOrNull()?.let { ride -> rideLines.of(ride).legs.map { it to ride } }.orEmpty()
     }.distinctBy { it.first }
     lines.forEach { (leg, ride) ->
         val live = legTrains(state, leg, now, sequences)
         // A line not yet checked as running ([RideLines.vouched]) shows its trains as still being
         // checked, never as catchable: it may be suspended. That's the Planner's own too, once
         // another line is what keeps the ride usable.
-        if (!(rideLines[ride] ?: RideLines.only(ride)).vouched(leg, rideStatuses(state), lineStopsOpen(state, now))) {
+        if (!rideLines.of(ride).vouched(leg, rideStatuses(state), lineStopsOpen(state, now))) {
             trains += live.orEmpty()
             checking += live.orEmpty()
             return@forEach
@@ -2711,8 +2715,8 @@ internal fun cardTimes(
     // Each later ride's trains, every one of its lines checked as running ([RideLines.running]) along
     // its route ([legTrains]); none while stale or unchecked: a suspended line's leftover predictions
     // would make the connection read as more frequent than it is.
-    val headways = card.first().route.rides.drop(1).map { ride ->
-        linesHeadway((rideLines[ride] ?: RideLines.only(ride)).running(rideStatuses(state), lineStopsOpen(state, now)), state, now, sequences)
+    val headways = rideLines.ridesOf(card.first().route).drop(1).map { ride ->
+        linesHeadway(ride.running(rideStatuses(state), lineStopsOpen(state, now)), state, now, sequences)
     }
     return CardTimes(shown, checking, reachable, loading, headways)
 }
@@ -2750,7 +2754,7 @@ internal fun walkToStart(route: TripRoute, access: Duration): Duration =
 @Composable
 private fun RideStops(
     card: List<TripTiming.Estimate>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     statuses: Map<String, LineStatus>,
     // Each ride's stop notices, worked out with the card ([TripCardView.rideClosures]): its ⚠ carries them.
     rideClosures: List<List<DepartureRow>>,
@@ -2900,7 +2904,7 @@ private fun linesWarning(lines: List<TripLeg>, statuses: Map<String, LineStatus>
  * ([RouteSummary]).
  */
 @Composable
-private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: Map<TripLeg, RideLines>, statuses: Map<String, LineStatus>) {
+private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: TripRideLines, statuses: Map<String, LineStatus>) {
     val estimate = card.first()
     if (estimate.route.rides.isEmpty()) return RouteSummary(card, rideLines, statuses)
     val fare = estimate.route.fare
@@ -3047,7 +3051,7 @@ private fun RouteLegs(
     // The open route as the page's frame worked it out ([TripOpenView]): its notices, alerts and status note.
     view: TripOpenView,
     // Each ride's lines ([rideLines]): a departure row for every one of them.
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     state: TripViewModel.State,
     now: Instant,
     access: Duration,
@@ -3135,7 +3139,7 @@ private fun RouteLegs(
                 // The next ride's trains that leave before the rider gets to its stop are grayed, as the
                 // list's first-leg row grays them.
                 val ready = TripTiming.readyAt(estimate, access, index)
-                val ride = rideLines[leg] ?: RideLines.only(leg)
+                val ride = rideLines.of(estimate.route, leg)
                 val shown = ride.legs
                 (listOf(leg) + shown).forEach { closureCard(it.fromId) }
                 // Its rows from the frame ([TripOpenView.rides]), worked out with the rest of the route.
@@ -3183,9 +3187,9 @@ internal fun statusNote(
  * at ([rideLines]): a request that failed for another route's line isn't this route's, as another
  * route's failed stop isn't ([routeClosuresFailed]).
  */
-internal fun routeStatusFailed(route: TripRoute, rideLines: Map<TripLeg, RideLines>, state: TripViewModel.State): Boolean =
-    route.rides.any { ride ->
-        ride.lineId in state.statusFailedLines || rideLines[ride]?.legs.orEmpty().any { it.lineId in state.statusFailedLines }
+internal fun routeStatusFailed(route: TripRoute, rideLines: TripRideLines, state: TripViewModel.State): Boolean =
+    rideLines.endsOf(route).any { ride ->
+        ride.first.lineId in state.statusFailedLines || rideLines[ride]?.legs.orEmpty().any { it.lineId in state.statusFailedLines }
     }
 
 /**
@@ -3199,7 +3203,7 @@ internal fun routeClosuresFailed(
     route: TripRoute,
     state: TripViewModel.State,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines> = emptyMap(),
+    rideLines: TripRideLines = TripRideLines.NONE,
 ): Boolean =
     state.closuresFailed.isNotEmpty() && (
         TripClosures.ends(route).any { end ->
@@ -3211,8 +3215,8 @@ internal fun routeClosuresFailed(
  * The poles the other lines [route]'s rides show ([rideLines]) board and get off at: shown for the
  * rider to take, so their closures count, and so does a check of them that failed or hasn't come.
  */
-internal fun otherLineStops(route: TripRoute, rideLines: Map<TripLeg, RideLines>): Set<String> =
-    route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
+internal fun otherLineStops(route: TripRoute, rideLines: TripRideLines): Set<String> =
+    rideLines.othersOf(route)
         .flatMapTo(HashSet()) { listOf(it.fromId, it.toId) }
 
 /**
@@ -3222,11 +3226,11 @@ internal fun otherLineStops(route: TripRoute, rideLines: Map<TripLeg, RideLines>
  * only about the Planner's stops and their pairs' poles by itself, so the screen hands it these
  * ([TripViewModel.checkShownStops]); one it already asks about is left to it.
  */
-internal fun shownStops(route: TripRoute, sequences: Map<String, LineSequence?>, rideLines: Map<TripLeg, RideLines>): Set<String> =
+internal fun shownStops(route: TripRoute, sequences: Map<String, LineSequence?>, rideLines: TripRideLines): Set<String> =
     TripClosures.ends(route).mapNotNullTo(HashSet()) { endPole(route, it, sequences) } + otherLineStops(route, rideLines)
 
 /** Whether a pole another line [route]'s rides show uses has no check held yet ([otherLineStops]). */
-internal fun otherLineStopsUnchecked(route: TripRoute, state: TripViewModel.State, rideLines: Map<TripLeg, RideLines>): Boolean =
+internal fun otherLineStopsUnchecked(route: TripRoute, state: TripViewModel.State, rideLines: TripRideLines): Boolean =
     otherLineStops(route, rideLines).any { it !in state.closures }
 
 /**
@@ -3258,7 +3262,7 @@ internal fun uncheckedNames(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
 ): List<String> = unchecked(estimates, state, now, sequences, rideLines).let { (lines, stops) -> lines.map { it.lineName } + stops }
     .filter { it.isNotBlank() }.distinct()
 
@@ -3271,13 +3275,13 @@ internal fun unchecked(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
 ): Pair<List<TripLeg>, List<String>> {
     val statuses = rideStatuses(state)
     val lines = LinkedHashMap<String, TripLeg>()
     val stops = LinkedHashSet<String>()
     for (route in estimates.map { it.route }) {
-        val others = route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
+        val others = rideLines.othersOf(route)
         route.rides.filter { it.lineId in state.statusUnknown || it.lineId !in state.statuses || it.lineId in state.statusFailedLines }
             .forEach { lines.putIfAbsent(it.lineId, it) }
         others.filter { it.lineId !in statuses }.forEach { lines.putIfAbsent(it.lineId, it) }
@@ -3316,7 +3320,7 @@ internal fun routeClosures(
     now: Instant,
     dismissed: Set<DismissedAlert>,
     sequences: Map<String, LineSequence?> = emptyMap(),
-    rideLines: Map<TripLeg, RideLines> = emptyMap(),
+    rideLines: TripRideLines = TripRideLines.NONE,
     hubOf: (String) -> String? = { null },
 ): Map<String, DepartureRow> = foldedClosures(routeClosureRows(route, state, now, sequences, rideLines, hubOf), dismissed)
 
@@ -3337,11 +3341,11 @@ internal fun routeClosureRows(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?> = emptyMap(),
-    rideLines: Map<TripLeg, RideLines> = emptyMap(),
+    rideLines: TripRideLines = TripRideLines.NONE,
     hubOf: (String) -> String? = { null },
     poleOf: (stopId: String, areaId: String) -> StopLocation? = { _, _ -> null },
 ): List<DepartureRow> {
-    val others = route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
+    val others = rideLines.othersOf(route)
     // Named as the route names a stop, else as the other line does.
     val names = (others + route.legs).flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
     val rides = route.rides + others
@@ -3448,14 +3452,14 @@ internal fun cardClosures(
     card: List<TripTiming.Estimate>,
     index: Int,
     closures: Map<String, DepartureRow>,
-    rideLines: Map<TripLeg, RideLines> = emptyMap(),
+    rideLines: TripRideLines = TripRideLines.NONE,
 ): List<DepartureRow> =
     card.flatMap { estimate ->
         val rides = estimate.route.rides
         if (index > rides.lastIndex) return@flatMap emptyList()
         val legs = estimate.route.legs
         rideClosures(rides, index, legs.lastOrNull()?.takeIf { it.isWalk }?.toId, closures, legs.firstOrNull()?.takeIf { it.isWalk }?.fromId) {
-            rideLines[it]?.legs.orEmpty()
+            rideLines.found(estimate.route, it)?.legs.orEmpty()
         }
     }.distinctBy { it.stopId }.let(DepartureRows::stopStatusFolded)
 
@@ -3646,7 +3650,7 @@ internal class TripRow(
 @WorkerThread
 internal fun tripRow(
     cards: List<List<TripTiming.Estimate>>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
@@ -3670,7 +3674,7 @@ internal fun tripRow(
     // once the check is over it isn't still "checking", it couldn't be.
     val estimates = cards.flatten()
     val rides = estimates.flatMap { it.route.rides }
-    val otherLines = RideLines.unchecked(rides.mapNotNull { rideLines[it] }, rideStatuses(state))
+    val otherLines = RideLines.unchecked(estimates.flatMap { rideLines.endsOf(it.route) }.mapNotNull { rideLines[it] }, rideStatuses(state))
     // Only the routes shown: a hidden mode's line or failed stop isn't these routes'.
     val shownLines = rides.mapTo(HashSet()) { it.lineId }
     val note = statusNote(
@@ -3906,7 +3910,7 @@ private val worstFirst = compareBy<LineStatus>(
 @WorkerThread
 internal fun tripLines(
     cards: List<List<TripTiming.Estimate>>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
@@ -4022,7 +4026,7 @@ internal val tripLineOrder: Comparator<TripLine> = compareBy<TripLine>(
 @Composable
 private fun rememberTripRow(
     cards: List<List<TripTiming.Estimate>>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
@@ -5030,12 +5034,12 @@ internal fun rememberLegRouteStops(leg: TripLeg, stepFree: StepFree, retry: Int)
 @WorkerThread
 internal fun cardStatuses(
     card: List<TripTiming.Estimate>,
-    rideLines: Map<TripLeg, RideLines>,
+    rideLines: TripRideLines,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
 ): Map<String, LineStatus> {
-    val legs = card.flatMap { it.route.rides }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
+    val legs = card.flatMap { rideLines.ridesOf(it.route) }.flatMap { it.legs }.distinct()
     val along = if (state.statuses.values.none { it.byDirection.isNotEmpty() }) {
         state.statuses
     } else {

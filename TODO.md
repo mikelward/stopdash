@@ -950,10 +950,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           `throughWays`), `of` keyed on the pair: the trip page's
                                           cards and ways through a change, and on the way's ride
                                           lines and pair boards.
-                                    - [ ] The trip page's ride-lines lookups by the pair: it flattens
-                                          `RideLines.of` by ride (`rideLines`), lossless while every
-                                          ride has the one end; each card's lookup has to name its
-                                          ride's end before the end is read.
+                                    - [x] The trip page's ride-lines lookups by the pair
+                                          (`TripRideLines`): each names its ride's end by its route,
+                                          through the ends the lines were worked out with; only the
+                                          line page, opened from a line rather than a route, still
+                                          finds the first ride's lines holding it.
                                     - [ ] `DirectTrips.judge` and `TripVerdicts`, keyed on the pair.
                                     - [ ] The favorite alerts' disruption span
                                           (`JourneyAlerts.ridesOn`, `ridesOf`).

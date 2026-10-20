@@ -9,10 +9,58 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 
 /**
+ * A trip page's ride lines ([RideLines.of]), each ride's by the ride paired with where it gets off
+ * ([ends], what they were worked out with), so a ride two routes share is looked up by its own route's
+ * end: a ride last on one route and in the middle of another may get off at different places once
+ * arriving by hub reads the end (TODO.md, *Arriving by hub*). Every lookup names the ride's end, by
+ * its route ([endsOf]); a ride with none of its own found has just its Planner's line ([RideLines.only]).
+ */
+internal class TripRideLines(
+    private val byEnd: Map<Pair<TripLeg, LegEnd>, RideLines>,
+    private val ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>,
+    // [ends] of the routes [byEnd] was worked out from, so a lookup by a route doesn't work them out again.
+    private val ended: Map<TripRoute, List<Pair<TripLeg, LegEnd>>> = emptyMap(),
+) {
+    /** [route]'s rides, each with where it gets off, in order, as these lines were worked out with. */
+    fun endsOf(route: TripRoute): List<Pair<TripLeg, LegEnd>> = ended[route] ?: ends(route)
+
+    /** The lines of [ride], by where it gets off; null for a ride these weren't worked out for. */
+    operator fun get(ride: Pair<TripLeg, LegEnd>): RideLines? = byEnd[ride]
+
+    /** The lines of [ride], by where it gets off: just its Planner's line where none were worked out. */
+    fun of(ride: Pair<TripLeg, LegEnd>): RideLines = byEnd[ride] ?: RideLines.only(ride.first)
+
+    /** The lines of [route]'s leg [leg], by where [route] gets it off; null where none were worked out (a walk's). */
+    fun found(route: TripRoute, leg: TripLeg): RideLines? = endsOf(route).firstOrNull { it.first == leg }?.let(byEnd::get)
+
+    /** The lines of [route]'s leg [leg] ([found]): just its Planner's line where none were worked out. */
+    fun of(route: TripRoute, leg: TripLeg): RideLines = found(route, leg) ?: RideLines.only(leg)
+
+    /** The lines of each of [route]'s legs ([of]), in order: one per leg, walks included. */
+    fun legsOf(route: TripRoute): List<RideLines> {
+        val ends = endsOf(route)
+        return route.legs.map { leg -> ends.firstOrNull { it.first == leg }?.let(::of) ?: RideLines.only(leg) }
+    }
+
+    /** The lines of each of [route]'s rides ([of]), in order. */
+    fun ridesOf(route: TripRoute): List<RideLines> = endsOf(route).map(::of)
+
+    /** The lines [route]'s rides show besides the Planner's: each ride's other lines' legs, in order. */
+    fun othersOf(route: TripRoute): List<TripLeg> = endsOf(route).flatMap { ride -> byEnd[ride]?.legs.orEmpty().filter { it != ride.first } }
+
+    /** Every ride's lines, whatever its route: for what goes over them all ([warmVerdicts]). */
+    val all: Collection<RideLines> get() = byEnd.values
+
+    companion object {
+        /** None worked out: every ride has just its Planner's line, getting off where the Planner gets it off. */
+        val NONE = TripRideLines(emptyMap(), plannedEnds(StepFree.DEFAULT))
+    }
+}
+
+/**
  * [RideLines.of] from a trip's [state]: its boarding stops' arrivals and its stop pairs' poles, each ride
- * getting off where the Planner does at the trip's [stepFree] level ([plannedEnds]). By the ride alone:
- * every ride has the one end ([LegEnd.planned] reads only the ride), so no two pairs share a ride, until
- * arriving by hub reads the end and the page's lookups take the pair (TODO.md, *Arriving by hub*).
+ * getting off where [ends] says, by default where the Planner does at the trip's [stepFree] level
+ * ([plannedEnds]). Kept by the pair ([TripRideLines]), so each lookup names its ride's end.
  */
 internal fun rideLines(
     routes: List<TripRoute>,
@@ -20,9 +68,12 @@ internal fun rideLines(
     stepFree: StepFree,
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
-): Map<TripLeg, RideLines> =
-    RideLines.of(routes, plannedEnds(stepFree), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
-        .mapKeys { it.key.first }
+    ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
+): TripRideLines {
+    val ended = routes.associateWith(ends)
+    val lines = RideLines.of(routes, { ended[it] ?: ends(it) }, state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
+    return TripRideLines(lines, ends, ended)
+}
 
 /** Where each ride of a route gets off at [stepFree]: the Planner's call ([LegEnd.planned]), until arriving by hub reads the end. */
 internal fun plannedEnds(stepFree: StepFree): (TripRoute) -> List<Pair<TripLeg, LegEnd>> = { route -> LegEnd.planned(route, stepFree) }
