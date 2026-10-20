@@ -243,6 +243,36 @@ feed: in 3, one train left the board near its due time without being placed at t
 Numbers only: one hour at four stations at the end of a peak, judged by TfL's own record, which
 settles neither signal. A station display, watched alongside, is what would.
 
+## Held trains
+
+From a two-hour recording of every line at seven stations, with TfL's prediction times
+(`timestamp`), each stop's newest answer kept as the app keeps it. A train counts as **held** once
+TfL has placed it at one location (`currentLocation`) for two minutes and its expected time has slid
+later by at least half the time passed, while it is a minute or more away (`HeldTrains`). Times 1 to
+20 minutes out, against when each train came (TfL's own record, as above, so every row reads about a
+minute late):
+
+| | Times shown | Median came after | Quartiles | Over 1 min late | Over 3 min late |
+|---|---|---|---|---|---|
+| Not held | 76,046 | +72 s | +24 / +151 s | 56% | 20% |
+| Held | 2,087 (2.7%) | +386 s | +248 / +566 s | 93% | 85% |
+
+- **Standing still is what matters, not the slide alone.** Over two minutes, trains whose time slid
+  at half the clock's pace or more while they moved came up to a minute later than the rest
+  (medians +75 s and +118 s, against +64 s); standing still while sliding at that pace, +268 s and
+  +313 s.
+- **Too spread to correct.** Half the held times came between four and nine minutes late, so the
+  app grays them rather than adding a fixed amount.
+- **Stricter settings change little.** Three minutes standing, or a slide of three-quarters, marks
+  1.9% of times, which come a median +388 s and +426 s; a minute and a half marks 3.3%, +366 s.
+- **Riders saw the holds.** A rider on board was held at platforms twice ("regulating the service")
+  and stopped once short of a platform; each time TfL's time for the trains behind slid while it
+  placed them where they stood. The platform display, watched alongside, already counted the hold:
+  at a station behind one, it showed the trains one to two and a half minutes later than TfL's live
+  list, and the train behind the hold came within ten seconds of it.
+- **Held trains first.** Holds were more common in this recording than riders recall, so the rule
+  is to be checked on later ones (`TODO.md`).
+
 ## Field reports
 
 Reports from a rider at a platform, against the board the app showed. The station isn't named
