@@ -797,7 +797,10 @@ fun MainScreen(
         keep = ListInputs.sameList,
     ) {
         loaded?.let {
-            listRowsOf(it, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown, stationLead)
+            listRowsOf(
+                it, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown, stationLead,
+                last = listWork.rows.value?.value,
+            )
         }
     }
     val rowsPending = loaded != null && listRows == null
@@ -813,8 +816,9 @@ fun MainScreen(
         val ld = rows.source
         val judgedAt = rows.now
         // Dismissals apply here as on the list, so an alert dismissed anywhere is gone from the card,
-        // and an alert behind the origin flags it no more than the list ([ListRows.all]).
-        val across = rows.all
+        // and an alert behind the origin flags it no more than the list ([ListRows.all]). A train just past its
+        // time isn't one a card counts on: the list's rows as a card reads them ([ListRows.forCards]).
+        val across = rows.forCards
         return cardJourneys.map { journey ->
             val segment = journeySegments[journey.key]
             val originId = segment?.originId ?: journey.from.stopId
@@ -957,15 +961,11 @@ fun MainScreen(
     // On the minute tick ([EmptyTimesState.now]), not the screen's own: a timetable's answer moves no
     // faster, and a new input reruns the background work.
     val quietTick = LocalEmptyTimes.current.now
-    // From the snapshot the rows were built from, so the "?" rows join the rows of their own snapshot
-    // (Codex, #524).
-    val quietFrom = listRows?.source
-    val quietInputs = remember(quietFrom, quietTick, stopDistanceMeters, hiddenModes, dismissed, stationLead) {
-        val ld = quietFrom
-        // Not while nearby stops are still loading: one of them may have trains for a line that
-        // would otherwise read "?" at a stop already in. Nor while a stop's closure check is out: a
-        // closed station's timetable trains aren't due, so "?" waits until it's known.
-        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty() || ld.closurePending.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown, stationLead)
+    // The candidates come with the list's own rows ([ListRows.quietCandidates]): the same build, at the
+    // same instant, so a "?" row never sits beside a train the list shows (Codex, #1027).
+    val quietFrom = listRows
+    val quietInputs = remember(quietFrom, quietTick, stopDistanceMeters, stationLead) {
+        quietFrom?.quietCandidates?.let { QuietInputs(it, quietFrom.quietRevision, quietFrom.source, quietTick, stopDistanceMeters, stationLead) }
     }
     val nearbyQuiet = withQuietRows(nearbyMarked, quietInputs)
     // Until that answer is in, the list's own pass works the "?" rows out as well, so a refresh never
@@ -1147,7 +1147,7 @@ fun MainScreen(
         } else {
             platformViewOf(
                 drawn.from.source, drawn.from.now, ids, platformKey, platformIsStation, platformTitle, starred, dismissed,
-                drawn.rows, hiddenModes, alertSequences, topology, stopDistanceMeters,
+                drawn.rows, hiddenModes, alertSequences, topology, stopDistanceMeters, board = drawn.from.board,
             )
         }
     }?.takeIf { platformStopIds != null }
@@ -1255,10 +1255,15 @@ fun MainScreen(
     var detailWay by rememberSaveable { mutableStateOf("") }
     // Counts the pages opened, so state kept with one (its line page) survives its moving to another row.
     var detailOpened by rememberSaveable { mutableIntStateOf(0) }
+    // Whether the open page was opened from a journey card: it then reads the cards' rows for as long as it's
+    // open, the trains a card counts on, never gaining the list's just-due one ([ListRows.forCards]), even
+    // once its journey is unstarred from the page (maintainer, 2026-10-20; SPEC *hold still*).
+    var detailFromCard by rememberSaveable { mutableStateOf(false) }
     // Opens a row's route page, counted as a tap on [tap]'s kind (UsageEvent; opted in only): a
     // row on a journey's change card is a change card, any other a stop row.
-    fun openDetail(tap: UsageEvent.Tap): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
+    fun openDetail(tap: UsageEvent.Tap, fromCard: Boolean = false): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
         UsageEvents.log(UsageEvent.Tapped(tap))
+        detailFromCard = fromCard
         detailKey = row.detailKey()
         detailDestination = focus?.destination
         detailBranch = focus?.branch
@@ -1273,17 +1278,24 @@ fun MainScreen(
     // Worked out with the cards ([ShownRows.cardRows]).
     val journeyByKey = if (platformRows != null) null else shown?.cardRowsByKey
     // And, last, among every loaded stop's rows: a page opened from a journey card stays open when
-    // that journey is unstarred from the page itself, while its origin's departures are still loaded.
-    val loadedRows = drawnFrom?.all.orEmpty()
+    // that journey is unstarred from the page itself, while its origin's departures are still loaded,
+    // read as the cards read them ([ListRows.forCards]).
+    val loadedRows = (if (detailFromCard) drawnFrom?.forCards else drawnFrom?.all).orEmpty()
     // With the snapshot and time of the rows it came from, which the page is drawn against (Codex,
     // #524): the drawn list's (or an open platform view's), or the journey cards' and loaded rows,
     // which are the drawn list's too.
     // Every loaded stop's rows count from a platform or station view too: a route's page moved to another
     // platform's row ([routeAnchor]) stays open over the view it was opened from, which lists only its own.
     val detailFound = detailKey?.let { key ->
-        shownByKey?.get(key)?.let { Triple(it, drawnState, drawnNow) }
-            ?: (journeyByKey?.get(key) ?: drawnFrom?.byKey?.get(key))
+        if (detailFromCard) {
+            // Opened from a card: the cards' rows only, so the page never moves to the list's row.
+            (journeyByKey?.get(key) ?: drawnFrom?.cardsByKey?.get(key))
                 ?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
+        } else {
+            shownByKey?.get(key)?.let { Triple(it, drawnState, drawnNow) }
+                ?: (journeyByKey?.get(key) ?: drawnFrom?.byKey?.get(key))
+                    ?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
+        }
     }
     // Every loaded stop's rows, where the row came from the list's own snapshot: the route's trains on its
     // stop's other platforms are listed too (maintainer, 2026-10-14).
@@ -1398,6 +1410,8 @@ fun MainScreen(
     if (detailLoaded != null && detailRow != null) {
         RouteDetailScreen(
             lineOpen = routeLineOpen,
+            // The list's own rows, drawn against the time they were built for ([detailNow]).
+            boardRows = true,
             row = detailRow,
             isStarred = StarredRow.of(detailRow) in starred,
             // Same rule as the list card: only a timed row with starring available is pinnable.
@@ -1705,7 +1719,8 @@ fun MainScreen(
                             onToggleStar = onToggleStar,
                             starringAvailable = starringAvailable,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
-                            onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
+                            onOpenCardDetail = openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true),
+                            onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
                             onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
@@ -1763,7 +1778,8 @@ fun MainScreen(
                             pendingTracker = pendingTracker,
                             onOpenFarther = onOpenFarther,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
-                            onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
+                            onOpenCardDetail = openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true),
+                            onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
                             onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
@@ -1963,6 +1979,8 @@ private fun LoadedContent(
     onOpenFarther: (CollapsedPlaces.Place) -> Unit = {},
     // Open the full-screen route detail for a tapped card; the caller holds the open-route state.
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit = { _, _ -> },
+    // The same for a row on a journey card, whose page reads the cards' rows.
+    onOpenCardDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // The same for a row on a journey's change card, counted apart (UsageEvent).
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // Opens Settings at the National Rail key, from a National Rail line's "No key".
@@ -2178,6 +2196,7 @@ private fun LoadedContent(
                         onHideMode = onHideMode,
                         modesByPlace = modesByPlace,
                         onOpenDetail = onOpenDetail,
+                        onOpenCardDetail = onOpenCardDetail,
                         onOpenChangeDetail = onOpenChangeDetail,
                         onDismissAlert = onDismissAlert,
                         dismissedClosures = dismissedClosures,
@@ -2683,6 +2702,8 @@ private fun DepartureList(
     starringAvailable: Boolean,
     stopDistanceMeters: Map<String, Double>,
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    // A journey card's row, whose page reads the cards' rows.
+    onOpenCardDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     listState: LazyListState,
     farther: List<FartherCard> = emptyList(),
@@ -2997,7 +3018,7 @@ private fun DepartureList(
                             starred = starred,
                             onToggleStar = onToggleStar,
                             starringAvailable = starringAvailable,
-                            onOpenDetail = onOpenDetail.takeUnless { stopCard === card.lineCard },
+                            onOpenDetail = onOpenCardDetail.takeUnless { stopCard === card.lineCard },
                             onAddRailKey = onAddRailKey,
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
@@ -5988,6 +6009,10 @@ internal fun RouteDetailScreen(
     // platforms are listed with its own ([otherPlatforms], picked out with the page's trains on the
     // worker). Empty lists [row]'s alone.
     siblings: List<DepartureRow> = emptyList(),
+    // Whether [row] and [siblings] are a board's rows built at [now] ([ListRows]): their trains are then shown
+    // as they are, a Tube train just past its time kept, grayed, as on the list ([Countdown.onBoard]). Otherwise
+    // (a trip's rows, built at another time) a train goes at its time, against [now].
+    boardRows: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
@@ -6075,10 +6100,11 @@ internal fun RouteDetailScreen(
     val alertStretchIds = alertMarks.stretch
     val alertPlaces = alertMarks.places
     val workForRow = routeWork?.takeIf { it.first === routeAsk }?.second
-    val departures = workForRow?.departures.orEmpty().filterNot { Countdown.hasDeparted(it, now) }
+    // A board's rows built at [now] already left out what had gone, as the list did ([boardRows]): no walk here.
+    val departures = workForRow?.departures.orEmpty().let { trains -> if (boardRows) trains else trains.filterNot { Countdown.hasDeparted(it, now) } }
     // The route's trains its board lists with no time, among its countdowns in their place; a
     // canceled one gone at its time, as a timed one is ([Countdown.stillShown]).
-    val untimed = workForRow?.untimed.orEmpty().filter { Countdown.stillShown(it, now) }
+    val untimed = workForRow?.untimed.orEmpty().let { trains -> if (boardRows) trains else trains.filter { Countdown.stillShown(it, now) } }
     val destinations = routeWork?.second?.destinations.orEmpty()
     // The followed train's branch as the card labels it ("Hainault/Newbury Park"), so the title names
     // the same route the tapped row did; null where the card shows no branch (it makes no difference

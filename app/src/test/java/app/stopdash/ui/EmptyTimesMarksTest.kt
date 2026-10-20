@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.EmptyTimes
 import app.stopdash.domain.STATUS_DIRECTION_KEY
@@ -109,23 +108,5 @@ class EmptyTimesMarksTest {
         assertEquals(listOf(row), resolveQuietRows(emptyList(), listOf(row), marks, tick, distances, tick))
         // Forty seconds on, still within the minute, they're past five: gone.
         assertEquals(emptyList<DepartureRow>(), resolveQuietRows(emptyList(), listOf(row), marks, tick, distances, tick.plusSeconds(40)))
-    }
-
-    @Test
-    fun `a line the list shows a train for gets no "?", whatever its candidate was worked out from`() {
-        val tick = Instant.parse("2026-10-06T11:01:00Z")
-        val quiet = DepartureRow(
-            stopId = "940GZZLUKSX", stopName = "King's Cross St. Pancras", lineId = "victoria", lineName = "Victoria",
-            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
-            upcoming = emptyList(), fetchedAt = tick, quiet = true,
-        )
-        // The list, built on the screen's clock, still shows a Victoria train just past its time.
-        val kept = Departure("victoria", "Victoria", "outbound", "Brixton", "Southbound - Platform 5", tick.minusSeconds(10), "tube", pastDue = true)
-        val shown = quiet.copy(directionKey = "outbound", direction = "outbound", destination = "Brixton", upcoming = listOf(kept), quiet = false)
-        val marks = mapOf(quietId(quiet) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, tick))
-        val distances = mapOf("940GZZLUKSX" to 100.0)
-        assertEquals(listOf(shown), resolveQuietRows(listOf(shown), listOf(quiet), marks, tick, distances, tick))
-        // Once the list no longer shows it, the "?" is added.
-        assertEquals(listOf(quiet), resolveQuietRows(emptyList(), listOf(quiet), marks, tick, distances, tick))
     }
 }

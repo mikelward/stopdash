@@ -4905,6 +4905,55 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a route page opened from a journey keeps the card's trains when the journey is unstarred, never gaining a just-due one`() {
+        // Victoria's origin has a train just past its time, which the list would keep a moment, and one in 3 min.
+        val origin = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(
+                dep("victoria", "Victoria", "northbound", "Walthamstow Central", -10, "Northbound - Platform 5"),
+                dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        var journeys by mutableStateOf(listOf(victoriaToWarrenStreet))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), origin), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = journeys,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Walthamstow Central", substring = true).performTouchInput { click() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onAllNodesWithText("0 · 3 min").assertCountEquals(0)
+        composeRule.onAllNodesWithText("3 min").assertCountEquals(1)
+
+        // Unstarred from the page: it stays open, still reading the card's trains, so nothing joins under the rider.
+        journeys = emptyList()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onAllNodesWithText("0 · 3 min").assertCountEquals(0)
+        composeRule.onAllNodesWithText("3 min").assertCountEquals(1)
+    }
+
+    @Test
     fun `a journey card checked again keeps its trains in place, their times fading while it does`() {
         val origin = StopArrivals(
             "940GZZLUVIC",

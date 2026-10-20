@@ -2069,12 +2069,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               on by default.
               *Done (2026-10-20)*: a Tube train stays on the in-app board 30 s past its time, grayed
               at "0" and read as "due" (`Countdown.onBoard`), sized from the recording and a rider's
-              log that found the feed a minute behind a moving train. Still open: resize it from more
+              log that found the feed a minute behind a moving train. The board's rows are built once,
+              with the grace, at one instant, and the list, journey cards, "?" rows, platform views and
+              a row's route page all read them (maintainer, 2026-10-20). Still open: resize it from more
               rider-logged rides (the real arrival, not the feed's); whether the widget and watch
-              should keep it too once they gray times; the route page a row opens, which still drops a
-              due train at its time (`MainScreen` filters its trains in composition, so the grace there
-              needs that work moved off the main thread first); test the duplicate signals listed there; and
+              should keep it too once they gray times; test the duplicate signals listed there; and
               measure platforms two lines share, which are spaced per line for now.
+        - [ ] **Confirm on a device: a journey card's route page leaves out the just-due train the list's
+              page shows for up to 30 s** (maintainer, 2026-10-20). The card's page shows the trains the
+              card counts on; the list's keeps a just-due "0", grayed.
         - [ ] **Space the train a trip follows, as the board does** (Codex on #835): once a trip picks
               a train, its wait and ETA come from that train's own calls (`vehicleCalls`), which TfL
               doesn't space, so a train the board shows spaced to 4 min reads 2 min on the trip after

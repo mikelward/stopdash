@@ -184,9 +184,8 @@ object DepartureRows {
             }
             // A line whose every live prediction was hidden has departures, just none that help: it
             // mustn't surface as a "No departures" status row. Counted over live predictions only,
-            // like the timed rows, so an expired onward one doesn't make it look shown.
-            val hiddenLines = Countdown.upcoming(stop.departures, now).mapTo(HashSet()) { it.lineId } -
-                Countdown.upcoming(shown, now).mapTo(HashSet()) { it.lineId }
+            // like the timed rows, so an expired onward one doesn't make it look shown ([hiddenLinesOf]).
+            val hiddenLines = hiddenLinesOf(stop, now)
             // A synthesized line-status row asserts "No departures", which is only true when
             // this stop's arrivals were actually fetched AND are still current: fetched (not
             // a disruption-only stop stamped `now` with no arrivals, nor one carried from a
@@ -195,7 +194,7 @@ object DepartureRows {
             // empty-state prompt (SPEC principle 1). Timed rows (withheld once stale) and a
             // fresh stop-status closure still show.
             val status =
-                if (statusRowsWhenStale || (stop.arrivalsFresh && !isStale(stop.fetchedAt, now))) {
+                if (statusRowsShown(stop, now, statusRowsWhenStale)) {
                     statusRows(stop, timed, lineStatuses, hiddenLines, quietRows)
                 } else {
                     emptyList()
@@ -434,6 +433,7 @@ object DepartureRows {
      * again to find them. Each stop's is kept: the nearest may have nothing due by its timetable
      * while a farther one has a train, so which shows is chosen once their marks are in.
      */
+    @WorkerThread
     fun quietCandidates(
         stops: List<StopArrivals>,
         now: Instant,
@@ -446,10 +446,29 @@ object DepartureRows {
         // An interchange opened from one of its station names: of its stations, all 0 m away, the
         // named one's quiet row comes first, so it's the one a line shows ([nearbyDeduped]).
         lead: StationLead? = null,
-    ): List<DepartureRow> {
+    ): List<DepartureRow> =
         // The board's own rows, a Tube train just past its time kept ([forStop]'s `grace`): a line
         // whose only train still reads "0" there isn't quiet.
-        val rows = across(stops, now, lineStatuses, quietRows = true, grace = true)
+        quietCandidatesOf(
+            across(stops, now, lineStatuses, quietRows = true, grace = true),
+            determinedLineIds, stopDistanceMeters, hiddenModes, dismissed, disruptionUnknown, lead,
+        )
+
+    /**
+     * [quietCandidates] from [rows] already built, quiet rows and all ([across] with `quietRows`, `grace`),
+     * for the stops the list is near: so the "?" rows a list adds come from the same rows, at the same
+     * instant, as the list they join ([DepartureRow.quiet] rows left out of the list itself).
+     */
+    @WorkerThread
+    fun quietCandidatesOf(
+        rows: List<DepartureRow>,
+        determinedLineIds: Set<String>,
+        stopDistanceMeters: Map<String, Double>,
+        hiddenModes: Set<String> = emptySet(),
+        dismissed: Set<DismissedAlert> = emptySet(),
+        disruptionUnknown: Set<String> = emptySet(),
+        lead: StationLead? = null,
+    ): List<DepartureRow> {
         val quiet = HiddenModes.rows(rows.filter { it.quiet && it.lineId in determinedLineIds }, hiddenModes)
         if (quiet.isEmpty()) return emptyList()
         val withTrains = rows.filter { it.hasTrains }.mapTo(HashSet()) { it.lineId }
@@ -915,6 +934,68 @@ object DepartureRows {
                     shownNoFarther(row, shown, stopDistanceMeters, topology)
                 )
         }
+    }
+
+    /**
+     * [rows] as a surface that judges a train gone at its time sees them: each row without the trains the
+     * board keeps just past their time ([Departure.pastDue]), and a row of nothing else left out, its
+     * destination the soonest of those left. The journey cards read the board's rows this way, so they're
+     * built once ([across] with `grace`), at one instant, for the list and the cards alike.
+     */
+    @WorkerThread
+    fun withoutPastDue(
+        rows: List<DepartureRow>,
+        // The stops [rows] were built from, at [now] with [lineStatuses] ([across]): a disrupted line whose
+        // only trains were just past their time gets the status row it has without them ([statusRows]), so
+        // a card still shows the disruption. None given, none made.
+        stops: List<StopArrivals> = emptyList(),
+        now: Instant = Instant.EPOCH,
+        lineStatuses: Map<String, LineStatus> = emptyMap(),
+    ): List<DepartureRow> {
+        val emptied = HashSet<Pair<String, String>>()
+        val kept = rows.mapNotNull { row ->
+            if (row.upcoming.none { it.pastDue }) return@mapNotNull row
+            val trains = row.upcoming.filterNot { it.pastDue }
+            when {
+                trains.isNotEmpty() -> row.copy(upcoming = trains, destination = trains.first().destination)
+                row.untimed.isNotEmpty() -> row.copy(upcoming = trains)
+                else -> {
+                    emptied += row.stopId to row.lineId
+                    null
+                }
+            }
+        }
+        if (emptied.isEmpty() || stops.isEmpty()) return kept
+        // A line still with a row at its stop (another platform's, say) keeps that row alone, as it would.
+        val stillRowed = kept.mapTo(HashSet()) { it.stopId to it.lineId }
+        val lost = emptied - stillRowed
+        if (lost.isEmpty()) return kept
+        val statuses = LineStatus.asOf(lineStatuses, now)
+        val byStop = kept.groupBy { it.stopId }
+        // Only where [across] would have made one: a stop whose arrivals are current ([statusRowsShown]).
+        val restored = stops.filter { stop -> lost.any { it.first == stop.stopId } && statusRowsShown(stop, now) }.flatMap { stop ->
+            statusRows(stop, byStop[stop.stopId].orEmpty(), statuses, hiddenLinesOf(stop, now))
+                .filter { (it.stopId to it.lineId) in lost }
+        }
+        return if (restored.isEmpty()) kept else (kept + restored).sortedWith(rowOrder)
+    }
+
+    /**
+     * Whether [stop] gets line-status rows at [now] ([across]): a synthesized one asserts "No departures", true
+     * only of arrivals actually fetched and still current, unless a glance surface asks for them however old
+     * ([statusRowsWhenStale]).
+     */
+    private fun statusRowsShown(stop: StopArrivals, now: Instant, statusRowsWhenStale: Boolean = false): Boolean =
+        statusRowsWhenStale || (stop.arrivalsFresh && !isStale(stop.fetchedAt, now))
+
+    /**
+     * [stop]'s lines whose every live prediction is hidden ([Terminating]): it has departures, just none that
+     * help, so it mustn't surface as a "No departures" status row ([across]).
+     */
+    private fun hiddenLinesOf(stop: StopArrivals, now: Instant): Set<String> {
+        val shown = Terminating.drop(inferDirections(stop.departures), Terminating.forStop(stop))
+        return Countdown.upcoming(stop.departures, now).mapTo(HashSet()) { it.lineId } -
+            Countdown.upcoming(shown, now).mapTo(HashSet()) { it.lineId }
     }
 
     /**

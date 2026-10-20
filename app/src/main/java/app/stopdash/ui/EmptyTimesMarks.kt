@@ -16,14 +16,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.EmptyTimes
-import app.stopdash.domain.StopArrivals
-import app.stopdash.domain.LineStatus
 import app.stopdash.domain.DepartureRows
-import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.TimetableRepository
-import app.stopdash.domain.hasTrains
 import java.time.Instant
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -32,7 +28,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -121,27 +116,20 @@ internal fun quietBoards(rows: List<DepartureRow>): Map<String, EmptyTimes.Board
     rows.filter { it.quiet }.associate { quietId(it) to EmptyTimes.quietBoard(it.stopId, it.lineId, it.mode) }
 
 /**
- * What a near-me list's [DepartureRow.quiet] rows are worked out from, off the main thread
- * ([DepartureRows.quietCandidates]): the fetched [stops], those near ([stopDistanceMeters]) being
- * the list's, as of [now].
+ * What a near-me list's [DepartureRow.quiet] rows are worked out from: [candidates], built with the list's
+ * rows from [source] ([ListRows.quietCandidates]), the [revision] that moves on only when they change
+ * ([ListRows.quietRevision]), and the minute's tick [now] their marks are judged against, with the list's
+ * distances.
  */
 internal class QuietInputs(
-    val stops: List<StopArrivals>,
-    val lineStatuses: Map<String, LineStatus>,
-    val determinedLineIds: Set<String>,
+    val candidates: List<DepartureRow>,
+    val revision: Long,
+    val source: Any?,
     val now: Instant,
     val stopDistanceMeters: Map<String, Double>,
-    val hiddenModes: Set<String>,
-    val dismissed: Set<DismissedAlert> = emptySet(),
-    val disruptionUnknown: Set<String> = emptySet(),
     // A station opened from one of its interchange's names: the order its rows were ranked in.
     val stationLead: StationLead? = null,
-) {
-    /** The quiet rows a near-me list could add. Work that grows with the stops: off the main thread only. */
-    fun candidates(): List<DepartureRow> = DepartureRows.quietCandidates(
-        stops.filter { it.stopId in stopDistanceMeters }, now, lineStatuses, determinedLineIds, stopDistanceMeters, hiddenModes, dismissed, disruptionUnknown, stationLead,
-    )
-}
+)
 
 /**
  * [rows] with only the quiet rows of [candidates] whose fresh mark in [marks] is "?" as of [now]
@@ -164,12 +152,7 @@ internal fun resolveQuietRows(
 ): List<DepartureRow> {
     val since = now.minus(EmptyTimes.MARK_LIFETIME)
     val until = now.plus(EmptyTimes.MARK_LIFETIME)
-    // A line [rows] shows a train for is never quiet: the candidates are worked out at the minute's tick
-    // and the rows on the screen's own, so at a train's edge (one just past its time, kept or gone,
-    // [Countdown.onBoard]) the two can disagree until the next tick.
-    val withTrains = rows.filter { it.hasTrains }.mapTo(HashSet()) { it.lineId }
     val shown = candidates.filter { row ->
-        if (row.lineId in withTrains) return@filter false
         if (Staleness.isStale(row.fetchedAt, screenNow)) return@filter false
         val marked = marks[quietId(row)]
         marked != null && marked.mark == EmptyTimes.Mark.UNKNOWN && !marked.at.isBefore(since) && !marked.at.isAfter(until)
@@ -191,9 +174,9 @@ private class QuietResolved(val revision: RowsRevision, val found: QuietCandidat
  * times are missing and whose timetable says a train is due ([EmptyTimes.quietBoard]). With no
  * [inputs] (a location-free list), [revision]'s rows as they are.
  *
- * Composition reads and dispatches only. The candidate lines are worked out on
- * [EmptyTimesState.worker] once per [inputs] (the minute tick, or new data), and the repository
- * watches each ([EmptyTimesState.watchEach]), so its mark follows the clock. Each list the screen
+ * Composition reads and dispatches only. The candidate lines come worked out with the list's rows
+ * ([ListRows.quietCandidates]), and the repository watches each ([EmptyTimesState.watchEach]), so its mark
+ * follows the clock. Each list the screen
  * builds then has the confirmed ones added on the worker too. Until that's done for this [revision]
  * and these [inputs]' candidates, null: never an earlier list, whose departures a refresh may have
  * dropped, nor [revision]'s rows without their "?" rows, which would pull a "?" row out from under the
@@ -206,13 +189,12 @@ internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<D
     if (inputs == null) return revision.rows
     val state = LocalEmptyTimes.current
     val current by rememberUpdatedState(state)
-    val candidates by remember(inputs, state.worker) {
-        flow { emit(QuietCandidates(inputs, inputs.candidates())) }.flowOn(state.worker)
-    }.collectAsStateWithLifecycle(initialValue = null)
-    // A state kept across a new key holds the old key's answer until the new one's is in: only these
-    // inputs' candidates count.
-    val found = candidates?.takeIf { it.inputs === inputs } ?: return null
-    LaunchedEffect(found, state.now) { current.watchEach { quietBoards(found.rows) } }
+    // Worked out with the list's rows already ([QuietInputs.candidates]).
+    val found = remember(inputs) { QuietCandidates(inputs, inputs.candidates) }
+    val watched by rememberUpdatedState(found)
+    // Watched again on a new snapshot, new candidates or the minute's tick, not on each list the screen's clock
+    // builds from the same snapshot: the same boards, by the same ids. Every key compares in constant time.
+    LaunchedEffect(inputs.revision, ByIdentity(inputs.source), state.now) { current.watchEach { quietBoards(watched.rows) } }
     if (found.rows.isEmpty()) return revision.rows
     val now = state.now
     val resolved by remember(revision, found, state.marks, now, state.worker) {
@@ -236,7 +218,7 @@ internal class QuietPending(
 ) {
     @WorkerThread
     fun rows(): List<DepartureRow> = resolveQuietRows(
-        revision.rows, inputs.candidates(), marks.value, inputs.now, inputs.stopDistanceMeters, revision.now, inputs.stationLead,
+        revision.rows, inputs.candidates, marks.value, inputs.now, inputs.stopDistanceMeters, revision.now, inputs.stationLead,
     )
 }
 
