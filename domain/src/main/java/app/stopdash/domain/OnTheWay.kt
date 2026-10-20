@@ -81,6 +81,11 @@ data class ActiveTrip(
     val destinationIds: Map<String, String> = emptyMap(),
     val destinationStopId: String = "",
     val destinationLevel: Pick.Level? = null,
+    // How step-free the trip was planned to be (its trip list's setting when Start was tapped), so the
+    // phase-2 arrival and lift checks (dev-docs/station-resolution.md *Step-free*) still have it after a
+    // restart. Null where it isn't known (a trip kept by an older build), which never widens a check.
+    // Not read yet.
+    val stepFree: StepFree? = null,
     // The walks that are changes on foot ([OnTheWay.changesOnFoot]), by leg index: decided once when
     // the trip starts, so its steps never change on the way. Null on a trip kept by an older build,
     // which goes by the names alone.
