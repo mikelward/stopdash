@@ -11,6 +11,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.Pick
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
@@ -46,6 +47,8 @@ class OnTheWayActions(
         destinationIds: suspend () -> Map<String, String>,
         destinationStopId: String,
         destinationLevel: Pick.Level?,
+        // How step-free the trip list planned it ([ActiveTrip.stepFree]).
+        stepFree: StepFree?,
     ) -> Unit)? = null,
     val start: (
         route: TripRoute,
@@ -56,6 +59,8 @@ class OnTheWayActions(
         destinationIds: suspend () -> Map<String, String>,
         destinationStopId: String,
         destinationLevel: Pick.Level?,
+        // How step-free the trip list planned it ([ActiveTrip.stepFree]).
+        stepFree: StepFree?,
     ) -> Unit,
 )
 

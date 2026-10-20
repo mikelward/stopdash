@@ -934,7 +934,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                 - [x] `LegEnd` and `LegEnd.of` (a route's rides paired with where
                                       each gets off), unread; walks get no pair (see *Decisions
                                       needing review*).
-                                - [ ] The trip's step-free level on `ActiveTrip`.
+                                - [x] The trip's step-free level on `ActiveTrip`, kept on disk
+                                      (`FileActiveTripStore` version 4; unknown on an older trip),
+                                      unread.
                                 - [ ] Arriving by hub at the first call, every ride-end path taking
                                       a `LegEnd`.
                                 - [ ] The detour cut, offering every equally good ride.
@@ -4897,6 +4899,11 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   conversion to a `StopRef` or `DirectTrips.End` that still holds its position. Alternative: resolve each stop
   where it comes in, in `NearbyStopsCache` and in each finder's mapper, and resolve it again once the
   model loads, as the other feeds are. Reversible: nothing reads it yet.
+- [ ] **A trip started from a line's stop (Go) is as step-free as the setting** (autopilot,
+  2026-10-20). A trip list's Start keeps the level its routes were planned at (`TripViewModel.stepFree`),
+  but a ride started from a line page's stop has no trip list, so it takes the step-free setting as
+  it stands, unknown until the setting has been read. Alternative: unknown for every such trip, which
+  never widens but checks nothing. Reversible: nothing reads the level yet.
 - [ ] **A route's walks get no `LegEnd`; a ride ending at a split area the model couldn't place ends at
   its poles** (autopilot, 2026-10-20). `LegEnd.of` pairs only the rides, since only a ride gets off at a
   call; a walk keeps its Planner ends. A ride whose Planner call is a split stop area with no pole or

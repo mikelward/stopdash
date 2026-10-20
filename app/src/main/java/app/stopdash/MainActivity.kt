@@ -1672,12 +1672,12 @@ class MainActivity : ComponentActivity() {
                 val hideUndoCarrier = remember { HideUndoCarrier() }
                 // Start a route on the way; [replacing], in place of the trip on the way (Plan again).
                 val startOnTheWay = { route: TripRoute, destinationName: String, readyAt: Instant, destinations: List<TripDestination>,
-                    destinationIds: suspend () -> Map<String, String>, destinationStopId: String, destinationLevel: Pick.Level?, replacing: Boolean ->
+                    destinationIds: suspend () -> Map<String, String>, destinationStopId: String, destinationLevel: Pick.Level?, stepFree: StepFree?, replacing: Boolean ->
                     // Its first refresh is [FollowActiveTrip]'s, once the trip is on the way.
                     // In the app's scope, so recreating the activity can't cut the save short.
                     tracker.launchStart(
                         (application as? StopdashApp)?.applicationScope ?: onTheWayScope,
-                        route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, replacing,
+                        route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree, replacing,
                         // The old trip's "get off soon" goes once it's ended, never before: one that couldn't
                         // be ended stays on the way, its alert with it (Codex on #479).
                         onEnded = { GetOffSoonAlert.cancel(applicationContext) },
@@ -1712,10 +1712,10 @@ class MainActivity : ComponentActivity() {
                     if (!planningAgain || actions == null) {
                         actions
                     } else {
-                        OnTheWayActions(active = false) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel ->
+                        OnTheWayActions(active = false) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree ->
                             replanning = false
                             replanningHere = false
-                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, true)
+                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree, true)
                         }
                     }
                 }
@@ -1869,11 +1869,11 @@ class MainActivity : ComponentActivity() {
                     LocalOnTheWay provides OnTheWayActions(
                         active = onTheWayTrip != null,
                         open = { onTheWayOpen = true },
-                        replace = { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel ->
-                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, true)
+                        replace = { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree ->
+                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree, true)
                         },
-                    ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel ->
-                        startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, false)
+                    ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree ->
+                        startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, stepFree, false)
                     },
                     // A station tapped on a line page's map with no stop details of its own: Lines…'s, over it, only
                     // where nothing else is open above the page, so Lines… is what shows ([topOverlay]).
@@ -3284,7 +3284,9 @@ class MainActivity : ComponentActivity() {
                                             if (leg.toArea.isNotBlank()) put(leg.toArea, leg.toId)
                                         }
                                         // A stop handed by the route, not picked: no level, read as what its id names.
-                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), { ids }, leg.toId, null, replacing)
+                                        // No trip list planned it, so the step-free setting stands for it;
+                                        // unknown until the setting has been read.
+                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), { ids }, leg.toId, null, stepFree.takeIf { stepFreeLoaded }, replacing)
                                     },
                                     distanceTo = fixDistance,
                                     // A station beside it, as a From… pick opens one: the details close for it.
@@ -5759,10 +5761,10 @@ class MainActivity : ComponentActivity() {
             onDismissWriteFailureShown = trip::dismissWriteFailureShown,
             // Start: followed from here to [toName], the rider at the first stop once they've walked there,
             // keeping where to as chosen, so the trip can be planned again from partway along.
-            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel) } },
+            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel, trip.stepFree) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onReplaceTrip = LocalOnTheWay.current?.takeIf { it.active }?.replace?.let { replace ->
-                { route -> replace(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel) }
+                { route -> replace(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel, trip.stepFree) }
             },
             onWithheld = trip::noteWithheld,
             onTimetablesWanted = trip::wantTimetables,

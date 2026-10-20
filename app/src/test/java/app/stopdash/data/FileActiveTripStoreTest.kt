@@ -5,6 +5,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceType
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -69,6 +70,7 @@ class FileActiveTripStoreTest {
         destinationIds = mapOf("940GZZLUWLO" to "940GZZLUWLO", "910GWLOO" to "910GWLOO", "490000254W" to "910GWLOO"),
         destinationStopId = "HUBWAT",
         destinationLevel = Pick.Level.HUB,
+        stepFree = StepFree.STATION,
     )
 
     @Test
@@ -467,8 +469,26 @@ class FileActiveTripStoreTest {
         assertTrue(file.readText().contains("\"destinationLevel\":\"hub\""))
         assertEquals(Pick.Level.HUB, FileActiveTripStore(file).load()!!.destinationLevel)
         // As version 1 kept it: no level, and no version.
-        file.writeText(file.readText().replace(",\"destinationLevel\":\"hub\"", "").replace("\"version\":3,", ""))
+        file.writeText(file.readText().replace(",\"destinationLevel\":\"hub\"", "").replace("\"version\":4,", ""))
         assertEquals(trip.copy(destinationLevel = null), FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a trip keeps how step-free it was planned, and one kept before it was, or unknown, has none`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip)
+        assertTrue(file.readText().contains("\"stepFree\":\"STATION\""))
+        assertEquals(StepFree.STATION, FileActiveTripStore(file).load()!!.stepFree)
+        // As version 3 kept it: no level, which is unknown, never no requirement.
+        file.writeText(file.readText().replace(",\"stepFree\":\"STATION\"", "").replace("\"version\":4,", "\"version\":3,"))
+        assertEquals(trip.copy(stepFree = null), FileActiveTripStore(file).load())
+        // A name this build doesn't know reads as unknown too, rather than failing the trip.
+        FileActiveTripStore(file).save(trip)
+        file.writeText(file.readText().replace("\"stepFree\":\"STATION\"", "\"stepFree\":\"LIFT\""))
+        assertEquals(trip.copy(stepFree = null), FileActiveTripStore(file).load())
+        // None known is written as none.
+        FileActiveTripStore(file).save(trip.copy(stepFree = null))
+        assertFalse(file.readText().contains("stepFree"))
     }
 
     @Test
@@ -495,8 +515,8 @@ class FileActiveTripStoreTest {
     fun `a trip says its version, and one kept before versions reads as the first`() {
         val file = File(tmp.root, "active-trip.json")
         FileActiveTripStore(file).save(trip)
-        assertTrue(file.readText().contains("\"version\":3"))
-        file.writeText(file.readText().replace("\"version\":3,", ""))
+        assertTrue(file.readText().contains("\"version\":4"))
+        file.writeText(file.readText().replace("\"version\":4,", ""))
         assertFalse(file.readText().contains("version"))
         assertEquals(trip, FileActiveTripStore(file).load())
     }
@@ -506,7 +526,7 @@ class FileActiveTripStoreTest {
         val file = File(tmp.root, "active-trip.json")
         FileActiveTripStore(file).save(trip)
         // Even with a field this build parses written in a shape it can't read.
-        val newer = file.readText().replace("\"version\":3", "\"version\":4")
+        val newer = file.readText().replace("\"version\":4", "\"version\":5")
             .replace(Regex("\"startedAt\":\"[^\"]*\""), "\"startedAt\":1700000000")
         file.writeText(newer)
         assertNull(FileActiveTripStore(file).load())
@@ -524,7 +544,7 @@ class FileActiveTripStoreTest {
         val kept = file.readText()
         // Even with a field this build parses written in a way it can't read.
         val newer = File(tmp.root, "staged.json").also { FileActiveTripStore(it).save(trip) }.readText()
-            .replace("\"version\":3", "\"version\":4")
+            .replace("\"version\":4", "\"version\":5")
             .replace(Regex("\"startedAt\":\"[^\"]*\""), "\"startedAt\":\"1700000000\"")
         staged.writeText(newer)
         assertNull("not the kept trip it replaces", FileActiveTripStore(file).load())

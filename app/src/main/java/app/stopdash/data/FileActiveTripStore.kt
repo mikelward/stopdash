@@ -4,6 +4,7 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceArt
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -352,6 +353,9 @@ private data class PersistedActiveTrip(
     // The route's legs as planned while the last ride's end is moved, from version 3. Absent with
     // nothing moved, or from a trip kept before it was.
     val plannedLegs: List<PersistedTripLeg>? = null,
+    // How step-free the trip was planned to be ([StepFree.name]), from version 4. Absent from a trip
+    // kept before it was, or a name this build doesn't know, read as unknown, which never widens a check.
+    val stepFree: String? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -393,6 +397,7 @@ private data class PersistedActiveTrip(
         offLeg = offLeg?.toLeg(),
         offAt = offAt?.let(Instant::parse),
         plannedLegs = plannedLegs?.map { it.toLeg() },
+        stepFree = StepFree.entries.firstOrNull { it.name == stepFree },
     )
 
     companion object {
@@ -400,9 +405,10 @@ private data class PersistedActiveTrip(
          * The current on-disk format. Bump when a field an older build would drop or misread is added: 2
          * keeps the destination's level, which a build before it would drop on its next write; 3 the
          * route as planned while the last ride's end is moved, without which an older build would keep
-         * the moved end for good.
+         * the moved end for good; 4 how step-free the trip was planned to be, which an older build would
+         * drop, widening a step-free trip's checks.
          */
-        const val CURRENT_VERSION = 3
+        const val CURRENT_VERSION = 4
 
         fun of(trip: ActiveTrip) = PersistedActiveTrip(
             version = CURRENT_VERSION,
@@ -444,6 +450,7 @@ private data class PersistedActiveTrip(
             offLeg = trip.offLeg?.let { PersistedTripLeg.of(it) },
             offAt = trip.offAt?.toString(),
             plannedLegs = trip.plannedLegs?.map { PersistedTripLeg.of(it) },
+            stepFree = trip.stepFree?.name,
         )
     }
 }

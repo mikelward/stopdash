@@ -3200,7 +3200,11 @@ as it was.
   station or interchange's id and the level it was picked at (a station, a bus stop or a whole
   interchange) where the row said so, so a restart, or the app recreated mid-plan, plans to the same
   place rather than guessing from the id (dev-docs/station-model.md *Saved data*). A trip kept by a
-  build that didn't save the level is read as one picked without it.
+  build that didn't save the level is read as one picked without it. How step-free the trip was
+  planned to be (*Step-free*: the trip list's setting at Start, or the setting itself for a ride
+  started from a line's stop) is kept with it too, so the arrival and lift checks still hold it
+  after a restart (dev-docs/station-resolution.md *Step-free*; not read yet). A trip kept before it
+  was reads as unknown, which never widens a check.
 - **Keep going** (maintainer, 2026-10-03) sits beside Plan again, and alone where there's nowhere to
   plan from: the rider has read what's wrong and stays on the route. What it answers is no longer
   shown or alerted, for **this trip only** (kept with the trip, so through a restart, and gone when
