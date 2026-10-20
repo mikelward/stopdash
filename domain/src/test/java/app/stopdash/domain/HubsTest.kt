@@ -101,6 +101,31 @@ class HubsTest {
     }
 
     @Test
+    fun `a destination the model places matches its one hub, whatever level it was picked at`() {
+        assertEquals(setOf("HUBEXA"), hubs.destinationHubs("910GHILL", "Hill", Pick.Level.STATION))
+        assertEquals(setOf("HUBEXA"), hubs.destinationHubs("940GZZLUHIL", "Hill", Pick.Level.STATION))
+        assertEquals(setOf("HUBEXA"), hubs.destinationHubs("490000001A", "Hill Station", Pick.Level.STOP))
+        assertEquals(setOf("HUBEXA"), hubs.destinationHubs("HUBEXA", "Hill", Pick.Level.HUB))
+        assertEquals(setOf("910GVALE"), hubs.destinationHubs("910GVALE", "Vale", Pick.Level.STATION))
+        // Saved before phase 2, with no level: read as the pick it was.
+        assertEquals(setOf("HUBEXA"), hubs.destinationHubs("910GHILL", "Hill", null))
+    }
+
+    @Test
+    fun `a destination the bundle can't place matches the hubs of what it was planned to`() {
+        assertEquals(setOf("HUBEXA", "910GVALE"), hubs.destinationHubs("HUBNOWHERE", "Somewhere", Pick.Level.HUB, listOf("910GHILL", "910GVALELL")))
+        // Planned to nothing the model holds either: its own id, as it resolves.
+        assertEquals(setOf("910GNOWHERE"), hubs.destinationHubs("910gnowhere", "Nowhere", Pick.Level.STATION))
+    }
+
+    @Test
+    fun `a split area with no pole, a place, and no destination match no hub`() {
+        assertEquals(emptySet<String>(), hubs.destinationHubs("490G000005", "", Pick.Level.STOP, listOf("490000005A")))
+        assertEquals(emptySet<String>(), hubs.destinationHubs("51.5,-0.12", "A place", Pick.Level.PLACE))
+        assertEquals(emptySet<String>(), hubs.destinationHubs("", "A place", null))
+    }
+
+    @Test
     fun `an id the bundle doesn't hold resolves to itself at both levels`() {
         assertEquals(Resolved("910GNOWHERE", "910GNOWHERE", "910GNOWHERE"), hubs.resolve("910GNOWHERE"))
         assertEquals(Resolved.exact("490NOWHERE1"), hubs.resolve("490NOWHERE1"))

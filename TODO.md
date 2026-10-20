@@ -937,6 +937,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                 - [x] The trip's step-free level on `ActiveTrip`, kept on disk
                                       (`FileActiveTripStore` version 4; unknown on an older trip),
                                       unread.
+                                - [x] A destination's matchable hubs (`Hubs.destinationHubs`),
+                                      unread.
                                 - [ ] Arriving by hub at the first call, every ride-end path taking
                                       a `LegEnd`.
                                 - [ ] The detour cut, offering every equally good ride.
