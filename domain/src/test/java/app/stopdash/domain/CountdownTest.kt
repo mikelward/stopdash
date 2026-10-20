@@ -134,4 +134,37 @@ class CountdownTest {
         // Past its schedule a delayed train hasn't left, which is when it's delayed.
         assertTrue(Countdown.stillShown(delayed, now.plusSeconds(600)))
     }
+
+    @Test
+    fun `a board keeps a tube train 30 seconds past its time, grayed at 0, then drops it`() {
+        val train = departure(offsetSeconds = 0)
+        val kept = Countdown.onBoard(listOf(train), now.plusSeconds(29)).single()
+        assertTrue(kept.pastDue)
+        assertTrue(kept.grayed)
+        assertFalse(kept.mayNotRun)
+        assertEquals(listOf(Countdown.Part(0, doubtful = false, pastDue = true)), Countdown.parts(listOf(kept), now.plusSeconds(29)))
+        assertTrue(Countdown.onBoard(listOf(train), now.plusSeconds(30)).isEmpty())
+        // Still to come: shown as it is, not marked.
+        assertFalse(Countdown.onBoard(listOf(departure(offsetSeconds = 20)), now).single().pastDue)
+        // A trip still judges it gone at its time.
+        assertTrue(Countdown.upcoming(listOf(train), now.plusSeconds(1)).isEmpty())
+    }
+
+    @Test
+    fun `only a tube train is kept past its time, a blank mode taking its line's`() {
+        val bus = departure(lineId = "73", lineName = "73", offsetSeconds = 0).copy(mode = "bus")
+        assertTrue(Countdown.onBoard(listOf(bus), now.plusSeconds(10)).isEmpty())
+        val blank = departure(offsetSeconds = 0).copy(mode = "")
+        val sibling = departure(offsetSeconds = 300)
+        assertEquals(listOf(true, false), Countdown.onBoard(listOf(sibling, blank), now.plusSeconds(10)).map { it.pastDue })
+        assertTrue(Countdown.onBoard(listOf(blank), now.plusSeconds(10)).isEmpty())
+    }
+
+    @Test
+    fun `a stale guess is never a train already past its time`() {
+        val gone = departure(offsetSeconds = 0).copy(pastDue = true)
+        // 08:04 UTC is 09:04 British Summer Time.
+        assertEquals("09:04?", Countdown.staleLabel(listOf(gone, departure(offsetSeconds = 240))))
+        assertEquals("?", Countdown.staleLabel(listOf(gone)))
+    }
 }

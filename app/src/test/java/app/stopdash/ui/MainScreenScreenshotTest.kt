@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -26,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextLayoutResult
@@ -66,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.CollapsedPlaces
+import app.stopdash.domain.Countdown
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DoubtfulTrains
@@ -289,6 +293,51 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("1 · 2 · 4 min").assertExists()
         composeRule.onNodeWithContentDescription("1 min, may not be running, 2 min, may not be running, 4 min")
             .assertExists()
+    }
+
+    @Test
+    fun `a tube train just past its time stays a moment, grayed at 0 and said so`() {
+        // Due 10 s ago: kept on the board for its grace, grayed, beside one still to come.
+        val trains = listOf(
+            dep("victoria", "Victoria", "outbound", "Brixton", -10, "Southbound - Platform 5"),
+            dep("victoria", "Victoria", "outbound", "Brixton", 240, "Southbound - Platform 5"),
+        )
+        val euston = StopArrivals("940GZZLUEUS", "Euston", trains, fetchedAt = now, clusterId = "940GZZLUEUS")
+        capture("main-just-due.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(euston), now), now, {})
+        }
+        composeRule.onNodeWithText("0 · 4 min").assertExists()
+        composeRule.onNodeWithContentDescription("0 min, due, 4 min").assertExists()
+    }
+
+    @Test
+    fun `a train just past its time is said to be due, whatever else is said of it`() {
+        // Due 10 s ago and also one of a close pair (may not run): heard as due, as it's at 0 and leaving.
+        val trains = listOf(
+            dep("victoria", "Victoria", "outbound", "Brixton", -10, "Southbound - Platform 5").copy(paired = true),
+            dep("victoria", "Victoria", "outbound", "Brixton", 240, "Southbound - Platform 5"),
+        )
+        val euston = StopArrivals("940GZZLUEUS", "Euston", trains, fetchedAt = now, clusterId = "940GZZLUEUS")
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) { MainScreen(DeparturesUiState.Loaded(listOf(euston), now), now, {}) }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("0 min, due, 4 min").assertExists()
+    }
+
+    @Test
+    fun `a merged countdown says a train just past its time is due before it says it's held`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                val (text, spoken) = doubtfulTimes(
+                    listOf(Countdown.Part(0, doubtful = false, held = true, pastDue = true), Countdown.Part(4, doubtful = false)),
+                )
+                Text(text, modifier = Modifier.semantics { contentDescription = spoken.orEmpty() })
+            }
+        }
+        composeRule.onNodeWithContentDescription("0 min, due, 4 min").assertExists()
     }
 
     @Test

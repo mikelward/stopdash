@@ -6881,7 +6881,8 @@ internal fun CountdownLabel(
     val early = grayBefore?.let { ready ->
         entries.map { (it as? Countdown.Entry.Timed)?.departure?.expectedArrival?.isBefore(ready) == true }
     }
-    // A train that may not run is grayed too ([DoubtfulTrains]), and one held ([HeldTrains]).
+    // A train that may not run is grayed too ([DoubtfulTrains]), one held ([HeldTrains]), and one just
+    // past its time ([Countdown.onBoard]).
     val grayed = entries.map { (it as? Countdown.Entry.Timed)?.departure?.grayed == true }
     // Each entry's own text, the "min" unit written once after the last number, as
     // [Countdown.mergedLabel] writes them.
@@ -6937,8 +6938,9 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
     val plain = stringResource(R.string.countdown_time_description)
     val doubtful = stringResource(R.string.countdown_time_doubtful_description)
     val held = stringResource(R.string.countdown_time_held_description)
+    val due = stringResource(R.string.countdown_time_due_description)
     // Built once per change of the times, not on every recomposition.
-    return remember(parts, gray, plain, doubtful, held) {
+    return remember(parts, gray, plain, doubtful, held, due) {
         val text = buildAnnotatedString {
             parts.forEachIndexed { i, part ->
                 if (i > 0) append(" · ")
@@ -6948,7 +6950,8 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
         }
         val spoken = if (parts.none { it.grayed }) null
         else parts.joinToString(", ") {
-            (if (it.doubtful) doubtful else if (it.held) held else plain).format(it.minutes.toString())
+            // Just past its time comes first, as [spokenCountdown] says it.
+            (if (it.pastDue) due else if (it.doubtful) doubtful else if (it.held) held else plain).format(it.minutes.toString())
         }
         text to spoken
     }
@@ -6966,6 +6969,9 @@ internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early
             is Countdown.Entry.Timed -> stringResource(
                 when {
                     early?.getOrNull(i) == true -> R.string.countdown_time_unusable_description
+                    // Just past its time comes first: it's at "0" and leaves the board within the grace,
+                    // whatever else is said of it.
+                    entry.departure.pastDue -> R.string.countdown_time_due_description
                     entry.departure.mayNotRun -> R.string.countdown_time_doubtful_description
                     entry.departure.held -> R.string.countdown_time_held_description
                     else -> R.string.countdown_time_description

@@ -533,6 +533,9 @@
     <!-- TODO: translate -->
     <!-- A train standing still while its predicted time slides later, shown grayed. -->
     <string name="countdown_time_held_description" tools:ignore="MissingTranslation">%1$s min, held</string>
+    <!-- TODO: translate -->
+    <!-- A Tube train whose time has just passed, kept on the board a moment, shown grayed at "0". -->
+    <string name="countdown_time_due_description" tools:ignore="MissingTranslation">%1$s min, due</string>
     <!-- A National Rail train its board lists as canceled, in a countdown in place of its minutes. -->
     <string name="countdown_canceled">Canceled</string>
     <!-- A National Rail train its board lists as delayed with no estimate, in a countdown in place of

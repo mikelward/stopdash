@@ -46,13 +46,19 @@ object DepartureRows {
         // Each line's mode as the stop advertises it: a row whose predictions all leave the mode
         // blank (TfL can omit `modeName`) takes it from here, so hidden modes and line colors hold.
         lineModes: Map<String, String> = emptyMap(),
+        // Whether a Tube train just past its time stays a moment, grayed at "0" ([Countdown.onBoard]):
+        // the in-app board's rows do. A surface that grays nothing (the widget, the watch) and a trip,
+        // which judges a train gone at its time, don't.
+        grace: Boolean = false,
     ): List<DepartureRow> =
         // upcoming() drops departed services and sorts soonest-first. Directions are inferred over the
         // whole snapshot, before departed services drop, so a blank train keeps its inferred row (and a
         // star pinned to it) after the tagged ones leave. The client already infers at fetch time; this
         // covers a snapshot saved before it did.
         rowsOf(
-            stopId, stopName, Countdown.upcoming(inferDirections(departures), now), lineStatuses, fetchedAt,
+            stopId, stopName,
+            inferDirections(departures).let { if (grace) Countdown.onBoard(it, now, lineModes) else Countdown.upcoming(it, now) },
+            lineStatuses, fetchedAt,
             clusterId, stopLetter, bearing, towards, splitPlatforms, lineModes,
         )
 
@@ -139,6 +145,8 @@ object DepartureRows {
         // Only the in-app near-me list asks: it decides from the timetable which to show, and a glance
         // surface has no timetable to decide with.
         quietRows: Boolean = false,
+        // A Tube train just past its time kept a moment, grayed ([forStop]'s `grace`): the in-app board only.
+        grace: Boolean = false,
     ): List<DepartureRow> {
         // Planned work whose day has come shows as under way, however long ago it was fetched.
         val lineStatuses = LineStatus.asOf(lineStatuses, now)
@@ -160,7 +168,8 @@ object DepartureRows {
                 forStop(
                     stop.stopId, stop.stopName, shown, now, lineStatuses, stop.fetchedAt,
                     stop.clusterId, stop.stopLetter, stop.bearing, stop.towards, splitPlatforms,
-                    lineModes = lineModes,
+                    // A stale stop shows clock-time guesses, where a grayed "0" means nothing: no grace there.
+                    lineModes = lineModes, grace = grace && !isStale(stop.fetchedAt, now),
                 ),
                 untimed,
             ) { alone ->
@@ -438,7 +447,9 @@ object DepartureRows {
         // named one's quiet row comes first, so it's the one a line shows ([nearbyDeduped]).
         lead: StationLead? = null,
     ): List<DepartureRow> {
-        val rows = across(stops, now, lineStatuses, quietRows = true)
+        // The board's own rows, a Tube train just past its time kept ([forStop]'s `grace`): a line
+        // whose only train still reads "0" there isn't quiet.
+        val rows = across(stops, now, lineStatuses, quietRows = true, grace = true)
         val quiet = HiddenModes.rows(rows.filter { it.quiet && it.lineId in determinedLineIds }, hiddenModes)
         if (quiet.isEmpty()) return emptyList()
         val withTrains = rows.filter { it.hasTrains }.mapTo(HashSet()) { it.lineId }
@@ -912,9 +923,15 @@ object DepartureRows {
      * destination cover the stop's row of both (Codex, #865).
      */
     @WorkerThread
-    private fun coveredTogether(atStop: List<DepartureRow>, row: DepartureRow): Boolean =
-        atStop.flatMapTo(HashSet()) { it.upcoming }.containsAll(row.upcoming) &&
+    private fun coveredTogether(atStop: List<DepartureRow>, row: DepartureRow): Boolean {
+        // A train the board keeps just past its time ([Departure.pastDue]) isn't one a card lists, which
+        // judges a train gone at its time: the row's later trains decide. A row of such trains alone has
+        // nothing a card shows, and stays its moment.
+        val live = row.upcoming.filterNot { it.pastDue }
+        if (live.isEmpty() && row.upcoming.isNotEmpty()) return false
+        return atStop.flatMapTo(HashSet()) { it.upcoming }.containsAll(live) &&
             atStop.flatMapTo(HashSet()) { it.untimed }.containsAll(row.untimed)
+    }
 
     /** Whether every route of [row] is among [shown]'s from another stop no farther away ([withoutShownAbove]). */
     @WorkerThread

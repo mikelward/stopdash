@@ -67,6 +67,10 @@ import java.time.Instant
  * [held] marks a tube train standing where it is while TfL's time for it slides later ([HeldTrains]):
  * it's coming, but not when TfL says, so its time is grayed and read as held. Unlike [mayNotRun], a
  * trip still counts on it.
+ *
+ * [pastDue] marks a Tube train a board keeps for a short grace after its time has passed
+ * ([Countdown.onBoard]): it often hasn't come yet, so it reads "0", grayed, rather than vanishing the
+ * moment it's due. Set only on the rows a board builds, never stored.
  */
 data class Departure(
     val lineId: String,
@@ -85,10 +89,11 @@ data class Departure(
     val doubtful: Boolean = false,
     val paired: Boolean = false,
     val held: Boolean = false,
+    val pastDue: Boolean = false,
 ) {
     /** Either of a close pair, or a train on two lines ([paired]); [doubtful] is the later of a pair, or such a train. */
     val mayNotRun: Boolean get() = doubtful || paired
 
-    /** Whether the app grays its time: it [mayNotRun], or is [held]. */
-    val grayed: Boolean get() = mayNotRun || held
+    /** Whether the app grays its time: it [mayNotRun], is [held], or is [pastDue]. */
+    val grayed: Boolean get() = mayNotRun || held || pastDue
 }

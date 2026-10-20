@@ -3955,9 +3955,15 @@ take up room; maintainer, 2026-09-26) and recomputes each countdown from that fe
 time as the clock advances — so "3 min" becomes "1 min" between network calls without a
 new request, and the numbers stay honest.
 
-A prediction whose countdown reaches zero is **dropped from the list client-side** — it
-is never held at "0 min" or shown as negative time for a service that has already gone —
-so the next departure advances between fetches without waiting for one.
+A prediction whose countdown reaches zero is **dropped from the list client-side** — never
+shown as negative time for a service that has already gone — so the next departure advances
+between fetches without waiting for one. The one exception is a **Tube train on the in-app
+board**, kept for **30 seconds** past its time, grayed at "0" and read as "due" (maintainer,
+2026-10-20): measured against the feed, trains came a median half a minute after the last time
+shown for them, but the feed itself runs about a minute behind a moving train, so the real
+lateness is smaller (`dev-docs/arrivals-measurements.md`). Buses and other modes go at their
+time; so does a train on the widget and the watch, which gray nothing, and a trip still judges a
+train gone at its time.
 
 "Too old to trust" is **one shared policy, not a per-surface judgment**: a single
 staleness threshold, applied identically by every surface, beyond which countdowns are

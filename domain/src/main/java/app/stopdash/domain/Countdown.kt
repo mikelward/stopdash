@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -12,8 +13,9 @@ import java.time.format.DateTimeFormatter
  *
  * - **Recompute from now**, not the fetch-time countdown, so the number stays
  *   honest as the clock advances between fetches.
- * - **Drop a departed service** rather than holding it at "0 min" or showing
- *   negative time — a countdown that reaches zero leaves the list.
+ * - **Drop a departed service** rather than showing negative time — a countdown
+ *   that reaches zero leaves the list, except that a board keeps a Tube train for
+ *   [BOARD_GRACE] past its time, grayed at "0" ([onBoard]).
  * - **Soonest-first**, so the next departure is at the top.
  */
 object Countdown {
@@ -65,8 +67,8 @@ object Countdown {
      * One train's minutes in a merged countdown ([minutes]), whether it may not run ([Departure.mayNotRun]),
      * and whether it's [held] ([Departure.held]).
      */
-    data class Part(val minutes: Long, val doubtful: Boolean, val held: Boolean = false) {
-        val grayed: Boolean get() = doubtful || held
+    data class Part(val minutes: Long, val doubtful: Boolean, val held: Boolean = false, val pastDue: Boolean = false) {
+        val grayed: Boolean get() = doubtful || held || pastDue
     }
 
     /**
@@ -74,7 +76,7 @@ object Countdown {
      * those; read as [mergedLabel] reads them.
      */
     fun parts(departures: List<Departure>, now: Instant): List<Part> =
-        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun, it.held) }
+        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun, it.held, it.pastDue) }
 
     /**
      * One time in a merged countdown: a train's [Timed] minutes, or a train its board lists with no
@@ -126,7 +128,9 @@ object Countdown {
      * [departures] are soonest-first, any already gone left out ([upcoming]); with none, just "?".
      */
     fun staleLabel(departures: List<Departure>): String =
-        departures.firstOrNull()?.let { STALE_CLOCK.format(it.expectedArrival.atZone(LONDON)) + "?" } ?: "?"
+        // Never a train already past its time ([onBoard]): a stop gone stale since its rows were built
+        // may still hold one for a tick, and its time is no guess at the next train.
+        departures.firstOrNull { !it.pastDue }?.let { STALE_CLOCK.format(it.expectedArrival.atZone(LONDON)) + "?" } ?: "?"
 
     private val LONDON: ZoneId = ZoneId.of("Europe/London")
     private val STALE_CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -135,4 +139,35 @@ object Countdown {
     fun upcoming(departures: List<Departure>, now: Instant): List<Departure> =
         departures.filterNot { hasDeparted(it, now) }
             .sortedWith(compareBy({ it.expectedArrival }, { it.lineName }))
+
+    /**
+     * How long a board keeps a Tube train after its time has passed ([onBoard]). Measured trains came
+     * a median ~35 s after the last time shown for them, but that's judged by TfL's own feed, which a
+     * rider's log found a minute behind a moving train; so half a minute, not one (maintainer, 2026-10-20).
+     */
+    val BOARD_GRACE: Duration = Duration.ofSeconds(30)
+
+    /**
+     * What a board shows of [departures]: those still to come ([upcoming]), and a Tube train whose time
+     * passed under [BOARD_GRACE] ago, marked [Departure.pastDue] so it reads "0", grayed, while it's
+     * likely still on its way. Other modes go at their time, as before. A train's blank mode takes its
+     * line's, from the line's other trains, else the mode its stop advertises for the line
+     * ([lineModes], as its row's is resolved). Only a board takes this: a trip still judges a train gone
+     * at its time ([upcoming]).
+     */
+    @WorkerThread
+    fun onBoard(departures: List<Departure>, now: Instant, lineModes: Map<String, String> = emptyMap()): List<Departure> {
+        val lineMode = lineModes + departures.filter { it.mode.isNotBlank() }.associate { it.lineId to it.mode }
+        return departures.mapNotNull { d ->
+            when {
+                !hasDeparted(d, now) -> d
+                inGrace(d, now, lineMode) -> d.copy(pastDue = true)
+                else -> null
+            }
+        }.sortedWith(compareBy({ it.expectedArrival }, { it.lineName }))
+    }
+
+    private fun inGrace(d: Departure, now: Instant, lineMode: Map<String, String>): Boolean =
+        d.mode.ifBlank { lineMode[d.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
+            now.isBefore(d.expectedArrival.plus(BOARD_GRACE))
 }

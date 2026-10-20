@@ -273,6 +273,28 @@ minute late):
 - **Held trains first.** Holds were more common in this recording than riders recall, so the rule
   is to be checked on later ones (`TODO.md`).
 
+## The grace after a train's time
+
+From the same recording: for each tube train that came, the time TfL last showed for it before it
+came, against when it came. Positive means it came after that time, when a board dropping it at its
+time would already have taken it off.
+
+| Line | Trains | Median came after | 75th percentile | 90th percentile | Over 30 s | Over 1 min |
+|---|---|---|---|---|---|---|
+| Northern | 1,022 | +35 s | +51 s | +63 s | 62% | 12% |
+| Victoria | 350 | +36 s | +53 s | +64 s | 64% | 15% |
+| Piccadilly | 111 | +34 s | +54 s | +63 s | 58% | 14% |
+| Hammersmith & City | 41 | +38 s | +60 s | +69 s | 71% | 24% |
+
+- **The lines barely differ**, so one grace serves them all.
+- **The feed overstates it.** When a train "came" is read from the feed, which a rider's log found a
+  minute behind a moving Northern line train: still placing it at a station it had left, its time
+  unchanged for 40 s to a minute, and calling it a minute or more away as it arrived. The real
+  lateness is smaller than these figures, maybe none.
+- **So 30 seconds, grayed** (maintainer): a just-due Tube train stays on the in-app board for 30 s,
+  reading "0", grayed, and read as "due" (`Countdown.onBoard`). To be resized from rider-logged
+  arrivals rather than the feed's (`TODO.md`).
+
 ## Field reports
 
 Reports from a rider at a platform, against the board the app showed. The station isn't named
@@ -337,6 +359,6 @@ are kept.
 ## Not yet measured
 
 - A weekend morning.
-- The 30 s grace: how late trains in their last minute arrive, per line.
+- The real arrival behind the 30 s grace: rider-logged times at more stations and lines.
 - Platforms two lines share (Circle and District at Victoria, say). Spacing treats each line
   separately, though the trains share one track.
