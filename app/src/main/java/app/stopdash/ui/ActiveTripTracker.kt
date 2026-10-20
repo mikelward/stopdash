@@ -1730,6 +1730,14 @@ class ActiveTripTracker(
         // Seen past the stop those calls count to next: counted from where they're seen, as the calls lag a bus
         // by a stop or so (maintainer, 2026-10-19).
         if (seenRider != null && next.legIndex == trip.legIndex) seenPastCalls(next, progress, seenRider, seenAt, now)?.let { next = it }
+        // Its next call's time well past: counted on a stop, as the calls lag a bus (maintainer, 2026-10-20).
+        val dueCalls = calls
+        if (dueCalls != null && next.legIndex == trip.legIndex) {
+            OnTheWay.pastDue(next, progress, dueCalls, now)?.let {
+                warn("on the way: next call on line ${OnTheWay.followedLine(next)} over ${OnTheWay.CALL_PASSED_AFTER.seconds} s past its time, counted from stop ${it.seenAlongStop + 1}")
+                next = it
+            }
+        }
         progress = OnTheWay.countedOn(next, progress)
         // Calls a source answered from an earlier read (a National Rail board shared from a read before,
         // [VehicleSource.readAt]) are as old as that read: the step stands on them only as long as it
@@ -1936,7 +1944,8 @@ class ActiveTripTracker(
     // [rider] aged by the reads since [seenAt], on the ride's route; null when it doesn't move them on, or the route
     // can't be read (the calls' count stands). Logged by stops, never a place.
     private suspend fun seenPastCalls(trip: ActiveTrip, progress: TripProgress, rider: LocationFix, seenAt: Long, now: Instant): ActiveTrip? {
-        val leg = trip.leg ?: return null
+        // As the train's line runs the ride, the stops its calls count ([OnTheWay.ridden]).
+        val leg = OnTheWay.ridden(trip) ?: return null
         if (progress !is TripProgress.Riding || leg.isWalk || leg.path.isEmpty()) return null
         val sequence = routeOf(leg.lineId) ?: return null
         val fix = rider.takeIf { preciseAllowed() }?.let { aged(it, Duration.ofMillis(elapsed() - seenAt)) } ?: return null
@@ -1948,6 +1957,12 @@ class ActiveTripTracker(
         if (moved == null) return null
         val behind = moved.seenAlongStop - (leg.path.size - (progress.stopsLeft ?: 0))
         val accuracy = fix.accuracyMeters?.roundToInt() ?: "?"
+        // One fix sure to [OnTheWay.EXACT_FIX_METERS] is enough: waiting on a second costs the rider their stop
+        // (maintainer, 2026-10-20).
+        if (fix.accuracyMeters.let { it != null && it <= OnTheWay.EXACT_FIX_METERS } && moved.seenAlongStop > trip.seenAlongStop) {
+            warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId}, counted from stop ${moved.seenAlongStop + 1} of ${leg.path.size}, exact fix accuracy $accuracy m")
+            return moved
+        }
         // Only a sighting on this trip's ride counts as the first of two (Codex, #993).
         if (before == null || before.startedAt != trip.startedAt || before.legIndex != trip.legIndex) {
             warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId} once, fix accuracy $accuracy m: waiting for another")

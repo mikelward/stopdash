@@ -1268,10 +1268,11 @@ class OnTheWayTest {
         assertTrue(OnTheWay.wantsFix(told.copy(onBoardSeen = false), at(8)))
         // A clock set back to before they were seen on ends the fixes (Codex, PR #449).
         assertFalse(OnTheWay.wantsFix(on, at(5)))
-        // Its train told later: on it, no longer counted by where they were seen.
+        // Its train told later: on it, counted by its calls, with where they were seen kept so those calls can't
+        // take them back (maintainer, 2026-10-20).
         val found = OnTheWay.boardedOn(on, train("7", 6), listOf(call("C", 10)), on.seenAlongStop, at(8))
         assertEquals("7", found?.first?.vehicleId)
-        assertEquals(-1, found?.first?.seenAlongStop)
+        assertEquals(on.seenAlongStop, found?.first?.seenAlongStop)
         assertFalse(OnTheWay.ridingUnmatched(found!!.first))
         // A train still to come is no train of theirs: on board, the trip isn't waiting for it.
         assertNull(OnTheWay.waitingToBoard(on, at(8)))

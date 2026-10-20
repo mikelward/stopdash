@@ -2822,10 +2822,14 @@ as it was.
   where it boards through where it gets off, the stop the rider is at or last passed the blue "you are
   here" dot, those behind them muted. The dot sits where it boards until they're seen on board (a
   train gone with no sign of them on it leaves them there, as the step does), then at the stop before
-  the next one the trip counts to (or names). TfL's predictions for a bus can run a stop or so behind it, so two
-  fixes in a row sure to 50 m, each at one of the ride's stops past the one its predictions still say is next,
-  count the step's stops (and so the dot) on from the nearer of the two (a fix can jump wide for a moment, and one
-  between stops or off the ride counts for nothing; maintainer, 2026-10-19), never back again for a refresh without one, though
+  the next one the trip counts to (or names). TfL's predictions for a bus can run a stop or so behind it, so a
+  fix at one of the ride's stops past the one its predictions still say is next counts the step's stops (and so
+  the dot) on from there: one fix sure to 20 m on its own, one sure only to 50 m once a second in a row agrees,
+  from the nearer of the two (a fix can jump wide for a moment, and one between stops or off the ride counts for
+  nothing; maintainers, 2026-10-19 and 2026-10-20). So too on a bus, by one stop, once the stop the predictions say is next
+  is 30 s past its time, so "get off soon" isn't held back waiting on them (maintainer, 2026-10-20); not on a train, which can be held short of it. This holds on
+  the ride as the bus's own line runs it, and where the trip finds the rider's bus again after counting them by
+  where they were seen, that count stands. Never back again for a refresh without one, though
   withheld with the train's predictions once they're too old to stand behind, since it still takes that train
   to be theirs; where the trip can't place their train, no stop is
   marked rather than a guess, nor from an answer too old to stand behind (as the card

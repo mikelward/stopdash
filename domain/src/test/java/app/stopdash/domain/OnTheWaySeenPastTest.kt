@@ -77,6 +77,68 @@ class OnTheWaySeenPastTest {
     }
 
     @Test
+    fun `a next call well past its time counts on a stop`() {
+        // The calls still say A is next half a minute after it was due: the bus has been and gone (maintainer, 2026-10-20).
+        val lagging = listOf(call("A", 7), call("B", 8), call("C", 9))
+        val byCalls = riding(onBoard, lagging)
+        val due = at(7)
+        assertNull(OnTheWay.pastDue(onBoard, byCalls, lagging, due.plusSeconds(29)))
+        val past = OnTheWay.pastDue(onBoard, byCalls, lagging, due.plus(OnTheWay.CALL_PASSED_AFTER))!!
+        assertEquals(1, past.seenAlongStop)
+        assertEquals("Stop B", (OnTheWay.countedOn(past, byCalls) as TripProgress.Riding).nextStop)
+        // One stop at most: counted there already, a later look moves nothing more.
+        assertNull(OnTheWay.pastDue(past, byCalls, lagging, due.plusSeconds(120)))
+        // Never past where they get off: the ride ending is told elsewhere.
+        val last = listOf(call("C", 9))
+        assertNull(OnTheWay.pastDue(onBoard, riding(onBoard, last, at(8)), last, at(10)))
+        // Counted by position, nothing to move.
+        assertNull(OnTheWay.pastDue(onBoard, byCalls.copy(byPosition = true), lagging, due.plusSeconds(60)))
+    }
+
+    @Test
+    fun `a train held before its next call isn't counted on`() {
+        // A train's calls don't lag as a bus's do: held at a platform, it hasn't passed the stop (Codex, #1019).
+        val byTrain = OnTheWay.follow(ActiveTrip(TripRoute(listOf(ride.copy(mode = "tube"))), "C", startedAt = t0), train()).copy(boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val calls = listOf(call("A", 7), call("B", 8), call("C", 9))
+        assertNull(OnTheWay.pastDue(byTrain, riding(byTrain, calls), calls, at(7).plusSeconds(60)))
+    }
+
+    @Test
+    fun `an overdue call where they boarded doesn't count them on`() {
+        // Still listed at K, behind them, and late: the next call, at B, is what's timed (Codex, #1019).
+        val calls = listOf(call("K", 5), call("B", 8), call("C", 9))
+        val byCalls = riding(onBoard, calls.drop(1))
+        assertEquals("Stop B", byCalls.nextStop)
+        assertNull(OnTheWay.pastDue(onBoard, byCalls, calls, at(6)))
+        assertEquals(2, OnTheWay.pastDue(onBoard, byCalls, calls, at(8).plus(OnTheWay.CALL_PASSED_AFTER))?.seenAlongStop)
+    }
+
+    @Test
+    fun `an overdue call at another pole of the same name doesn't count them on`() {
+        // The pole they boarded at shares the next one's name: the late call there isn't the next (Codex, #1019).
+        val poles = ride.copy(fromId = "490K", toId = "490C", path = listOf("490A", "490B", "490C"))
+        val onPoles = OnTheWay.follow(ActiveTrip(TripRoute(listOf(poles)), "490C", startedAt = t0), train()).copy(boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val calls = listOf(VehicleCall("490K", "Stop B", null, at(5)), VehicleCall("490B", "Stop B", null, at(8)), VehicleCall("490C", "Stop C", null, at(9)))
+        val byCalls = riding(onPoles, calls, at(6))
+        assertEquals("Stop B", byCalls.nextStop)
+        assertNull(OnTheWay.pastDue(onPoles, byCalls, calls, at(6)))
+        assertEquals(2, OnTheWay.pastDue(onPoles, byCalls, calls, at(8).plus(OnTheWay.CALL_PASSED_AFTER))?.seenAlongStop)
+    }
+
+    @Test
+    fun `found again after being seen at a stop, its calls don't take them back`() {
+        // On board by where they were seen, at A; then their bus is found, its calls still naming A next: counted
+        // from A, not a stop short (maintainer, 2026-10-20).
+        val byPosition = onBoard.copy(vehicleId = "", seenAlongStop = 1, seenAlongAt = at(7))
+        val (found, progress) = OnTheWay.boardedOn(byPosition, train(), listOf(call("A", 7), call("B", 8), call("C", 9)), 0, at(7), atStop = true)!!
+        assertEquals("8", found.vehicleId)
+        assertEquals(1, found.seenAlongStop)
+        val counted = progress as TripProgress.Riding
+        assertEquals("Stop B", counted.nextStop)
+        assertEquals(2, counted.stopsLeft)
+    }
+
+    @Test
     fun `seen past the stop before where they get off, it's said one stop out`() {
         val lagging = listOf(call("B", 8), call("C", 9))
         val byCalls = riding(onBoard, lagging, at(5))
@@ -145,9 +207,12 @@ class OnTheWaySeenPastTest {
         assertNull(OnTheWay.seenPastCalls(onBoard, byCalls, between, positions, at(7)))
         // Where they get off: the ride is done, which the trip's own check sees ([OnTheWay.rideDone]).
         assertNull(OnTheWay.seenPastCalls(onBoard, byCalls, fix("C"), positions, at(7)))
-        // Already counted by position, or on another of the ride's lines: not counted by these calls.
+        // Already counted by position: not counted by these calls.
         assertNull(OnTheWay.seenPastCalls(onBoard, byCalls.copy(byPosition = true), fix("A"), positions, at(7)))
-        assertNull(OnTheWay.seenPastCalls(onBoard.copy(vehicleLeg = ride.copy(lineId = "white")), byCalls, fix("A"), positions, at(7)))
+        // On the ride as the train's own line runs it, its calls count that, and so does where it's seen
+        // (maintainer, 2026-10-20: once the bus was found again, its count stayed a stop behind).
+        val asItsLineRunsIt = onBoard.copy(vehicleLeg = ride.copy(lineId = "white"))
+        assertEquals(1, OnTheWay.seenPastCalls(asItsLineRunsIt, byCalls, fix("A"), positions, at(7))?.seenAlongStop)
         // A train not calling at A, its calls left not counting the path's stops: nothing to compare against (Codex, #993).
         val skipping = riding(onBoard, listOf(call("B", 8), call("C", 9))).copy(stopsLeft = 3)
         assertNull(OnTheWay.seenPastCalls(onBoard, skipping, fix("A"), positions, at(7)))
