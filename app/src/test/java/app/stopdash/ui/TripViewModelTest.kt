@@ -5927,7 +5927,7 @@ class TripViewModelTest {
             statuses = listOf("red", "green", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
         )
         val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
-        val lines = rideLines(state.routes.orEmpty(), state, sequences)
+        val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences)
         val ride = viaRedOnly.rides.first()
         assertEquals(listOf("red", "green"), lines.getValue(ride).legs.map { it.lineId })
         assertEquals(listOf("red", "green"), lines.getValue(ride).timed.map { it.lineId })
@@ -5949,7 +5949,7 @@ class TripViewModelTest {
         val ride = viaRedOnly.rides.first()
         fun timedLines(statuses: Map<String, LineStatus>): Set<String> {
             val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(statuses = statuses)
-            return rideTrains(state, ride, now, sequences, rideLines(state.routes.orEmpty(), state, sequences))
+            return rideTrains(state, ride, now, sequences, rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences))
                 .orEmpty().mapTo(HashSet()) { it.lineId }
         }
         val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
@@ -5966,7 +5966,7 @@ class TripViewModelTest {
         val closed = { id: String -> LineStatus(id, 20, "Service Closed") }
         fun estimate(statuses: Map<String, LineStatus>, others: Boolean = true): TripTiming.Estimate {
             val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(statuses = statuses)
-            val lines = if (others) rideLines(state.routes.orEmpty(), state, sequences) else emptyMap()
+            val lines = if (others) rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences) else emptyMap()
             return tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single()
         }
         // Red, the Planner's line, closed or unchecked, while green runs between the same stops: the
@@ -5992,11 +5992,11 @@ class TripViewModelTest {
         // Red's leftover prediction is sooner than green's train.
         val base = redAndGreenAt(train("red", "End", 1), train("green", "End", 3))
         fun firstTrain(state: TripViewModel.State): Departure? {
-            val lines = rideLines(state.routes.orEmpty(), state, sequences)
+            val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences)
             return tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single().legs.firstNotNullOf { it.train }
         }
         fun usable(state: TripViewModel.State): Set<String> {
-            val lines = rideLines(state.routes.orEmpty(), state, sequences)
+            val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences)
             val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
             return cardTimes(card, state, now, Duration.ZERO, sequences, lines).shown.filter { it.second }.mapTo(HashSet()) { it.first.lineId }
         }
@@ -6015,7 +6015,7 @@ class TripViewModelTest {
         // With no green train to time it either, the ride isn't timed from red's timetable: that's a
         // service that can't be relied on, so the arrival is withheld until a train times it.
         fun estimate(state: TripViewModel.State, others: Boolean = true): TripTiming.Estimate {
-            val lines = if (others) rideLines(state.routes.orEmpty(), state, sequences) else emptyMap()
+            val lines = if (others) rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences) else emptyMap()
             return tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single()
         }
         // Green found at A by a train already gone: nothing of its own to time the ride with.
@@ -6038,14 +6038,14 @@ class TripViewModelTest {
         val redClosed = mapOf("red" to LineStatus("red", 20, "Service Closed"), "green" to good("green"), "blue" to good("blue"))
         val base = redAndGreenAt(train("red", "End", 1), train("green", "End", 3)).copy(statuses = redClosed)
         fun estimate(state: TripViewModel.State): TripTiming.Estimate =
-            tripEstimates(state, now, Duration.ZERO, sequences, lines = rideLines(state.routes.orEmpty(), state, sequences))!!.single()
+            tripEstimates(state, now, Duration.ZERO, sequences, lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences))!!.single()
         assertFalse(estimate(base).blocked)
         // Green's good service is kept from before its latest check failed: the last known, not a
         // current one, so red, closed now, sinks the route (Codex on #382)...
         val failed = base.copy(statusFailed = true, statusFailedLines = setOf("green"))
         assertTrue(estimate(failed).blocked)
         // ...and green's trains aren't offered meanwhile, as its line page can't vouch for them.
-        val lines = rideLines(failed.routes.orEmpty(), failed, sequences)
+        val lines = rideLines(failed.routes.orEmpty(), failed, StepFree.ANY, sequences)
         assertEquals(setOf("red"), rideTrains(failed, viaRedOnly.rides.first(), now, sequences, lines)?.map { it.lineId }?.toSet())
     }
 
@@ -6247,7 +6247,7 @@ class TripViewModelTest {
         val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
         val good = listOf("red", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
         val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(statuses = good)
-        val lines = rideLines(state.routes.orEmpty(), state, sequences)
+        val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences)
         val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
         val unchecked = cardTimes(card, state, now, Duration.ZERO, sequences, lines)
         val green = unchecked.shown.single { it.first.lineId == "green" }
@@ -6399,7 +6399,7 @@ class TripViewModelTest {
     fun `a card offers to hide every line its pill names`() {
         val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
         val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
-        val lines = rideLines(state.routes.orEmpty(), state, sequences)
+        val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences)
         val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
         assertEquals(listOf("red", "green", "blue"), cardLines(card, lines).map { it.id })
     }
@@ -6423,7 +6423,7 @@ class TripViewModelTest {
         val longWay = LineSequence(routes = listOf(LineRoute("A ↔ End", listOf("A", "Z", "B", "End"))), stopNames = red.stopNames + ("Z" to "Z"))
         val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
         val sequences = mapOf("red" to red, "green" to longWay, "blue" to blue)
-        val lines = rideLines(state.routes.orEmpty(), state, sequences).getValue(viaRedOnly.rides.first())
+        val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences).getValue(viaRedOnly.rides.first())
         assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
         assertEquals(listOf("red"), lines.timed.map { it.lineId })
     }
@@ -6439,9 +6439,9 @@ class TripViewModelTest {
             "not loaded" to emptyMap(),
         )
         for ((why, sequences) in cases) {
-            assertEquals(why, listOf("red"), rideLines(state.routes.orEmpty(), state, sequences + ("red" to red)).getValue(ride).legs.map { it.lineId })
+            assertEquals(why, listOf("red"), rideLines(state.routes.orEmpty(), state, StepFree.ANY, sequences + ("red" to red)).getValue(ride).legs.map { it.lineId })
         }
-        val hidden = rideLines(state.routes.orEmpty(), state, mapOf("red" to red, "green" to greenAlike), hidden = setOf(HiddenModes.lineKey("green", "Green")))
+        val hidden = rideLines(state.routes.orEmpty(), state, StepFree.ANY, mapOf("red" to red, "green" to greenAlike), hidden = setOf(HiddenModes.lineKey("green", "Green")))
         assertEquals(listOf("red"), hidden.getValue(ride).legs.map { it.lineId })
     }
 
@@ -6456,7 +6456,7 @@ class TripViewModelTest {
             live = mapOf("Bn" to TripViewModel.StopLive(listOf(train("1", "C", 4).copy(mode = "bus"), train("2", "C", 2).copy(mode = "bus")), now)),
             areaPoles = mapOf("BG" to listOf("Bn", "Bs")),
         )
-        val lines = rideLines(state.routes.orEmpty(), state, mapOf("1" to road, "2" to two)).getValue(ride)
+        val lines = rideLines(state.routes.orEmpty(), state, StepFree.ANY, mapOf("1" to road, "2" to two)).getValue(ride)
         assertEquals(listOf("1", "2"), lines.legs.map { it.lineId })
         assertEquals("Bn" to "Cn", lines.legs[1].let { it.fromId to it.toId })
         assertEquals(listOf("1", "2"), lines.timed.map { it.lineId })

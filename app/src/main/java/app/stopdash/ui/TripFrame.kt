@@ -12,6 +12,7 @@ import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.StopLocation
@@ -124,6 +125,8 @@ internal fun tripFrame(
     // The routes as planned and placed ([onPoles]), before trains through a change are added: what a
     // tapped card opens is worked out from them ([openRouteOf]).
     poled: TripViewModel.State,
+    // How step-free the trip must be: where a train through a change gets off ([openRoutesOf]).
+    stepFree: StepFree,
     // The order the last frame drew its cards in ([CardOrder]): the same order comes back as that very
     // object, so the screen tells a re-sort apart by identity.
     previousOrder: CardOrder? = null,
@@ -162,7 +165,7 @@ internal fun tripFrame(
     val legs = estimates.orEmpty().flatMap { it.route.rides }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
     val state = state.copy(legStatuses = legStatuses(state.statuses, legs, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
-    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded), previousOrder) }
+    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, stepFree, sequences, excluded), previousOrder) }
     // A pole's letter, sign and bearing, from its stop area's poles where they're cached (no IO).
     val poleOf: (String, String) -> StopLocation? = { id, area ->
         area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }

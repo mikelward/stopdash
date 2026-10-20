@@ -65,6 +65,15 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
         fun planned(ride: TripLeg, stepFree: StepFree): LegEnd = at(callOf(ride), stepFree)
 
         /**
+         * Each ride of [route] with where the Planner gets it off ([planned]), in order; walks are left
+         * out, as [of] leaves them. What a ride's lines ([RideLines]) pair a route with until arriving
+         * by hub reads the end. Not marked for a worker: the trip page still works out its ride lines in
+         * composition (TODO.md, *The rest of the trip page off the main thread*), and this rides with them.
+         */
+        fun planned(route: TripRoute, stepFree: StepFree): List<Pair<TripLeg, LegEnd>> =
+            route.rides.map { it to planned(it, stepFree) }
+
+        /**
          * Each ride of [route] with where it gets off, in order; walks are left out, as they get off
          * nowhere. A middle ride ends at the Planner's call ([at]). The last ride ends at the
          * destination's [destinationHubs] where the Planner's own call for it is in one of them, and

@@ -8,6 +8,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.StepFree
 import java.time.Duration
 import java.time.Instant
 import org.junit.After
@@ -76,7 +77,7 @@ class TripThroughRoutesTest {
     )
 
     private fun listed(state: TripViewModel.State): List<TripTiming.Estimate> {
-        val trip = withThroughRoutes(state, sequences)
+        val trip = withThroughRoutes(state, StepFree.ANY, sequences)
         val estimates = tripEstimates(trip, now, Duration.ZERO, sequences).orEmpty()
         val planned = state.routes.orEmpty().flatMapTo(HashSet()) { it.legs }
         return TripTiming.withoutSlowerChanges(TripTiming.withoutUnvouchedLegs(estimates, planned))
@@ -103,9 +104,9 @@ class TripThroughRoutesTest {
 
     // The train through the change, open: as tapped on the list, and kept whole ([OpenRoute]).
     private fun openThrough(state: TripViewModel.State, sequences: Map<String, LineSequence?> = this.sequences, line: String = "blue"): OpenRoute {
-        val trip = withThroughRoutes(state, sequences)
+        val trip = withThroughRoutes(state, StepFree.ANY, sequences)
         val through = trip.routes.orEmpty().single { route -> route.rides.size == 1 && route.rides.single().lineId == line }
-        return openRouteOf(through, state, sequences)
+        return openRouteOf(through, state, StepFree.ANY, sequences)
     }
 
     @Test
@@ -117,7 +118,7 @@ class TripThroughRoutesTest {
         // Saved and read back whole.
         assertEquals(open, OpenRoute.parse(open.encode()))
         // A planned route is kept by its key alone.
-        assertEquals(OpenRoute(routeKey(changing)), openRouteOf(changing, state(throughIn = 5), sequences))
+        assertEquals(OpenRoute(routeKey(changing)), openRouteOf(changing, state(throughIn = 5), StepFree.ANY, sequences))
         assertEquals(routeKey(changing), OpenRoute(routeKey(changing)).encode())
     }
 
@@ -132,11 +133,11 @@ class TripThroughRoutesTest {
         val crowded = state(throughIn = 5).copy(routes = faster + changing)
         val route = open.routeIn(crowded.routes.orEmpty())!!
         val key = routeKey(route)
-        assertFalse(withThroughRoutes(crowded, sequences).routes.orEmpty().any { routeKey(it) == key })
+        assertFalse(withThroughRoutes(crowded, StepFree.ANY, sequences).routes.orEmpty().any { routeKey(it) == key })
         // ...but while it's open, the change it's made from is kept for it, its stops fetched, and
         // the train through is timed from the route kept.
         assertTrue(changing in TripViewModel.bestOf(crowded.routes.orEmpty(), open.plan))
-        val trip = withThroughRoutes(crowded, sequences, open = route)
+        val trip = withThroughRoutes(crowded, StepFree.ANY, sequences, open = route)
         assertEquals(crowded.routes.orEmpty().map(::routeKey) + key, trip.routes.orEmpty().map(::routeKey))
         assertTrue(tripEstimates(trip, now, Duration.ZERO, sequences, keep = key).orEmpty().any { routeKey(it.route) == key })
     }
@@ -151,7 +152,7 @@ class TripThroughRoutesTest {
         // ...but the plan still offers the change, so it stays open, timed with no train: its
         // arrival is withheld rather than taken from the Planner's times for the change.
         assertFalse(openRouteGone(gone, emptySet(), open))
-        val trip = withThroughRoutes(gone, sequences, open = route)
+        val trip = withThroughRoutes(gone, StepFree.ANY, sequences, open = route)
         val planned = gone.routes.orEmpty().flatMapTo(HashSet()) { it.legs }
         val timed = tripEstimates(trip, now, Duration.ZERO, sequences, keep = routeKey(route), planned = planned).orEmpty()
             .single { routeKey(it.route) == routeKey(route) }
@@ -190,7 +191,7 @@ class TripThroughRoutesTest {
             TripRoute(listOf(leg("green", "Fast $i", "Cole", departs = 1, arrives = 4L + i, path = listOf("Cole"))))
         }
         val crowded = state(throughIn = 5).copy(routes = faster + changing)
-        val tapped = openRouteOf(elsewhere, crowded, sequences)
+        val tapped = openRouteOf(elsewhere, crowded, StepFree.ANY, sequences)
         assertEquals(OpenRoute(routeKey(elsewhere)), tapped)
         assertEquals(faster, TripViewModel.bestOf(faster + changing, tapped.plan))
         assertTrue(openRouteGone(crowded, emptySet(), tapped))

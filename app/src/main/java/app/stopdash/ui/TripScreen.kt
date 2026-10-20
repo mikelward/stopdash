@@ -810,7 +810,9 @@ internal fun tripEstimates(
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
     originUnconfirmed: Boolean = false,
-    lines: Map<TripLeg, RideLines> = rideLines(state.routes.orEmpty(), state, sequences, hidden),
+    // A trip page passes its own, worked out at its step-free level ([tripFrame]); without one, a trip
+    // asking none ([StepFree.DEFAULT]).
+    lines: Map<TripLeg, RideLines> = rideLines(state.routes.orEmpty(), state, StepFree.DEFAULT, sequences, hidden),
     // The open route's key: timed past the cap while the plan offers it ([TripViewModel.bestOf]).
     keep: String? = null,
     // Every leg the Planner planned, when some routes ride one it didn't (a train through a change):
@@ -1393,7 +1395,7 @@ private fun TripContent(
     // and a train through a change whether or not one is predicted. Null while no plan offers it.
     val opened = remember(poled, excluded, openRef) { openRef?.routeIn(poled.shownRoutes(excluded).orEmpty()) }
     val openKey = opened?.let(::routeKey)
-    val liveState = remember(poled, routeSequences, excluded, opened) { withThroughRoutes(poled, routeSequences, excluded, opened) }
+    val liveState = remember(poled, stepFree, routeSequences, excluded, opened) { withThroughRoutes(poled, stepFree, routeSequences, excluded, opened) }
     // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
     val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
@@ -1408,7 +1410,7 @@ private fun TripContent(
         )
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
-    val liveRideLines = remember(liveState, routeSequences, excluded) { rideLines(liveState.routes.orEmpty(), liveState, routeSequences, excluded) }
+    val liveRideLines = remember(liveState, stepFree, routeSequences, excluded) { rideLines(liveState.routes.orEmpty(), liveState, stepFree, routeSequences, excluded) }
     // Each leg's live trains judged on its line's route on the worker ([TripVerdicts]), on every
     // refresh and route load; a train not judged yet reads as its route still loading. Once a warm-up
     // ends, the same routes come anew ([JudgedRoutes]) so what reads the verdicts reads them again.
@@ -1450,7 +1452,7 @@ private fun TripContent(
             topology),
         keep = ::mayStandIn,
     ) {
-        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, poled, previousOrder, topology)
+        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, poled, stepFree, previousOrder, topology)
     }
     // What the page draws against: the frame's own state, time, routes and ride lines.
     val state = frame?.state ?: liveState
