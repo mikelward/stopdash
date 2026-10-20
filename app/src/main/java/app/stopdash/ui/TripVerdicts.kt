@@ -4,6 +4,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DirectTrips
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.TripLeg
 import java.time.Instant
@@ -11,8 +12,10 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Each live train's verdict on a trip leg: whether its line's route takes it where the leg gets off
- * ([DirectTrips.judge]), and whether it leaves along the leg ([leavesAlongLeg]). Matching a train
- * against a line with many routes (a main-line railway's) is far too slow for the main thread
+ * ([DirectTrips.judge]), and whether it leaves along the leg ([leavesAlongLeg]). A leg is named with
+ * where its ride gets off ([LegEnd], paired as [TripRideLines.endsOf] pairs it), so a leg two routes
+ * get off at different places is judged apart for each (dev-docs/station-resolution.md, phase 2).
+ * Matching a train against a line with many routes (a main-line railway's) is far too slow for the main thread
  * (AGENTS.md *Main thread: read and dispatch only*), so the trip page works verdicts out on its worker
  * ([warm]) and only reads them as it renders ([get]); a train not judged yet reads as its route still
  * being checked.
@@ -23,7 +26,8 @@ import java.util.concurrent.ConcurrentHashMap
 internal object TripVerdicts {
     class Verdict(val reach: DirectTrips.Verdict, val leaves: Boolean?)
 
-    // A leg as its verdicts see it: where it boards and gets off, on which line, and its next stop.
+    // A leg as its verdicts see it: where it boards and gets off, on which line, its next stop, and
+    // where its ride gets off.
     private data class LegKey(
         val fromId: String,
         val fromName: String,
@@ -32,6 +36,7 @@ internal object TripVerdicts {
         val lineId: String,
         val mode: String,
         val next: String?,
+        val end: LegEnd,
     )
 
     // A leg's verdicts on one load of its line's route; another load starts afresh.
@@ -44,29 +49,31 @@ internal object TripVerdicts {
     /** A train's own calling points' answer for a leg ([DirectTrips.settledByStops]), as [byStops] reads it. */
     enum class ByStops { REACHES, MISSES, OPEN, UNJUDGED }
 
-    // Each train's [ByStops] answer per stop it would get off at, worked out on the worker ([warmStops]):
-    // the scan over its portions' stops grows with the board, so never on the main thread.
-    private val stops = ConcurrentHashMap<Pair<String, Departure>, ByStops>()
+    // Each train's [ByStops] answer per stop it would get off at and its ride's end, worked out on the
+    // worker ([warmStops]): the scan over its portions' stops grows with the board, so never on the main thread.
+    private data class StopsKey(val toId: String, val end: LegEnd, val train: Departure)
+
+    private val stops = ConcurrentHashMap<StopsKey, ByStops>()
 
     /**
-     * Whether [train]'s own calling points settle [leg] ([DirectTrips.settledByStops]), as worked out
+     * Whether [train]'s own calling points settle [ride] ([DirectTrips.settledByStops]), as worked out
      * ([warmStops]): [ByStops.OPEN] for a train with none, [ByStops.UNJUDGED] while one with some
      * hasn't been. A lookup only.
      */
-    fun byStops(leg: TripLeg, train: Departure): ByStops {
+    fun byStops(ride: Pair<TripLeg, LegEnd>, train: Departure): ByStops {
         if (train.callingAt == null) return ByStops.OPEN
-        stops[leg.toId to train.service()]?.let { return it }
-        return onStopsMiss?.invoke(leg, train) ?: ByStops.UNJUDGED
+        stops[stopsKey(ride, train)]?.let { return it }
+        return onStopsMiss?.invoke(ride, train) ?: ByStops.UNJUDGED
     }
 
-    /** Works out [byStops] for each of [trains] on [leg] not yet judged; true when any was. On a worker only. */
+    /** Works out [byStops] for each of [trains] on [ride] not yet judged; true when any was. On a worker only. */
     @WorkerThread
-    fun warmStops(leg: TripLeg, trains: List<Departure>): Boolean {
+    fun warmStops(ride: Pair<TripLeg, LegEnd>, trains: List<Departure>): Boolean {
         if (stops.size > MAX_STOPS) stops.clear()
         var warmed = false
         for (train in trains) {
             if (train.callingAt == null) continue
-            if (stops.putIfAbsent(leg.toId to train.service(), judgeStops(leg, train)) == null) warmed = true
+            if (stops.putIfAbsent(stopsKey(ride, train), judgeStops(ride, train)) == null) warmed = true
         }
         return warmed
     }
@@ -74,11 +81,11 @@ internal object TripVerdicts {
     /** Answers [byStops] in place when it hasn't been warmed: for tests calling the trip page's helpers directly, as [onMiss]. */
     @VisibleForTesting
     @Volatile
-    var onStopsMiss: ((TripLeg, Departure) -> ByStops)? = null
+    var onStopsMiss: ((Pair<TripLeg, LegEnd>, Departure) -> ByStops)? = null
 
-    /** [train]'s [byStops] answer on [leg], worked out in place. On a worker only. */
+    /** [train]'s [byStops] answer on [ride], worked out in place. On a worker only. */
     @WorkerThread
-    fun judgeStops(leg: TripLeg, train: Departure): ByStops = when (DirectTrips.settledByStops(train, setOf(leg.toId))) {
+    fun judgeStops(ride: Pair<TripLeg, LegEnd>, train: Departure): ByStops = when (DirectTrips.settledByStops(train, ride)) {
         true -> ByStops.REACHES
         false -> ByStops.MISSES
         null -> ByStops.OPEN
@@ -87,21 +94,21 @@ internal object TripVerdicts {
     /** Judges a train in place when it hasn't been warmed: for tests calling the trip page's helpers directly. */
     @VisibleForTesting
     @Volatile
-    var onMiss: ((TripLeg, LineSequence, Departure) -> Verdict)? = null
+    var onMiss: ((Pair<TripLeg, LegEnd>, LineSequence, Departure) -> Verdict)? = null
 
-    /** [train]'s verdict on [leg] over [route] (its line's), or null while it hasn't been judged ([warm]). */
-    fun get(leg: TripLeg, route: LineSequence, train: Departure): Verdict? =
-        tables[keyOf(leg)]?.takeIf { it.route === route }?.verdicts?.get(train.service()) ?: onMiss?.invoke(leg, route, train)
+    /** [train]'s verdict on [ride] over [route] (its line's), or null while it hasn't been judged ([warm]). */
+    fun get(ride: Pair<TripLeg, LegEnd>, route: LineSequence, train: Departure): Verdict? =
+        tables[keyOf(ride)]?.takeIf { it.route === route }?.verdicts?.get(train.service()) ?: onMiss?.invoke(ride, route, train)
 
     /**
-     * Judges each of [trains] on [leg] over [route] not judged yet; true when any was. Slow on a line
+     * Judges each of [trains] on [ride] over [route] not judged yet; true when any was. Slow on a line
      * with many routes: on a worker only. While [active] says no (the warm-up was canceled, superseded
      * by one for a newer route load), it leaves the verdicts as they are, so a late finish can't put an
      * older route's in place of a newer one's.
      */
     @WorkerThread
-    fun warm(leg: TripLeg, route: LineSequence, trains: List<Departure>, active: () -> Boolean = { true }): Boolean {
-        val key = keyOf(leg)
+    fun warm(ride: Pair<TripLeg, LegEnd>, route: LineSequence, trains: List<Departure>, active: () -> Boolean = { true }): Boolean {
+        val key = keyOf(ride)
         val table = tables.compute(key) { _, held ->
             when {
                 held?.route === route -> held
@@ -112,38 +119,41 @@ internal object TripVerdicts {
         }?.takeIf { it.route === route } ?: return false
         val todo = trains.map { it.service() }.distinct().filterNot { table.verdicts.containsKey(it) }
         if (todo.isEmpty()) return false
-        val at = routeAt(leg, route)
+        val at = DirectTrips.routeAt(route, ride)
         for (train in todo) {
             if (!active()) return false
-            table.verdicts[train] = judge(leg, route, at, train)
+            table.verdicts[train] = judge(ride, route, at, train)
         }
         return true
     }
 
     /**
-     * Makes room for [legs] before they're warmed, all at once, so a warm-up never drops what it judged
+     * Makes room for [rides] before they're warmed, all at once, so a warm-up never drops what it judged
      * earlier in the same batch: past [MAX_LEGS], every leg is judged afresh. While [active] says no,
      * it leaves the verdicts as they are.
      */
-    fun makeRoom(legs: List<TripLeg>, active: () -> Boolean = { true }) {
-        val added = legs.mapTo(HashSet(), ::keyOf).count { !tables.containsKey(it) }
+    fun makeRoom(rides: List<Pair<TripLeg, LegEnd>>, active: () -> Boolean = { true }) {
+        val added = rides.mapTo(HashSet(), ::keyOf).count { !tables.containsKey(it) }
         // Not for a canceled warm-up: it would clear what the newer one judged.
         if (tables.size + added > MAX_LEGS && active()) tables.clear()
     }
 
-    /** [train]'s verdict on [leg] over [route], worked out in place. Slow: on a worker only. */
+    /** [train]'s verdict on [ride] over [route], worked out in place. Slow: on a worker only. */
     @WorkerThread
-    fun compute(leg: TripLeg, route: LineSequence, train: Departure): Verdict = judge(leg, route, routeAt(leg, route), train)
+    fun compute(ride: Pair<TripLeg, LegEnd>, route: LineSequence, train: Departure): Verdict =
+        judge(ride, route, DirectTrips.routeAt(route, ride), train)
 
-    private fun routeAt(leg: TripLeg, route: LineSequence): LineSequence =
-        DirectTrips.routeAt(route, leg.fromId, "", leg.fromName, listOf(DirectTrips.End(leg.toId, leg.toName)))
-
-    private fun judge(leg: TripLeg, route: LineSequence, at: LineSequence, train: Departure): Verdict = Verdict(
-        DirectTrips.judge(train, leg.fromId, at, setOf(leg.toId)),
-        leavesAlongLeg(train, leg, mapOf(leg.lineId to route)),
+    private fun judge(ride: Pair<TripLeg, LegEnd>, route: LineSequence, at: LineSequence, train: Departure): Verdict = Verdict(
+        DirectTrips.judge(train, ride, at),
+        leavesAlongLeg(train, ride.first, mapOf(ride.first.lineId to route)),
     )
 
-    private fun keyOf(leg: TripLeg) = LegKey(leg.fromId, leg.fromName, leg.toId, leg.toName, leg.lineId, leg.mode, leg.path.firstOrNull())
+    private fun keyOf(ride: Pair<TripLeg, LegEnd>): LegKey {
+        val (leg, end) = ride
+        return LegKey(leg.fromId, leg.fromName, leg.toId, leg.toName, leg.lineId, leg.mode, leg.path.firstOrNull(), end)
+    }
+
+    private fun stopsKey(ride: Pair<TripLeg, LegEnd>, train: Departure) = StopsKey(ride.first.toId, ride.second, train.service())
 
     // The train as a service: where it goes, not when it comes or which vehicle runs it.
     private fun Departure.service() = copy(expectedArrival = Instant.EPOCH, vehicleId = "")

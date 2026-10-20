@@ -3,8 +3,10 @@ package app.stopdash.ui
 import app.stopdash.domain.CallingPortion
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DirectTrips
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import java.time.Duration
@@ -38,6 +40,11 @@ class TripVerdictsTest {
         path = listOf("Beck", "Mead", "Cole"),
     )
 
+    // A leg with where its ride gets off, as the trip page pairs it: the Planner's call.
+    private fun ended(leg: TripLeg) = leg to LegEnd.planned(leg, StepFree.DEFAULT)
+
+    private val ride = ended(leg)
+
     private fun train(destination: String, inMinutes: Long) = Departure(
         lineId = "blue", lineName = "Blue", direction = "outbound", destination = destination, platform = null,
         expectedArrival = now.plus(Duration.ofMinutes(inMinutes)), mode = "tube",
@@ -48,48 +55,48 @@ class TripVerdictsTest {
         val stopping = train("Dale", 3).copy(callingAt = listOf(CallingPortion(setOf("Beck", "Cole", "Dale"), complete = true)))
         val fast = train("Dale", 5).copy(callingAt = listOf(CallingPortion(setOf("Dale"), complete = true)))
         // Read as the page renders: nothing worked out there.
-        assertEquals(TripVerdicts.ByStops.UNJUDGED, TripVerdicts.byStops(leg, stopping))
-        assertEquals(TripVerdicts.ByStops.OPEN, TripVerdicts.byStops(leg, train("Dale", 7)))
-        assertTrue(TripVerdicts.warmStops(leg, listOf(stopping, fast, train("Dale", 7))))
-        assertEquals(TripVerdicts.ByStops.REACHES, TripVerdicts.byStops(leg, stopping))
-        assertEquals(TripVerdicts.ByStops.MISSES, TripVerdicts.byStops(leg, fast))
+        assertEquals(TripVerdicts.ByStops.UNJUDGED, TripVerdicts.byStops(ride, stopping))
+        assertEquals(TripVerdicts.ByStops.OPEN, TripVerdicts.byStops(ride, train("Dale", 7)))
+        assertTrue(TripVerdicts.warmStops(ride, listOf(stopping, fast, train("Dale", 7))))
+        assertEquals(TripVerdicts.ByStops.REACHES, TripVerdicts.byStops(ride, stopping))
+        assertEquals(TripVerdicts.ByStops.MISSES, TripVerdicts.byStops(ride, fast))
         // The same service predicted later: already judged.
-        assertFalse(TripVerdicts.warmStops(leg, listOf(stopping.copy(expectedArrival = now.plus(Duration.ofMinutes(2))))))
+        assertFalse(TripVerdicts.warmStops(ride, listOf(stopping.copy(expectedArrival = now.plus(Duration.ofMinutes(2))))))
     }
 
     @Test
     fun `a train is judged only once warmed, and its verdict holds for later predictions of the service`() {
         val route = blue()
         val toDale = train("Dale", 2)
-        assertNull(TripVerdicts.get(leg, route, toDale))
+        assertNull(TripVerdicts.get(ride, route, toDale))
 
-        assertTrue(TripVerdicts.warm(leg, route, listOf(toDale, train("Ely", 4))))
-        val verdict = TripVerdicts.get(leg, route, toDale)!!
+        assertTrue(TripVerdicts.warm(ride, route, listOf(toDale, train("Ely", 4))))
+        val verdict = TripVerdicts.get(ride, route, toDale)!!
         assertEquals(DirectTrips.Verdict.Reaches, verdict.reach)
         assertEquals(true, verdict.leaves)
-        assertEquals(DirectTrips.Verdict.Misses, TripVerdicts.get(leg, route, train("Ely", 4))?.reach)
+        assertEquals(DirectTrips.Verdict.Misses, TripVerdicts.get(ride, route, train("Ely", 4))?.reach)
 
         // The same service predicted later, on another vehicle: already judged.
         val later = toDale.copy(expectedArrival = now.plus(Duration.ofMinutes(1)), vehicleId = "123")
-        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(leg, route, later)?.reach)
-        assertFalse(TripVerdicts.warm(leg, route, listOf(later)))
+        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(ride, route, later)?.reach)
+        assertFalse(TripVerdicts.warm(ride, route, listOf(later)))
     }
 
     @Test
     fun `a new load of the line's route is judged afresh`() {
         val toDale = train("Dale", 2)
-        TripVerdicts.warm(leg, blue(), listOf(toDale))
-        assertNull(TripVerdicts.get(leg, blue(), toDale))
+        TripVerdicts.warm(ride, blue(), listOf(toDale))
+        assertNull(TripVerdicts.get(ride, blue(), toDale))
     }
 
     @Test
     fun `a superseded warm-up never puts an older route's verdicts in place of a newer one's`() {
         val toDale = train("Dale", 2)
         val newer = blue()
-        TripVerdicts.warm(leg, newer, listOf(toDale))
+        TripVerdicts.warm(ride, newer, listOf(toDale))
         // The warm-up for the route before, canceled but finishing late.
-        assertFalse(TripVerdicts.warm(leg, blue(), listOf(toDale)) { false })
-        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(leg, newer, toDale)?.reach)
+        assertFalse(TripVerdicts.warm(ride, blue(), listOf(toDale)) { false })
+        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(ride, newer, toDale)?.reach)
     }
 
     @Test
@@ -97,7 +104,7 @@ class TripVerdictsTest {
         val route = blue()
         val toDale = train("Dale", 2)
         // Full to the limit with other legs' verdicts.
-        repeat(TripVerdicts.MAX_LEGS) { TripVerdicts.warm(leg.copy(toId = "Full $it"), route, listOf(toDale)) }
+        repeat(TripVerdicts.MAX_LEGS) { TripVerdicts.warm(ended(leg.copy(toId = "Full $it")), route, listOf(toDale)) }
         val beck = leg.copy(toId = "Beck", toName = "Beck", path = listOf("Beck"))
         val state = TripViewModel.State(
             routes = listOf(TripRoute(listOf(leg)), TripRoute(listOf(beck))),
@@ -105,18 +112,18 @@ class TripVerdictsTest {
             live = mapOf("Aston" to TripViewModel.StopLive(listOf(toDale), now)),
         )
         assertTrue(warmVerdicts(state, mapOf("blue" to route), TripRideLines.NONE))
-        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(leg, route, toDale)?.reach)
-        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(beck, route, toDale)?.reach)
+        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(ride, route, toDale)?.reach)
+        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(ended(beck), route, toDale)?.reach)
     }
 
     @Test
     fun `a superseded warm-up never clears the verdicts to make room`() {
         val route = blue()
         val toDale = train("Dale", 2)
-        repeat(TripVerdicts.MAX_LEGS) { TripVerdicts.warm(leg.copy(toId = "Room $it"), route, listOf(toDale)) }
-        TripVerdicts.warm(leg, route, listOf(toDale))
-        TripVerdicts.makeRoom(listOf(leg.copy(toId = "Another")), active = { false })
-        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(leg, route, toDale)?.reach)
+        repeat(TripVerdicts.MAX_LEGS) { TripVerdicts.warm(ended(leg.copy(toId = "Room $it")), route, listOf(toDale)) }
+        TripVerdicts.warm(ride, route, listOf(toDale))
+        TripVerdicts.makeRoom(listOf(ended(leg.copy(toId = "Another"))), active = { false })
+        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(ride, route, toDale)?.reach)
     }
 
     @Test
@@ -129,12 +136,59 @@ class TripVerdictsTest {
         )
         val sequences = mapOf("blue" to route)
 
-        assertEquals(emptyList<Departure>(), legTrains(state, leg, now, sequences))
+        assertEquals(emptyList<Departure>(), legTrains(state, leg, ride.second, now, sequences))
         val shown = tripEstimates(state, now, Duration.ZERO, sequences).orEmpty()
         assertEquals(TripMessage.CHECKING, tripCheckState(state, shown, now, sequences))
 
         assertTrue(warmVerdicts(state, sequences, TripRideLines.NONE))
-        assertEquals(listOf("Dale"), legTrains(state, leg, now, sequences)?.map { it.destination })
+        assertEquals(listOf("Dale"), legTrains(state, leg, ride.second, now, sequences)?.map { it.destination })
         assertNull(tripCheckState(state, tripEstimates(state, now, Duration.ZERO, sequences).orEmpty(), now, sequences))
+    }
+
+    @Test
+    fun `verdicts are keyed on where the ride gets off, and a hub end judges as the Planner's call`() {
+        val route = blue()
+        val toDale = train("Dale", 2)
+        val stopping = train("Dale", 9).copy(callingAt = listOf(CallingPortion(setOf("Mead", "Cole", "Dale"), complete = true)))
+        val byHub = leg to LegEnd(StepFree.DEFAULT, LegEnd.Level.HUB, setOf("HUBQ"))
+        assertTrue(TripVerdicts.warm(ride, route, listOf(toDale)))
+        assertTrue(TripVerdicts.warmStops(ride, listOf(stopping)))
+        // The same leg getting off elsewhere is another ride: not judged yet.
+        assertNull(TripVerdicts.get(byHub, route, toDale))
+        assertEquals(TripVerdicts.ByStops.UNJUDGED, TripVerdicts.byStops(byHub, stopping))
+        assertTrue(TripVerdicts.warm(byHub, route, listOf(toDale)))
+        assertTrue(TripVerdicts.warmStops(byHub, listOf(stopping)))
+        // Judged alike until the end is read: by the leg's own getting-off stop.
+        val planned = TripVerdicts.get(ride, route, toDale)!!
+        val hub = TripVerdicts.get(byHub, route, toDale)!!
+        assertEquals(planned.reach, hub.reach)
+        assertEquals(planned.leaves, hub.leaves)
+        assertEquals(DirectTrips.Verdict.Reaches, hub.reach)
+        assertEquals(TripVerdicts.ByStops.REACHES, TripVerdicts.byStops(byHub, stopping))
+        assertEquals(TripVerdicts.compute(ride, route, train("Ely", 4)).reach, TripVerdicts.compute(byHub, route, train("Ely", 4)).reach)
+    }
+
+    @Test
+    fun `the page warms each route's ride by its own end, so each route's lookup finds its verdict`() {
+        val route = blue()
+        val toDale = train("Dale", 2)
+        // Two routes ride the same leg, one getting off where the Planner does, the other at a hub.
+        val walk = TripLeg("walking", "", "", "Cole", "Cole", "Ely", "Ely", now.plus(Duration.ofMinutes(9)), now.plus(Duration.ofMinutes(12)))
+        val plain = TripRoute(listOf(leg))
+        val walked = TripRoute(listOf(leg, walk))
+        val hubEnd = LegEnd(StepFree.DEFAULT, LegEnd.Level.HUB, setOf("HUBQ"))
+        val state = TripViewModel.State(
+            routes = listOf(plain, walked),
+            plannedAt = now,
+            live = mapOf("Aston" to TripViewModel.StopLive(listOf(toDale), now)),
+        )
+        val sequences = mapOf("blue" to route)
+        val lines = rideLines(state.routes.orEmpty(), state, StepFree.DEFAULT, sequences) { r ->
+            if (r == walked) listOf(leg to hubEnd) else plannedEnds(StepFree.DEFAULT)(r)
+        }
+        assertTrue(warmVerdicts(state, sequences, lines))
+        val ends = listOf(plain, walked).map { lines.endsOf(it).single() }
+        assertEquals(listOf(ride, leg to hubEnd), ends)
+        for (end in ends) assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(end, route, toDale)?.reach)
     }
 }

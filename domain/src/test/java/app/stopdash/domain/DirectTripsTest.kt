@@ -59,6 +59,28 @@ class DirectTripsTest {
     }
 
     @Test
+    fun `a ride is judged by the pair, and a hub end judges as the Planner's call until the end is read`() {
+        // Riding from Top to Mid, getting off where the Planner does, or at a hub (synthetic ids).
+        val leg = TripLeg("tube", "rail", "rail", "TOP", "Top", "MID", "Mid", now, now.plusSeconds(300))
+        val planned = leg to LegEnd.planned(leg, StepFree.DEFAULT)
+        val byHub = leg to LegEnd(StepFree.DEFAULT, LegEnd.Level.HUB, setOf("HUBQ"))
+        val toBottomA = departure("Bottom A", 60)
+        val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("BOTB"), complete = true)))
+        val stopping = fast.copy(callingAt = listOf(CallingPortion(setOf("MID", "BOTB"), complete = true)))
+        for (ride in listOf(planned, byHub)) {
+            val at = DirectTrips.routeAt(rail, ride)
+            assertEquals(DirectTrips.routeAt(rail, "TOP", "", "Top", listOf(DirectTrips.End("MID", "Mid"))), at)
+            // As judged by the ride's own getting-off stop.
+            assertEquals(DirectTrips.judge(toBottomA, "TOP", at, setOf("MID")), DirectTrips.judge(toBottomA, ride, at))
+            assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(toBottomA, ride, at))
+            assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(fast, ride, at))
+            assertEquals(false, DirectTrips.settledByStops(fast, ride))
+            assertEquals(true, DirectTrips.settledByStops(stopping, ride))
+            assertEquals(null, DirectTrips.settledByStops(toBottomA, ride))
+        }
+    }
+
+    @Test
     fun `a train its own calling points settle needs no route`() {
         val stopping = departure("Bottom B", 60).copy(callingAt = listOf(CallingPortion(setOf("MID", "SIDE", "BOTB"), complete = true)))
         val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("BOTB"), complete = true)))
