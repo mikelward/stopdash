@@ -2084,6 +2084,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] **Confirm on a device: a journey card's route page leaves out the just-due train the list's
               page shows for up to 30 s** (maintainer, 2026-10-20). The card's page shows the trains the
               card counts on; the list's keeps a just-due "0", grayed.
+        - [ ] **Keep a card-opened route page on the card's own trains after unstarring** (Codex on
+              #1027): a journey card keeps only trains that reach its far end, but once the journey is
+              unstarred from its open route page, the page reads the whole row for that route, so a
+              train that doesn't reach the journey's end (an express beside a stopping train) can
+              appear. This predates the just-due grace, which the page already keeps out; fix by
+              keeping the card's judgment for the page's lifetime.
         - [ ] **Space the train a trip follows, as the board does** (Codex on #835): once a trip picks
               a train, its wait and ETA come from that train's own calls (`vehicleCalls`), which TfL
               doesn't space, so a train the board shows spaced to 4 min reads 2 min on the trip after
