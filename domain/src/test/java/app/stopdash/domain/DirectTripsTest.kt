@@ -59,7 +59,7 @@ class DirectTripsTest {
     }
 
     @Test
-    fun `a ride is judged by the pair, and a hub end judges as the Planner's call until the end is read`() {
+    fun `a ride is judged by the pair, and a hub end with no ids worked out judges as the Planner's call`() {
         // Riding from Top to Mid, getting off where the Planner does, or at a hub (synthetic ids).
         val leg = TripLeg("tube", "rail", "rail", "TOP", "Top", "MID", "Mid", now, now.plusSeconds(300))
         val planned = leg to LegEnd.planned(leg, StepFree.DEFAULT)
@@ -78,6 +78,24 @@ class DirectTripsTest {
             assertEquals(true, DirectTrips.settledByStops(stopping, ride))
             assertEquals(null, DirectTrips.settledByStops(toBottomA, ride))
         }
+    }
+
+    @Test
+    fun `a last ride arriving by hub is reached by a train calling anywhere in the hub`() {
+        // Riding from Top to Bottom A, the destination a hub of Bottom A and Side (synthetic ids).
+        val leg = TripLeg("tube", "rail", "rail", "TOP", "Top", "BOTA", "Bottom A", now, now.plusSeconds(300))
+        val planned = leg to LegEnd.planned(leg, StepFree.ANY)
+        val byHub = leg to LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBQ"), ids = setOf("BOTA", "SIDE"))
+        val toBottomB = departure("Bottom B", 60)
+        val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("SIDE", "BOTB"), complete = true)))
+        // Getting off where the Planner does, a train for Bottom B misses: it never calls at Bottom A.
+        assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(toBottomB, planned, DirectTrips.routeAt(rail, planned)))
+        assertEquals(false, DirectTrips.settledByStops(fast, planned))
+        // Arriving by hub, it reaches the destination at Side, by its route or its own calling points.
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(toBottomB, byHub, DirectTrips.routeAt(rail, byHub)))
+        assertEquals(true, DirectTrips.settledByStops(fast, byHub))
+        // A train for Bottom A still reaches it.
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(departure("Bottom A", 60), byHub, DirectTrips.routeAt(rail, byHub)))
     }
 
     @Test

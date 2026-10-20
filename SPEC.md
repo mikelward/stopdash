@@ -1806,7 +1806,11 @@ also takes in the lines the Planner didn't name that serve **its own two stops**
 getting-off stop rides beside the Planner's as an equal — on that ride's pill, its trains among the
 ride's times and headway, and a departure row of its own on the open route. "Stop" is strict: the
 same stop, a road's two poles counting as one, never an interchange's other stops, so every walk and
-change stays as the Planner gave it. Such a line is found among the boarding stop's arrivals (or the
+change stays as the Planner gave it. The one exception is a trip's last ride where the Planner gets
+off in the destination's interchange: the trip arrives anywhere in it (below), so a line reaching
+another of its stations rides beside the Planner's too, its ride shown ending at its own first call
+there and named there, and a train calling anywhere in the interchange is one that gets the rider
+there. Such a line rides another stretch to another place, so it never times the route. Such a line is found among the boarding stop's arrivals (or the
 plan's other rides), and needs its route loaded to vouch that it reaches the stop. Only a line that
 also calls at the same stops in between shares the ride's time on board and times the route; one that
 gets there another way still shows its trains, but a route is never timed as if it rode that way.
@@ -2491,8 +2495,15 @@ hub, the ride ends at the train's first call anywhere in that hub, another stati
 included (a Circle train reaching one Paddington before the other gets the rider off at the first),
 by a call naming one TfL id, never a National Rail call naming its station's several records. Not on a
 step-free trip, nor one kept before its level was: the hub's other calls aren't checked against
-today's lifts yet, so it ends where the Planner, who checked, does. The trip screen still shows each
-ride ending at the Planner's call until its paths arrive by hub too. The route
+today's lifts yet, so it ends where the Planner, who checked, does. The trip screen arrives by hub
+too, as far as which lines and trains take the last ride: another line of the ride's mode reaching
+another station of the destination's hub shows on its card and open route, ending and named at its first call there, a train is judged to get the rider there by
+calling anywhere in the hub, and a train through a change counts as a route of its own where it
+reaches the hub at another station. The Planner's own ride still shows ending at its own call (the
+detour cut is to come), and so do the stop lists and bus alerts; a step-free trip, and a later
+trip's list, still end every ride where the Planner does. Which rides arrive by hub is worked out
+off the main thread through the station model as the routes come in, each ride ending at the
+Planner's call meanwhile. The route
 as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,
 or a step taken. A ride before the last only passes them, on to its change.
 

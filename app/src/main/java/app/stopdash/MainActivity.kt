@@ -55,6 +55,7 @@ import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RailVehicles
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.RefusedStops
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteRide
 import app.stopdash.domain.RouteStopsRepository
@@ -5373,6 +5374,9 @@ class MainActivity : ComponentActivity() {
         // Where the trip is planned to, from the model: a station's every record and one bus stop it owns. None
         // (planned to the id picked) for a bus stop, an interchange, still planned member by member, or a place.
         var planTargets: suspend () -> List<String>? = { null }
+        // The model and the destination's matchable hubs, for where each route's last ride arrives by hub on the
+        // trip page, read off the main thread by the trip's model. None for a place, which has no hub.
+        var arriving: suspend () -> RideEnds.Destination? = { null }
         if (favorite != null) {
             destinations = listOf(favorite)
             destKey = "place:${favorite.coordinate.latitude},${favorite.coordinate.longitude}"
@@ -5417,6 +5421,11 @@ class MainActivity : ComponentActivity() {
             destinations = toStopIds.map { TripDestination.Stop(it) }
             destKey = toStopIds.joinToString(",")
             destinationIds = ids
+            arriving = {
+                withContext(Workers.compute) {
+                    HubsStore.ready()?.let { model -> RideEnds.Destination(model, model.destinationHubs(toStopId, toName, toLevel, plannedTo = toStopIds)) }
+                }
+            }
         }
         var pickingVia by rememberSaveable(destKey) { mutableStateOf(false) }
         if (pickingVia) {
@@ -5504,6 +5513,7 @@ class MainActivity : ComponentActivity() {
                         destinationIds = destinationIds,
                         arrivalIds = arrivalIds,
                         planTargets = planTargets,
+                        arriving = arriving,
                         // Which walks are changes on foot, as a trip started on a route decides them.
                         stations = { StationIndexStore.load(appContext) },
                         // The bus stops towards the destination a plan from here asks via, found on the device.
@@ -5733,6 +5743,8 @@ class MainActivity : ComponentActivity() {
         TripScreen(
             title = title,
             journey = tripKey,
+            // Where each ride gets off, a last ride arriving at the destination's hub, worked out off the main thread.
+            rideEnds = trip::rideEnds,
             state = tripState,
             now = now,
             access = access,

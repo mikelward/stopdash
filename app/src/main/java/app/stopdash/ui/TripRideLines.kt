@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
@@ -79,8 +80,9 @@ internal class TripRideLines(
 
 /**
  * [RideLines.of] from a trip's [state]: its boarding stops' arrivals and its stop pairs' poles, each ride
- * getting off where [ends] says, by default where the Planner does at the trip's [stepFree] level
- * ([plannedEnds]). Kept by the pair ([TripRideLines]), so each lookup names its ride's end.
+ * getting off where [ends] says: on the trip page [RideEnds.ends] (a last ride arriving by hub), by default
+ * where the Planner does at the trip's [stepFree] level ([plannedEnds]). Kept by the pair ([TripRideLines]),
+ * so each lookup names its ride's end.
  */
 internal fun rideLines(
     routes: List<TripRoute>,
@@ -95,7 +97,7 @@ internal fun rideLines(
     return TripRideLines(lines, ends, ended)
 }
 
-/** Where each ride of a route gets off at [stepFree]: the Planner's call ([LegEnd.planned]), until arriving by hub reads the end. */
+/** Where each ride of a route gets off at [stepFree]: the Planner's call ([LegEnd.planned]), where no [RideEnds] were worked out. */
 internal fun plannedEnds(stepFree: StepFree): (TripRoute) -> List<Pair<TripLeg, LegEnd>> = { route -> LegEnd.planned(route, stepFree) }
 
 /** [RideLines.lineIds] from a trip's [state]: the lines whose route data and status [rideLines] needs. */
@@ -105,7 +107,7 @@ internal fun rideLineIds(routes: List<TripRoute>, state: TripViewModel.State, hi
 /**
  * [state] with the routes its timed routes offer with a change left out ([RideLines.through]): a
  * train that runs on through the change is a route of its own, with one ride fewer, getting off where
- * the second ride does at [stepFree] ([plannedEnds]). One already
+ * the second ride does at [stepFree] ([ends], as the ride lines have it). One already
  * planned (the same lines and stops, [routeKey]) is left to the Planner's copy. The [open] route is
  * among them too, kept whole ([OpenRoute]), whether or not these routes make it now: its train may
  * not be predicted, or its change be past the cap ([TripViewModel.bestOf]).
@@ -116,11 +118,12 @@ internal fun withThroughRoutes(
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
     open: TripRoute? = null,
+    ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
 ): TripViewModel.State {
     val routes = state.routes ?: return state
     val timed = TripViewModel.bestOf(state.shownRoutes(hidden).orEmpty(), direct = state.directKeys, delayed = state.delayedLines)
     val keys = routes.mapTo(HashSet(), ::routeKey)
-    val through = RideLines.through(timed, plannedEnds(stepFree), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
+    val through = RideLines.through(timed, ends, state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
         .filter { routeKey(it) !in keys }
     // The open route, unless it's planned or made now (the same route, freshly timed).
     val kept = open?.takeIf { route -> routeKey(route).let { key -> key !in keys && through.none { routeKey(it) == key } } }
@@ -138,9 +141,13 @@ internal fun openRouteOf(
     stepFree: StepFree,
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
-): OpenRoute = openRoutesOf(listOf(route), state, stepFree, sequences, hidden).getValue(routeKey(route))
+    ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
+): OpenRoute = openRoutesOf(listOf(route), state, stepFree, sequences, hidden, ends).getValue(routeKey(route))
 
-/** [openRouteOf] for each of [routes], by its key, going over the board for trains through a change once. */
+/**
+ * [openRouteOf] for each of [routes], by its key, going over the board for trains through a change once, each
+ * ride getting off where [ends] says, as [withThroughRoutes] made them.
+ */
 @WorkerThread
 internal fun openRoutesOf(
     routes: List<TripRoute>,
@@ -148,12 +155,13 @@ internal fun openRoutesOf(
     stepFree: StepFree,
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
+    ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = plannedEnds(stepFree),
 ): Map<String, OpenRoute> {
     val shown = state.shownRoutes(hidden).orEmpty()
     val planned = shown.mapTo(HashSet(), ::routeKey)
     val keys = routes.map(::routeKey).distinct()
     val ways by lazy {
-        RideLines.throughWays(TripViewModel.bestOf(shown, direct = state.directKeys, delayed = state.delayedLines), plannedEnds(stepFree), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
+        RideLines.throughWays(TripViewModel.bestOf(shown, direct = state.directKeys, delayed = state.delayedLines), ends, state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
             .associateBy { routeKey(it.route) }
     }
     return keys.associateWith { key ->

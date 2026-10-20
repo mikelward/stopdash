@@ -30,6 +30,7 @@ import app.stopdash.domain.FinalStop
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TowardStops
 import app.stopdash.domain.RefusedStops
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.TripClosures
@@ -158,6 +159,10 @@ class TripViewModel(
     // awaited by each plan: a station's every record and one bus stop it owns, in place of [destinations]' one id.
     // Null to plan to [destinations] as they are (an interchange's members, a stop, a place, no model).
     private val planTargets: suspend () -> List<String>? = { null },
+    // The station model and the destination's matchable hubs ([Hubs.destinationHubs]), for where each route's
+    // last ride gets off by arriving at them ([rideEnds]), read on [io] once. Null where no ride arrives by hub
+    // (a place, no model): each gets off where the Planner does.
+    private val arriving: suspend () -> RideEnds.Destination? = { null },
     // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
     // of what they picked ([PlanTargets.viaStops]), each asked of the Planner for every destination and the
     // answers merged, so every route passes one of them. Null for a trip that goes any way. Part of what the
@@ -984,6 +989,28 @@ class TripViewModel(
 
     // The destination's every id at its level ([arrivalIds]), read once on [io].
     private val modelArrivals = viewModelScope.async(io) { arrivalIds() }
+
+    // The model and the destination's hubs each route's last ride may arrive at ([arriving]), read once on [io].
+    private val arrivingAt = viewModelScope.async(io) { arriving() }
+
+    /**
+     * Where each ride of [routes] gets off at [stepFree] ([RideEnds]): a last ride the Planner gets off in the
+     * destination's hubs at its first call anywhere in them, worked out through the station model on [compute]
+     * once it's in, and every other ride where the Planner gets it off. The screen asks as the routes it
+     * shows come in and reads the answer as it builds the page.
+     */
+    suspend fun rideEnds(routes: List<TripRoute>, stepFree: StepFree): RideEnds {
+        val at = try {
+            arrivingAt.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The rides get off where the Planner does, as with no model: said, not dropped.
+            warn("trip ride ends: station model unreadable (${e.javaClass.simpleName})")
+            null
+        } ?: return RideEnds.planned(stepFree)
+        return withContext(compute) { RideEnds.of(routes, stepFree, at) }
+    }
 
     /**
      * Every id of the destination, each to its stop, once the station model's are in: what a trip started from

@@ -14,11 +14,16 @@ import androidx.annotation.WorkerThread
  * - a favorite ride kept as saved: its saved end's stop ([Level.STOP]), or an area a refresh has
  *   since split: that area's own poles ([Level.POLE]).
  *
- * Read so far only by On the way, where the last ride gets off by arriving at the destination's hub
- * ([OnTheWay.arrivingIds]); the other paths take a ride's end, planned or resolved, and still get off where
- * the Planner's call is until they read it (TODO.md, *Arriving by hub at the first call*).
+ * A hub end is read where the last ride gets off by arriving at the destination's hub: by On the way
+ * ([OnTheWay.arrivingIds]), and on the trip page by its verdicts and ride lines through [ids] ([RideEnds],
+ * [offIds]). Every other end still gets off where the Planner's call is until its paths read it (TODO.md,
+ * *Arriving by hub at the first call*).
+ *
+ * [ids] are the TfL ids a hub end gets off at, every one of its hubs' stations and stops ([Hubs.idsOf]),
+ * worked out through the model where the end is read ([RideEnds.of]); empty where they weren't, when the
+ * ride gets off at its own call.
  */
-data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<String>) {
+data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<String>, val ids: Set<String> = emptySet()) {
     /** Which of a call's places [places] names. */
     enum class Level {
         /** A station, or a bus stop (both directions of its road): [Resolved.station]. */
@@ -48,6 +53,14 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
             Level.POLE -> call.poles.any { it in places }
         }
     }
+
+    /**
+     * The TfL ids [ride] gets off at, as a departure's calls and a line's route are matched against: a hub
+     * end's [ids], every one of the destination's hubs' stations and stops, the ride's own call among them;
+     * otherwise, and for a hub end whose ids weren't worked out, the ride's own call ([TripLeg.toId]) alone.
+     */
+    fun offIds(ride: TripLeg): Set<String> =
+        if (level == Level.HUB && ids.isNotEmpty()) ids + ride.toId else setOf(ride.toId)
 
     companion object {
         /**

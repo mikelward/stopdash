@@ -152,6 +152,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PartClosure
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
@@ -1165,6 +1166,9 @@ internal fun TripScreen(
     // The open route closed because a settled plan doesn't offer it ([openRouteNotPlanned]), just before it
     // closes: not on Back, nor for a mode hidden or a line avoided. A later trip's list says so on return.
     onOpenNotPlanned: () -> Unit = {},
+    // Where each ride of the routes shown gets off ([TripViewModel.rideEnds]), worked out off the main thread
+    // as they come in: until then, and by default (a test), where the Planner gets each off.
+    rideEnds: suspend (List<TripRoute>, StepFree) -> RideEnds = { _, level -> RideEnds.planned(level) },
 ) {
     val asOf = rememberStatusesAndDelaysAsOf(state.statuses, state.statusesSortedOn, now)
     // With the delays as of today, so every cap on the page counts the same ones (Codex, #703).
@@ -1176,6 +1180,7 @@ internal fun TripScreen(
         LocalTripJourney provides journey,
         LocalDismissLineAlert provides lineDismissal,
         LocalStarredStops provides starredStops,
+        LocalRideEnds provides rideEnds,
     ) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
@@ -1417,7 +1422,16 @@ private fun TripContent(
     // and a train through a change whether or not one is predicted. Null while no plan offers it.
     val opened = remember(poled, excluded, openRef) { openRef?.routeIn(poled.shownRoutes(excluded).orEmpty()) }
     val openKey = opened?.let(::routeKey)
-    val liveState = remember(poled, stepFree, routeSequences, excluded, opened) { withThroughRoutes(poled, stepFree, routeSequences, excluded, opened) }
+    // Where each ride gets off ([RideEnds]): a last ride the Planner gets off in the destination's hubs at its
+    // first call anywhere in them, worked out through the station model off the main thread as the routes
+    // come in, the last answer held meanwhile. Until the first is in, and at a level it wasn't worked out
+    // at, each ride gets off where the Planner does.
+    // The latest asker, should the trip move to another model (a re-locate) with the same routes.
+    val resolveEnds by rememberUpdatedState(LocalRideEnds.current)
+    val resolvedEnds by produceState<RideEnds?>(null, poled, stepFree) { value = resolveEnds(poled.routes.orEmpty(), stepFree) }
+    val rideEnds = remember(resolvedEnds, stepFree) { resolvedEnds?.takeIf { it.stepFree == stepFree } ?: RideEnds.planned(stepFree) }
+    val endsOf: (TripRoute) -> List<Pair<TripLeg, LegEnd>> = remember(rideEnds) { rideEnds::ends }
+    val liveState = remember(poled, stepFree, routeSequences, excluded, opened, endsOf) { withThroughRoutes(poled, stepFree, routeSequences, excluded, opened, endsOf) }
     // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
     val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
@@ -1432,7 +1446,7 @@ private fun TripContent(
         )
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
-    val liveRideLines = remember(liveState, stepFree, routeSequences, excluded) { rideLines(liveState.routes.orEmpty(), liveState, stepFree, routeSequences, excluded) }
+    val liveRideLines = remember(liveState, stepFree, routeSequences, excluded, endsOf) { rideLines(liveState.routes.orEmpty(), liveState, stepFree, routeSequences, excluded, endsOf) }
     // Each leg's live trains judged on its line's route on the worker ([TripVerdicts]), on every
     // refresh and route load; a train not judged yet reads as its route still loading. Once a warm-up
     // ends, the same routes come anew ([JudgedRoutes]) so what reads the verdicts reads them again.
@@ -2469,6 +2483,9 @@ private fun RouteList(
 
 /** The journey the trip screen shows ([TripScreen]'s `journey`), read where the list's work is kept. */
 internal val LocalTripJourney = staticCompositionLocalOf<Any?> { null }
+
+/** Where the trip screen's rides get off ([TripScreen]'s `rideEnds`), asked as its routes come in. */
+internal val LocalRideEnds = compositionLocalOf<suspend (List<TripRoute>, StepFree) -> RideEnds> { { _, level -> RideEnds.planned(level) } }
 
 /**
  * A card's header ([RouteLabelHeader]), grown and shrunk over a slide's time ([CARD_MOVE_MILLIS]) as it

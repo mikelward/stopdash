@@ -979,12 +979,37 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               followed train gets the rider off at its first call in the
                                               destination's hub, by one TfL id; not yet on a step-free
                                               trip (see *Decisions needing review*).
-                                        - [ ] The trip page's paths (`RouteStops.forLeg`,
-                                              `withRouteStops`, `RideLines`, `DirectTrips.judge`,
-                                              `TripVerdicts`, the bus statuses and alerts) switched from
-                                              `LegEnd.planned` to `LegEnd.of` on a worker and reading it,
-                                              with the cards cut and named at that call (the detour cut,
-                                              below); on the way's stop list and ride lines with them.
+                                        - [x] The trip page's ride lines and verdicts: `RideEnds`
+                                              (`LegEnd.of`, then `Hubs.idsOf` into `LegEnd.ids`), worked
+                                              out by `TripViewModel.rideEnds` on its compute dispatcher as
+                                              the screen's placed routes come in, the Planner's calls
+                                              meanwhile; `RideLines.runTo` (`of`, `through`, `throughWays`)
+                                              and `DirectTrips.judge`/`settledByStops` read it
+                                              (`LegEnd.offIds`), so another line of the mode reaching
+                                              another station of the hub is a card's line or a train
+                                              through a change, cut and named at its first call there,
+                                              never timing the route, and a train calling anywhere in the
+                                              hub reaches. `TripVerdicts` and the bus statuses key on the
+                                              same ends (`TripRideLines.endsOf`); not on a step-free trip
+                                              (see *Decisions needing review*).
+                                        - [ ] The rest of the trip page's paths reading the end: the
+                                              Planner's own last ride cut and named at its first call
+                                              in the hub (the detour cut, below), its stop list
+                                              (`RouteStops.forLeg`, `withRouteStops`), and the bus
+                                              alerts' span (`JourneyAlerts.ridesOf`, `RouteDisruption`),
+                                              which still end at the Planner's call.
+                                        - [ ] A later trip's list (`LaterTripViewModel`,
+                                              `LaterTripScreen`) taking the same `RideEnds`; it still
+                                              ends every ride where the Planner does.
+                                        - [ ] On the way's stop list and ride lines
+                                              (`OnTheWayScreen`'s `withRouteStops`,
+                                              `RideLineChecks.running`, `ActiveTripTracker`'s
+                                              `polesToRead`) reading the last ride's hub end, as its
+                                              arrival already does (`OnTheWay.arrivingIds`).
+                                        - [ ] Middle rides reading their station end (`LegEnd.of`'s
+                                              `Level.STOP`): a substitute line calling at another record
+                                              of the change's station; today they end at the Planner's
+                                              call by its raw id.
                                         - [ ] A step-free trip's first passing call in the hub, against
                                               today's lifts (`StepFreeAccess`, `LiftOutages`), so it
                                               arrives by hub too.
@@ -4967,6 +4992,15 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **The trip page reads the last ride's hub end for its ride lines and verdicts first**
+  (autopilot, 2026-10-20). Another line reaching another station of the destination's hub shows on
+  the card and a train calling anywhere in the hub is judged to get there, while the Planner's own
+  ride, its stop list and the bus alerts still end at the Planner's call until the detour cut lands.
+  Such a line never times the route, since it rides another stretch. Ends are worked out on the
+  worker per plan (`RideEnds`), keyed on each last ride's raw end; a route made since (a train through
+  a change, the open route) ends where it's named to, as do a step-free trip (as on the way) and a
+  later trip's list. Alternative: switch every path, the cut included, in one PR; or resolve each
+  route as it's made. Reversible: `TripScreen`'s `rideEnds`, which defaults to the Planner's calls.
 - [ ] **On the way reads the ride's end first, ahead of the other families** (autopilot,
   2026-10-20). The last ride on the way gets off at the followed train's first call in the
   destination's hub, while the trip screen's paths still end where the Planner does, though the
@@ -4977,8 +5011,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 - [ ] **A step-free trip doesn't arrive by hub yet** (autopilot, 2026-10-20). No lift check reads a
   hub's other calls yet, so a step-free trip (or one whose level isn't known) still gets off where
   the Planner, who checked access when it planned, does. Alternative: arrive by hub regardless, or
-  build the first passing call against `StepFreeAccess` and `LiftOutages` now. Reversible: one
-  condition in `OnTheWay.arrivingIds`.
+  build the first passing call against `StepFreeAccess` and `LiftOutages` now. The trip page's ride
+  lines and verdicts hold to the same (`RideEnds.of`). Reversible: one condition each in
+  `OnTheWay.arrivingIds` and `RideEnds.of`.
 - [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
   (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path
   at once, so no path is missed; that is too big for one PR, so each family takes its `LegEnd` in

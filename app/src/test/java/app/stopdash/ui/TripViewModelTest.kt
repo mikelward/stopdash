@@ -72,6 +72,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -606,6 +607,56 @@ class TripViewModelTest {
         }
         assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.none { it === caller })
         assertTrue("${store.stored.value}", store.stored.value.isEmpty())
+    }
+
+    @Test
+    fun `where each ride gets off is worked out through the station model on the worker`() = runTest(dispatcher) {
+        // Riding to Hill's rail station, in a hub with its tube station ([HillModel]).
+        val route = TripRoute(listOf(leg("red", "A", "910GHILL", 0, 10)))
+        // Holds what's handed to it until let go, so nothing it's given can run on the caller.
+        val held = mutableListOf<Runnable>()
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                held += block
+            }
+        }
+        val trip = TripViewModel(
+            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("910GHILL")),
+            clock = { now }, io = dispatcher, compute = worker, arriving = { HillModel.toHill },
+        )
+        val ends = async { trip.rideEnds(listOf(route), StepFree.ANY) }
+        advanceUntilIdle()
+        // The model is in, but the ends are the worker's to work out.
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        assertFalse(ends.isCompleted)
+        val caller = Thread.currentThread()
+        val ranOn = mutableListOf<Thread>()
+        val thread = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            while (held.isNotEmpty()) {
+                val next = held.toList()
+                held.clear()
+                thread.submit {
+                    for (block in next) {
+                        ranOn += Thread.currentThread()
+                        block.run()
+                    }
+                }.get()
+                advanceUntilIdle()
+            }
+        } finally {
+            thread.shutdown()
+        }
+        assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.none { it === caller })
+        // The last ride arrives anywhere in Hill's hub, its tube station too.
+        val (ride, end) = ends.await().ends(route).single()
+        assertTrue("940GZZLUHIL" in end.offIds(ride))
+        // With no model, the ride gets off where the Planner does.
+        val unmodeled = TripViewModel(
+            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("910GHILL")),
+            clock = { now }, io = dispatcher, compute = dispatcher,
+        )
+        assertEquals(LegEnd.planned(route, StepFree.ANY), unmodeled.rideEnds(listOf(route), StepFree.ANY).ends(route))
     }
 
     @Test

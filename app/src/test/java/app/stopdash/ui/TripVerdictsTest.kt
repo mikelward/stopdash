@@ -191,4 +191,17 @@ class TripVerdictsTest {
         assertEquals(listOf(ride, leg to hubEnd), ends)
         for (end in ends) assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(end, route, toDale)?.reach)
     }
+
+    @Test
+    fun `a last ride arriving by hub reads a train for the hub's other station as reaching it, keyed by its end`() {
+        // The destination a hub of Cole and Ely (synthetic): a train for Ely reaches it, getting off at Ely.
+        val byHub = leg to LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBC"), ids = setOf("Cole", "Ely"))
+        val toEly = train("Ely", 4)
+        val route = blue()
+        assertTrue(TripVerdicts.warm(ride, route, listOf(toEly)))
+        assertTrue(TripVerdicts.warm(byHub, route, listOf(toEly)))
+        // Getting off at Cole alone it misses; arriving by hub, the same train reaches: two verdicts, by the pair.
+        assertEquals(DirectTrips.Verdict.Misses, TripVerdicts.get(ride, route, toEly)?.reach)
+        assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(byHub, route, toEly)?.reach)
+    }
 }
