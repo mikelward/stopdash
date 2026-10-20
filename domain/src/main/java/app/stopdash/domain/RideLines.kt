@@ -4,7 +4,9 @@ package app.stopdash.domain
  * A ride's lines (SPEC *Trips with a change*): the Planner's own first, then every other line of the
  * same mode whose route runs from the ride's boarding stop to its getting-off stop. "Stop" is strict
  * (maintainer, 2026-09-27): the same stop, a road's two poles counting as one, never an interchange's
- * other stops, so walks and changes stay exactly as the Planner gave them. Each is shown beside the
+ * other stops, so walks and changes stay exactly as the Planner gave them. The one exception is a trip's
+ * last ride arriving by hub ([LegEnd.offIds]): there the destination is its hubs, so a line reaching
+ * another of their stations gets the rider there too (dev-docs/station-resolution.md, phase 2). Each is shown beside the
  * Planner's line as an equal ([legs]). Only those also calling at the same stops in between ride the
  * same stretch, so only they share the ride's time on board and may time the route ([timed]) — and
  * then only while [checked].
@@ -72,8 +74,9 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             lineId in statuses && lineId !in TripTiming.notRunning(statuses.values)
 
         /**
-         * Each ride of [routes], paired with where it gets off ([ends]: [LegEnd.of], or [LegEnd.planned]
-         * until arriving by hub reads the end), to its [RideLines]. Keyed on the pair, so a leg last in
+         * Each ride of [routes], paired with where it gets off ([ends]: [RideEnds.ends], or [LegEnd.planned]),
+         * to its [RideLines]. Another line counts for a last ride arriving by hub where it reaches the
+         * destination's hubs, at another station of them too, cut and named at its first call there. Keyed on the pair, so a leg last in
          * one route and in the middle of another is two keys (dev-docs/station-resolution.md, phase 2).
          * A line is considered when it rides first somewhere in the plan or when its trains are among
          * the ride's boarding stop's [arrivals]; it counts once its route ([sequences]) is loaded and
@@ -106,7 +109,12 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                 fun between(stops: List<String>, offId: String) =
                     stops.map(::stopOf).dropLastWhile { it == stopOf(ride.toId) || it == stopOf(offId) || it == ride.toArea }
                 val ridden = between(ride.path, ride.toId)
-                RideLines(listOf(ride) + found, listOf(ride) + found.filter { between(it.path, it.toId) == ridden })
+                // A line a last ride arriving by hub takes to another of the destination's stations rides to
+                // another place, so it never shares the ride's time on board: shown, never timing it.
+                fun elsewhere(line: TripLeg) = end.level == LegEnd.Level.HUB && stopOf(line.toId) != stopOf(ride.toId) &&
+                    (ride.toArea.isEmpty() || areas[line.toId] != ride.toArea) &&
+                    sequences[line.lineId]?.sameStationId(line.toId, ride.toId) != true
+                RideLines(listOf(ride) + found, listOf(ride) + found.filter { between(it.path, it.toId) == ridden && !elsewhere(it) })
             }
         }
 
@@ -269,10 +277,10 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
 
         // [ride] by line [lineId] from a fetched pole of [ride]'s boarding stop to [to]'s getting-off
         // stop (or a pole of its pair), as its route ([sequence]) runs it; null unless the route gives
-        // exactly one such run. [end] is where [to] gets off ([LegEnd]): every caller supplies one, so
-        // none can be missed when arriving by hub moves the ride's end onto it. Not read yet: the run
-        // still ends at [to]'s Planner stop, which is what every caller's end ([LegEnd.planned]) names.
-        @Suppress("UNUSED_PARAMETER")
+        // exactly one such run. [end] is where [to] gets off ([LegEnd]): every caller supplies one. A last
+        // ride arriving by hub ([LegEnd.offIds]) gets off at the run's first call anywhere in the
+        // destination's hubs, another station of them included, and is named there; every other at [to]'s
+        // Planner stop.
         private fun runTo(
             ride: TripLeg,
             to: TripLeg,
@@ -287,9 +295,13 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             // it gets off keeps the id the route calls at, the one its arrival is predicted at: the id the
             // ride names, failing that on every run another id of its station ([LineSequence.sameStationId]),
             // only failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
+            val offIds = end.offIds(to)
+            // A hub end already holds every pole of its stops; the Planner's raw area may be one the model
+            // split, its other poles at a stop outside the hub, so it isn't matched there.
+            val area = to.toArea.takeIf { it.isNotEmpty() && (end.level != LegEnd.Level.HUB || end.ids.isEmpty()) }
             fun runs(station: Boolean) = boarding.flatMap { stop ->
                 val seen = sequence.callingAt(stop)
-                fun alights(id: String) = id == to.toId || (to.toArea.isNotEmpty() && seen.stopAreas[id] == to.toArea) ||
+                fun alights(id: String) = id in offIds || (area != null && seen.stopAreas[id] == area) ||
                     (station && seen.sameStationId(id, to.toId))
                 seen.routes.flatMap { route ->
                     val ids = route.stopIds

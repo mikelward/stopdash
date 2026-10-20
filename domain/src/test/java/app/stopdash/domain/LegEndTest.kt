@@ -1,7 +1,5 @@
 package app.stopdash.domain
 
-import java.io.BufferedReader
-import java.io.StringReader
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,8 +8,7 @@ import org.junit.Test
 
 /**
  * Synthetic records: a hub HUBA holding stations STA1 and STA2, and a hub HUBB, as [Resolved] values;
- * and a station model ([hubs]) around the obviously-fake (51.5, -0.12), as `HubsTest` builds it, for the
- * ends a route's rides get off at, resolved from their raw ids.
+ * and the synthetic Hill model ([HillHubs]) for the ends a route's rides get off at, resolved from their raw ids.
  */
 class LegEndTest {
     private val a1 = Resolved(tflId = "910GA1", station = "STA1", hub = "HUBA")
@@ -20,40 +17,7 @@ class LegEndTest {
     private val b = Resolved(tflId = "910GB", station = "STB", hub = "HUBB")
     private val at = Instant.parse("2026-01-01T09:00:00Z")
 
-    // Hill: a hub HUBEXA of a rail station (records 910GHILL and 910GHILLLL) and a tube station
-    // (940GZZLUHIL), with a bus stop of two poles (area 490G000001); Vale, a station and hub of its own;
-    // and an area 490G000005 the model split into two stops.
-    private val index = StationIndex(
-        listOf(
-            IndexedStation("910GHILL", "Hill", listOf("national-rail"), "HUBEXA", 51.500, -0.120,
-                icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
-            IndexedStation("910GHILLLL", "Hill LL", listOf("national-rail"), "HUBEXA", 51.502, -0.120,
-                icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
-            IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
-                icsCode = "1009002", station = "1009002:tube", modelHub = "HUBEXA"),
-            IndexedStation("910GVALE", "Vale", listOf("national-rail"), latitude = 51.53, longitude = -0.12,
-                station = "910GVALE", modelHub = "910GVALE"),
-            IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),
-        ),
-        revision = "abc",
-    )
-    private val hubs = Hubs.of(
-        index,
-        BundledStops.read(
-            BufferedReader(
-                StringReader(
-                    listOf(
-                        "# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc",
-                        "L\t1\tbus\t1",
-                        "S\t490000001A\tB\tHill Station\t51.500500\t-0.120000\t490G000001\t\tA\t\t\t1\t1009001\t490G000001\t1009001:rail\tHUBEXA",
-                        "S\t490000001B\tB\tHill Station\t51.500700\t-0.120000\t490G000001\t\tB\t\t\t1\t1009001\t490G000001\t1009001:rail\tHUBEXA",
-                        "S\t490000005A\tB\tHigh Road\t51.520000\t-0.120000\t490G000005\t\t\t\t\t1\t\t490000005A\t\t490000005A",
-                        "S\t490000005B\tB\tMill Lane\t51.520300\t-0.120000\t490G000005\t\t\t\t\t1\t\t490000005B\t\t490000005A",
-                    ).joinToString("\n"),
-                ),
-            ),
-        ),
-    )!!
+    private val hubs = HillHubs.model
 
     // A ride getting off at [toId], as the Planner names it: raw ids only.
     private fun ride(toId: String, mode: String = "tube", toArea: String = "") = TripLeg(

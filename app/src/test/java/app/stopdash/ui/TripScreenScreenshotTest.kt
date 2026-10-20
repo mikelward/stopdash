@@ -96,6 +96,11 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.BundledStops
+import app.stopdash.domain.IndexedStation
+import app.stopdash.domain.StationIndex
+import app.stopdash.domain.Hubs
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PartClosure
 import app.stopdash.domain.RouteSequenceSource
@@ -314,6 +319,8 @@ class TripScreenScreenshotTest {
         held: MutableState<TripViewModel.State>? = null,
         onListShown: (String) -> Unit = {},
         layoutDirection: LayoutDirection? = null,
+        // Where each ride gets off ([TripScreen]'s `rideEnds`); the Planner's call by default.
+        rideEnds: (suspend (List<TripRoute>, StepFree) -> RideEnds)? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -333,6 +340,7 @@ class TripScreenScreenshotTest {
                         menu = menu,
                         ends = ends,
                         onListShown = onListShown,
+                        rideEnds = rideEnds ?: { _, level -> RideEnds.planned(level) },
                     )
                 }
             }
@@ -3774,6 +3782,57 @@ class TripScreenScreenshotTest {
         composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Test Line"))).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+    }
+
+    @Test
+    fun a_last_ride_arriving_by_hub_shows_a_line_to_another_station_of_it() {
+        // A made-up tube line from Stratford to Canary Wharf's Elizabeth line station, with a train due: the
+        // trip to Canary Wharf arrives anywhere in its interchange, so it takes the Jubilee ride there too.
+        val testLine = LineSequence(
+            routes = listOf(LineRoute("Stratford ↔ Canary Wharf", listOf(stratfordTube.first, canaryWharfXr.first))),
+            stopNames = mapOf(stratfordTube.first to "Stratford", canaryWharfXr.first to "Canary Wharf (Elizabeth line)"),
+        )
+        val withTestLine = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                if (lineId == "testline") testLine else sequences.getValue(lineId)
+        }
+        val atStratford = live.getValue(stratfordTube.first)
+        val withTrain = live + (stratfordTube.first to atStratford.copy(departures = atStratford.departures + train("testline", "Test Line", "tube", "Canary Wharf", 30, "Platform 1")))
+        val state = planned.copy(routes = listOf(viaStratford), live = withTrain, statuses = planned.statuses + ("testline" to LineStatus("testline", LineStatus.GOOD_SERVICE, "Good Service")))
+        // Canary Wharf's interchange: its Jubilee and Elizabeth line stations (the model's own ids, a made-up position).
+        val model = Hubs.of(
+            StationIndex(
+                listOf(
+                    IndexedStation(canaryWharf.first, "Canary Wharf", listOf("tube"), "HUBCAW", 51.5, -0.12, station = "CAW:tube", modelHub = "HUBCAW"),
+                    IndexedStation(canaryWharfXr.first, "Canary Wharf", listOf("elizabeth-line"), "HUBCAW", 51.5, -0.12, station = "CAW:xr", modelHub = "HUBCAW"),
+                    IndexedStation("HUBCAW", "Canary Wharf", listOf("tube", "elizabeth-line")),
+                ),
+                revision = "abc",
+            ),
+            BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
+        )!!
+        show(state, routeStops = RouteStopsRepository(withTestLine), rideEnds = { routes, level -> RideEnds.of(routes, level, RideEnds.Destination(model, setOf("HUBCAW"))) })
+        // The card's pill names both lines as one ("Jubilee or Test Line").
+        composeRule.onAllNodes(hasClickAction() and hasContentDescription("Test Line", substring = true) and !hasTestTag("tripDisruptions"))
+            .onFirst().assertExists()
+        captureSnapshot("trip-routes-arriving-by-hub.png")
+    }
+
+    @Test
+    fun a_last_ride_getting_off_where_the_planner_does_shows_no_line_to_another_station_of_its_hub() {
+        // As above, but with no station model: the ride gets off at the Jubilee's Canary Wharf alone.
+        val testLine = LineSequence(
+            routes = listOf(LineRoute("Stratford ↔ Canary Wharf", listOf(stratfordTube.first, canaryWharfXr.first))),
+            stopNames = mapOf(stratfordTube.first to "Stratford", canaryWharfXr.first to "Canary Wharf (Elizabeth line)"),
+        )
+        val withTestLine = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                if (lineId == "testline") testLine else sequences.getValue(lineId)
+        }
+        val atStratford = live.getValue(stratfordTube.first)
+        val withTrain = live + (stratfordTube.first to atStratford.copy(departures = atStratford.departures + train("testline", "Test Line", "tube", "Canary Wharf", 30, "Platform 1")))
+        show(planned.copy(routes = listOf(viaStratford), live = withTrain), routeStops = RouteStopsRepository(withTestLine))
+        composeRule.onAllNodes(hasContentDescription("Test Line", substring = true)).assertCountEquals(0)
     }
 
     @Test

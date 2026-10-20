@@ -165,7 +165,7 @@ internal fun tripFrame(
     val rides = estimates.orEmpty().flatMap { rideLines.endsOf(it.route) }.flatMap(rideLines::linesOf).distinct()
     val state = state.copy(legStatuses = legStatuses(state.statuses, rides, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
-    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, stepFree, sequences, excluded), previousOrder) }
+    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, stepFree, sequences, excluded, rideLines::endsOf), previousOrder) }
     // A pole's letter, sign and bearing, from its stop area's poles where they're cached (no IO).
     val poleOf: (String, String) -> StopLocation? = { id, area ->
         area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }

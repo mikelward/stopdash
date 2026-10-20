@@ -304,7 +304,12 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    resolves it through the model (`OnTheWay.arrivingIds`: `LegEnd.of`, then `Hubs.idsOf` for a hub
    end) when a check runs, keeps it only while the planned route is the same, and the train's first
    call in the hub by one TfL id ends the ride, a step-free trip excepted until its lift check
-   lands (`TODO.md`, *Decisions needing review*).
+   lands (`TODO.md`, *Decisions needing review*). The trip page's ride lines and verdicts follow
+   (2026-10-20): `TripViewModel.rideEnds` works out a `RideEnds` for the screen's placed routes on
+   its compute dispatcher (`LegEnd.of`, then `Hubs.idsOf` into the hub end's `LegEnd.ids`), keyed on
+   each last ride's raw end, and the screen reads it as it builds the page; `RideLines.runTo` and
+   `DirectTrips` match a hub end by `LegEnd.offIds`. The Planner's own ride, its stop list and the
+   bus alerts still end at its call until the detour cut.
    - **Who asks.** `DirectTrips`, `RideLines`, `RouteStops.forLeg`, `FavoriteJourney` and on the
      way's arrival check (`OnTheWay.endedAtDestination`) ask "first call whose hub is one of the
      destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only; and the

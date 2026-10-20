@@ -1,6 +1,10 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.LegEnd
+import app.stopdash.domain.RideEnds
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineRoute
+import app.stopdash.domain.Departure
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
@@ -79,5 +83,48 @@ class TripRideLinesTest {
         // An end no ride holding it has falls back to the first that does.
         val elsewhere = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("Z"))
         assertEquals(red to atHub, lines.holding(red, elsewhere)?.first)
+    }
+
+    // A last ride from A to Hill's rail station, and a line from A to Hill's tube station.
+    private val toHillRail = TripLeg(
+        mode = "tube", lineId = "red", lineName = "red", fromId = "A", fromName = "A", toId = "910GHILL", toName = "Hill",
+        departure = t, arrival = t, path = listOf("910GHILL"),
+    )
+    private val toHill = TripRoute(listOf(toHillRail))
+    private val toHillTube = mapOf(
+        "green" to LineSequence(routes = listOf(LineRoute("r", listOf("A", "940GZZLUHIL"))), stopNames = mapOf("A" to "A", "940GZZLUHIL" to "Hill (tube)")),
+    )
+    private val atA = TripViewModel.State(
+        routes = listOf(toHill),
+        live = mapOf("A" to TripViewModel.StopLive(listOf(Departure("green", "green", "", "Hill", null, t, mode = "tube")), t)),
+    )
+
+    @Test
+    fun `a card's last ride arriving by hub shows a line to another station of the destination's hub`() {
+        val ends = RideEnds.of(listOf(toHill), StepFree.ANY, HillModel.toHill)
+        val lines = rideLines(listOf(toHill), atA, StepFree.ANY, toHillTube, ends = ends::ends)
+        // Green reaches Hill at its tube station: shown beside red, named where it gets off.
+        val green = lines.of(toHill, toHillRail).legs.drop(1).single()
+        assertEquals("940GZZLUHIL", green.toId)
+        assertEquals("Hill (tube)", green.toName)
+        assertEquals(listOf("red", "green"), cardRideLines(listOf(TripTiming.Estimate(toHill, TripTiming.Basis.LIVE, t, emptyList(), false, t)), 0, lines).map { it.lineId })
+        // Getting off where the Planner does, or on a step-free trip, it isn't.
+        assertEquals(listOf("red"), rideLines(listOf(toHill), atA, StepFree.ANY, toHillTube).of(toHill, toHillRail).legs.map { it.lineId })
+        val stepFree = RideEnds.of(listOf(toHill), StepFree.STATION, HillModel.toHill)
+        assertEquals(listOf("red"), rideLines(listOf(toHill), atA, StepFree.STATION, toHillTube, ends = stepFree::ends).of(toHill, toHillRail).legs.map { it.lineId })
+    }
+
+    @Test
+    fun `a train through a change reaching another station of the destination's hub is a route, arriving by hub`() {
+        // Red A to M, then blue M to Hill's rail station; green from A runs on through M to Hill's tube station.
+        val toM = toHillRail.copy(toId = "M", toName = "M", path = listOf("M"), arrival = t.plusSeconds(120))
+        val blue = toHillRail.copy(lineId = "blue", lineName = "blue", fromId = "M", fromName = "M", departure = t.plusSeconds(300), arrival = t.plusSeconds(600))
+        val changing = TripRoute(listOf(toM, blue))
+        val green = mapOf("green" to LineSequence(routes = listOf(LineRoute("r", listOf("A", "M", "940GZZLUHIL"))), stopNames = emptyMap()))
+        val state = atA.copy(routes = listOf(changing))
+        val ends = RideEnds.of(listOf(changing), StepFree.ANY, HillModel.toHill)
+        assertEquals(listOf(changing), withThroughRoutes(state, StepFree.ANY, green).routes)
+        val through = withThroughRoutes(state, StepFree.ANY, green, ends = ends::ends).routes.orEmpty().drop(1).single()
+        assertEquals("940GZZLUHIL", through.legs.single().toId)
     }
 }

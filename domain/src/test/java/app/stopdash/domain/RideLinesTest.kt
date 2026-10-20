@@ -300,4 +300,61 @@ class RideLinesTest {
         assertEquals(1, ways.size)
         assertEquals(ways, RideLines.throughWays(listOf(changing), byHub, arrivals, emptyMap(), sequences))
     }
+
+    // Arriving by hub at a destination of B and its sibling station Bh (synthetic ids), the last ride's end as
+    // the trip page reads it ([RideEnds]): every id of the hub.
+    private val atHub = LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBB"), ids = setOf("B", "Bh"))
+    private val arrivingByHub = { route: TripRoute -> route.rides.mapIndexed { i, it -> it to if (i == route.rides.lastIndex) atHub else LegEnd.planned(it, StepFree.ANY) } }
+
+    @Test
+    fun `a line reaching another station of the destination's hub takes a last ride arriving by hub, cut there`() {
+        val green = mapOf("green" to sequence("A", "Bh", "End"))
+        // Getting off where the Planner does, at B only: green never calls there.
+        assertEquals(listOf("red"), linesOf(green).legs.map { it.lineId })
+        // Arriving by hub, green gets the rider there at Bh: shown as an equal, cut and named at Bh, but not
+        // timing the ride, as it rides another stretch.
+        val lines = RideLines.of(listOf(route), arrivingByHub, atA, emptyMap(), green).getValue(ride to atHub)
+        assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
+        assertEquals("Bh", lines.legs[1].toId)
+        assertEquals("Bh", lines.legs[1].toName)
+        assertEquals(listOf("Bh"), lines.legs[1].path)
+        assertEquals(listOf("red"), lines.timed.map { it.lineId })
+        // A line calling at Bh before B gets off at Bh, its first call in the hub.
+        val first = RideLines.of(listOf(route), arrivingByHub, atA, emptyMap(), mapOf("green" to sequence("A", "Bh", "B"))).getValue(ride to atHub)
+        assertEquals("Bh", first.legs[1].toId)
+        // A middle ride still gets off at the Planner's stop alone.
+        val middle = TripRoute(listOf(ride, leg("blue", "B", "C")))
+        assertEquals(listOf("red"), RideLines.of(listOf(middle), arrivingByHub, atA, emptyMap(), green).getValue(ended(ride)).legs.map { it.lineId })
+    }
+
+    @Test
+    fun `a line through a change to another station of the destination's hub is a way through, arriving by hub`() {
+        // Red A → M, then blue M → B; green from A runs on through M to Bh.
+        val toM = leg("red", "A", "M").copy(changeAfter = java.time.Duration.ofMinutes(4))
+        val mToB = leg("blue", "M", "B", path = listOf("B"))
+        val plan = TripRoute(listOf(toM, mToB))
+        val arrivals = mapOf("A" to listOf(train("green")))
+        val sequences = mapOf("green" to sequence("A", "M", "Bh"))
+        assertTrue(RideLines.through(listOf(plan), planned, arrivals, emptyMap(), sequences).isEmpty())
+        val joined = RideLines.through(listOf(plan), arrivingByHub, arrivals, emptyMap(), sequences).single().legs.single()
+        assertEquals("green", joined.lineId)
+        assertEquals("Bh", joined.toId)
+    }
+
+    @Test
+    fun `arriving by hub, a pole of the Planner's area outside the hub isn't reached`() {
+        // The Planner gets red off at B in area BG, which the model split: Bx, its other pole, is a stop
+        // outside the destination's hub.
+        val inArea = leg("red", "A", "B").copy(toArea = "BG")
+        val plan = TripRoute(listOf(inArea))
+        val green = mapOf(
+            "green" to LineSequence(listOf(LineRoute("route", listOf("A", "Bx", "End"))), mapOf("Bx" to "Bx"), stopAreas = mapOf("Bx" to "BG")),
+        )
+        // Getting off where the Planner does, the area's other pole is still the same stop.
+        val planned = RideLines.of(listOf(plan), planned, atA, emptyMap(), green).getValue(ended(inArea))
+        assertEquals(listOf("red", "green"), planned.legs.map { it.lineId })
+        // Arriving by hub, only the hub's own ids count.
+        val byHub = RideLines.of(listOf(plan), arrivingByHub, atA, emptyMap(), green).getValue(inArea to atHub)
+        assertEquals(listOf("red"), byHub.legs.map { it.lineId })
+    }
 }
