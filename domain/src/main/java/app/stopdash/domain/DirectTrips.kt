@@ -158,6 +158,17 @@ object DirectTrips {
         departure.callingAt?.let { calling(it, destinationIds) }
 
     /**
+     * Whether [departure] gets [ride] off where it ends ([settledByStops]) by its own calling points; null
+     * when they don't settle it. A ride is judged by where it gets off ([LegEnd]), so a trip's verdicts
+     * are keyed on the pair, never on the leg alone (dev-docs/station-resolution.md, phase 2). Not read
+     * yet: every ride still ends at the Planner's stop, which is what every caller's end
+     * ([LegEnd.planned]) names.
+     */
+    @WorkerThread
+    fun settledByStops(departure: Departure, ride: Pair<TripLeg, LegEnd>): Boolean? =
+        settledByStops(departure, endIds(ride))
+
+    /**
      * [settledByStops], but where [byStation] is false (the rider's own stop matters, as for step-free
      * access) only a "no": a calling point names a station, and every id of it ([CallingPortion]), never
      * which of its platforms the train calls at, so only its line's route can say that (Codex, #886).
@@ -211,6 +222,30 @@ object DirectTrips {
         for (end in destination) route = route.knowing(end.id, end.interchangeId, end.name).callingAt(end.id)
         return route
     }
+
+    /**
+     * [sequence] as seen from [ride]'s boarding stop and where it gets off ([routeAt]): what [judge]
+     * judges a departure taking the ride on. By the pair, as [settledByStops] is.
+     */
+    @WorkerThread
+    fun routeAt(sequence: LineSequence, ride: Pair<TripLeg, LegEnd>): LineSequence {
+        val leg = ride.first
+        return routeAt(sequence, leg.fromId, "", leg.fromName, listOf(End(leg.toId, leg.toName)))
+    }
+
+    /**
+     * Whether [departure], boarding [ride] at its stop, calls where the ride gets off ([judge]), on its
+     * line's [route] as seen for the ride ([routeAt]; null when the route failed). By the pair, as
+     * [settledByStops] is.
+     */
+    @WorkerThread
+    fun judge(departure: Departure, ride: Pair<TripLeg, LegEnd>, route: LineSequence?): Verdict =
+        judge(departure, ride.first.fromId, route, endIds(ride))
+
+    // Where [ride] gets off, as ids a departure's calls and route are matched against. Its [LegEnd] isn't
+    // read yet: every caller's names the Planner's stop ([LegEnd.planned]), the leg's own getting-off
+    // stop, until arriving by hub reads it.
+    private fun endIds(ride: Pair<TripLeg, LegEnd>): Set<String> = setOf(ride.first.toId)
 
     /**
      * Whether [departure], boarding at [stopId], calls at one of [destinationIds] on its line's [route]

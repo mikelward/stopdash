@@ -42,14 +42,27 @@ internal class TripRideLines(
         return route.legs.map { leg -> ends.firstOrNull { it.first == leg }?.let(::of) ?: RideLines.only(leg) }
     }
 
+    /** Where each of [route]'s legs gets off ([endsOf]), in order: null for a walk, which gets off nowhere. */
+    fun legEndsOf(route: TripRoute): List<LegEnd?> {
+        val ends = endsOf(route)
+        return route.legs.map { leg -> ends.firstOrNull { it.first == leg }?.second }
+    }
+
+    /** Each line of [ride] ([of]) with where the ride gets off: what its trains are judged by ([TripVerdicts]). */
+    fun linesOf(ride: Pair<TripLeg, LegEnd>): List<Pair<TripLeg, LegEnd>> = of(ride).legs.map { it to ride.second }
+
     /** The lines of each of [route]'s rides ([of]), in order. */
     fun ridesOf(route: TripRoute): List<RideLines> = endsOf(route).map(::of)
 
     /** The lines [route]'s rides show besides the Planner's: each ride's other lines' legs, in order. */
     fun othersOf(route: TripRoute): List<TripLeg> = endsOf(route).flatMap { ride -> byEnd[ride]?.legs.orEmpty().filter { it != ride.first } }
 
-    /** Every ride's lines, whatever its route: for what goes over them all ([warmVerdicts]). */
-    val all: Collection<RideLines> get() = byEnd.values
+    /** Every line of every ride, whatever its route, with where the ride gets off ([linesOf]): for [warmVerdicts]. */
+    val allLines: List<Pair<TripLeg, LegEnd>> get() = byEnd.flatMap { (ride, lines) -> lines.legs.map { it to ride.second } }
+
+    /** The first ride whose lines hold [leg], by where it gets off, with its lines; null where none does. */
+    fun holding(leg: TripLeg): Pair<Pair<TripLeg, LegEnd>, RideLines>? =
+        byEnd.entries.firstOrNull { leg in it.value.legs }?.toPair()
 
     companion object {
         /** None worked out: every ride has just its Planner's line, getting off where the Planner gets it off. */

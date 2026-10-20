@@ -277,8 +277,11 @@ private fun openRides(
     val nextRide = legs.indexOfFirst { !it.isWalk }
     // Each leg's lines, by where [route] gets it off.
     val ridden = rideLines.legsOf(route)
+    val ended = rideLines.legEndsOf(route)
     return legs.mapIndexed { index, leg ->
-        if (leg.isWalk) null else rideLegView(ridden[index], state, now, sequences, dismissed, countsDown = index == nextRide, topology = topology)
+        // A walk gets off nowhere: no end, no view.
+        val end = ended[index] ?: return@mapIndexed null
+        rideLegView(ridden[index], end, state, now, sequences, dismissed, countsDown = index == nextRide, topology = topology)
     }
 }
 

@@ -955,7 +955,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           through the ends the lines were worked out with; only the
                                           line page, opened from a line rather than a route, still
                                           finds the first ride's lines holding it.
-                                    - [ ] `DirectTrips.judge` and `TripVerdicts`, keyed on the pair.
+                                    - [x] `DirectTrips.judge` and `TripVerdicts`, keyed on the pair:
+                                          a ride's form of `judge`, `routeAt` and `settledByStops`, and
+                                          the trip page's verdicts warmed and read by each ride's end
+                                          as its ride lines pair it (`TripRideLines.endsOf`).
                                     - [ ] The favorite alerts' disruption span
                                           (`JourneyAlerts.ridesOn`, `ridesOf`).
                                     - [ ] Reading the end: the first call in the destination's hubs.
