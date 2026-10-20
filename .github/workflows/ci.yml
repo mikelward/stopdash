@@ -23,9 +23,15 @@ permissions:
 # stays serialized in the deploy job's own group, below. Keyed on the event,
 # not the ref, so a move to `pull_request_target` can't collapse every PR into
 # one group.
+#
+# An `edited` run never cancels: it carries the head as of the edit, and the
+# body edit lands just before its push, so GitHub starting it after the push's
+# run (it doesn't promise the order) would cancel the only run on the new head.
+# It queues behind the run in progress instead, and a later push's run
+# replaces it while it waits.
 concurrency:
   group: ci-${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) && format('main-{0}', github.sha) || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !(github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+  cancel-in-progress: ${{ !(github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) && github.event.action != 'edited' }}
 
 jobs:
   classify:
