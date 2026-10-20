@@ -21,6 +21,16 @@ import app.stopdash.domain.WidgetJourneysReport
 // composition (AGENTS.md *Main thread: read and dispatch only*).
 
 /**
+ * [journey]'s far end this way round, whose closure its card checks and shows: the stops its line's
+ * route places it at ([segment], a bus's other poles too), else, until the route is in, its own saved
+ * stop. Not the saved stop beside the route's: saved as an interchange, it would check the whole hub,
+ * and a bus stop's closure there would show on a tube ride that never uses it. At most a few ids, so
+ * cheap enough where it's read.
+ */
+internal fun farEndIds(journey: FavoriteJourney, segment: JourneySegment?): Set<String> =
+    segment?.destinationIds ?: setOf(journey.to.stopId)
+
+/**
  * The stop each of [journeys] is fetched from: its resolved origin ([segments]), or, before its route
  * is in, a station's own id (the same both ways); a bus waits, since its way-back pole isn't known yet.
  * With the lines of its mode the route lists there and, once looked up ([poles]), its pole's letter and

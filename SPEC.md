@@ -3595,10 +3595,12 @@ the body is the notice's first line until tapped. The name heads the card becaus
 not reliably carry it: a bus "Bus Stop Closed" names no stop at all, so only the heading says
 *which* one. Where the card is about particular bus poles — a journey's or trip's boarding stop or
 far end — it stays one card per notice, headed by the most specific name covering every pole it's
-on: one pole is the place then the pole ("King's Cross & St Pancras International – Stop K"), since
-an interchange's name alone doesn't say which of its many stops is shut; several poles sharing a
-stop name go by that name; otherwise the place. A trip names the place as its route names the stop
-("Pentonville Road – Stop K"), as its legs do. The notice text is **cleaned for display**: TfL's
+on: one pole is its own stop name then the pole ("Pentonville Road – Stop K"), since an
+interchange's name alone doesn't say which of its many stops is shut; several poles sharing a stop
+name go by that name; otherwise the place; the group header above it is unchanged. A station's
+closure check covers that station, its own platforms and entrances, and anything recorded against
+its whole interchange, never another member's: TfL answers a station with its whole interchange, and
+a bus stop's "Bus Stop Closed" there isn't the station's. The notice text is **cleaned for display**: TfL's
 escaped line breaks (a literal `\n`) become real ones, and where the text *does* lead with the
 station ("&lt;Station&gt; Underground Station: …", a tube closure), that leading repeat is stripped so the heading isn't
 said twice. Whether the text names the stop is not decided by mode, so the strip is by detection
