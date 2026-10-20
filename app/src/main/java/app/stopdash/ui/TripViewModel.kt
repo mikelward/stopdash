@@ -73,9 +73,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -422,6 +426,13 @@ class TripViewModel(
         fun shownRoutes(hidden: Set<String>): List<TripRoute>? = routes
             ?.filterNot { route -> AvoidedLines.drops(route, hidden) }
             ?.let { withoutDetours(it, destinationStops.keys, destinationStops) }
+
+        // Equal only to itself. The flow holding it compares each write with the last, on the writer's thread, and a
+        // data class's comparison walks every route and stop's arrivals (AGENTS.md *Main thread*; Codex, #1016): a
+        // write that changes nothing only emits once more.
+        override fun equals(other: Any?): Boolean = this === other
+
+        override fun hashCode(): Int = System.identityHashCode(this)
     }
 
     private val _state = MutableStateFlow(
@@ -698,6 +709,20 @@ class TripViewModel(
         }
         warn("trip state kept changing: a change wasn't written")
         return null
+    }
+
+    /**
+     * Writes the change [prepare] gives, worked out on [compute] from the state as it stands, and again if another
+     * writer moved the state meanwhile: for a change that walks the trip's routes or maps (AGENTS.md *Main thread*).
+     * [prepare] runs on the caller each time, reading what the main thread owns for that change.
+     */
+    private suspend fun updateOnWorker(prepare: () -> (State) -> State) {
+        while (true) {
+            val change = prepare()
+            val before = _state.value
+            val after = withContext(compute) { change(before) }
+            if (_state.compareAndSet(before, after)) return
+        }
     }
 
     // What a route is planned under: where from, and the rider's choices.
@@ -978,7 +1003,8 @@ class TripViewModel(
         // Which of the routes' walks are changes on foot, decided off the main thread each time the
         // routes change (with the station index, as a trip started on one decides them).
         viewModelScope.launch {
-            _state.map { it.routes.orEmpty() }.distinctUntilChanged().collectLatest { routes ->
+            // By identity, as [State] is compared: each plan's routes are a new list, and comparing them walks every one.
+            _state.map { it.routes.orEmpty() }.distinctUntilChanged { old, new -> old === new }.collectLatest { routes ->
                 val walks = withContext(io) {
                     val index = stations()
                     routes.flatMapTo(HashSet()) { route -> OnTheWay.changesOnFoot(route, index).map { route.legs[it] } }
@@ -1199,7 +1225,25 @@ class TripViewModel(
         // A plan from before the latest pull: one kept for reuse, when the pull was on the trip this
         // one took over from ([carryPull]).
         val beforePull = pulledAt?.let { pull -> plannedAt == null || plannedAt.isBefore(pull) } == true
-        if (replan || (!failed && (expired || _state.value.routes == null || beforePull))) plan()
+        if (replan || (!failed && (expired || _state.value.routes == null || beforePull))) {
+            if (_state.value.routes == null) {
+                // A first plan's routes are checked live as they land ([liveWhilePlanning]), not once its slowest
+                // request has answered: the refresh after it then asks only for what its last answers added.
+                // Ended with this plan itself, not when the state next reads as not planning: a tap that plans
+                // again can set that back before the watcher sees it (Codex, #1016).
+                val planned = MutableStateFlow(false)
+                coroutineScope {
+                    launch { liveWhilePlanning(planned) }
+                    try {
+                        plan()
+                    } finally {
+                        planned.value = true
+                    }
+                }
+            } else {
+                plan()
+            }
+        }
         refreshLive()
         replanAroundDelays()
     }
@@ -1708,32 +1752,72 @@ class TripViewModel(
         return withContext(compute) { State(routes = routes, destinationStops = destinationStops).shownRoutes(hidden).orEmpty().size }
     }
 
+    /**
+     * While a first plan runs, until [planned], the live checks for the routes shown so far ([refreshLive]), one at a time, the
+     * latest routes each time: so their arrivals, statuses and closures are in by the time the plan's slowest
+     * request answers, rather than asked only then (a refused stop towards the destination has kept the rest
+     * waiting 7 s). What they fetch is reused by the refresh after the plan: a stop fetched within
+     * [ArrivalsCache.TTL], a line's status or a stop's closures answered just now, isn't asked for again.
+     */
+    private suspend fun liveWhilePlanning(planned: StateFlow<Boolean>) {
+        _state.map { it.routes }.combine(planned) { routes, over -> routes.takeUnless { over } to over }
+            .takeWhile { (_, over) -> !over }
+            .mapNotNull { (routes, _) -> routes }
+            // By identity: each answer the plan shows is a new list, and comparing them would walk every route
+            // on the caller's thread (AGENTS.md *Main thread*; Codex, #1016).
+            .distinctUntilChanged { old, new -> old === new }
+            .conflate()
+            .collect {
+                // The plan ended while this waited: the refresh after it covers its routes.
+                if (!planned.value) refreshLive()
+            }
+    }
+
     private suspend fun refreshLive() {
         // Routes riding a hidden mode aren't shown, so their stops and lines aren't fetched either.
         // Only the routes the screen times (the soonest few of those shown, and the open one) are
         // fetched for.
-        val routes = timedRoutes() ?: return
-        val lines = routes.flatMap { route -> route.rides.map { it.lineId } }.distinct()
+        // Picked on the worker from the state as it stands: a first plan runs this as each answer lands, and
+        // the pick walks every route (AGENTS.md *Main thread*; Codex, #1016).
+        val held = _state.value
+        val hidden = hiddenModes
+        val open = openKeys()
+        val (routes, lines) = withContext(compute) {
+            held.shownRoutes(hidden)?.let { bestOf(it, open, held.directKeys, held.delayedLines) }
+                ?.let { routes -> routes to routes.flatMap { route -> route.rides.map { it.lineId } }.distinct() }
+        } ?: return
         // Arrivals another screen fetched since show at once; only a stop not fetched within
         // [ArrivalsCache.TTL] is asked for again. Refreshing from the start, so the trip reads as
         // checking while its bus stop pairs are looked up too.
-        _state.update { withLive(it.copy(refreshing = true), cached(routes, it.live)) }
+        updateOnWorker {
+            val placed = placedStands
+            { state -> withLive(state.copy(refreshing = true), cached(routes, state.live, state.areaPoles, placed), placed) }
+        }
         try {
             // Each bus stop pair's poles first (once a day, usually from the file cache): every one is fetched.
             lookUpPoles(routes)
-            _state.update { withLive(it, cached(routes, it.live)) }
+            updateOnWorker {
+                val placed = placedStands
+                { state -> withLive(state, cached(routes, state.live, state.areaPoles, placed), placed) }
+            }
             val now = clock()
             // A departure source changed while this refresh's arrivals are out: they're from the old one.
             val source = sourceGeneration
-            val stops = stopsOf(routes).filter { needsFetch(it, now) }
+            // What the main thread owns, read here; the stops worked out from it on [compute].
+            val since = pulledAt
+            val placed = placedStands
+            val shown = shownStops
+            val poles = _state.value.areaPoles
+            // Where the routes board and get off too, for a closure or a moved stop (SPEC *Trips with a change*).
+            val (stops, asked) = withContext(compute) {
+                stopsOf(routes, poles, placed).filter { needsFetch(it, now, since, hidden) } to (closureStops(routes, poles) + shown).distinct()
+            }
             // And the other lines at the rides' boarding stops ([rideLineIds]), in the same request: one
             // of them times a ride only once it's checked as running ([rideTrains]). Only the plan's own
             // lines count toward the trip's "couldn't check" note.
-            val others = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines }
+            val others = _state.value.let { state -> withContext(compute) { rideLineIds(routes, state, hidden).filterNot { it in lines } } }
             coroutineScope {
                 val statuses = async { fetchStatuses(lines + others) }
-                // Where the routes board and get off, for a closure or a moved stop (SPEC *Trips with a change*).
-                val asked = (closureStops(routes, areaPoles) + shownStops).distinct()
                 val closures = async { checkClosures(asked) }
                 val live = stops.map { id -> async { id to fetchStop(id) } }.awaitAll()
                 val fetched = statuses.await()
@@ -1759,12 +1843,16 @@ class TripViewModel(
                         (fetched?.failed ?: (lines + others)).any { it !in held.statusFailedLines } ||
                         checked.failed.any { it in latest && it !in held.closuresFailed }
                 }
-                _state.update { state ->
+                updateOnWorker {
+                    // Judged again after the hop to [io]: a source changed while it ran dropped the arrivals, and these,
+                    // from the old one, mustn't come back (Codex, #529).
+                    val fresh = current && source == sourceGeneration
+                    val placedNow = placedStands
+                    val shownNow = shownStops
+                    { state ->
                     val next = state.copy(
                         failures = if (newVerdict) state.failures + 1 else state.failures,
-                        // Judged again after the hop to [io]: a source changed while it ran dropped the
-                        // arrivals, and these, from the old one, mustn't come back (Codex, #529).
-                        live = if (!current || source != sourceGeneration) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
+                        live = if (!fresh) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
                         // As [statuses]: the answer's, and a failed line's held one.
@@ -1783,11 +1871,12 @@ class TripViewModel(
                         // keeps its own while the screen still names it (Codex, PR #375).
                         closures = state.closures + checked.found.filterKeys { it in latest },
                         closuresAt = state.closuresAt + checked.at.filterKeys { it in latest },
-                        closuresFailed = state.closuresFailed.filterTo(HashSet()) { if (it in asked) it !in latest else it in shownStops } +
+                        closuresFailed = state.closuresFailed.filterTo(HashSet()) { if (it in asked) it !in latest else it in shownNow } +
                             checked.failed.filter { it in latest },
                     )
                     // And a stand placed for a bus leg now fetched, or no longer ([withLive]).
-                    withLive(next.copy(live = state.live), next.live).let { placed -> placed.copy(closuresUnknown = unknownClosures(placed.routes.orEmpty(), placed)) }
+                    withLive(next.copy(live = state.live), next.live, placedNow).let { moved -> moved.copy(closuresUnknown = unknownClosures(moved.routes.orEmpty(), moved)) }
+                    }
                 }
                 fetched?.let { reconcileLineDismissals(it) }
                 reconcileStopDismissals(checked)
@@ -1798,7 +1887,7 @@ class TripViewModel(
             // the trip says it couldn't check them ([RideLines.unchecked]) rather than still checking.
             // Their latest check settles their line pages too: one that failed can't be vouched for by
             // a status an earlier refresh kept.
-            val late = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines || it in others }
+            val late = _state.value.let { state -> withContext(compute) { rideLineIds(routes, state, hidden).filterNot { it in lines || it in others } } }
             if (late.isNotEmpty() && source == sourceGeneration) {
                 val found = fetchStatuses(late)
                 // Every line asked about takes this check's verdict, as the first check's lines do: an
@@ -1819,7 +1908,8 @@ class TripViewModel(
                         (found != null && (found.statuses.any { (id, status) -> heldNow.statuses[id] != status } ||
                             late.any { id -> id in heldNow.statuses && id !in found.statuses && id !in found.failed }))
                 }
-                _state.update {
+                updateOnWorker {
+                    {
                     it.copy(
                         failures = if (newlyFailed) it.failures + 1 else it.failures,
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
@@ -1830,6 +1920,7 @@ class TripViewModel(
                         // The late lines take this answer's verdict too: left out of it, settled (Codex, #559).
                         statusOmitted = lateOmitted ?: it.statusOmitted,
                     )
+                    }
                 }
                 found?.let { reconcileLineDismissals(it) }
             }
@@ -1841,10 +1932,10 @@ class TripViewModel(
     // Whether stop [id]'s arrivals are to be asked for: none held, failed, or past [ArrivalsCache.TTL]
     // ([recentEnough]); or not fetched since the last pull, however recent, as the rider asked for the
     // latest. The pull is the wall clock's, a fetch the steady clock's ([SteadyClock.toWall]).
-    private fun needsFetch(id: String, now: Instant): Boolean {
-        val since = pulledAt
+    // Read off the main thread too: [since] and [hidden] as the caller read them.
+    private fun needsFetch(id: String, now: Instant, since: Instant? = pulledAt, hidden: Set<String> = hiddenModes): Boolean {
         // A station fetched without its board, National Rail being hidden, once it's shown again.
-        if (id in boardSkipped && HiddenModes.wantsRailBoard(hiddenModes)) return true
+        if (id in boardSkipped && HiddenModes.wantsRailBoard(hidden)) return true
         return _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && SteadyClock.toWall(it.fetchedAt).isBefore(since)) } ?: true
     }
 
@@ -1863,13 +1954,16 @@ class TripViewModel(
 
     // Each bus stop pair's poles, looked up once per model ([poles]); a failed lookup is asked again
     // on the next refresh, the Planner's own pole standing meanwhile.
-    private val areaPoles = HashMap<String, List<String>>()
-
+    // Held in [State.areaPoles].
     private suspend fun lookUpPoles(routes: List<TripRoute>) {
-        // Where a bus gets off too: the pole it uses there is checked for a closure.
-        val areas = routes.flatMap { route -> route.rides.flatMap { listOf(it.fromArea, it.toArea) } }.filter { it.isNotBlank() && it !in areaPoles }.distinct()
+        // Where a bus gets off too: the pole it uses there is checked for a closure. Worked out on [compute]: it
+        // walks the routes (AGENTS.md *Main thread*).
+        val known = _state.value.areaPoles
+        val areas = withContext(compute) {
+            routes.flatMap { route -> route.rides.flatMap { listOf(it.fromArea, it.toArea) } }.filter { it.isNotBlank() && it !in known }.distinct()
+        }
         if (areas.isEmpty()) return
-        coroutineScope {
+        val found = coroutineScope {
             areas.map { area ->
                 async {
                     area to try {
@@ -1882,17 +1976,21 @@ class TripViewModel(
                     }
                 }
             }.awaitAll()
-        }.forEach { (area, found) -> if (found != null) areaPoles[area] = found }
+        }
         // A stop pair placed anew moves a ride to its pole ([onPoles]): what was drawn from the Planner's
         // stop no longer stands (Codex, #529).
-        val placedAnew = areas.any { it in areaPoles }
-        _state.update { it.copy(areaPoles = areaPoles.toMap(), failures = if (placedAnew) it.failures + 1 else it.failures) }
+        updateOnWorker {
+            { state ->
+                val placedAnew = found.mapNotNull { (area, poles) -> poles?.let { area to it } }.toMap()
+                if (placedAnew.isEmpty()) state else state.copy(areaPoles = state.areaPoles + placedAnew, failures = state.failures + 1)
+            }
+        }
     }
 
     // The stops [routes] board at: each ride's own, every pole of a bus stop pair it boards at, and
     // each stand the screen boards a bus at in place of the Planner's ([boardAt]).
-    private fun stopsOf(routes: List<TripRoute>): List<String> =
-        (boardingStops(routes) + routes.flatMap { route -> route.rides.flatMap { areaPoles[it.fromArea].orEmpty() } } + placedStands).distinct()
+    private fun stopsOf(routes: List<TripRoute>, areaPoles: Map<String, List<String>> = _state.value.areaPoles, placed: Set<String> = placedStands): List<String> =
+        (boardingStops(routes) + routes.flatMap { route -> route.rides.flatMap { areaPoles[it.fromArea].orEmpty() } } + placed).distinct()
 
     // The stands the screen boards buses at in place of the one the Planner named ([boardAt]).
     private var placed: Set<PlacedStand> = emptySet()
@@ -1937,15 +2035,20 @@ class TripViewModel(
      * ([onPoles]), so what was drawn from the Planner's stand no longer stands (Codex, #529). Over the
      * placed stands alone, one at most per bus leg moved.
      */
-    private fun withLive(state: State, live: Map<String, StopLive>): State {
+    private fun withLive(state: State, live: Map<String, StopLive>, placed: Set<String> = placedStands): State {
         fun usable(stop: StopLive?) = stop != null && !stop.failed
-        val moved = placedStands.any { usable(state.live[it]) != usable(live[it]) }
+        val moved = placed.any { usable(state.live[it]) != usable(live[it]) }
         return state.copy(live = live, failures = if (moved) state.failures + 1 else state.failures)
     }
 
-    private fun cached(routes: List<TripRoute>, live: Map<String, StopLive>): Map<String, StopLive> {
+    private fun cached(
+        routes: List<TripRoute>,
+        live: Map<String, StopLive>,
+        areaPoles: Map<String, List<String>> = _state.value.areaPoles,
+        placed: Set<String> = placedStands,
+    ): Map<String, StopLive> {
         val now = clock()
-        val newer = stopsOf(routes).mapNotNull { id ->
+        val newer = stopsOf(routes, areaPoles, placed).mapNotNull { id ->
             val entry = arrivals.get(id, now, client.arrivalsSource()) ?: return@mapNotNull null
             val held = live[id]
             if (held != null && !entry.fetchedAt.isAfter(held.fetchedAt)) return@mapNotNull null
@@ -1962,9 +2065,11 @@ class TripViewModel(
             val at = SteadyClock.stamp(clock())
             val generation = arrivals.generation
             val source = client.arrivalsSource()
-            // With National Rail hidden no route timed rides it, so a station's board isn't asked for.
-            val board = HiddenModes.wantsRailBoard(hiddenModes)
+            val hidden = hiddenModes
             val (departures, shared) = withContext(io) {
+                // With National Rail hidden no route timed rides it, so a station's board isn't asked for. Judged
+                // here, as it walks the hidden modes (AGENTS.md *Main thread*).
+                val board = HiddenModes.wantsRailBoard(hidden)
                 val before = client.shareable(stopId)
                 client.arrivals(stopId, board).let { it to (before && client.shareable(stopId) && client.arrivalsSource() == source) }
                     .also { if (!board && client.hasRailBoard(stopId)) boardSkipped += stopId else boardSkipped -= stopId }
@@ -2013,7 +2118,7 @@ class TripViewModel(
     fun checkShownStops(stops: Set<String>) {
         val added = stops - shownStops
         shownStops = stops
-        val own = timedRoutes()?.let { closureStops(it, areaPoles) }.orEmpty().toSet()
+        val own = timedRoutes()?.let { closureStops(it, _state.value.areaPoles) }.orEmpty().toSet()
         val asked = added - own
         if (asked.isEmpty()) return
         viewModelScope.launch {

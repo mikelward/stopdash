@@ -2425,7 +2425,9 @@ past the cap on routes timed: the walking bar a route with more changes must cle
 apply to it, so the bus the Planner's own requests passed over always has its card (maintainer,
 2026-10-15). The Planner can find no route through a stop it plans from readily (it answers 404, "No
 journey found"); then the next stop on the destination's side serving one of its lines is asked
-instead, once, so that request lands a round trip later. The refusal is remembered for that
+instead, once. A refusal can take the Planner several seconds (7 s seen), so a stop that hasn't answered
+in 3 s, past most of the Planner's answers, has that next stop asked alongside it; the next stop's routes
+count only once the first is refused, and are let go if it answers (maintainer, 2026-10-20). The refusal is remembered for that
 destination, under the same walk, step-free and mode choices, while the app runs (in memory only, never
 saved, as plans are), so a later plan asks the next stop straight away and never that one again; a
 different choice may route through the stop, so it asks again. Failing, or with no route through either
@@ -2492,13 +2494,16 @@ per tap of Retry or pull on the routes: about four plans an hour for a trip left
 rider makes, each **four** Planner calls (quickest, fewest changes, least walking and buses alone,
 above), so about sixteen calls an hour; a trip to a place whose fastest route changes adds a **fifth**
 each time (above), about twenty; a trip from a position adds one per bus stop towards the destination, at most **three**
-a plan, and one more for each stop with no route through it (*Buses towards the destination*): about
+a plan, and one more for each stop with no route through it or slow to answer (*Buses towards the destination*): about
 thirty-two an hour, forty-four at the very most, all within the keyless ~50 a minute. To a station complex each plan is those four per station plus four for its bus stops
 (about six targets at King's Cross, two or three at a typical interchange): about 96 calls an hour at
 King's Cross, 24 at once per plan, within the keyless ~50 a minute. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per
 stop however many routes share it: the Planner offers a handful of routes, so a few requests,
-under ten in practice, plus one line-status call for all their lines. Closure checks at the stops
+under ten in practice, plus one line-status call for all their lines. A first plan's routes are checked as they
+land, not once its slowest request has answered (maintainer, 2026-10-20): the refresh after it reuses
+those answers and asks only for what the plan's last answers added; a stop whose route the rest then
+push off the few timed is the most it costs. Closure checks at the stops
 the routes get off at share the list's few-minute cache (bus poles batched), so each such stop costs
 a request at most once every few minutes, however many refreshes and routes include it. **Battery:** all of it runs only while the trip screen is visible, on the list's
 existing foreground refresh tick (the 15-minute re-plan is checked on that tick, not a timer of its

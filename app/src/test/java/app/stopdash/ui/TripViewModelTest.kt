@@ -68,10 +68,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -237,9 +239,12 @@ class TripViewModelTest {
         val towardOrigins = mutableListOf<TripOrigin>()
         var byToward: Map<String, List<TripRoute>> = emptyMap()
         var towardNotFound: Set<String> = emptySet()
+        // How long a request via each stop takes to answer, in ms.
+        var towardDelays: Map<String, Long> = emptyMap()
         override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
             towardAsked += via
             towardOrigins += from
+            towardDelays[via]?.let { delay(it) }
             if (via in towardNotFound) throw TflException.NotFound(null)
             if (via in failFor) throw TflException.Offline(null)
             return byToward[via].orEmpty()
@@ -407,6 +412,59 @@ class TripViewModelTest {
             )[TripViewModel::class]
             trip.refresh()
             assertEquals("Severe Delays", trip.state.first { "red" in it.statuses }.statuses.getValue("red").description)
+            assertTrue(threads.threads().isNotEmpty())
+            assertEquals(setOf("worker"), threads.threads().toSet())
+        } finally {
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
+        }
+    }
+
+    // Codex, #1016: a first plan checks its routes live as each answer lands, so the routes to check are picked on
+    // the worker, never the caller's thread.
+    @Test
+    fun `a refresh works out what it checks off the caller's thread`() = runTest(dispatcher) {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = executor.asCoroutineDispatcher()
+        val store = ViewModelStore()
+        try {
+            val threads = ThreadRecorder()
+            // The route's legs, noted wherever they're walked: as the routes to check are picked, their stops and
+            // poles found, the arrivals other screens fetched taken, and what came back merged in.
+            val legs = route.legs
+            val walked = TripRoute(
+                object : AbstractList<TripLeg>() {
+                    override val size get() = legs.size
+                    override fun get(index: Int): TripLeg = legs[index].also { threads.note() }
+                },
+            )
+            // The plan already in hand, so the refresh is all that runs.
+            val plans = TripPlans()
+            TripViewModel(FakePlanner(listOf(walked)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = plans, io = dispatcher).refresh()
+            advanceUntilIdle()
+            // A line avoided that no route rides: walked through as the routes to check are picked, the other lines at
+            // their stops found and a station's board judged wanted.
+            val avoided = object : AbstractSet<String>() {
+                private val keys = setOf(app.stopdash.domain.HiddenModes.lineKey("9", "9"))
+                override val size get() = keys.size
+                override fun iterator(): Iterator<String> = keys.iterator().also { threads.note() }
+            }
+            val trip = ViewModelProvider.create(
+                store,
+                viewModelFactory {
+                    initializer {
+                        TripViewModel(
+                            FakePlanner(listOf(walked)), FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9)))), "A", listOf(TripDestination.Stop("C")),
+                            clock = { now }, plans = plans, io = worker, compute = worker,
+                        ).apply { hiddenModes = avoided }
+                    }
+                },
+            )[TripViewModel::class]
+            threads.clear()
+            trip.refresh()
+            trip.state.first { it.statusesAt.isNotEmpty() && "A" in it.live && !it.refreshing }
             assertTrue(threads.threads().isNotEmpty())
             assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
@@ -915,8 +973,13 @@ class TripViewModelTest {
             override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> =
                 base.lineStatuses(lineIds).also { if (++answered == 3) hold = true }
         }
+        // The plan already in hand, so the check is the trip's only one: a first plan's routes are checked as
+        // they land too, and the refresh after it asks afresh from the new source.
+        val plans = TripPlans()
+        TripViewModel(FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = plans, io = dispatcher).refresh()
+        advanceUntilIdle()
         val trip = TripViewModel(
-            FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = io,
+            FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = plans, io = io,
             departureSourceChanges = key,
         )
         trip.refresh()
@@ -3770,9 +3833,9 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         // The queued refresh ran: its statuses were checked again, but the two boarding stops,
-        // fetched just now, weren't. The first plan checked its soonest route's lines once more, with
-        // none held yet ([AroundDelays]).
-        assertEquals(3, client.statusChecks)
+        // fetched just now, weren't. The first plan checked its routes' lines as they landed, and its
+        // soonest route's once more, with none held yet ([AroundDelays]); no answer is reused in tests.
+        assertEquals(4, client.statusChecks)
         assertEquals(2, client.asked.size)
     }
 
@@ -7133,6 +7196,145 @@ class TripViewModelTest {
         assertTrue(warnings.toString(), warnings.contains("trip plan via a stop towards the destination: no route through it; asking the next stop"))
         // Not a failure: the plan says nothing went wrong.
         assertNull(trip.state.value.planError)
+    }
+
+    @Test
+    fun `a stop slow to answer has the next for its lines asked alongside, counted once it's refused`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(longWalk)).apply {
+            towardNotFound = setOf("490G0A")
+            towardDelays = mapOf("490G0A" to 8_000L)
+            byToward = mapOf("490G0C" to listOf(busToTrain))
+        }
+        val warnings = mutableListOf<String>()
+        val trip = towardTrip(planner, warnings)
+        trip.refresh()
+        advanceTimeBy(3_500)
+        // Asked alongside while A is still out, but not yet shown: A may still answer.
+        assertEquals(listOf("490G0A", "490G0C"), planner.towardAsked)
+        assertEquals(listOf(longWalk), trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(listOf(longWalk, busToTrain.copy(towardStop = true)), trip.state.value.routes)
+        // Done when A's refusal came, not a request after it.
+        assertEquals(8_000L, currentTime)
+        assertTrue(warnings.toString(), warnings.contains("trip plan via a stop towards the destination: slow to answer, so the next stop asked alongside"))
+    }
+
+    @Test
+    fun `a slow stop that answers lets the next stop's answer go`() = runTest(dispatcher) {
+        val other = TripRoute(
+            listOf(
+                walkTo("4900000C1", 0, 4),
+                leg("1", "4900000C1", "T", 6, 11).copy(mode = "bus", fromArea = "490G0C", path = listOf("T")),
+                leg("red", "T", "X", 14, 30),
+                walkTo("", 30, 38, from = "X"),
+            ),
+        )
+        val planner = FakePlanner(listOf(longWalk)).apply {
+            towardDelays = mapOf("490G0A" to 5_000L)
+            byToward = mapOf("490G0A" to listOf(busToTrain), "490G0C" to listOf(other))
+        }
+        val trip = towardTrip(planner, mutableListOf())
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("490G0A", "490G0C"), planner.towardAsked)
+        assertEquals(listOf(longWalk, busToTrain.copy(towardStop = true)), trip.state.value.routes)
+    }
+
+    // Codex, #1016: as each of a first plan's answers lands, neither the watcher for its routes nor a write of the
+    // trip's state compares routes on the caller's thread.
+    @Test
+    fun `a first plan's routes are never compared on the caller's thread`() = runTest(dispatcher) {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = executor.asCoroutineDispatcher()
+        val store = ViewModelStore()
+        try {
+            val threads = ThreadRecorder()
+            // Legs noted wherever they're compared with another route's.
+            fun noted(route: TripRoute) = route.copy(
+                legs = object : AbstractList<TripLeg>() {
+                    override val size get() = route.legs.size
+                    override fun get(index: Int): TripLeg = route.legs[index]
+                    override fun equals(other: Any?): Boolean = super.equals(other).also { threads.note() }
+                    override fun hashCode(): Int = super.hashCode()
+                },
+            )
+            // The Planner's own answer and the stop's are the same bus, two copies: the second answer marks it.
+            val planner = FakePlanner(listOf(noted(busToTrain))).apply { byToward = mapOf("490G0A" to listOf(noted(busToTrain))) }
+            val trip = ViewModelProvider.create(
+                store,
+                viewModelFactory {
+                    initializer {
+                        TripViewModel(
+                            planner, FakeClient(mutableMapOf()), "A", listOf(southPlace),
+                            clock = { now }, plans = TripPlans(), io = worker, compute = worker,
+                            bundledStops = { bundled }, origin = { TripOrigin.Here(Coordinates(51.5, -0.12)) },
+                        )
+                    }
+                },
+            )[TripViewModel::class]
+            trip.refresh()
+            trip.state.first { state -> !state.planning && state.routes.orEmpty().any { it.towardStop } && !state.refreshing }
+            assertFalse(threads.threads().toString(), "Test worker" in threads.threads())
+        } finally {
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun `a first plan's routes are checked live while its slowest request is still out`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(longWalk)).apply { towardDelays = mapOf("490G0A" to 10_000L) }
+        val client = FakeClient(mutableMapOf("S" to listOf(train("red", "X", 20))))
+        val trip = TripViewModel(
+            planner, client, "A", listOf(southPlace),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+            bundledStops = { bundled }, origin = { TripOrigin.Here(Coordinates(51.5, -0.12)) },
+        )
+        trip.refresh()
+        advanceTimeBy(5_000)
+        assertTrue(trip.state.value.planning)
+        // The Planner's route boards at S: its arrivals and its line's status are in before the plan is.
+        assertEquals(listOf("S"), client.asked)
+        assertTrue(client.statusAsked.toString(), client.statusAsked.any { "red" in it })
+        assertNotNull(trip.state.value.live["S"])
+        advanceUntilIdle()
+        assertFalse(trip.state.value.planning)
+        // The refresh after the plan reuses them.
+        assertEquals(listOf("S"), client.asked)
+    }
+
+    @Test
+    fun `a plan ended while its routes are checked lets the next plan run, though a tap marks it planning again`() = runTest(dispatcher) {
+        // The Planner's own requests fail; the bus via the stop towards the place is all the plan has.
+        val planner = FakePlanner(listOf(longWalk)).apply {
+            failWith = TflException.Offline(null)
+            byToward = mapOf("490G0A" to listOf(busToTrain))
+        }
+        val client = FakeClient(mutableMapOf())
+        val gate = CompletableDeferred<Unit>()
+        client.gates["4900000A1"] = gate
+        val trip = TripViewModel(
+            planner, client, "A", listOf(southPlace),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+            bundledStops = { bundled }, origin = { TripOrigin.Here(Coordinates(51.5, -0.12)) },
+        )
+        // A tap on the route the moment the plan ends, failed in part, plans again: planning marked again before
+        // the check of the bus's stop is done, or anything else runs.
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            trip.state.first { it.planError != null && !it.planning }
+            trip.openPlanned(routeKey(busToTrain.copy(towardStop = true)))
+        }
+        trip.refresh()
+        runCurrent()
+        assertTrue(client.asked.toString(), "4900000A1" in client.asked)
+        assertTrue(trip.state.value.planning)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // The next plan ran, asking via the stop again.
+        assertEquals(listOf("490G0A", "490G0A"), planner.towardAsked)
+        assertFalse(trip.state.value.planning)
     }
 
     @Test
