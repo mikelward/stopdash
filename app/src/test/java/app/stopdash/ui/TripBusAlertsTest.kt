@@ -58,13 +58,55 @@ class TripBusAlertsTest {
     fun `an open route's row and the line page it opens take the leg's placed status`() {
         val near = leg("n1", "n3")
         val state = TripViewModel.State(statuses = mapOf("99" to diversion))
-        assertSame(diversion, legStatusRow(state, near, at).status)
-        val placed = state.copy(legStatuses = legStatuses(state.statuses, listOf(near to LegEnd.planned(near, StepFree.DEFAULT), ride("n1", "w2")), mapOf("99" to route)))
-        // Only the ride the diversion is off has a status of its own.
-        assertEquals(setOf(tripLegKey(near)), placed.legStatuses.keys)
-        assertEquals(null, legStatusRow(placed, near, at).status)
-        assertEquals(diversion.planned, legStatusRow(placed, near, at).plannedAlerts)
-        assertSame(diversion, legStatusRow(placed, leg("n1", "w2"), at).status)
+        val nearEnd = LegEnd.planned(near, StepFree.DEFAULT)
+        assertSame(diversion, legStatusRow(state, near, nearEnd, at).status)
+        val placed = state.copy(legStatuses = legStatuses(state.statuses, listOf(near to nearEnd, ride("n1", "w2")), mapOf("99" to route)))
+        // Only the ride the diversion is off has a status of its own, by the ride and where it gets off.
+        assertEquals(setOf(legStatusKey(near, nearEnd)), placed.legStatuses.keys)
+        assertEquals(null, legStatusRow(placed, near, nearEnd, at).status)
+        assertEquals(diversion.planned, legStatusRow(placed, near, nearEnd, at).plannedAlerts)
+        val far = leg("n1", "w2")
+        assertSame(diversion, legStatusRow(placed, far, LegEnd.planned(far, StepFree.DEFAULT), at).status)
+    }
+
+    @Test
+    fun `two routes sharing a leg keep a placed status for each end it gets off at`() {
+        val near = leg("n1", "n3")
+        val planned = LegEnd.planned(near, StepFree.DEFAULT)
+        // The same leg last on another route, getting off anywhere in a made-up hub.
+        val hub = LegEnd(StepFree.DEFAULT, LegEnd.Level.HUB, setOf("HUB-A"))
+        val rides = listOf(near to planned, near to hub)
+        val placed = legStatuses(mapOf("99" to diversion), rides, mapOf("99" to route))
+        assertEquals(setOf(legStatusKey(near, planned), legStatusKey(near, hub)), placed.keys)
+        // Each end reads its own, not the other's.
+        val minor = LineStatus("99", 9, "Minor Delays")
+        val state = TripViewModel.State(
+            statuses = mapOf("99" to diversion),
+            legStatuses = mapOf(legStatusKey(near, planned) to placed.getValue(legStatusKey(near, planned)), legStatusKey(near, hub) to minor),
+        )
+        assertEquals(null, legStatusRow(state, near, planned, at).status)
+        assertSame(minor, legStatusRow(state, near, hub, at).status)
+        assertSame(minor, state.legStatus(near, hub))
+        // An end with none of its own reads the line's.
+        assertSame(diversion, state.legStatus(near, LegEnd(StepFree.DEFAULT, LegEnd.Level.HUB, setOf("HUB-B"))))
+    }
+
+    @Test
+    fun `a ride getting off in the destination's hub reads as at the Planner's call`() {
+        val near = leg("n1", "n3")
+        val planned = LegEnd.planned(near, StepFree.DEFAULT)
+        // Its last ride's call is in the destination's hub ([LegEnd.of]): it gets off anywhere in it.
+        val hub = LegEnd.of(app.stopdash.domain.TripRoute(listOf(near)), StepFree.DEFAULT, setOf("N3")).single().second
+        assertEquals(LegEnd.Level.HUB, hub.level)
+        val byPlanned = TripViewModel.State(statuses = mapOf("99" to diversion)).let {
+            it.copy(legStatuses = legStatuses(it.statuses, listOf(near to planned), mapOf("99" to route)))
+        }
+        val byHub = TripViewModel.State(statuses = mapOf("99" to diversion)).let {
+            it.copy(legStatuses = legStatuses(it.statuses, listOf(near to hub), mapOf("99" to route)))
+        }
+        assertEquals(byPlanned.legStatuses.values.toList(), byHub.legStatuses.values.toList())
+        assertEquals(legStatusRow(byPlanned, near, planned, at), legStatusRow(byHub, near, hub, at))
+        assertFalse(byHub.legStatus(near, hub)!!.disrupted)
     }
 
     @Test

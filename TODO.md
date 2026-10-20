@@ -966,10 +966,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           (on the way's line signals) and the trip page's
                                           `onBusRides` and `legStatuses`, each ride getting off
                                           where it's named to (`LegEnd.planned`).
-                                    - [ ] The trip page's placed bus statuses
-                                          (`State.legStatuses`, `legStatus`) keyed on the pair:
-                                          still by the leg alone, lossless while every ride ends
-                                          where the Planner does.
+                                    - [x] The trip page's placed bus statuses
+                                          (`State.legStatuses`, `legStatus`) keyed on the pair
+                                          (`legStatusKey`), each row and line page looking its
+                                          ride's up by the end its ride lines hold.
                                     - [ ] Reading the end: the first call in the destination's hubs.
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on

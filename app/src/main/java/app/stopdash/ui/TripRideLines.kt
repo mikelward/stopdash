@@ -64,6 +64,13 @@ internal class TripRideLines(
     fun holding(leg: TripLeg): Pair<Pair<TripLeg, LegEnd>, RideLines>? =
         byEnd.entries.firstOrNull { leg in it.value.legs }?.toPair()
 
+    /**
+     * The ride whose lines hold [leg] and that gets off at [end], else the first that holds it ([holding]):
+     * a leg two routes share with different ends keeps the end of the route it was found under.
+     */
+    fun holding(leg: TripLeg, end: LegEnd): Pair<Pair<TripLeg, LegEnd>, RideLines>? =
+        byEnd.entries.firstOrNull { it.key.second == end && leg in it.value.legs }?.toPair() ?: holding(leg)
+
     companion object {
         /** None worked out: every ride has just its Planner's line, getting off where the Planner gets it off. */
         val NONE = TripRideLines(emptyMap(), plannedEnds(StepFree.DEFAULT))

@@ -347,9 +347,9 @@ class TripViewModel(
         // longer count ([rideSchedule]), and are fetched again.
         val timetablesDay: java.time.LocalDate? = null,
         // A bus leg's line status where its alerts were placed on the leg's ride and that changed it
-        // ([onBusRides]), by [tripLegKey]: worked out with the page's frame ([tripFrame]), so a row or
-        // page built in composition only looks it up ([legStatus]).
-        val legStatuses: Map<String, LineStatus> = emptyMap(),
+        // ([onBusRides]), by the leg and where its ride gets off ([legStatusKey]): worked out with the
+        // page's frame ([tripFrame]), so a row or page built in composition only looks it up ([legStatus]).
+        val legStatuses: Map<Pair<String, app.stopdash.domain.LegEnd>, LineStatus> = emptyMap(),
         // The last line-status check failed: the statuses shown (if any) are older, so the trip
         // says it couldn't check for disruptions rather than pass its lines off as running normally.
         val statusFailed: Boolean = false,

@@ -1550,14 +1550,16 @@ private fun TripContent(
         // line's stops, not only its alert.
         // Every train a list card's row shows, those still being checked too, so a page opened from
         // one finds the row it was opened from (the open route's rows are a subset, keyed the same).
-        // The page is opened from a line, not a route: the first ride's lines, at whichever end, that hold
-        // it, its trains judged by that ride's end (else by the end of the ride it was found under).
-        val held = rideLines.holding(leg)
-        val live = legRows(state, leg, held?.first?.second ?: foundEnd, now, sequences, withUnchecked = true)
+        // The page is opened from a line, not a route: the lines of the ride it was found under, getting
+        // off where that ride does, else the first ride's lines that hold it; its trains and placed status
+        // judged by that ride's end.
+        val held = rideLines.holding(leg, foundEnd)
+        val end = held?.first?.second ?: foundEnd
+        val live = legRows(state, leg, end, now, sequences, withUnchecked = true)
         // Another line not yet checked as running has its no-trains row on the open route though its
         // trains are in ([rideLegRows]): that row opens its page too, as a list card's rows still do.
         val ride = held?.second ?: RideLines.only(leg)
-        val statusRow = withDismissedMarked(legStatusRow(state, leg, now), alerts.dismissed)
+        val statusRow = withDismissedMarked(legStatusRow(state, leg, end, now), alerts.dismissed)
         val rows = when {
             live.isEmpty() -> listOf(statusRow)
             // First, so a live row keyed alike (a departure with no direction, destination or
@@ -4990,7 +4992,7 @@ internal fun legRows(
         leg.fromName,
         trains,
         now,
-        lineStatuses = state.legStatuses.takeIf { it.isNotEmpty() }?.get(tripLegKey(leg))?.let { WithLine(state.statuses, leg.lineId, it) } ?: state.statuses,
+        lineStatuses = state.legStatuses.takeIf { it.isNotEmpty() }?.get(legStatusKey(leg, end))?.let { WithLine(state.statuses, leg.lineId, it) } ?: state.statuses,
         fetchedAt = state.live[leg.fromId]?.fetchedAt ?: SteadyClock.stamp(now),
     )
 }
@@ -5081,17 +5083,23 @@ internal fun cardStatuses(
 
 /**
  * The statuses of [rides]' lines that placing a bus line's alerts on one leg's ride, by where it gets off,
- * changes ([onBusRides]), by the leg ([tripLegKey]): [TripViewModel.State.legStatuses]. Still keyed by the
- * leg alone, lossless while every ride ends where the Planner does (TODO.md, *Arriving by hub*).
+ * changes ([onBusRides]), by the ride and its end ([legStatusKey]): [TripViewModel.State.legStatuses]. A
+ * leg two routes share keeps a status for each end it gets off at (TODO.md, *Arriving by hub*).
  */
 @WorkerThread
-internal fun legStatuses(statuses: Map<String, LineStatus>, rides: List<Pair<TripLeg, LegEnd>>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> =
+internal fun legStatuses(statuses: Map<String, LineStatus>, rides: List<Pair<TripLeg, LegEnd>>, sequences: Map<String, LineSequence?>): Map<Pair<String, LegEnd>, LineStatus> =
     rides.mapNotNull { ride ->
-        val leg = ride.first
+        val (leg, end) = ride
         val status = statuses[leg.lineId] ?: return@mapNotNull null
         onBusRides(mapOf(leg.lineId to status), listOf(ride), sequences).getValue(leg.lineId)
-            .takeIf { it !== status }?.let { tripLegKey(leg) to it }
+            .takeIf { it !== status }?.let { legStatusKey(leg, end) to it }
     }.toMap()
+
+/**
+ * Which ride a placed bus status ([TripViewModel.State.legStatuses]) belongs to: the leg, stable across
+ * refreshes ([tripLegKey]), with where its ride gets off.
+ */
+internal fun legStatusKey(leg: TripLeg, end: LegEnd): Pair<String, LegEnd> = tripLegKey(leg) to end
 
 /**
  * [base] with [lineId]'s status read as [status], without copying it: [legRows] runs as the page draws
@@ -5102,9 +5110,12 @@ private class WithLine(private val base: Map<String, LineStatus>, private val li
     override fun get(key: String): LineStatus? = if (key == lineId) status else base[key]
 }
 
-/** [leg]'s line status as its ride sees it ([TripViewModel.State.legStatuses]), else its line's. */
-internal fun TripViewModel.State.legStatus(leg: TripLeg): LineStatus? =
-    if (legStatuses.isEmpty()) statuses[leg.lineId] else legStatuses[tripLegKey(leg)] ?: statuses[leg.lineId]
+/**
+ * [leg]'s line status as its ride, getting off at [end], sees it ([TripViewModel.State.legStatuses]),
+ * else its line's.
+ */
+internal fun TripViewModel.State.legStatus(leg: TripLeg, end: LegEnd): LineStatus? =
+    if (legStatuses.isEmpty()) statuses[leg.lineId] else legStatuses[legStatusKey(leg, end)] ?: statuses[leg.lineId]
 
 /**
  * [statuses] with each bus line's alerts weighed on [rides] of it, each with where it gets off ([LegEnd]),
@@ -5199,8 +5210,11 @@ internal fun tripLegKey(leg: TripLeg): String = listOf(
 internal fun legRowFor(rows: List<DepartureRow>, followed: Departure?): DepartureRow? =
     rows.firstOrNull { followed != null && followed in it.upcoming } ?: rows.firstOrNull()
 
-/** The row a leg with no live trains opens to: its line at its boarding stop and its status, timing nothing. */
-internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant): DepartureRow = DepartureRow(
+/**
+ * The row a leg with no live trains opens to: its line at its boarding stop and its status as its ride,
+ * getting off at [end], sees it ([legStatus]), timing nothing.
+ */
+internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, end: LegEnd, now: Instant): DepartureRow = DepartureRow(
     stopId = leg.fromId,
     stopName = leg.fromName,
     lineId = leg.lineId,
@@ -5212,9 +5226,9 @@ internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant
     upcoming = emptyList(),
     fetchedAt = state.live[leg.fromId]?.fetchedAt ?: SteadyClock.stamp(now),
     // Only a disruption, as a row's status always is: a good service is no alert.
-    status = state.legStatus(leg)?.takeIf { it.disrupted },
+    status = state.legStatus(leg, end)?.takeIf { it.disrupted },
     // Its page lists the line's work still to come, as a list row's does (Codex, PR #337).
-    plannedAlerts = state.legStatus(leg)?.planned.orEmpty(),
+    plannedAlerts = state.legStatus(leg, end)?.planned.orEmpty(),
 )
 
 /**
@@ -5257,6 +5271,8 @@ internal fun placeQuiet(groups: List<StopGroup>, quiet: List<TripLeg>): Pair<Map
 @Composable
 private fun NoTrainsRow(
     line: TripLeg,
+    // Where its ride gets off, as its placed status is keyed ([legStatus]).
+    end: LegEnd,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
@@ -5266,7 +5282,7 @@ private fun NoTrainsRow(
 ) {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         // A dismissed alert leaves the row (it's how the leg opens its stops), without its chip.
-        val statusRow = withDismissedMarked(legStatusRow(state, line, now), dismissed)
+        val statusRow = withDismissedMarked(legStatusRow(state, line, end, now), dismissed)
         RouteRow(
             row = statusRow,
             isStarred = false,
@@ -5314,6 +5330,9 @@ private fun RideLeg(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val placed = view?.placed.orEmpty()
         val unplaced = view?.unplaced.orEmpty()
+        // Quiet lines come only with a view, and so with the end it was worked out with, which each
+        // one's placed status is looked up by ([legStatus]): never worked out again here.
+        val quietEnd = view?.end
         cards.forEachIndexed { index, card ->
             val group = card.group
             StopGroupHeader(group.stopName, group.qualifier, distanceLabel = null, firstOnScreen = first && index == 0)
@@ -5328,11 +5347,11 @@ private fun RideLeg(
                 grayBefore = grayBefore,
                 timesInstead = if (headways == null) null else { { row -> headways[row.lineId]?.let { HeadwayLabel(it) } } },
             )
-            placed[group].orEmpty().forEach { line -> NoTrainsRow(line, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
+            placed[group].orEmpty().forEach { line -> quietEnd?.let { end -> NoTrainsRow(line, end, state, now, sequences, dismissed, onOpenDetail, onHideMode) } }
         }
         unplaced.forEachIndexed { index, atStop ->
             StopGroupHeader(atStop.first().fromName, qualifier = null, distanceLabel = null, firstOnScreen = first && cards.isEmpty() && index == 0)
-            atStop.forEach { line -> NoTrainsRow(line, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
+            atStop.forEach { line -> quietEnd?.let { end -> NoTrainsRow(line, end, state, now, sequences, dismissed, onOpenDetail, onHideMode) } }
         }
         // "N stops to B" only where every line of the ride takes that many: one reaching B another
         // way ([RideLines.timed] leaves it out) would read as the Planner's count. Its own page lists its stops.
@@ -5354,6 +5373,8 @@ private fun RideLeg(
  * ride (null for the rider's next, which counts down).
  */
 internal class RideLegView(
+    // Where the ride gets off, as its rows were worked out with: its quiet lines' statuses are looked up by it.
+    val end: LegEnd,
     val groups: List<StopGroup>,
     // Each group as its card draws it ([stopCard]), in [groups]' order.
     val cards: List<StopCard>,
@@ -5389,7 +5410,7 @@ internal fun rideLegView(
     val headways = if (countsDown) null else ride.legs.associate { it.lineId to linesHeadway(listOf(it), end, state, now, sequences) }
     val groups = StopGrouping.groupByStop(byLine.values.flatten())
     val (placed, unplaced) = placeQuiet(groups, ride.legs.filter { byLine[it].isNullOrEmpty() })
-    return RideLegView(groups, groups.map { stopCard(it, topology) }, placed, unplaced, headways)
+    return RideLegView(end, groups, groups.map { stopCard(it, topology) }, placed, unplaced, headways)
 }
 
 /** How many stops every one of a ride's [lines] takes to its getting-off stop, or null where they differ. */
