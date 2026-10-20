@@ -11,6 +11,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureSource
 import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OffPlan
@@ -100,6 +101,10 @@ class ActiveTripTracker(
     // they're in one interchange when a trip starts ([OnTheWay.changesOnFoot]). Getting it may read
     // the asset, so it's called on [io].
     private val stations: () -> StationIndex = { StationIndex.EMPTY },
+    // The station model ([Hubs]), for where the last ride gets off by arriving at the destination's hub
+    // ([arrivingOf]): waited for while it loads, bounded ([app.stopdash.data.HubsStore.ready]); null where
+    // it can't be had, when the ride ends at the destination's own stops, as before.
+    private val hubs: suspend () -> Hubs? = { null },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -400,6 +405,23 @@ class ActiveTripTracker(
 
     // How step-free [trip] was planned to be ([ActiveTrip.stepFree]); an older trip that kept none asks none.
     private fun levelOf(trip: ActiveTrip): StepFree = trip.stepFree ?: StepFree.DEFAULT
+
+    // The ids the last ride arrives at the destination's hub by ([OnTheWay.arrivingIds]), with the route as
+    // planned they were worked out for (by identity: a trip's copies share it, a replan or restore doesn't).
+    // Worked out through the model when a check first needs them, on [compute], and kept only while the
+    // route is the same, so nothing resolved outlives it; with no model, none, and asked for again next check.
+    @Volatile
+    private var arriving: Pair<List<TripLeg>, Map<String, String>>? = null
+
+    // Where [trip]'s last ride gets off by arriving at the destination's hub ([OnTheWay.advance]'s `arriving`).
+    private suspend fun arrivingOf(trip: ActiveTrip): Map<String, String> {
+        val planned = trip.plannedLegs ?: trip.route.legs
+        arriving?.takeIf { it.first === planned }?.let { return it.second }
+        val model = hubs() ?: return emptyMap()
+        val ids = withContext(compute) { OnTheWay.arrivingIds(trip, model) }
+        arriving = planned to ids
+        return ids
+    }
 
     // [ride]'s boarding stop pair's poles ([stopPoles]) when it boards at a bus stop, read once: the
     // Planner's pole among them, for its letter, and the others, whose boards may list another of the
@@ -878,8 +900,9 @@ class ActiveTripTracker(
             return ForkCheck.Failed
         }
         if (calls.isEmpty()) return ForkCheck.Refused
+        val arriving = arrivingOf(trip)
         val due = withContext(compute) {
-            if (OnTheWay.aheadOnLeg(toFork, calls) < toFork.path.size) OnTheWay.advance(trip, calls, now).first.dueOffAt else null
+            if (OnTheWay.aheadOnLeg(toFork, calls) < toFork.path.size) OnTheWay.advance(trip, calls, now, arriving = arriving).first.dueOffAt else null
         }
         return if (due != null) ForkCheck.Taken(trip.copy(dueOffAt = due)) else ForkCheck.Refused
     }
@@ -1694,7 +1717,7 @@ class ActiveTripTracker(
         // Still seen at the boarding stop, by the fix this refresh took (aged by the reads since): the
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
-        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
+        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding, arrivingOf(trip))
         if (doubted && next.legIndex != trip.legIndex) {
             // A train that may not be theirs doesn't end their ride while that waits to be confirmed: the step
             // stands as it was this refresh (Codex, #997).
@@ -2444,7 +2467,8 @@ class ActiveTripTracker(
     // beside it when that read failed, so whether another branch takes it isn't known (Codex, #728).
     private suspend fun rewayed(trip: ActiveTrip, calls: List<VehicleCall>, now: Instant): Pair<ActiveTrip, Boolean> {
         val planned = trip.leg ?: return trip to false
-        if (planned.isWalk || OnTheWay.advance(trip, calls, now).second !is TripProgress.Lost) return trip to false
+        val arriving = arrivingOf(trip)
+        if (planned.isWalk || OnTheWay.advance(trip, calls, now, arriving = arriving).second !is TripProgress.Lost) return trip to false
         val line = OnTheWay.followedLine(trip)
         val ridden = OnTheWay.ridden(trip)
         if (line != planned.lineId || !OnTheWay.checkable(planned)) return trip to false
@@ -2453,7 +2477,7 @@ class ActiveTripTracker(
         for (way in ways) {
             val on = trip.copy(vehicleLeg = way.takeIf { it != planned })
             val runs = OnTheWay.runsAlong(way, calls) || (trip.boarded && OnTheWay.runsOn(way, calls))
-            if (runs && OnTheWay.advance(on, calls, now).second !is TripProgress.Lost) {
+            if (runs && OnTheWay.advance(on, calls, now, arriving = arriving).second !is TripProgress.Lost) {
                 warn("on the way: train followed on line $line takes another branch to the stop")
                 return on to false
             }
@@ -2498,6 +2522,7 @@ class ActiveTripTracker(
             val routes = catchable.map { it.lineId }.distinct().associateWith { routeOf(it) }
             catchable.filter { train -> OnTheWay.lineOf(lines, train)?.let { OnTheWay.mayTakeRide(it, listOf(train), routes).isNotEmpty() } == true }
         }.take(PICK_TRIES)
+        val arriving = if (candidates.isEmpty()) emptyMap() else arrivingOf(trip)
         for (train in candidates) {
             val ways = OnTheWay.waysOf(lines, train)
             if (ways.isEmpty()) continue
@@ -2517,7 +2542,7 @@ class ActiveTripTracker(
                     (trip.boarded && OnTheWay.runsOn(on, calls, heading = train.destination))
                 // Its own calls may have it leave before the rider can be there, however the board
                 // shows it: then it's no train of theirs, and the next is tried now, not next refresh.
-                runs && OnTheWay.advance(OnTheWay.follow(trip, train, on), calls, now).second !is TripProgress.Lost
+                runs && OnTheWay.advance(OnTheWay.follow(trip, train, on), calls, now, arriving = arriving).second !is TripProgress.Lost
             } ?: continue
             return Pick(Triple(train, on, calls))
         }

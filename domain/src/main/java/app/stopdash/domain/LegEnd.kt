@@ -14,7 +14,9 @@ import androidx.annotation.WorkerThread
  * - a favorite ride kept as saved: its saved end's stop ([Level.STOP]), or an area a refresh has
  *   since split: that area's own poles ([Level.POLE]).
  *
- * Not read by any feature yet: phase 2 points arriving at it.
+ * Read so far only by On the way, where the last ride gets off by arriving at the destination's hub
+ * ([OnTheWay.arrivingIds]); the other paths take a ride's end, planned or resolved, and still get off where
+ * the Planner's call is until they read it (TODO.md, *Arriving by hub at the first call*).
  */
 data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<String>) {
     /** Which of a call's places [places] names. */

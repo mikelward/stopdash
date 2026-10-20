@@ -186,6 +186,7 @@ class ActiveTripTrackerTest {
         forgetting: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(dispatcher),
         preciseAllowed: () -> Boolean = { true },
         railArrivals: (suspend (String) -> app.stopdash.domain.RideArrivals)? = null,
+        hubs: app.stopdash.domain.Hubs? = null,
         load: () -> ActiveTrip? = { null },
     ) = ActiveTripTracker(
         remembered = remembered,
@@ -259,6 +260,7 @@ class ActiveTripTrackerTest {
                 stopPositions.map { (id, at) -> app.stopdash.domain.IndexedStation(id, id, latitude = at.latitude, longitude = at.longitude) },
             )
         },
+        hubs = { hubs },
         stopPoles = { area ->
             poleReads++
             if (polesFail) throw TflException.Offline(null)
@@ -373,6 +375,53 @@ class ActiveTripTrackerTest {
         assertEquals(ids, kept?.destinationIds)
         assertEquals(Pick.Level.STATION, kept?.destinationLevel)
         assertEquals(StepFree.FULLY, kept?.stepFree)
+    }
+
+    // Synthetic: a hub HUBEXP of two tube stations, Praed (940GZZLUPRA) and Hamlet (940GZZLUHAM), in the order the
+    // red line reaches them from A.
+    private val twoStationHub = app.stopdash.domain.Hubs.of(
+        app.stopdash.domain.StationIndex(
+            listOf(
+                app.stopdash.domain.IndexedStation("HUBEXP", "Example Hub", listOf("tube")),
+                app.stopdash.domain.IndexedStation("940GZZLUPRA", "Praed", listOf("tube"), "HUBEXP", 51.5, -0.12, station = "940GZZLUPRA", modelHub = "HUBEXP"),
+                app.stopdash.domain.IndexedStation("940GZZLUHAM", "Hamlet", listOf("tube"), "HUBEXP", 51.501, -0.12, station = "940GZZLUHAM", modelHub = "HUBEXP"),
+            ),
+            revision = "abc",
+        ),
+        app.stopdash.domain.BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
+    )!!
+
+    @Test
+    fun `on the way the last ride gets off at the train's first call in the destination's hub`() = runTest {
+        // Planned to Hamlet, reached through Praed, another station of its hub: the train calls at Praed first.
+        val toHamlet = TripRoute(listOf(ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUPRA", "940GZZLUHAM"))))
+        val calls = listOf(call("B", 9), call("940GZZLUPRA", 11), call("940GZZLUHAM", 14))
+        suspend fun ridingWith(stepFree: StepFree): TripProgress.Riding {
+            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub)
+            now = t0
+            departures["A"] = listOf(train("3", 8))
+            trains["3"] = listOf(call("A", 8)) + calls
+            tracker.start(
+                toHamlet, "Hamlet", readyAt = now, destinationIds = mapOf("940GZZLUHAM" to "940GZZLUHAM"),
+                destinationStopId = "940GZZLUHAM", destinationLevel = Pick.Level.STATION, stepFree = stepFree,
+            )
+            tracker.refresh()
+            now = at(9)
+            trains["3"] = calls
+            tracker.refresh()
+            val riding = tracker.progress.value as TripProgress.Riding
+            // The ride's end moved there, as the step names it.
+            assertEquals(if (stepFree == StepFree.ANY) "940GZZLUPRA" else "940GZZLUHAM", kept?.leg?.toId)
+            tracker.end()
+            return riding
+        }
+        val riding = ridingWith(StepFree.ANY)
+        assertEquals(2, riding.stopsLeft)
+        assertEquals(at(11), riding.getOffAt)
+        // A step-free trip still gets off where the Planner, who checked its lifts, does.
+        val stepFree = ridingWith(StepFree.FULLY)
+        assertEquals(3, stepFree.stopsLeft)
+        assertEquals(at(14), stepFree.getOffAt)
     }
 
     @Test

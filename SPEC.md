@@ -2485,7 +2485,14 @@ yet: a trip will arrive at its first call anywhere in the destination's hub,
 `dev-docs/station-resolution.md`). A trip on the way keeps those ids.
 On its last ride, once the rider is on a train seen due first at another of them, the ride ends
 there, and any walk planned on from the old end goes (maintainer, 2026-10-19). So a route riding on
-past the low level to St Pancras's main record counts down to the low level and names it. The route
+past the low level to St Pancras's main record counts down to the low level and names it. On the way
+is the first to arrive by hub: where the Planner's own end for the last ride is in the destination's
+hub, the ride ends at the train's first call anywhere in that hub, another station or bus stop of it
+included (a Circle train reaching one Paddington before the other gets the rider off at the first),
+by a call naming one TfL id, never a National Rail call naming its station's several records. Not on a
+step-free trip, nor one kept before its level was: the hub's other calls aren't checked against
+today's lifts yet, so it ends where the Planner, who checked, does. The trip screen still shows each
+ride ending at the Planner's call until its paths arrive by hub too. The route
 as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,
 or a step taken. A ride before the last only passes them, on to its change.
 

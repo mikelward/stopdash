@@ -7,8 +7,8 @@ package app.stopdash.domain
  * requests, predictions and closures.
  *
  * Built by [Hubs.resolve] (one id) or [Hubs.resolveAll] (a call naming several records), or [exact]
- * where there's no model. Read by a ride's end ([LegEnd.of]), itself not read by any feature yet:
- * phase 2 points arriving at it.
+ * where there's no model. Read by a ride's end ([LegEnd.of]), which On the way's last ride reads
+ * ([OnTheWay.arrivingIds]).
  */
 data class Resolved(
     /** As TfL gave it; null for a call naming several records, which names no one id. */

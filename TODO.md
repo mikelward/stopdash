@@ -973,6 +973,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           (`legStatusKey`), each row and line page looking its
                                           ride's up by the end its ride lines hold.
                                     - [ ] Reading the end: the first call in the destination's hubs.
+                                        - [x] On the way's last ride (`OnTheWay.advance`'s `arriving`):
+                                              the tracker works out the last ride's end through the model
+                                              (`OnTheWay.arrivingIds`, `LegEnd.of`, `Hubs.idsOf`) and the
+                                              followed train gets the rider off at its first call in the
+                                              destination's hub, by one TfL id; not yet on a step-free
+                                              trip (see *Decisions needing review*).
+                                        - [ ] The trip page's paths (`RouteStops.forLeg`,
+                                              `withRouteStops`, `RideLines`, `DirectTrips.judge`,
+                                              `TripVerdicts`, the bus statuses and alerts) switched from
+                                              `LegEnd.planned` to `LegEnd.of` on a worker and reading it,
+                                              with the cards cut and named at that call (the detour cut,
+                                              below); on the way's stop list and ride lines with them.
+                                        - [ ] A step-free trip's first passing call in the hub, against
+                                              today's lifts (`StepFreeAccess`, `LiftOutages`), so it
+                                              arrives by hub too.
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
@@ -4945,6 +4960,18 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **On the way reads the ride's end first, ahead of the other families** (autopilot,
+  2026-10-20). The last ride on the way gets off at the followed train's first call in the
+  destination's hub, while the trip screen's paths still end where the Planner does, though the
+  entry below waited for every family. On the way already moved the end to another of the
+  destination's stops (#981), so the trip screen and on the way already differ there; this widens
+  that move from the station to the hub. Alternative: wait and switch every family in one PR.
+  Reversible: one parameter (`OnTheWay.advance`'s `arriving`), empty brings back the station rule.
+- [ ] **A step-free trip doesn't arrive by hub yet** (autopilot, 2026-10-20). No lift check reads a
+  hub's other calls yet, so a step-free trip (or one whose level isn't known) still gets off where
+  the Planner, who checked access when it planned, does. Alternative: arrive by hub regardless, or
+  build the first passing call against `StepFreeAccess` and `LiftOutages` now. Reversible: one
+  condition in `OnTheWay.arrivingIds`.
 - [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
   (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path
   at once, so no path is missed; that is too big for one PR, so each family takes its `LegEnd` in

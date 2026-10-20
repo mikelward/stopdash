@@ -6369,6 +6369,8 @@ class MainActivity : ComponentActivity() {
                     // The bundled index, for which walks are changes on foot when a trip starts: where a
                     // stop is, and its interchange, by its station's id or a platform's.
                     stations = { StationIndexStore.load(context.applicationContext) },
+                    // The station model, for where the last ride arrives at the destination's hub.
+                    hubs = HubsStore::ready,
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)
