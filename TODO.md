@@ -3938,6 +3938,11 @@ Builds on Phase 1's minimal line-status marking.
       closures are its own subtree of the family tree plus anything recorded above it
       (`disruptionsFor`), and a single pole's card is titled by its own stop name ("‹its stop name› –
       Stop ‹letter›"), the group header unchanged.
+- [ ] **Name a bus journey's far-end pole on its closure card** (Codex on #1012). A far end's closure
+      row is built from `StopRef(id, journey.to.name)` (`cardReportsOf`), so a closed far-end pole
+      reads by the journey's saved name, with no letter. Its line's route gives the pole's own name
+      (`LineSequence.stopNames`); the letter, sign and bearing need its stop area's poles, which only
+      origins look up today (a new lookup per far end, or `cachedPoles` where already loaded).
 - [ ] **Show a chip per disruption condition, not just the single most-severe one**
       (requested 2026-09-20). Today `mostSevereDisruption` collapses coexisting statuses to
       one label; the maintainer wants to revisit that — show a chip for each condition a line
