@@ -63,4 +63,21 @@ class TripRideLinesTest {
         // A ride none were worked out for has just its Planner's line.
         assertEquals(listOf("blue"), lines.of(onward, onward.rides.last()).legs.map { it.lineId })
     }
+
+    @Test
+    fun `a line page keeps the end of the route it was found under`() {
+        val lines = TripRideLines(
+            mapOf(
+                (red to atHub) to RideLines(listOf(red), listOf(red)),
+                (red to atStop) to RideLines(listOf(red), listOf(red)),
+            ),
+            ends,
+        )
+        // Found under the route getting off at the stop: not the first ride holding it, at the hub.
+        assertEquals(red to atStop, lines.holding(red, atStop)?.first)
+        assertEquals(red to atHub, lines.holding(red, atHub)?.first)
+        // An end no ride holding it has falls back to the first that does.
+        val elsewhere = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("Z"))
+        assertEquals(red to atHub, lines.holding(red, elsewhere)?.first)
+    }
 }

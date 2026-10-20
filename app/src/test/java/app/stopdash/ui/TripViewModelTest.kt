@@ -520,7 +520,7 @@ class TripViewModelTest {
             dismissedStore = store, writeFailures = failures,
         )
         val delayed = LineStatus("blue", 9, "Minor Delays")
-        val row = legStatusRow(TripViewModel.State(statuses = mapOf("blue" to delayed)), route.legs[1], now)
+        val row = legStatusRow(TripViewModel.State(statuses = mapOf("blue" to delayed)), route.legs[1], LegEnd.planned(route.legs[1], StepFree.DEFAULT), now)
         trip.dismissAlert(row)
         advanceUntilIdle()
         assertEquals(setOf(DismissedAlert.ofLineStatus(delayed)), trip.dismissed.value)
@@ -4669,18 +4669,18 @@ class TripViewModelTest {
     fun `a leg with no trains opens to its line's disruption, never a good service`() {
         val leg = route.legs[1]
         val good = TripViewModel.State(statuses = mapOf("blue" to LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service")))
-        assertNull(legStatusRow(good, leg, now).status)
+        assertNull(legStatusRow(good, leg, LegEnd.planned(leg, StepFree.DEFAULT), now).status)
         val delayed = TripViewModel.State(statuses = mapOf("blue" to LineStatus("blue", 9, "Minor Delays")))
-        assertEquals("Minor Delays", legStatusRow(delayed, leg, now).status?.description)
+        assertEquals("Minor Delays", legStatusRow(delayed, leg, LegEnd.planned(leg, StepFree.DEFAULT), now).status?.description)
         // A line's work still to come reaches the quiet leg's page too.
         val planned = app.stopdash.domain.PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
         val withPlanned = delayed.copy(statuses = delayed.statuses.mapValues { (_, status) -> status.copy(planned = listOf(planned)) })
-        assertEquals(listOf(planned), legStatusRow(withPlanned, leg, now).plannedAlerts)
+        assertEquals(listOf(planned), legStatusRow(withPlanned, leg, LegEnd.planned(leg, StepFree.DEFAULT), now).plannedAlerts)
         // The collapsed card notes it too.
         assertEquals(planned, linesPlanned(listOf(leg), withPlanned.statuses))
         assertNull(linesPlanned(listOf(leg), delayed.statuses))
         // Dismissed, it leaves the quiet leg's page (the disruption stays).
-        val marked = withDismissedMarked(legStatusRow(withPlanned, leg, now), setOf(app.stopdash.domain.DismissedAlert.ofPlanned("blue", planned)))
+        val marked = withDismissedMarked(legStatusRow(withPlanned, leg, LegEnd.planned(leg, StepFree.DEFAULT), now), setOf(app.stopdash.domain.DismissedAlert.ofPlanned("blue", planned)))
         assertTrue(marked.plannedAlerts.isEmpty())
         assertEquals("Minor Delays", marked.status?.description)
     }
@@ -5026,8 +5026,8 @@ class TripViewModelTest {
         val state = TripViewModel.State(routes = listOf(TripRoute(listOf(plannerBus))))
         val placed = onPoles(plannerBus, mapOf("1" to road))
         assertEquals(
-            tripDetailKey(plannerBus, legStatusRow(state, plannerBus, now)),
-            tripDetailKey(placed, legStatusRow(state, placed, now)),
+            tripDetailKey(plannerBus, legStatusRow(state, plannerBus, LegEnd.planned(plannerBus, StepFree.DEFAULT), now)),
+            tripDetailKey(placed, legStatusRow(state, placed, LegEnd.planned(placed, StepFree.DEFAULT), now)),
         )
     }
 
