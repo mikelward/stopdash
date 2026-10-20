@@ -8,6 +8,7 @@ import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailFollow
 import app.stopdash.domain.RailPoint
 import app.stopdash.domain.RailRun
+import app.stopdash.domain.Resolved
 import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TFL_RUN_OPERATORS
 import app.stopdash.domain.UntimedTrain
@@ -145,6 +146,8 @@ fun DarwinBoardDto.toBoard(
     stopIdFor: (String) -> String? = { null },
     // Every TfL stop id of a station code (RailStationCodes.stopIdsFor), for a train's calling points.
     stopIdsFor: (String) -> Set<String> = { emptySet() },
+    // A station's records as the station model places them ([CallingPortion.calls]); null without a model.
+    placeFor: ((Set<String>) -> Resolved?)? = null,
     warn: (String) -> Unit = {},
 ): RailBoard {
     checkAvailable()
@@ -205,7 +208,7 @@ fun DarwinBoardDto.toBoard(
             mode = NATIONAL_RAIL_MODE,
             destinationId = destinationId,
             via = via,
-            callingAt = service.subsequentCallingPoints?.let { callingPortions(it, stopIdsFor) },
+            callingAt = service.subsequentCallingPoints?.let { callingPortions(it, stopIdsFor, placeFor) },
             railServiceId = service.serviceID?.trim().orEmpty(),
             vehicleId = followId.orEmpty(),
         )
@@ -435,12 +438,20 @@ private fun parseClock(text: String): LocalTime? =
  * reach its stops. A train with no rideable portion at all reaches none of them: one complete portion
  * calling nowhere, a sure "misses", never no answer the route would then fill in.
  */
-internal fun callingPortions(lists: List<DarwinCallingPointsDto>, stopIdsFor: (String) -> Set<String>): List<CallingPortion> {
+internal fun callingPortions(
+    lists: List<DarwinCallingPointsDto>,
+    stopIdsFor: (String) -> Set<String>,
+    // Each stop's records as the station model places them ([CallingPortion.calls]); null without a model.
+    placeFor: ((Set<String>) -> Resolved?)? = null,
+): List<CallingPortion> {
     val rideable = lists.filter { it.rideable }
     if (rideable.isEmpty()) return if (lists.isEmpty()) emptyList() else listOf(CallingPortion(emptySet(), complete = true))
     return rideable.map { list ->
         val points = list.callingPoint.orEmpty().filterNot { it.isCancelled }
         val ids = points.map { point -> point.crs?.trim()?.ifBlank { null }?.let(stopIdsFor).orEmpty() }
-        CallingPortion(ids.flatten().toSet(), complete = ids.none { it.isEmpty() })
+        // In calling order, with a model: a stop with no record kept as null in its place, so a portion of
+        // nothing but such stops still says what it calls at before anything placed. None without a model.
+        val placed = placeFor?.let { place -> ids.map { stop -> stop.takeIf { it.isNotEmpty() }?.let(place) } }.orEmpty()
+        CallingPortion(ids.flatten().toSet(), complete = ids.none { it.isEmpty() }, calls = placed)
     }
 }

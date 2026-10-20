@@ -6194,6 +6194,8 @@ class MainActivity : ComponentActivity() {
             warn = ::logDepartureWarning,
             stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
             stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
+            // Each train's calling points placed by the station model as the board comes in.
+            hubs = HubsStore::ready,
             // Without a key of the rider's own, the boards come through stopdash's proxy. A board asked for
             // before the saved key, if any, is read back waits for it, so it goes the right way.
             proxyUrl = { StopdashProxy.url },
@@ -6350,6 +6352,8 @@ class MainActivity : ComponentActivity() {
                         tfl = planner,
                         runs = railBoards(context.applicationContext)::runs,
                         stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
+                        // Each call's station placed by the station model as the calls come in.
+                        hubs = HubsStore::ready,
                         warn = ::logDepartureWarning,
                     ),
                     stationPlaces = planner::stationPlaces,
