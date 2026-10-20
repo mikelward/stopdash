@@ -249,7 +249,7 @@ class ActiveTripTrackerTest {
             sequences[lineId]
         },
         // As the cards find them: another line only where the departures given list a train of it.
-        rideLines = { _, ride, given ->
+        rideLines = { _, ride, _, given ->
             ridesGiven += given
             RideLinesNow(
                 (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.values.flatten().any { train -> train.lineId == it.lineId } },

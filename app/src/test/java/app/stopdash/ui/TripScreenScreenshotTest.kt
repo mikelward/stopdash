@@ -1103,7 +1103,7 @@ class TripScreenScreenshotTest {
         val worker = threads.asCoroutineDispatcher()
         val gate = CountDownLatch(1)
         var access by mutableStateOf(Duration.ofMinutes(2))
-        val openRoute = mutableStateOf<String?>(openRouteOf(planned.routes!!.first(), planned, emptyMap()).encode())
+        val openRoute = mutableStateOf<String?>(openRouteOf(planned.routes!!.first(), planned, StepFree.ANY, emptyMap()).encode())
         try {
             composeRule.setContent {
                 StopDashTheme(dynamicColor = false) {
@@ -1138,7 +1138,7 @@ class TripScreenScreenshotTest {
         // A later trip's list says "Not planned for now" from this, never from reading the plan afterwards.
         var notPlanned = 0
         var state by mutableStateOf(planned)
-        val opened = openRouteOf(planned.routes!!.first(), planned, emptyMap()).encode()
+        val opened = openRouteOf(planned.routes!!.first(), planned, StepFree.ANY, emptyMap()).encode()
         val openRoute = mutableStateOf<String?>(opened)
         // The screen's worker, a thread of its own the test can hold (AGENTS.md *Main thread*; Codex, #878).
         val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
@@ -1170,7 +1170,7 @@ class TripScreenScreenshotTest {
             composeRule.waitUntil(timeoutMillis = 5_000) { openRoute.value == null }
             assertEquals(1, notPlanned)
             // Another opened, then closed on Back: nothing said.
-            openRoute.value = openRouteOf(state.routes!!.first(), state, emptyMap()).encode()
+            openRoute.value = openRouteOf(state.routes!!.first(), state, StepFree.ANY, emptyMap()).encode()
             composeRule.waitForIdle()
             composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
             composeRule.waitUntil(timeoutMillis = 5_000) { openRoute.value == null }
@@ -2561,7 +2561,7 @@ class TripScreenScreenshotTest {
         val state = TripViewModel.State(
             routes = listOf(viaWhitechapelOnFoot), plannedAt = now, closures = checkedOpen(viaWhitechapelOnFoot), changesOnFoot = changesOnFoot,
         )
-        val openRoute = mutableStateOf<String?>(openRouteOf(viaWhitechapelOnFoot, state, emptyMap()).encode())
+        val openRoute = mutableStateOf<String?>(openRouteOf(viaWhitechapelOnFoot, state, StepFree.ANY, emptyMap()).encode())
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
@@ -2764,8 +2764,8 @@ class TripScreenScreenshotTest {
                 "blue" to LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"),
             ),
         )
-        val through = withThroughRoutes(trip, lines).routes.orEmpty().single { routeKey(it) != routeKey(changing) }
-        val key = openRouteOf(through, trip, lines).encode()
+        val through = withThroughRoutes(trip, StepFree.ANY, lines).routes.orEmpty().single { routeKey(it) != routeKey(changing) }
+        val key = openRouteOf(through, trip, StepFree.ANY, lines).encode()
         // Restored with the train through open, before its lines' route data has reloaded.
         val loads = kotlinx.coroutines.CompletableDeferred<Unit>()
         val routeStops = RouteStopsRepository(
@@ -2844,8 +2844,8 @@ class TripScreenScreenshotTest {
             statuses = statuses,
             areaPoles = mapOf("AstonPair" to listOf("Aston", "Aston2")),
         )
-        val through = withThroughRoutes(refreshed, lines).routes.orEmpty().single { routeKey(it) != routeKey(changing) }
-        val key = openRouteOf(through, refreshed, lines).encode()
+        val through = withThroughRoutes(refreshed, StepFree.ANY, lines).routes.orEmpty().single { routeKey(it) != routeKey(changing) }
+        val key = openRouteOf(through, refreshed, StepFree.ANY, lines).encode()
         // Restored with the train through open: the Planner's own poles have answered (from the shared
         // arrivals), the other pole's not yet.
         val state = mutableStateOf(refreshed.copy(live = refreshed.live - throughTrain.first))
@@ -2911,8 +2911,8 @@ class TripScreenScreenshotTest {
     // The train through, open ([OpenRoute]), as tapped on the list while one was predicted.
     private val throughKey by lazy {
         val trip = throughTrip(throughIn = 5)
-        val through = withThroughRoutes(trip, throughLines).routes.orEmpty().single { routeKey(it) != routeKey(throughChanging) }
-        openRouteOf(through, trip, throughLines).encode()
+        val through = withThroughRoutes(trip, StepFree.ANY, throughLines).routes.orEmpty().single { routeKey(it) != routeKey(throughChanging) }
+        openRouteOf(through, trip, StepFree.ANY, throughLines).encode()
     }
 
     private fun showThrough(state: MutableState<TripViewModel.State>, openRoute: MutableState<String?>) {
@@ -2937,10 +2937,10 @@ class TripScreenScreenshotTest {
         // What the frame works out for each card ([openRoutesOf], the board gone over once) is what
         // [openRouteOf] gives for it alone: a train through a change opens with the route it's made from.
         val trip = throughTrip(throughIn = 5)
-        val routes = withThroughRoutes(trip, throughLines).routes.orEmpty()
-        val opens = openRoutesOf(routes, trip, throughLines)
+        val routes = withThroughRoutes(trip, StepFree.ANY, throughLines).routes.orEmpty()
+        val opens = openRoutesOf(routes, trip, StepFree.ANY, throughLines)
         assertEquals(routes.map { routeKey(it) }.distinct().toSet(), opens.keys)
-        routes.forEach { assertEquals(openRouteOf(it, trip, throughLines), opens.getValue(routeKey(it))) }
+        routes.forEach { assertEquals(openRouteOf(it, trip, StepFree.ANY, throughLines), opens.getValue(routeKey(it))) }
         assertEquals(throughKey, opens.values.single { it.encode() == throughKey }.encode())
     }
 
@@ -5809,7 +5809,7 @@ class TripScreenScreenshotTest {
         val state = mutableStateOf(disrupted)
         val journey = mutableStateOf("A>B")
         // A route riding the Jubilee open, as the trip holds it.
-        val openRoute = mutableStateOf<String?>(openRouteOf(viaCanadaWater, disrupted, emptyMap()).encode())
+        val openRoute = mutableStateOf<String?>(openRouteOf(viaCanadaWater, disrupted, StepFree.ANY, emptyMap()).encode())
         val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -5828,7 +5828,7 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.autoAdvance = false
         journey.value = "C>B"
         state.value = running
-        openRoute.value = openRouteOf(viaWhitechapel, running, emptyMap()).encode()
+        openRoute.value = openRouteOf(viaWhitechapel, running, StepFree.ANY, emptyMap()).encode()
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         // Its row is its own, never the last journey's Jubilee held for a moment (Codex, #543).

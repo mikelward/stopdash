@@ -50,7 +50,8 @@ exercises the whole spine the widget later renders from.
         `rideLegRows`, their headways), a line page's rows (`legRows` for `detailRow`, its `legFilter`
         pass over the board's trains and their calling-point lookups among it: Codex, #650), and the
         once-per-refresh chain (`onPoles`, `placedStands`/`shownRoutes`,
-        `withThroughRoutes`, `plannedLegs`, `rideLines`) still run in composition. So does
+        `withThroughRoutes`, `plannedLegs`, `rideLines`, with the rides' ends they pair them with)
+        still run in composition. So does
         `TripViewModel`'s own refresh on `viewModelScope`: the setup before its first request
         (`timedRoutes`, `lookUpPoles`, `stopsOf`, `rideLineIds`, `closureStops`) and the merging of
         what comes back (`sharedClosures` among it; the verdict checks that move `failures` are on `io`
@@ -945,8 +946,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                       last lands (see *Decisions needing review*):
                                     - [x] A ride's stop list (`RouteStops.forLeg`, `withRouteStops`):
                                           the trip screen's line page and on the way's stop list.
-                                    - [ ] `RideLines` (`runTo`, `polesToRead`, `of`, `through`,
-                                          `throughWays`), `of` keyed on the pair.
+                                    - [x] `RideLines` (`runTo`, `polesToRead`, `of`, `through`,
+                                          `throughWays`), `of` keyed on the pair: the trip page's
+                                          cards and ways through a change, and on the way's ride
+                                          lines and pair boards.
+                                    - [ ] The trip page's ride-lines lookups by the pair: it flattens
+                                          `RideLines.of` by ride (`rideLines`), lossless while every
+                                          ride has the one end; each card's lookup has to name its
+                                          ride's end before the end is read.
                                     - [ ] `DirectTrips.judge` and `TripVerdicts`, keyed on the pair.
                                     - [ ] The favorite alerts' disruption span
                                           (`JourneyAlerts.ridesOn`, `ridesOf`).

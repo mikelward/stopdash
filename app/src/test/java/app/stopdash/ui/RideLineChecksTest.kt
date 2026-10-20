@@ -12,6 +12,7 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.StepFree
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -87,7 +88,7 @@ class RideLineChecksTest {
 
     // The ride's own stop's board alone, as a ride read at a station is.
     private suspend fun RideLineChecks.running(route: TripRoute, ride: TripLeg, departures: List<Departure>) =
-        running(route, ride, mapOf(ride.fromId to departures))
+        running(route, ride, StepFree.ANY, mapOf(ride.fromId to departures))
 
     @Test
     fun `a line boarding at the other pole of the ride's stop pair is offered from that pole's board`() = runTest {
@@ -99,12 +100,12 @@ class RideLineChecksTest {
         statuses = mapOf("1" to good("1"), "2" to good("2"))
         val two = Departure("2", "2", "outbound", "C", null, at(6), "bus", vehicleId = "b2")
         // Bn's board, read with Bs's: bus 2 is offered, boarding at Bn, its stops checked open there.
-        val found = checks.running(plan, bus, mapOf("Bs" to emptyList(), "Bn" to listOf(two)))
+        val found = checks.running(plan, bus, StepFree.ANY, mapOf("Bs" to emptyList(), "Bn" to listOf(two)))
         assertEquals(listOf("1", "2"), found.lines.map { it.lineId })
         assertEquals("Bn" to "Cn", found.lines[1].let { it.fromId to it.toId })
         assertTrue("Bn" in closureReads)
         // Bs's board alone: bus 2 isn't known there.
-        assertEquals(listOf("1"), checks.running(plan, bus, mapOf("Bs" to emptyList())).lines.map { it.lineId })
+        assertEquals(listOf("1"), checks.running(plan, bus, StepFree.ANY, mapOf("Bs" to emptyList())).lines.map { it.lineId })
     }
 
     // Shared with the other screens (SPEC *Freshness → Shared line status*): lines another screen checked

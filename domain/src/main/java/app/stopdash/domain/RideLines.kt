@@ -72,28 +72,33 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             lineId in statuses && lineId !in TripTiming.notRunning(statuses.values)
 
         /**
-         * Each ride of [routes] to its [RideLines]. A line is considered when it rides first somewhere
-         * in the plan or when its trains are among the ride's boarding stop's [arrivals]; it counts once
-         * its route ([sequences]) is loaded and gives exactly one run between the two stops. It boards
-         * only at a stop whose arrivals the trip fetches (the ride's own, or its pair's [areaPoles]), so
-         * no request is added for it. A [hidden] line is left out, as its routes are.
+         * Each ride of [routes], paired with where it gets off ([ends]: [LegEnd.of], or [LegEnd.planned]
+         * until arriving by hub reads the end), to its [RideLines]. Keyed on the pair, so a leg last in
+         * one route and in the middle of another is two keys (dev-docs/station-resolution.md, phase 2).
+         * A line is considered when it rides first somewhere in the plan or when its trains are among
+         * the ride's boarding stop's [arrivals]; it counts once its route ([sequences]) is loaded and
+         * gives exactly one run between the two stops. It boards only at a stop whose arrivals the trip
+         * fetches (the ride's own, or its pair's [areaPoles]), so no request is added for it. A [hidden]
+         * line is left out, as its routes are.
          */
         fun of(
             routes: List<TripRoute>,
+            ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>,
             arrivals: Map<String, List<Departure>>,
             areaPoles: Map<String, List<String>>,
             sequences: Map<String, LineSequence?>,
             hidden: Set<String> = emptySet(),
-        ): Map<TripLeg, RideLines> {
-            val rides = routes.flatMap { it.rides }.distinct()
+        ): Map<Pair<TripLeg, LegEnd>, RideLines> {
+            val ended = routes.flatMap(ends).distinct()
+            val rides = ended.map { it.first }.distinct()
             // A stop pair ("490G…") the Planner's path names, or a pole: either is the stop, by its pair.
             val areas = HashMap<String, String>().apply { sequences.values.filterNotNull().forEach { putAll(it.stopAreas) } }
             fun stopOf(id: String) = areas[id] ?: id
-            return rides.associateWith { ride ->
+            return ended.associateWith { (ride, end) ->
                 val boarding = boardingStops(ride, areaPoles)
                 val found = candidates(ride, rides, arrivals, boarding, hidden).mapNotNull { (lineId, lineName) ->
                     val sequence = sequences[lineId] ?: return@mapNotNull null
-                    sameStops(ride, lineId, lineName, sequence, boarding)
+                    sameStops(ride, end, lineId, lineName, sequence, boarding)
                 }
                 if (found.isEmpty()) return@associateWith only(ride)
                 // The stops between, by their pairs, less where the ride gets off: by the planned stop, or the id of
@@ -118,19 +123,22 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
          * between the two stops. A walk between the rides is a change of station, so it stays. The
          * ride's Planner times are the two rides' time on board without the change between: an
          * estimate the live trains replace. Each route with one pair of rides joined; one already
-         * among [routes] is left to the Planner's copy.
+         * among [routes] is left to the Planner's copy. The line gets off where the second ride does
+         * ([ends] pairs each route's rides with where they get off, as [of]'s do).
          */
         fun through(
             routes: List<TripRoute>,
+            ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>,
             arrivals: Map<String, List<Departure>>,
             areaPoles: Map<String, List<String>>,
             sequences: Map<String, LineSequence?>,
             hidden: Set<String> = emptySet(),
-        ): List<TripRoute> = throughWays(routes, arrivals, areaPoles, sequences, hidden).map { it.route }
+        ): List<TripRoute> = throughWays(routes, ends, arrivals, areaPoles, sequences, hidden).map { it.route }
 
         /** [through]'s routes, each with the route of [routes] it's made from ([Through]). */
         fun throughWays(
             routes: List<TripRoute>,
+            ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>,
             arrivals: Map<String, List<Departure>>,
             areaPoles: Map<String, List<String>>,
             sequences: Map<String, LineSequence?>,
@@ -141,10 +149,15 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             val known = routes.mapTo(HashSet(), ::key)
             val found = LinkedHashMap<List<List<String>>, Through>()
             for (route in routes) {
+                // Each ride's end, by its place among the route's rides: walks get none.
+                val rideEnds = ends(route).map { it.second }
+                var rideIndex = -1
                 for (index in 0 until route.legs.size - 1) {
                     val first = route.legs[index]
                     val second = route.legs[index + 1]
+                    if (!first.isWalk) rideIndex++
                     if (first.isWalk || second.isWalk || !first.mode.equals(second.mode, ignoreCase = true)) continue
+                    val end = rideEnds.getOrNull(rideIndex + 1) ?: continue
                     val boarding = boardingStops(first, areaPoles)
                     val lines = (candidates(first, rides, arrivals, boarding, hidden) + (first.lineId to first.lineName))
                         .filter { it.first.isNotBlank() }
@@ -152,12 +165,12 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                     for ((lineId, lineName) in lines) {
                         if (HiddenModes.isHidden(first.mode, lineId, hidden)) continue
                         val sequence = sequences[lineId] ?: continue
-                        val run = runTo(first, second, lineId, lineName, sequence, boarding) ?: continue
-                        val ride = run.copy(
+                        val run = runTo(first, second, end, lineId, lineName, sequence, boarding) ?: continue
+                        val joinedRide = run.copy(
                             arrival = first.departure + first.run + second.run,
                             changeAfter = second.changeAfter,
                         )
-                        val joined = TripRoute(route.legs.take(index) + ride + route.legs.drop(index + 2))
+                        val joined = TripRoute(route.legs.take(index) + joinedRide + route.legs.drop(index + 2))
                         val joinedKey = key(joined)
                         if (joinedKey !in known) found.putIfAbsent(joinedKey, Through(joined, route, index))
                     }
@@ -196,17 +209,18 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
          * those besides its own whose board may list another line's train taking the ride ([of]), so a
          * trip that reads only their boards reads no more than it needs: a pole serving a line of the
          * ride's mode, not the ride's own nor [hidden], whose route ([sequences]) runs the ride from
-         * that pole, or whose route isn't known (none in [sequences]). A pole TfL lists no lines for
-         * may serve one, so it's read too.
+         * that pole to where it gets off ([end], as [of] is given it), or whose route isn't known (none
+         * in [sequences]). A pole TfL lists no lines for may serve one, so it's read too.
          */
         fun polesToRead(
             ride: TripLeg,
+            end: LegEnd,
             poles: List<StopLocation>,
             sequences: Map<String, LineSequence?>,
             hidden: Set<String> = emptySet(),
         ): List<StopLocation> = poles.filter { pole ->
             pole.id != ride.fromId && (pole.lines.isEmpty() || pole.lines.any { line ->
-                mayTake(ride, line, hidden) && sequences[line.id]?.let { runTo(ride, ride, line.id, line.name, it, setOf(pole.id)) != null } ?: true
+                mayTake(ride, line, hidden) && sequences[line.id]?.let { runTo(ride, ride, end, line.id, line.name, it, setOf(pole.id)) != null } ?: true
             })
         }
 
@@ -242,22 +256,27 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
         }
 
         // [ride] by line [lineId] as its route ([sequence]) runs it: from a fetched pole of the ride's
-        // boarding stop to the ride's getting-off stop (or a pole of its pair); null unless the route
-        // gives exactly one such run.
+        // boarding stop to the ride's getting-off stop (or a pole of its pair), getting off at [end];
+        // null unless the route gives exactly one such run.
         private fun sameStops(
             ride: TripLeg,
+            end: LegEnd,
             lineId: String,
             lineName: String,
             sequence: LineSequence,
             boarding: Set<String>,
-        ): TripLeg? = runTo(ride, ride, lineId, lineName, sequence, boarding)
+        ): TripLeg? = runTo(ride, ride, end, lineId, lineName, sequence, boarding)
 
-        // [ride] by line [lineId] from a fetched pole of [ride]'s boarding stop to [end]'s getting-off
+        // [ride] by line [lineId] from a fetched pole of [ride]'s boarding stop to [to]'s getting-off
         // stop (or a pole of its pair), as its route ([sequence]) runs it; null unless the route gives
-        // exactly one such run.
+        // exactly one such run. [end] is where [to] gets off ([LegEnd]): every caller supplies one, so
+        // none can be missed when arriving by hub moves the ride's end onto it. Not read yet: the run
+        // still ends at [to]'s Planner stop, which is what every caller's end ([LegEnd.planned]) names.
+        @Suppress("UNUSED_PARAMETER")
         private fun runTo(
             ride: TripLeg,
-            end: TripLeg,
+            to: TripLeg,
+            end: LegEnd,
             lineId: String,
             lineName: String,
             sequence: LineSequence,
@@ -270,8 +289,8 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             // only failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
             fun runs(station: Boolean) = boarding.flatMap { stop ->
                 val seen = sequence.callingAt(stop)
-                fun alights(id: String) = id == end.toId || (end.toArea.isNotEmpty() && seen.stopAreas[id] == end.toArea) ||
-                    (station && seen.sameStationId(id, end.toId))
+                fun alights(id: String) = id == to.toId || (to.toArea.isNotEmpty() && seen.stopAreas[id] == to.toArea) ||
+                    (station && seen.sameStationId(id, to.toId))
                 seen.routes.flatMap { route ->
                     val ids = route.stopIds
                     ids.indices.filter { ids[it] == stop }.mapNotNull { i ->
@@ -289,7 +308,7 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                 fromId = board,
                 fromName = sequence.stopNames[board] ?: ride.fromName,
                 toId = off,
-                toName = sequence.stopNames[off] ?: end.toName,
+                toName = sequence.stopNames[off] ?: to.toName,
                 path = on,
                 pathNames = on.map { sequence.stopNames[it].orEmpty() },
                 // The line's own terminus isn't the Planner's: its trains are checked on its own route.

@@ -18,12 +18,19 @@ class RideLinesTest {
 
     private fun sequence(vararg stops: String) = LineSequence(routes = listOf(LineRoute("route", stops.toList())), stopNames = stops.associateWith { it })
 
+    // Where each ride gets off: the Planner's call ([LegEnd.planned]), as every caller has it until the end is read.
+    private val planned = { route: TripRoute -> LegEnd.planned(route, StepFree.ANY) }
+    // Getting off anywhere in a hub the stops here aren't in: an end that would change every answer were it read.
+    private val byHub = { route: TripRoute -> route.rides.map { it to LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBZ")) } }
+
+    private fun ended(ride: TripLeg) = ride to LegEnd.planned(ride, StepFree.ANY)
+
     private val ride = leg("red", "A", "B")
     private val route = TripRoute(listOf(ride))
     private val atA = mapOf("A" to listOf(train("red"), train("green")))
 
     private fun linesOf(sequences: Map<String, LineSequence?>, hidden: Set<String> = emptySet(), arrivals: Map<String, List<Departure>> = atA) =
-        RideLines.of(listOf(route), arrivals, emptyMap(), sequences, hidden).getValue(ride)
+        RideLines.of(listOf(route), planned, arrivals, emptyMap(), sequences, hidden).getValue(ended(ride))
 
     @Test
     fun `a line at the ride's boarding stop that runs to its getting-off stop is an equal`() {
@@ -75,10 +82,11 @@ class RideLinesTest {
         )
         val lines = RideLines.of(
             listOf(TripRoute(listOf(bus))),
+            planned,
             mapOf("Bn" to listOf(train("2", mode = "bus"))),
             mapOf("BG" to listOf("Bs", "Bn")),
             mapOf("2" to two),
-        ).getValue(bus)
+        ).getValue(ended(bus))
         assertEquals(listOf("1", "2"), lines.legs.map { it.lineId })
         assertEquals("Bn" to "Cn2", lines.legs[1].let { it.fromId to it.toId })
         assertEquals(listOf("1", "2"), lines.timed.map { it.lineId })
@@ -103,14 +111,16 @@ class RideLinesTest {
         )
         val poles = listOf(bs, bn, bw, bx, by, bz)
         // The ride's own pole is read anyway; of the rest, those that may have a bus taking the ride.
-        assertEquals(listOf(bn, bx, by), RideLines.polesToRead(bus, poles, sequences))
+        assertEquals(listOf(bn, bx, by), RideLines.polesToRead(bus, LegEnd.planned(bus, StepFree.ANY), poles, sequences))
         // A hidden line's pole needn't be read for it.
-        assertEquals(listOf(bx, by), RideLines.polesToRead(bus, poles, sequences, hidden = setOf(HiddenModes.lineKey("2", "2"))))
+        assertEquals(listOf(bx, by), RideLines.polesToRead(bus, LegEnd.planned(bus, StepFree.ANY), poles, sequences, hidden = setOf(HiddenModes.lineKey("2", "2"))))
         // A line of another mode at a pole doesn't take a bus ride, whatever its route.
         val tube = pole("Bt", "2" to "tube")
-        assertEquals(emptyList<StopLocation>(), RideLines.polesToRead(bus, listOf(tube), sequences))
+        assertEquals(emptyList<StopLocation>(), RideLines.polesToRead(bus, LegEnd.planned(bus, StepFree.ANY), listOf(tube), sequences))
         // The routes it goes by: the buses that may take the ride, never the ride's own or another mode.
         assertEquals(listOf("2", "3", "4"), RideLines.pairLineIds(bus, poles + tube))
+        // Where the ride gets off isn't read yet: a hub end reads the same poles as the Planner's call.
+        assertEquals(listOf(bn, bx, by), RideLines.polesToRead(bus, LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBZ")), poles, sequences))
     }
 
     @Test
@@ -223,7 +233,7 @@ class RideLinesTest {
     private val changing = TripRoute(listOf(redToB, blueToC))
 
     private fun through(sequences: Map<String, LineSequence?>, arrivals: Map<String, List<Departure>> = mapOf("A" to listOf(train("red"), train("blue"))), hidden: Set<String> = emptySet()) =
-        RideLines.through(listOf(changing), arrivals, emptyMap(), sequences, hidden)
+        RideLines.through(listOf(changing), planned, arrivals, emptyMap(), sequences, hidden)
 
     @Test
     fun `a line running on through the change is a route with one ride fewer`() {
@@ -253,7 +263,7 @@ class RideLinesTest {
         assertTrue(through(mapOf("blue" to sequence("A", "B", "X", "C")), hidden = hidden).isEmpty())
         // A walk between the rides changes station: the rides stay as they are.
         val walking = TripRoute(listOf(redToB, leg("", "B", "B2", mode = TripLeg.WALKING), blueToC.copy(fromId = "B2")))
-        assertTrue(RideLines.through(listOf(walking), mapOf("A" to listOf(train("blue"))), emptyMap(), mapOf("blue" to sequence("A", "B", "X", "C"))).isEmpty())
+        assertTrue(RideLines.through(listOf(walking), planned, mapOf("A" to listOf(train("blue"))), emptyMap(), mapOf("blue" to sequence("A", "B", "X", "C"))).isEmpty())
         // Another mode's line isn't a way through a tube change.
         val bus = mapOf("A" to listOf(train("green", mode = "bus")))
         assertTrue(through(mapOf("green" to sequence("A", "B", "X", "C")), arrivals = bus).isEmpty())
@@ -262,7 +272,32 @@ class RideLinesTest {
     @Test
     fun `a way through the Planner already offers isn't added again`() {
         val direct = TripRoute(listOf(leg("blue", "A", "C", path = listOf("B", "X", "C"))))
-        val routes = RideLines.through(listOf(changing, direct), mapOf("A" to listOf(train("blue"))), emptyMap(), mapOf("blue" to sequence("A", "B", "X", "C")))
+        val routes = RideLines.through(listOf(changing, direct), planned, mapOf("A" to listOf(train("blue"))), emptyMap(), mapOf("blue" to sequence("A", "B", "X", "C")))
         assertTrue(routes.isEmpty())
+    }
+
+    @Test
+    fun `a ride's lines are keyed on the ride and where it gets off`() {
+        val sequences = mapOf("green" to sequence("A", "B", "End"))
+        val lines = RideLines.of(listOf(route), planned, atA, emptyMap(), sequences)
+        assertEquals(setOf(ended(ride)), lines.keys)
+        // The same ride given another end is another key: never judged once for both.
+        val hub = RideLines.of(listOf(route), byHub, atA, emptyMap(), sequences)
+        assertFalse(ended(ride) in hub.keys)
+    }
+
+    @Test
+    fun `a ride's lines and ways through are the same whatever end they're given`() {
+        // Arriving by hub doesn't read the end yet: a hub end finds the lines and ways the Planner's call does.
+        val sequences = mapOf("green" to sequence("A", "B", "End"), "blue" to sequence("A", "B", "X", "C", "End"))
+        val board = mapOf("A" to listOf(train("red"), train("green"), train("blue")))
+        val lines = RideLines.of(listOf(route, changing), planned, board, emptyMap(), sequences)
+        val hub = RideLines.of(listOf(route, changing), byHub, board, emptyMap(), sequences)
+        assertEquals(lines.map { (key, value) -> key.first to value }, hub.map { (key, value) -> key.first to value })
+        assertEquals(setOf("red", "green", "blue"), lines.getValue(ended(ride)).legs.mapTo(HashSet()) { it.lineId })
+        val arrivals = mapOf("A" to listOf(train("red"), train("blue")))
+        val ways = RideLines.throughWays(listOf(changing), planned, arrivals, emptyMap(), sequences)
+        assertEquals(1, ways.size)
+        assertEquals(ways, RideLines.throughWays(listOf(changing), byHub, arrivals, emptyMap(), sequences))
     }
 }
