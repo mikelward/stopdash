@@ -2065,8 +2065,8 @@ class ActiveTripTrackerTest {
         stopPositions = mapOf("D" to (51.6 to -0.12), "E" to (51.61 to -0.12), "F" to (51.62 to -0.12)),
     )
 
-    private fun fixAt(latitude: Double, longitude: Double = -0.12) =
-        app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, longitude), isFallback = false, accuracyMeters = 20f, ageMillis = 1_000L)
+    private fun fixAt(latitude: Double, longitude: Double = -0.12, accuracy: Float = 20f) =
+        app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, longitude), isFallback = false, accuracyMeters = accuracy, ageMillis = 1_000L)
 
     @Test
     fun `a rider seen along the ride while its train is awaited is on the train that left`() = runTest {
@@ -2125,7 +2125,8 @@ class ActiveTripTrackerTest {
         assertEquals("7", tracker.trip.value?.vehicleId)
         assertEquals(listOf("Q", "C"), tracker.trip.value?.vehicleLeg?.path)
         val riding = tracker.progress.value as TripProgress.Riding
-        assertEquals(2, riding.stopsLeft)
+        // Seen at Q as it calls there: C next, as where they were seen counts (maintainer, 2026-10-20).
+        assertEquals(1, riding.stopsLeft)
         assertEquals(at(12), riding.getOffAt)
         assertTrue(logged.none { "51." in it })
     }
@@ -2236,12 +2237,12 @@ class ActiveTripTrackerTest {
         sequences["red"] = redLine
         trains["9"] = listOf(call("B", 9), call("C", 14))
         now = at(8)
-        // One fix there: not yet, as one can jump wide (maintainer, 2026-10-19).
-        tracker.refresh(fixAt(51.51))
+        // One fix sure only to 30 m there: not yet, as one can jump wide (maintainer, 2026-10-19).
+        tracker.refresh(fixAt(51.51, accuracy = 30f))
         assertEquals(2, (tracker.progress.value as TripProgress.Riding).stopsLeft)
         assertTrue(logged.any { it.startsWith("on the way: seen 1 stop(s) past the next call on line red once") })
         // The next refresh's fix there too: counted on from B.
-        tracker.refresh(fixAt(51.51))
+        tracker.refresh(fixAt(51.51, accuracy = 30f))
         assertEquals("9", tracker.trip.value?.vehicleId)
         assertEquals(1, tracker.trip.value?.seenAlongStop)
         val riding = tracker.progress.value as TripProgress.Riding
@@ -2258,15 +2259,42 @@ class ActiveTripTrackerTest {
         // A fix there between two that aren't: never two in a row, so the calls' count stands.
         val jumpy = tracker(StandardTestDispatcher(testScheduler), load = { saved })
         jumpy.restore()
-        jumpy.refresh(fixAt(51.51))
-        jumpy.refresh(fixAt(51.5))
-        jumpy.refresh(fixAt(51.51))
+        jumpy.refresh(fixAt(51.51, accuracy = 30f))
+        jumpy.refresh(fixAt(51.5, accuracy = 30f))
+        jumpy.refresh(fixAt(51.51, accuracy = 30f))
         assertEquals(2, (jumpy.progress.value as TripProgress.Riding).stopsLeft)
         // Without a fix that places them, the calls' count stands.
         val unseen = tracker(StandardTestDispatcher(testScheduler), load = { saved })
         unseen.restore()
         unseen.refresh()
         assertEquals(2, (unseen.progress.value as TripProgress.Riding).stopsLeft)
+        // One fix sure to 20 m is enough: waiting on a second cost a rider their stop (maintainer, 2026-10-20).
+        val exact = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        exact.restore()
+        exact.refresh(fixAt(51.51, accuracy = 15f))
+        assertEquals(1, (exact.progress.value as TripProgress.Riding).stopsLeft)
+        assertTrue(logged.any { it.startsWith("on the way: seen 1 stop(s) past the next call on line red, counted from stop 2 of 2, exact fix accuracy 15 m") })
+    }
+
+    @Test
+    fun `a bus's next call well past its time counts the trip on a stop`() = runTest {
+        // The 9's calls still say B is next half a minute after it was due: counted on to C, and "get off soon" said
+        // (maintainer, 2026-10-20).
+        val saved = ActiveTrip(TripRoute(listOf(ride.copy(mode = "bus", pathNames = listOf("B", "C")))), "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = redLine
+        trains["9"] = listOf(call("B", 8), call("C", 14))
+        now = at(8).plusSeconds(20)
+        tracker.refresh()
+        assertEquals(2, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        now = at(8).plusSeconds(30)
+        tracker.refresh()
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals("C", riding.nextStop)
+        assertEquals(1, riding.stopsLeft)
+        assertTrue(riding.getOffSoon)
+        assertTrue(logged.any { it.startsWith("on the way: next call on line red over 30 s past its time, counted from stop 2") })
     }
 
     @Test

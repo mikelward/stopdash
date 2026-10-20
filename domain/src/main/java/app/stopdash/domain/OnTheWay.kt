@@ -257,6 +257,9 @@ object OnTheWay {
     /** How sure a fix must be to tell [MISSED_WITHIN_METERS] apart: the rider's train is well past it. */
     const val FIX_WITHIN_METERS = 50f
 
+    /** How sure one fix past a train's next call must be to count on its own, not waiting on a second ([seenPastCalls]). */
+    const val EXACT_FIX_METERS = 20f
+
     /** How recent a fix must be: a train covers 150 m in seconds, so an older one can't say. */
     const val FIX_FRESH_WITHIN_MILLIS = 10_000L
 
@@ -1778,15 +1781,18 @@ object OnTheWay {
      * wide moves nothing (maintainer, 2026-10-19). TfL's predictions run a stop or so behind a bus, so
      * the trip would still say a stop already passed is next (maintainer, 2026-10-19). Kept as
      * [ActiveTrip.seenAlongStop], furthest, so a refresh with no fix doesn't take it back ([countedOn]); one
-     * [AHEAD_OF_RIDER_STOPS] past is another train, let go before this ([followedAhead], [aheadOfTrain]). Only on
-     * the ride's own line, whose stops the calls count ([ActiveTrip.vehicleLeg] null). Null when nothing moves on.
+     * [AHEAD_OF_RIDER_STOPS] past is another train, let go before this ([followedAhead], [aheadOfTrain]). On the
+     * ride as the train's line runs it ([ridden]), whose stops its calls count, [positions] being that one's. Null
+     * when nothing moves on.
      */
     @WorkerThread
     fun seenPastCalls(trip: ActiveTrip, progress: TripProgress, rider: LocationFix, positions: Map<String, Coordinates>, now: Instant): ActiveTrip? {
         val riding = progress as? TripProgress.Riding ?: return null
-        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank() || trip.vehicleLeg != null) return null
-        val leg = trip.leg ?: return null
-        if (riding.leg != leg || leg.path.isEmpty()) return null
+        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank()) return null
+        // The calls count the ride as their line runs it: another of the ride's lines, or a train found again on its
+        // own copy of the route, counts on that (maintainer, 2026-10-20: the count stayed a stop behind once found).
+        val leg = ridden(trip) ?: return null
+        if (riding.leg != trip.leg || leg.path.isEmpty()) return null
         val next = callsNext(leg, riding) ?: return null
         val fix = usableFix(rider) ?: return null
         val placed = placeAlong(leg, fix, positions) ?: return null
@@ -1807,6 +1813,33 @@ object OnTheWay {
         return trip.copy(seenAlongStop = ahead, seenAlongAt = now)
     }
 
+    /**
+     * [trip] counted on past the stop its bus's [calls] say it calls at next, once that call's time is
+     * [CALL_PASSED_AFTER] past at [now]: the calls run a stop or so behind a bus, and a rider shouldn't wait on
+     * them to hear their stop is next (maintainer, 2026-10-20). One stop on at most, never past where they get
+     * off, kept as [ActiveTrip.seenAlongStop] ([countedOn]); the calls' own count wins once it catches up. Null
+     * when nothing moves on.
+     */
+    @WorkerThread
+    fun pastDue(trip: ActiveTrip, progress: TripProgress, calls: List<VehicleCall>, now: Instant): ActiveTrip? {
+        val riding = progress as? TripProgress.Riding ?: return null
+        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank()) return null
+        val leg = ridden(trip) ?: return null
+        // A bus's calls are what lag; a train held at a platform is still before the stop its calls name (Codex, #1019).
+        if (riding.leg != trip.leg || leg.path.isEmpty() || !leg.mode.equals("bus", ignoreCase = true)) return null
+        val next = callsNext(leg, riding) ?: return null
+        // The call at the stop the count names next, not the first: one at the stop they boarded at is behind them,
+        // and one at another pole of the same name isn't it (Codex, #1019).
+        val due = calls.firstOrNull { calls(it, leg, leg.path[next], leg.pathNames.getOrNull(next).orEmpty()) }?.expected ?: return null
+        if (now.isBefore(due.plus(CALL_PASSED_AFTER))) return null
+        val ahead = next + 1
+        if (ahead >= leg.path.size || ahead <= trip.seenAlongStop) return null
+        return trip.copy(seenAlongStop = ahead, seenAlongAt = now)
+    }
+
+    /** How long past its time a bus's next call is taken as made ([pastDue]). */
+    val CALL_PASSED_AFTER: Duration = Duration.ofSeconds(30)
+
     // The index into [leg]'s path of the next stop [riding]'s calls count to: its stops left from where it gets off,
     // where that's the stop the calls name next. Null where it isn't (a train not calling at every stop of the path,
     // whose calls left don't count its stops; Codex, #993), or nothing is counted.
@@ -1825,11 +1858,12 @@ object OnTheWay {
      */
     fun countedOn(trip: ActiveTrip, progress: TripProgress): TripProgress {
         val riding = progress as? TripProgress.Riding ?: return progress
-        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank() || trip.vehicleLeg != null) return progress
-        val leg = trip.leg ?: return progress
+        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank()) return progress
+        // Counted on the ride as the train's line runs it, as its calls are ([seenPastCalls]).
+        val leg = ridden(trip) ?: return progress
         val callsTo = callsNext(leg, riding) ?: return progress
         val from = trip.seenAlongStop
-        if (riding.leg != leg || from <= callsTo || from >= leg.path.size) return progress
+        if (riding.leg != trip.leg || from <= callsTo || from >= leg.path.size) return progress
         val stopsLeft = leg.path.size - from
         // A stop not named is left unnamed, not called by the one the calls named (Codex, PR #449).
         val next = leg.pathNames.getOrNull(from)?.takeIf { it.isNotBlank() } ?: leg.toName.takeIf { leg.path.getOrNull(from) == leg.toId }
@@ -1885,9 +1919,12 @@ object OnTheWay {
         val offId = calls.getOrNull(off)?.takeIf { !callsTo(it, leg) }?.stopId.orEmpty()
         val aboard = (if (train.vehicleId == trip.vehicleId) trip else asPlanned(trip)).copy(
             vehicleId = train.vehicleId, vehicleLeg = leg.takeIf { it != planned }, vehicleOffId = offId,
-            boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true, seenAlongStop = -1, seenAlongAt = null, heldFrom = null,
+            boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true, heldFrom = null,
+            // Where they were seen is kept, so the train's calls, which can run a stop behind it, don't take them back
+            // ([countedOn]; maintainer, 2026-10-20: seen at a stop, then counted a stop short once the bus was found).
+            seenAlongStop = ahead(Along(from, atStop)), seenAlongAt = now,
         )
-        return advance(aboard, calls, now).takeIf { it.second is TripProgress.Riding }
+        return advance(aboard, calls, now).let { (at, progress) -> at to countedOn(at, progress) }.takeIf { it.second is TripProgress.Riding }
     }
 
     /**
