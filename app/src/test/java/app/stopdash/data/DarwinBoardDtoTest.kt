@@ -44,6 +44,16 @@ class DarwinBoardDtoTest {
     }
 
     @Test
+    fun `a train's terminus is placed by the station model with its board`() {
+        val board = board().toBoard(stopIdFor = { "910G$it" }, placeFor = { records -> app.stopdash.domain.Resolved(records.single(), "station:" + records.single(), "HUB") })
+        board.departures.filter { it.destinationId.isNotBlank() }.also { assertTrue(it.isNotEmpty()) }.forEach {
+            assertEquals("station:" + it.destinationId, it.destinationPlace?.station)
+        }
+        // Without a model, unplaced.
+        assertTrue(board().toBoard(stopIdFor = { "910G$it" }).departures.all { it.destinationPlace == null })
+    }
+
+    @Test
     fun `a portion that won't run today is no way to reach its stops`() {
         fun point(crs: String) = DarwinCallingPointDto(crs, crs)
         val ids = mapOf("WOK" to setOf("910GWOKING"), "GLD" to setOf("910GGUILDFD"), "BSK" to setOf("910GBSNGSTK"))

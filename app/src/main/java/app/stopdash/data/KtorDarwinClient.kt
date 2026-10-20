@@ -9,6 +9,7 @@ import app.stopdash.domain.RailRuns
 import app.stopdash.domain.Resolved
 import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TflException
+import app.stopdash.domain.place
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
@@ -26,6 +27,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -55,8 +58,8 @@ class KtorDarwinClient(
     private val stopIdFor: (String) -> String? = { null },
     // Every TfL stop id of a station code (RailStationCodes.stopIdsFor): a train's calling points.
     private val stopIdsFor: (String) -> Set<String> = { emptySet() },
-    // The station model, placing each train's calling points ([CallingPortion.calls]); waited for as
-    // [HubsStore.ready] does, before the request. None by default (tests): the points go unplaced.
+    // The station model, placing each train's terminus and calling points ([Departure.destinationPlace],
+    // [CallingPortion.calls]); waited for as [HubsStore.ready] does. None by default (tests): unplaced.
     private val hubs: suspend () -> Hubs? = { null },
     // stopdash's proxy ([StopdashProxy]), for a rider with no key of their own. Null (tests, a build with
     // none) leaves a keyless rider without National Rail times, as before it.
@@ -72,11 +75,15 @@ class KtorDarwinClient(
 
     override suspend fun departures(crs: String): List<Departure> = board(crs).departures
 
-    override suspend fun board(crs: String): RailBoard {
+    override suspend fun board(crs: String): RailBoard = coroutineScope {
         // Cleared since the caller checked [available]: no answer, never a board with no trains (Codex, #883).
         val route = route() ?: throw TflException.Unreachable("no national rail key", null)
-        // The plain board lists no calling points ([boardWithDetails] does), so nothing waits for the model.
-        return fetch(route, BOARD, crs, ROWS) { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn = warn).copy(age = age) }
+        // The plain board lists no calling points ([boardWithDetails] does), only each train's terminus
+        // ([Departure.destinationPlace]): the model is asked for alongside the request, never before it.
+        val model = async { hubs() }
+        val board = fetch(route, BOARD, crs, ROWS) { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn = warn).copy(age = age) }
+        val placing = model.await() ?: return@coroutineScope board
+        withContext(decodeDispatcher) { placing.place(board) }
     }
 
     /**

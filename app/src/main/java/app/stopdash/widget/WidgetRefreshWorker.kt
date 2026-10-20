@@ -1,6 +1,7 @@
 package app.stopdash.widget
 
 import app.stopdash.BuildConfig
+import app.stopdash.data.HubsStore
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.logNetworkWarning
 import app.stopdash.data.StopdashProxy
@@ -561,6 +562,9 @@ internal suspend fun refreshStoredSnapshot(
                     // The statuses it fetches fill the shared line-status cache the app reuses, so
                     // they carry National Rail's words too, though the widget shows no reasons.
                     proxyUrl = { BuildConfig.PROXY_URL },
+                    // Each train's terminus placed by the station model, as in the app: its boards go to the
+                    // shared cache the app's screens reuse.
+                    hubs = HubsStore::ready,
                 )
                 val client = CachingTflClient(RailAwareTflClient(
                     tfl = tfl,
@@ -571,6 +575,7 @@ internal suspend fun refreshStoredSnapshot(
                         stopIdFor = { RailStationCodesStore.load(context).stopIdFor(it) },
                         // As in the app: without a key of the rider's own, the boards come through the proxy.
                         proxyUrl = { StopdashProxy.url },
+                        hubs = HubsStore::ready,
                     ),
                     codes = { RailStationCodesStore.load(context) },
                     warn = ::logWidgetSnapshotWarning,
