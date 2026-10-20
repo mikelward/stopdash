@@ -411,6 +411,46 @@ class Hubs private constructor(
     }
 
     /**
+     * The destination's matchable hubs (dev-docs/station-resolution.md, *Where it's built*): the hubs a
+     * trip's last ride may get off in, at its first call in one of them. For [id] ([name]) picked at
+     * [level], or as a pick saved without one reads ([picked]):
+     * - a station, stop or interchange the model places: its one hub;
+     * - an end the bundle can't place whole (an id it doesn't hold, or an interchange or stop area it
+     *   doesn't): the hubs of the children the trip was planned to ([plannedTo]), each resolved, or its
+     *   own id where none places;
+     * - a split stop area picked with no pole or point, or a place: none, so the last ride ends at the
+     *   Planner's call. A split area's [Resolved.hubs] are for dismissal alone.
+     * A station's [Pick.extraStopId] (passed as [extraStopId], or read back by [picked]) adds its stop's
+     * hub, wherever a later bundle files it, as its arrival ids ([idsOf]) take that stop.
+     * Not read by any feature yet: phase 2 points arriving at it.
+     */
+    @WorkerThread
+    fun destinationHubs(
+        id: String,
+        name: String,
+        level: Pick.Level?,
+        plannedTo: Collection<String> = emptyList(),
+        extraStopId: String? = null,
+    ): Set<String> {
+        if (id.isBlank()) return emptySet()
+        val read = level?.let { Pick(id, name, it) } ?: picked(id, name)
+        val pick = if (extraStopId != null) read.copy(extraStopId = extraStopId) else read
+        if (pick.level == Pick.Level.PLACE) return emptySet()
+        val own = ownDestinationHubs(pick, plannedTo)
+        val extra = pick.extraStopId?.let { resolve(it).hub } ?: return own
+        return own + extra
+    }
+
+    private fun ownDestinationHubs(pick: Pick, plannedTo: Collection<String>): Set<String> {
+        val key = pick.id.uppercase()
+        val placed = placed(pick.id, pick.id, null, null) ?: (if (key != pick.id) placed(pick.id, key, null, null) else null)
+        if (placed != null) return setOfNotNull(placed.hub)
+        ((hubOf(pick.id) as? Membership.Of) ?: (hubOf(key) as? Membership.Of))?.let { return setOf(it.id) }
+        val children = plannedTo.mapNotNullTo(LinkedHashSet()) { child -> resolve(child).hub }
+        return children.ifEmpty { setOf(key) }
+    }
+
+    /**
      * A trip's arrival ids ([idsOf]) for the destination [id] ([name]) picked at [level], or as a pick
      * saved without one reads ([picked]): a station's records, platforms and own bus stops, or a stop's
      * poles and whole areas, each to its station or stop (dev-docs/station-model.md, `destinationIds`).

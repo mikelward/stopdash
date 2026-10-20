@@ -225,6 +225,15 @@ class HubsPickTest {
     }
 
     @Test
+    fun `a destination station's same-named stop adds that stop's hub`() {
+        // Read back from a pick saved with only an id and a name: its stop is filed under its own record.
+        assertEquals(setOf("910GVALE"), hubs.destinationHubs("910GVALE", "Vale", null))
+        // Kept from a saved pick whose stop a later bundle filed under another hub.
+        assertEquals(setOf("910GVALE", "HUBEXX"), hubs.destinationHubs("910GVALE", "Vale", Pick.Level.STATION, extraStopId = "490000001A"))
+        assertEquals("a place still has none", emptySet<String>(), hubs.destinationHubs("51.5,-0.12", "A place", Pick.Level.PLACE, extraStopId = "490000001A"))
+    }
+
+    @Test
     fun `a stop area reads as its stop, by a pole, and a split one by the stop of the saved name`() {
         assertEquals(Pick("490000001A", "Example Pancras", Pick.Level.STOP), hubs.picked("490G000001", "Example Pancras"))
         assertEquals(Pick("490000005B", "Mill Lane", Pick.Level.STOP), hubs.picked("490G000005", "Mill Lane"))
