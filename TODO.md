@@ -895,42 +895,44 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                     - [ ] The name tests left: `PlaceDirect`'s and `StopLinks`' `sameStation`,
                           `OffPlan`'s name-only matches, and on the way's `sameStation` and
                           `stationPlaces` (passing a stop).
-                    - [ ] Resolve TfL ids once where they enter the app (`dev-docs/station-resolution.md`,
-                          maintainer 2026-10-19): each feed's mapper hands `:domain` a `Resolved` id
-                          (TfL id, station, hub) and nothing compares raw ids across feeds. Station for
+                    - [ ] Resolve TfL ids through the station model (`dev-docs/station-resolution.md`,
+                          maintainer 2026-10-19): feeds keep raw TfL ids and each check resolves the ids
+                          it reads to a `Resolved` (TfL id, station, hub) when it runs (maintainer,
+                          2026-10-20), so nothing compares raw ids across feeds. Station for
                           where the rider is and what's closest; hub for destinations and change points,
                           arriving at the first call in the destination hub. Five PRs: the type, arriving
-                          by hub (with planner legs), arrivals at the mapper, where you are, the rest. Takes in the two items
+                          by hub (with planner legs), on the way's arrivals, where you are, the rest. Takes in the two items
                           above.
-                        - [x] Phase 1: `Resolved`, `Hubs.resolve` and `resolveAll`, and route
-                              sequences carrying each stop resolved (`LineSequence.resolved`), unread.
+                        - [x] Phase 1: `Resolved`, `Hubs.resolve` and `resolveAll`, unread (route
+                              sequences carried each stop resolved, `LineSequence.resolved`, until the
+                              switch to resolving when a check runs took it out).
                         - [ ] Phase 2, in PRs (see *Decisions needing review*):
-                            - [x] Planner legs placed where they come in (`Hubs.place`,
-                                  `TripLeg.placed`): the Planner's answer, and an active trip restored
-                                  or started, placed again by a refresh once the model loads. Unread.
-                            - [x] Vehicle calls and National Rail calling points placed where they
-                                  come in (`VehicleCall.place`; `CallingPortion.calls`, in calling
-                                  order, a stop with no record kept in its place). Unread.
-                            - [x] An arrival's destination (`Departure.destinationPlace`), placed at
-                                  TfL's and National Rail's boards (a snapshot read back stays
-                                  unplaced, see *Decisions needing review*). Unread.
-                            - [ ] Nearby, place and journey-end stops: decided not to stamp them
-                                  (see *Decisions needing review*); still to build, resolving each
-                                  by its own id and position wherever a `StopLocation` becomes a
-                                  `StopRef` or `DirectTrips.End` (today `toStopRef`,
-                                  `journeyOriginsOf`, `PlaceStops.ends`, `Journeys.farEnd`), which
-                                  then carry the `Resolved`, and the KDocs of `Resolved` and
-                                  `Hubs.resolve` naming that second construction point (they
-                                  describe today's code until then).
-                            - [ ] Reconsider stamping places on feeds, see *Decisions needing
-                                  review* (maintainer, 2026-10-20: "do
-                                  it your way with a to-do to reconsider"). Four findings on #1011
-                                  were one mechanism: each feed's places stamped where it comes in,
-                                  so every producer and one-shot reader must place, and place again
-                                  once the model loads. The alternative keeps raw ids on feeds and
-                                  has the phase-2 checks resolve through the model when they run
-                                  (planner legs already keep the pole and point a split area
-                                  needs). Decide before the switch reads any place.
+                            - [x] Reconsider stamping places on feeds (maintainer, 2026-10-20:
+                                  switch). Feeds keep plain TfL ids, and the phase-2 checks resolve
+                                  them through the model (`Hubs`) when they run. The places stamped
+                                  where planner legs, vehicle calls, National Rail calling points and
+                                  an arrival's destination came in (`TripLeg.placed`, `VehicleCall.place`,
+                                  `CallingPortion.calls`, `Departure.destinationPlace`), and route
+                                  sequences' (`LineSequence.resolved`), are gone, with their placing
+                                  again once the model loaded. A route's ride ends (`LegEnd.of`)
+                                  resolve each leg's raw end through the model on their worker; a
+                                  ride's planned end (`LegEnd.planned`), worked out where no model is
+                                  at hand, is the call's raw id until arriving by hub reads the end. Four findings on #1011 were that
+                                  one mechanism.
+                            - [ ] Each check resolves the ids it reads when it runs, handed the model
+                                  by its `:app` caller, waiting for it as *Where it's resolved* says:
+                                  - [ ] Planner legs and paths (the detour scan), a split area through
+                                        the leg's pole or point.
+                                  - [ ] Vehicle calls: a call's `stopId`, or a National Rail call's
+                                        `stationIds` together (`resolveAll`).
+                                  - [ ] National Rail calling points, each portion's points' raw
+                                        records kept in calling order (a stop with no record kept in
+                                        its place), resolved together per point.
+                                  - [ ] An arrival's destination (`Departure.destinationId`).
+                                  - [ ] Nearby, place and journey-end stops, each by its own id and
+                                        position wherever a `StopLocation` becomes a `StopRef` or
+                                        `DirectTrips.End` (today `toStopRef`, `journeyOriginsOf`,
+                                        `PlaceStops.ends`, `Journeys.farEnd`).
                             - [ ] The ends (`LegEnd`), step-free, and arriving by hub:
                                 - [x] `LegEnd` and `LegEnd.of` (a route's rides paired with where
                                       each gets off), unread; walks get no pair (see *Decisions
@@ -4952,14 +4954,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   without a trip level asks none (`StepFree.DEFAULT`): the trip screen passes its setting, on the
   way its trip's, an older trip's unknown read as none. Alternative: every family in one PR, or
   each family reading its end as it lands. Reversible: nothing reads the end yet.
-- [ ] **Nearby, place and journey-end stops aren't stamped with their places** (autopilot,
-  2026-10-20). They come through five lookup paths (`OnDeviceStopFinder`, `CachingStopFinder`,
-  `PlaceStopsFinder`, `JourneyEndStops`, the station-area cache), the shape that drew four findings
-  on #1011; each `StopLocation` already carries its id and position, so a phase-2 check (Direct to a
-  place) resolves it with `Hubs.resolve(id, near = position)` when it's handed to the check, at the
-  conversion to a `StopRef` or `DirectTrips.End` that still holds its position. Alternative: resolve each stop
-  where it comes in, in `NearbyStopsCache` and in each finder's mapper, and resolve it again once the
-  model loads, as the other feeds are. Reversible: nothing reads it yet.
+- [x] **Nearby, place and journey-end stops aren't stamped with their places** (autopilot,
+  2026-10-20). Settled by the maintainer's switch (2026-10-20, below): no feed is stamped, and these
+  stops are resolved by id and position when a check runs, as every feed is.
 - [ ] **A trip started from a line's stop (Go) is as step-free as the setting** (autopilot,
   2026-10-20). A trip list's Start keeps the level its routes were planned at (`TripViewModel.stepFree`),
   but a ride started from a line page's stop has no trip list, so it takes the step-free setting as
@@ -4971,21 +4968,18 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   point (`Resolved.station` null) ends at that area's own TfL ids, never at a child stop or hub it may
   not be (Codex on #1014). Alternatives: pair every leg, walks included; or end such a ride nowhere and
   let the caller fall back. Reversible: unread until the switch.
-- [ ] **Feeds keep their places stamped where they come in, but a departures snapshot read back
-  doesn't** (maintainer left it to the agent, 2026-10-20, with a to-do to reconsider; autopilot
-  for the snapshot). Live boards, planner legs and calls are placed as #1009–#1011 built them. A
-  snapshot's departures stay unplaced: placing them drew opposite findings on #1011 (wait for the
-  model and the widget's first frame waits; don't, and a one-shot read stays unplaced), and no
-  phase-2 check reads a snapshot's departures. Alternatives: place snapshots with a redraw once
-  the model loads; or raw ids everywhere, resolved by the checks when they run. Reversible:
-  nothing reads a place until the switch.
-- [ ] **Phase 2 of the station resolution lands in several PRs, the feeds first, and a planner leg keeps
-  its places by id** (autopilot, 2026-10-20). The design's phase 2 is one step; it's split so each PR
-  stays reviewable: the feeds it reads placed first, unread (planner legs, then vehicle calls and
-  National Rail boards, then arrivals' destination and stop lookups), then the ends and the switch. A
-  leg's places are a map from each id it names to its `Resolved` (`TripLeg.placed`), not a field per end,
-  so a copy that moves an end to another id (a bus's other pole) can't carry the old end's place; an id
-  it wasn't placed with reads as only itself. Alternatives: one phase-2 PR; a `Resolved` field per end.
+- [x] **Feeds keep raw TfL ids; checks resolve them through the model when they run** (maintainer,
+  2026-10-20, answering the to-do to reconsider stamping: "switch"). #1009–#1011 stamped each feed's
+  places where it came in, so every producer and one-shot reader had to place, and place again once
+  the model loaded; four findings on #1011 came from that one mechanism, a departures snapshot read
+  back among them (wait for the model and the widget's first frame waits; don't, and a one-shot read
+  stays unplaced). Now nothing resolved is kept on a feed, a cache or a file, so a snapshot needs no
+  rule of its own; planner legs keep the pole and point a split area needs. The stamping, unread, is
+  removed.
+- [ ] **Phase 2 of the station resolution lands in several PRs** (autopilot, 2026-10-20). The design's
+  phase 2 is one step; it's split so each PR stays reviewable: the ends first, unread, then each
+  check resolving its ids, then the switch. (The by-id map of a planner leg's places this entry
+  first recorded went with the stamping, maintainer, 2026-10-20.) Alternative: one phase-2 PR.
   Reversible: unread until the switch.
 - [x] **A detour is cut at the destination hub, not dropped or shown whole** (autopilot,
   2026-10-19; Codex on #1005). Settled (maintainer, 2026-10-20): cut the route that rides on past
