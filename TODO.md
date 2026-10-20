@@ -910,7 +910,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                             - [x] Vehicle calls and National Rail calling points placed where they
                                   come in (`VehicleCall.place`; `CallingPortion.calls`, in calling
                                   order, a stop with no record kept in its place). Unread.
-                            - [ ] An arrival's destination and nearby, place and journey-end stops.
+                            - [x] An arrival's destination (`Departure.destinationPlace`), placed at
+                                  TfL's and National Rail's boards (a snapshot read back stays
+                                  unplaced, see *Decisions needing review*). Unread.
+                            - [ ] Nearby, place and journey-end stops.
+                            - [ ] Reconsider stamping places on feeds, see *Decisions needing
+                                  review* (maintainer, 2026-10-20: "do
+                                  it your way with a to-do to reconsider"). Four findings on #1011
+                                  were one mechanism: each feed's places stamped where it comes in,
+                                  so every producer and one-shot reader must place, and place again
+                                  once the model loads. The alternative keeps raw ids on feeds and
+                                  has the phase-2 checks resolve through the model when they run
+                                  (planner legs already keep the pole and point a split area
+                                  needs). Decide before the switch reads any place.
                             - [ ] The ends (`LegEnd`), step-free, and arriving by hub.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
@@ -4854,6 +4866,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **Feeds keep their places stamped where they come in, but a departures snapshot read back
+  doesn't** (maintainer left it to the agent, 2026-10-20, with a to-do to reconsider; autopilot
+  for the snapshot). Live boards, planner legs and calls are placed as #1009–#1011 built them. A
+  snapshot's departures stay unplaced: placing them drew opposite findings on #1011 (wait for the
+  model and the widget's first frame waits; don't, and a one-shot read stays unplaced), and no
+  phase-2 check reads a snapshot's departures. Alternatives: place snapshots with a redraw once
+  the model loads; or raw ids everywhere, resolved by the checks when they run. Reversible:
+  nothing reads a place until the switch.
 - [ ] **Phase 2 of the station resolution lands in several PRs, the feeds first, and a planner leg keeps
   its places by id** (autopilot, 2026-10-20). The design's phase 2 is one step; it's split so each PR
   stays reviewable: the feeds it reads placed first, unread (planner legs, then vehicle calls and
@@ -4862,8 +4882,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   so a copy that moves an end to another id (a bus's other pole) can't carry the old end's place; an id
   it wasn't placed with reads as only itself. Alternatives: one phase-2 PR; a `Resolved` field per end.
   Reversible: unread until the switch.
-- [ ] **A detour is cut at the destination hub, not dropped or shown whole** (autopilot,
-  2026-10-19; Codex on #1005). `SPEC.md` drops a detour another route beats and keeps one nothing
+- [x] **A detour is cut at the destination hub, not dropped or shown whole** (autopilot,
+  2026-10-19; Codex on #1005). Settled (maintainer, 2026-10-20): cut the route that rides on past
+  the hub, and offer every equally good ride rather than dropping one. `SPEC.md` drops a detour another route beats and keeps one nothing
   beats (maintainer, 2026-09-27); with arrival at the first call in the destination hub, phase 2
   keeps every such route but drops its legs after that call, so the rider is never told to ride on
   past where they get off, and the cut route, possibly the fastest, isn't dropped on its old

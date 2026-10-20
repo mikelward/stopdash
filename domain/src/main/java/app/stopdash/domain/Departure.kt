@@ -29,6 +29,8 @@ import java.time.Instant
  * none), so a service ending where the rider already is can be recognized ([Terminating]). A
  * National Rail train's is its board's terminus code as TfL's stop id
  * ([RailStationCodes.stopIdFor]), blank where that's not one station or the train divides.
+ * [destinationPlace] is that terminus as the station model placed it where the departure came in
+ * ([Hubs.resolve]), or as it was read back from a snapshot; null where there was no model, or no id.
  *
  * [branch] is the "via" branch TfL names in its `towards` field — normalized to one short
  * label per trunk (`Bank`, `Charing X` on the Northern line), the form its platform boards
@@ -74,6 +76,7 @@ data class Departure(
     val mode: String,
     val branch: String? = null,
     val destinationId: String = "",
+    val destinationPlace: Resolved? = null,
     val vehicleId: String = "",
     val via: String = "",
     val callingAt: List<CallingPortion>? = null,

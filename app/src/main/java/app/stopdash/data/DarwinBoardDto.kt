@@ -207,6 +207,8 @@ fun DarwinBoardDto.toBoard(
             expectedArrival = at,
             mode = NATIONAL_RAIL_MODE,
             destinationId = destinationId,
+            // The terminus placed by the station model, as its calling points are; none without one.
+            destinationPlace = destinationId.takeIf { it.isNotBlank() }?.let { id -> placeFor?.invoke(setOf(id)) },
             via = via,
             callingAt = service.subsequentCallingPoints?.let { callingPortions(it, stopIdsFor, placeFor) },
             railServiceId = service.serviceID?.trim().orEmpty(),

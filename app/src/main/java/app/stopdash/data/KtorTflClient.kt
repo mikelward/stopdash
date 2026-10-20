@@ -150,9 +150,10 @@ class KtorTflClient(
     // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
     // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
     private val stationOf: (String) -> String? = { null },
-    // The station model, for placing each planned leg's stops and each followed vehicle's calls where the
-    // answer enters the app ([Hubs.place], [VehicleCall.place]); waited for as [HubsStore.ready] does. None by
-    // default (tests, the other clients): they go unplaced.
+    // The station model, for placing each planned leg's stops, each followed vehicle's calls and each
+    // departure's terminus where the answer enters the app ([Hubs.place], [VehicleCall.place],
+    // [Departure.destinationPlace]); waited for as [HubsStore.ready] does. None by default (tests, the other
+    // clients): they go unplaced.
     private val hubs: suspend () -> Hubs? = { null },
     // The bundled station index, for the far ends of each line a stop is the terminus of
     // ([StationIndex.terminusEnds]), so a train TfL lists there as arriving is relabeled as the
@@ -572,8 +573,11 @@ class KtorTflClient(
             PostcodeResolution.None -> emptyList()
         }
 
-    override suspend fun arrivals(stopId: String): List<Departure> =
-        tflRequest { key ->
+    override suspend fun arrivals(stopId: String): List<Departure> = coroutineScope {
+        // The station model, for each train's terminus ([Departure.destinationPlace]): asked for alongside the
+        // request, so one still loading holds the board back only by what it takes beyond TfL's answer.
+        val model = async { hubs() }
+        val departures = tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$stopId/Arrivals") {
                 applyAppKey(key)
             }.body<List<TflArrivalDto>>()
@@ -588,6 +592,9 @@ class KtorTflClient(
                 }
                 .let(DepartureRows::inferDirections)
         }
+        val placing = model.await() ?: return@coroutineScope departures
+        withContext(decodeDispatcher) { placing.place(departures) }
+    }
 
     // The answer's departures, or the stop's last answer's when this one is an older cache copy, and said
     // so with how much older: a stop stepping back in time is what the debug log should show.

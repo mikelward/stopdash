@@ -41,3 +41,17 @@ fun Hubs.place(trip: ActiveTrip): ActiveTrip = trip.copy(
     plannedLegs = trip.plannedLegs?.map { place(it) },
     leftRide = trip.leftRide?.let { place(it) },
 )
+
+/** [departures] with each terminus placed ([Departure.destinationPlace]); one with no terminus id as it is. */
+@WorkerThread
+fun Hubs.place(departures: List<Departure>): List<Departure> =
+    departures.map { it.takeIf { d -> d.destinationId.isBlank() } ?: it.copy(destinationPlace = resolve(it.destinationId)) }
+
+/** [board] with each train's terminus placed ([place]), the trains it lists with no time included. */
+@WorkerThread
+fun Hubs.place(board: RailBoard): RailBoard = board.copy(departures = place(board.departures), untimed = placeUntimed(board.untimed))
+
+// [untimed]'s trains placed ([place]), each kept with its own mark.
+@WorkerThread
+private fun Hubs.placeUntimed(untimed: List<UntimedTrain>): List<UntimedTrain> =
+    untimed.map { it.copy(train = place(listOf(it.train)).single()) }

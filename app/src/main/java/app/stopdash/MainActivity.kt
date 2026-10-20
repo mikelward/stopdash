@@ -6177,6 +6177,8 @@ class MainActivity : ComponentActivity() {
                 stationIndex = { StationIndexStore.load(context.applicationContext) },
                 // National Rail's words where TfL's status is only a link to its page (SPEC *National Rail*).
                 proxyUrl = { BuildConfig.PROXY_URL },
+                // Each train's terminus placed by the station model as the board comes in.
+                hubs = HubsStore::ready,
             ),
             rail = railBoards(context),
             codes = { RailStationCodesStore.load(context.applicationContext) },

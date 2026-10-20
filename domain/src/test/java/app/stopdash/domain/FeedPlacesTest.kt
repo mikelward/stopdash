@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Synthetic records around the obviously-fake (51.5, -0.12); never a real stop. */
-class LegPlacesTest {
+class FeedPlacesTest {
     private val index = StationIndex(
         listOf(
             IndexedStation("910GHILL", "Hill", listOf("national-rail"), "HUBEXA", 51.500, -0.120,
@@ -90,6 +90,18 @@ class LegPlacesTest {
         // A leg never placed (no model): every id is itself.
         assertEquals(Resolved.exact("910GHILL"), leg("940GZZLUHIL", "910GHILL").placeOf("910GHILL"))
         assertNull(leg("940GZZLUHIL", "910GHILL").placed["910GHILL"])
+    }
+
+    @Test
+    fun `a rail board's trains are placed by their terminus, those it lists with no time too`() {
+        val train = Departure("thameslink", "Thameslink", "", "Hill", null, at, "national-rail", destinationId = "910GHILL")
+        val board = RailBoard(listOf(train), untimed = listOf(UntimedTrain(train, canceled = true)))
+        val placed = hubs.place(board)
+        assertEquals("1009001:rail", placed.departures.single().destinationPlace?.station)
+        assertEquals("1009001:rail", placed.untimed.single().train.destinationPlace?.station)
+        assertTrue(placed.untimed.single().canceled)
+        // One with no terminus id stays as it is.
+        assertNull(hubs.place(listOf(train.copy(destinationId = ""))).single().destinationPlace)
     }
 
     @Test
