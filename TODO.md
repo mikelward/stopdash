@@ -2042,6 +2042,26 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               of 175 unsettled close pairs, and the same visits drop out of `score`. Tell the two
               apart (the platforms' directions, or a gap too short for the round trip) before the
               next measurement.
+        - [x] **Gray a held train, its time kept** (maintainer, 2026-10-20): TfL times a train held at
+              a platform or stopped for the train ahead as if it were moving. A tube train placed at
+              one location for two minutes while its time slides at half the clock's pace or more is
+              grayed and read as held (`HeldTrains`); measured in `dev-docs/arrivals-measurements.md`.
+          - [ ] **Correct a held train's time** if a later recording finds a correction that holds:
+                in the first, those marked came 4–9 minutes late (quartiles), too spread to adjust.
+          - [ ] **Recheck the held rule on later recordings**: platform holds seemed more common than
+                usual when it was measured, so the line may be run differently for now. Rerun the
+                numbers on a recording a few weeks on, off-peak too.
+        - [ ] **Gray the trains on a suspended section** (maintainer, 2026-10-20): during a suspension
+              ("No service between Camden Town and Kennington via Bank northbound only") TfL's live list
+              kept timing the stuck trains as if they ran. Gray their times, kept, only where the
+              suspension applies: its stretch, its direction and its branch (a station on both
+              Northern line branches grays only the suspended one's trains).
+        - [ ] **Trains turned back short are missing on their way back** (seen at King's Cross): two
+              Piccadilly trains that ran east to Arnos Grove came back west as Northfields
+              trains with no listing in TfL's live list (nor TfL's own app), while the platform display
+              showed each correctly. Each was listed all the way out. Measure how often it happens
+              and how steady the round trip is, then decide whether to show such a return, grayed,
+              from the outbound run.
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
         - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
           - [x] **A loop train's boarding call jumping over five minutes at once**: a loop train still

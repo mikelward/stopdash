@@ -65,6 +65,10 @@ import java.time.Instant
  * [doubtful] marks the later of such a pair, and each listing of a train on two lines: one of the pair is
  * coming, so a trip counts on the earlier and passes this one over, and on a train surely its line's
  * before one that may run as another.
+ *
+ * [held] marks a tube train standing where it is while TfL's time for it slides later ([HeldTrains]):
+ * it's coming, but not when TfL says, so its time is grayed and read as held. Unlike [mayNotRun], a
+ * trip still counts on it.
  */
 data class Departure(
     val lineId: String,
@@ -83,10 +87,11 @@ data class Departure(
     val railServiceId: String = "",
     val doubtful: Boolean = false,
     val paired: Boolean = false,
+    val held: Boolean = false,
 ) {
     /** Either of a close pair, or a train on two lines ([paired]); [doubtful] is the later of a pair, or such a train. */
     val mayNotRun: Boolean get() = doubtful || paired
 
-    /** Whether the app grays its time: it [mayNotRun]. */
-    val grayed: Boolean get() = mayNotRun
+    /** Whether the app grays its time: it [mayNotRun], or is [held]. */
+    val grayed: Boolean get() = mayNotRun || held
 }

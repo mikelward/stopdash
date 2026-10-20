@@ -4,6 +4,7 @@ import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.BusFare
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.HeldTrains
 import app.stopdash.domain.HubInfo
 import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyPlanner
@@ -166,6 +167,9 @@ class KtorTflClient(
     // Each stop's newest answer, so an older cache copy TfL hands back is set aside ([NewestArrivals]). The
     // app passes the process's one ([NewestArrivals.SHARED]); a test, or an unwired client, keeps its own.
     private val newestArrivals: NewestArrivals = NewestArrivals(),
+    // Tube trains standing still while their time slides, grayed as held ([HeldTrains]). Shared like
+    // [newestArrivals] ([HeldTrains.SHARED]), since a train is followed across answers; a test keeps its own.
+    private val heldTrains: HeldTrains = HeldTrains(),
     // Where each request's answer is read: decoding a route's sequence (~600 KB for a National Rail
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
@@ -611,9 +615,28 @@ class KtorTflClient(
                 }
             }
         }.maxOrNull()
-        val pick = newestArrivals.pick(stopId, madeAt, answer.map { it.toDeparture() })
+        val departures = answer.map { it.toDeparture() }
+        // Picked and marked as one step, so two answers for a stop finishing together can't cross: an older
+        // copy set aside, then marked before the newer answer it lost to, would read as fresh and wipe the
+        // history that answer was about to build on. [heldTrains] is shared wherever [newestArrivals] is.
+        val (pick, held) = synchronized(heldTrains) {
+            val pick = newestArrivals.pick(stopId, madeAt, departures)
+            // Held is marked on the board picked, as things stand: a board kept from before an older copy
+            // isn't kept with its marks, and an older copy moves nothing in [HeldTrains], so its trains read
+            // as now.
+            val locations = if (pick.setAside == null) answer.map { it.currentLocation.orEmpty() } else emptyList()
+            pick to heldTrains.mark(stopId, madeAt, pick.departures, locations)
+        }
         pick.setAside?.let { logDoubtful("older answer at $stopId set aside: ${it.seconds}s behind the last") }
-        return pick.departures
+        val fresh = pick.setAside == null
+        // Which trains are held, and where TfL had them: what tells a hold from a slow run.
+        if (fresh) {
+            val located = answer.mapIndexedNotNull { i, dto -> held[i].takeIf { it.held }?.let { it to dto.currentLocation.orEmpty() } }
+            if (located.isNotEmpty()) {
+                logDoubtful("held at $stopId: " + located.joinToString { (d, at) -> "${d.lineId} ${d.vehicleId} ($at)" })
+            }
+        }
+        return held
     }
 
     // A train TfL may be tracking twice is marked, and said so: what the feed looked like each time is

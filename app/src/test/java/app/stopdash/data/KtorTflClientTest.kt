@@ -389,6 +389,78 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a train standing still while its time slides comes back held, and said so`() = runTest {
+        // 124 at Camden Town in each answer, two and a half minutes apart, its time sliding with the clock.
+        fun answer(madeAt: String, expected: String) = """
+            [{"lineId": "northern", "lineName": "Northern", "platformName": "Southbound - Platform 4",
+              "destinationName": "Morden Underground Station", "modeName": "tube", "vehicleId": "124",
+              "expectedArrival": "$expected", "timestamp": "$madeAt", "currentLocation": "At Camden Town"}]
+        """.trimIndent()
+        val answers = ArrayDeque(
+            listOf(
+                answer("2026-01-01T12:00:00Z", "2026-01-01T12:05:00Z"),
+                answer("2026-01-01T12:02:30Z", "2026-01-01T12:07:30Z"),
+            ),
+        )
+        val engine = MockEngine {
+            respond(ByteReadChannel(answers.removeFirst()), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val logged = mutableListOf<String>()
+        val client = KtorTflClient(
+            httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            clock = { Instant.parse("2026-01-01T12:02:30Z") }, logDoubtful = { logged += it },
+        )
+
+        assertEquals(listOf(false), client.arrivals("940GZZLUEUS").map { it.held })
+        val held = client.arrivals("940GZZLUEUS").single()
+        assertTrue(held.held)
+        assertTrue(held.grayed)
+        assertEquals(Instant.parse("2026-01-01T12:07:30Z"), held.expectedArrival)
+        assertEquals(listOf("held at 940GZZLUEUS: northern 124 (At Camden Town)"), logged)
+    }
+
+    @Test
+    fun `a board kept from before an older copy reads its trains as held stands now`() = runTest {
+        // Held at 12:02:30; then an undated answer has 124 moving on; then a copy made before 12:02:30.
+        fun answer(madeAt: String?, expected: String, at: String) = """
+            [{"lineId": "northern", "lineName": "Northern", "platformName": "Southbound - Platform 4",
+              "destinationName": "Morden Underground Station", "modeName": "tube", "vehicleId": "124",
+              "expectedArrival": "$expected", ${madeAt?.let { "\"timestamp\": \"$it\"," }.orEmpty()} "currentLocation": "$at"}]
+        """.trimIndent()
+        val answers = ArrayDeque(
+            listOf(
+                answer("2026-01-01T12:00:00Z", "2026-01-01T12:05:00Z", "At Camden Town"),
+                answer("2026-01-01T12:02:30Z", "2026-01-01T12:07:30Z", "At Camden Town"),
+                answer(null, "2026-01-01T12:04:00Z", "Between Camden Town and Euston"),
+                answer("2026-01-01T12:02:00Z", "2026-01-01T12:07:00Z", "At Camden Town"),
+            ),
+        )
+        val engine = MockEngine {
+            respond(ByteReadChannel(answers.removeFirst()), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val client = KtorTflClient(
+            httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            clock = { Instant.parse("2026-01-01T12:03:00Z") }, logDoubtful = {},
+        )
+
+        client.arrivals("940GZZLUEUS")
+        assertTrue(client.arrivals("940GZZLUEUS").single().held)
+        assertFalse(client.arrivals("940GZZLUEUS").single().held)
+        // The copy is set aside for the board kept from 12:02:30, but that train isn't held now.
+        val kept = client.arrivals("940GZZLUEUS").single()
+        assertEquals(Instant.parse("2026-01-01T12:07:30Z"), kept.expectedArrival)
+        assertFalse(kept.held)
+    }
+
+    @Test
     fun `one key snapshot drives both the limiter budget and the app_key`() = runTest {
         var limiterKey: String? = "unset"
         var captured: HttpRequestData? = null
