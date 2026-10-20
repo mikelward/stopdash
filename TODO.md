@@ -913,7 +913,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                             - [x] An arrival's destination (`Departure.destinationPlace`), placed at
                                   TfL's and National Rail's boards (a snapshot read back stays
                                   unplaced, see *Decisions needing review*). Unread.
-                            - [ ] Nearby, place and journey-end stops.
+                            - [ ] Nearby, place and journey-end stops: decided not to stamp them
+                                  (see *Decisions needing review*); still to build, resolving each
+                                  by its own id and position wherever a `StopLocation` becomes a
+                                  `StopRef` or `DirectTrips.End` (today `toStopRef`,
+                                  `journeyOriginsOf`, `PlaceStops.ends`, `Journeys.farEnd`), which
+                                  then carry the `Resolved`, and the KDocs of `Resolved` and
+                                  `Hubs.resolve` naming that second construction point (they
+                                  describe today's code until then).
                             - [ ] Reconsider stamping places on feeds, see *Decisions needing
                                   review* (maintainer, 2026-10-20: "do
                                   it your way with a to-do to reconsider"). Four findings on #1011
@@ -4870,6 +4877,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **Nearby, place and journey-end stops aren't stamped with their places** (autopilot,
+  2026-10-20). They come through five lookup paths (`OnDeviceStopFinder`, `CachingStopFinder`,
+  `PlaceStopsFinder`, `JourneyEndStops`, the station-area cache), the shape that drew four findings
+  on #1011; each `StopLocation` already carries its id and position, so a phase-2 check (Direct to a
+  place) resolves it with `Hubs.resolve(id, near = position)` when it's handed to the check, at the
+  conversion to a `StopRef` or `DirectTrips.End` that still holds its position. Alternative: resolve each stop
+  where it comes in, in `NearbyStopsCache` and in each finder's mapper, and resolve it again once the
+  model loads, as the other feeds are. Reversible: nothing reads it yet.
 - [ ] **Feeds keep their places stamped where they come in, but a departures snapshot read back
   doesn't** (maintainer left it to the agent, 2026-10-20, with a to-do to reconsider; autopilot
   for the snapshot). Live boards, planner legs and calls are placed as #1009–#1011 built them. A

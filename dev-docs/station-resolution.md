@@ -118,10 +118,14 @@ way there's a walk, so getting this wrong costs a row, not a missed train.
 
 ## The resolved id
 
-One value, built once where an id enters the app:
+One value, built once where an id enters the app, except nearby, place and journey-end stops, built
+when a check runs (*Where it's built*):
 
 ```kotlin
-/** A TfL id with its places in the station model, resolved once where it entered the app. */
+/**
+ * A TfL id with its places in the station model, resolved once where it entered the app, or, for a
+ * nearby, place or journey-end stop, where it's handed to a check (*Where it's built*).
+ */
 data class Resolved(
     val tflId: String?,   // as TfL gave it: for requests, predictions and closures only; null for a call naming several records
     val station: String?, // the model's station, or a bus stop (both directions of its road)
@@ -164,7 +168,20 @@ data class Resolved(
 
 ## Where it's built
 
-Each feed resolves its ids in its DTO mapper, in `:app/data`, and hands `:domain` resolved values:
+Each feed resolves its ids in its DTO mapper, in `:app/data`, and hands `:domain` resolved values. The
+one exception is nearby, place and journey-end stops (autopilot, 2026-10-20): they keep raw ids and
+are resolved with `Hubs.resolve(id, near = position)` when they're handed to a check, at the last step
+that still holds each stop's position (a split area needs it, Codex on #1013), so `:domain` still
+holds no model. `near` is that position only where TfL gave one (`StopPlace.placed`): a stop TfL left
+an axis out of reads `(0.0, 0.0)` in `StopLocation`, and resolves with `near = null`, leaving a split
+area's station and hub unresolved rather than picking a child stop by a made-up point (Codex on #1013).
+One rule covers every path rather than a list of sites (Codex on #1013, several findings of one
+shape): a `StopLocation` is resolved wherever it's turned into what a check reads, a `StopRef` or a
+`DirectTrips.End`, which then carries the `Resolved` in place of the coordinate. Today's conversions,
+as a check rather than the rule: `StopLocation.toStopRef` (nearby stops) and `journeyOriginsOf` (a
+journey's origins) to a `StopRef`; `PlaceStops.ends` (a place's stops) and `Journeys.farEnd` (a
+journey's far end) to a `DirectTrips.End`, both in `:domain`, so each takes a resolver its `:app` caller
+passes in. A conversion added later joins the rule, not the list.
 
 | Feed | Today | Resolved |
 |---|---|---|
@@ -173,10 +190,10 @@ Each feed resolves its ids in its DTO mapper, in `:app/data`, and hands `:domain
 | Vehicle calls | `VehicleCall.stopId` | the call's stop |
 | National Rail boards (`DarwinBoardDto`) | CRS to every TfL id of it | one resolved station per calling point |
 | Journey Planner legs (`TflJourneyDto`) | `fromId`, `toId`, `path`, `fromArea`, `toArea`, planned ids | resolved ends and path, a split area through the leg's pole or point; the areas go once that's built |
-| Nearby stops, bundled stops, search | `id`, `clusterId`, `interchangeId` | the stop; `clusterId` and `interchangeId` go from matching |
+| Nearby stops, bundled stops, search | `id`, `clusterId`, `interchangeId` | not stamped: a check resolves each stop by its own id and position (`Hubs.resolve(id, near = position)`) when it runs, since they arrive by five lookup paths (autopilot, 2026-10-20, `TODO.md` *Decisions needing review*); `clusterId` and `interchangeId` go from matching |
 | Line status affected stops | `naptanId` | resolved |
 | Saved data (favorites, recents, starred places, active trip, pending ends) | TfL ids plus level | unchanged on disk; resolved on read through `Hubs.picked`, except an as-saved ride end (below) |
-| Persisted feed caches: every store that keeps a feed's TfL ids on disk, of which today departure snapshots (`PersistedSnapshot.toDomain`, and the widget's `WidgetSnapshotStore`); route sequences (`FileRouteStopsStore`); nearby, place and journey-end stops (`FileNearbyStopsStore`'s `nearby-stops.json`, `place-stops.json` and `journey-end-stops.json`); and an active trip's planner legs (`PersistedActiveTrip.toTrip`'s `legs`, `vehicleLeg`, `offLeg` and `plannedLegs`, with a process-death test). A store added later joins the rule, not the list (Codex on #1005, twice) | the feed's raw ids | unchanged on disk (the watch reads them); resolved on restore, as their feed's mapper would, under the cold-start rule below (Codex on #1005) |
+| Persisted feed caches: every store that keeps a feed's TfL ids on disk, of which today route sequences (`FileRouteStopsStore`'s `sequences`) and an active trip's planner legs (`PersistedActiveTrip.toTrip`'s `legs`, `vehicleLeg`, `offLeg` and `plannedLegs`, with a process-death test). A store added later joins the rule, not the list (Codex on #1005, twice) | the feed's raw ids | unchanged on disk (the watch reads them); resolved on restore, as their feed's mapper would, under the cold-start rule below (Codex on #1005). Two stores are left out (autopilot, 2026-10-20): departure snapshots (`DataStoreSnapshotStore`), whose departures no check reads and whose placing drew opposite findings on #1011 (the widget's first frame against a one-shot read); and the nearby, place and journey-end stops (`FileNearbyStopsStore`, and the station-area poles `FileRouteStopsStore` keeps beside its sequences), resolved when a check runs, as live ones are (Codex on #1013) |
 
 Saved data keeps storing TfL ids and the level picked, as `station-model.md` *Saved data* settled.
 It's resolved when read, so a bundle refresh that regroups a station moves saved picks with it, and
@@ -358,7 +375,9 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
      set changes (Codex on #1005).
    - **Where the hubs come from.** The destination's from the trip's own pick (`Hubs.picked`),
      passed in resolved; each call's from the route sequence phase 1 resolved, or from the
-     planner legs this phase resolves (below). Nothing resolves inside `:domain` (Codex on #1005).
+     planner legs this phase resolves (below); a nearby, place or journey-end stop from where it's
+     handed to a check (*Where it's built*), through a resolver `:app` passes in. `:domain` holds no
+     model (Codex on #1005).
    - **Feeds resolved here, not in phase 3**, because these checks read them (Codex on #1005,
      twice: every feed an arrival or detour check reads resolves in this phase):
      - Journey Planner legs and paths (`TflJourneyDto`), at the mapper, a split area placed
@@ -384,10 +403,11 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
      - an arrival's destination (`Departure.destinationId`, from `destinationNaptanId`), at the
        arrivals mapper, which `DirectTrips.judge` reads to pick the departure's path; the rest of
        arrivals waits for phase 3 (Codex on #1005);
-     - nearby, place and journey-end stops (`TflStopPointDto.toStopLocationOrNull`), at the
-       mapper: Direct to a place boards at the nearby ones and ends at the place's, comparing
-       them at station level, so a live lookup resolves here as a restored one does (the
-       persisted-stores rule), each path with its own test (Codex on #1005).
+     - nearby, place and journey-end stops are the exception: Direct to a place boards at the
+       nearby ones and ends at the place's, comparing them at station level, and resolves each
+       by its own id and position when it runs (`Hubs.resolve(id, near = position)`), live and
+       restored alike, since they arrive by five lookup paths (autopilot, 2026-10-20; was at the
+       mapper, Codex on #1005).
    - **Step-free.** `forLeg`, the `DirectTrips` trip paths, `RideLines`, the detour scan (`withoutDetours`) and `OnTheWay.endedAtDestination` take
      the trip's step-free level and apply *Decision*'s test. `ActiveTrip` and `PersistedActiveTrip`
      gain that level, so it survives process death; a trip saved before the field reads it as
