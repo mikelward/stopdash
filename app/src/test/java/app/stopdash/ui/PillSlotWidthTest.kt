@@ -35,14 +35,14 @@ class PillSlotWidthTest {
             listOf(estimate(ride("263")), estimate(ride("N263"))),
             listOf(estimate(ride("47"), ride("43")), estimate(ride("188"), ride("43"))),
         )
-        assertEquals("263/N263".length, pillSlotWidthPx(cards, emptyMap()) { measured += it; width(it) })
+        assertEquals("263/N263".length, pillSlotWidthPx(cards, TripRideLines.NONE) { measured += it; width(it) })
         // The 47/188 once, though two cards show it, and the lone 43 once: every lone pill is one width.
         assertEquals(3, measured.size)
     }
 
     @Test
     fun `no rides measure nothing`() {
-        assertNull(pillSlotWidthPx(emptyList(), emptyMap()) { error("measured $it") })
+        assertNull(pillSlotWidthPx(emptyList(), TripRideLines.NONE) { error("measured $it") })
     }
 
     @Test

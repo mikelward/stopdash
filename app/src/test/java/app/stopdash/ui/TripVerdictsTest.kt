@@ -104,7 +104,7 @@ class TripVerdictsTest {
             plannedAt = now,
             live = mapOf("Aston" to TripViewModel.StopLive(listOf(toDale), now)),
         )
-        assertTrue(warmVerdicts(state, mapOf("blue" to route), emptyMap()))
+        assertTrue(warmVerdicts(state, mapOf("blue" to route), TripRideLines.NONE))
         assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(leg, route, toDale)?.reach)
         assertEquals(DirectTrips.Verdict.Reaches, TripVerdicts.get(beck, route, toDale)?.reach)
     }
@@ -133,7 +133,7 @@ class TripVerdictsTest {
         val shown = tripEstimates(state, now, Duration.ZERO, sequences).orEmpty()
         assertEquals(TripMessage.CHECKING, tripCheckState(state, shown, now, sequences))
 
-        assertTrue(warmVerdicts(state, sequences, emptyMap()))
+        assertTrue(warmVerdicts(state, sequences, TripRideLines.NONE))
         assertEquals(listOf("Dale"), legTrains(state, leg, now, sequences)?.map { it.destination })
         assertNull(tripCheckState(state, tripEstimates(state, now, Duration.ZERO, sequences).orEmpty(), now, sequences))
     }
