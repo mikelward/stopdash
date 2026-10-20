@@ -128,14 +128,20 @@ private fun alightsByName(leg: TripLeg, sequence: LineSequence, id: String) =
     leg.toArea.isEmpty() && sameStopName(sequence.stopNames[id], leg.toName)
 
 /**
- * Every way a route of [sequence] could run [leg]'s ride, each as its route and the stops from where
- * it boards through where it gets off, matching the ends as [onPoles] does: the stop, any pole of its
+ * Every way a route of [sequence] could run [ride], each as its route and the stops from where it
+ * boards through where it gets off, matching the ends as [onPoles] does: the stop, any pole of its
  * pair, or, on a route that calls at neither, a stand of the same name. A loop calls at an end more
  * than once, so every boarding visit pairs with every later alighting one; which is the rider's isn't
  * asked (Codex, PR #455). For a reader that must hold whichever way it's run ([RouteDisruption.offRide]).
+ *
+ * By the pair, the ride and where it gets off ([LegEnd]), with no form without one, so no span is
+ * missed once arriving by hub reads the end (dev-docs/station-resolution.md, phase 2). Not read yet:
+ * the span still ends at the leg's own getting-off stop, which is what every caller's end
+ * ([LegEnd.planned]) names.
  */
-fun ridesOf(leg: TripLeg, sequence: LineSequence): List<Pair<LineRoute, List<String>>> =
-    sequence.routes.flatMap { route ->
+fun ridesOf(ride: Pair<TripLeg, LegEnd>, sequence: LineSequence): List<Pair<LineRoute, List<String>>> {
+    val leg = ride.first
+    return sequence.routes.flatMap { route ->
         val ids = route.stopIds
         ids.indices.filter { boardsAt(leg, sequence, ids[it]) }
             .ifEmpty { ids.indices.filter { boardsByName(leg, sequence, ids[it]) } }
@@ -146,6 +152,7 @@ fun ridesOf(leg: TripLeg, sequence: LineSequence): List<Pair<LineRoute, List<Str
                     .map { to -> route to ids.subList(from, to + 1) }
             }
     }
+}
 
 // The poles [leg]'s bus boards and gets off at by its line's route ([onPoles]), or null where the
 // route gives no single answer.

@@ -1,10 +1,12 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineAlert
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripLeg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,9 +34,12 @@ class TripBusAlertsTest {
 
     private fun leg(from: String, to: String, mode: String = "bus") = TripLeg(mode, "99", "99", from, from, to, to, at, at.plusSeconds(600))
 
+    // [leg] getting off where the Planner does ([LegEnd.planned]), as every caller's ride does today.
+    private fun ride(from: String, to: String, mode: String = "bus") = leg(from, to, mode).let { it to LegEnd.planned(it, StepFree.DEFAULT) }
+
     @Test
     fun `a bus diversion at the far end of the route doesn't flag a ride at the near end`() {
-        val shown = onBusRides(mapOf("99" to diversion), listOf(leg("n1", "n3")), mapOf("99" to route)).getValue("99")
+        val shown = onBusRides(mapOf("99" to diversion), listOf(ride("n1", "n3")), mapOf("99" to route)).getValue("99")
         assertFalse(shown.disrupted)
         // Its work to come still shows.
         assertEquals(diversion.planned, shown.planned)
@@ -42,23 +47,23 @@ class TripBusAlertsTest {
 
     @Test
     fun `a ride into the diversion, an unknown route or another mode keeps the alert`() {
-        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(leg("n1", "w2")), mapOf("99" to route)).getValue("99"))
-        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(leg("n1", "n3")), mapOf("99" to null)).getValue("99"))
-        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(leg("n1", "n3"), leg("n1", "n3", "tube")), mapOf("99" to route)).getValue("99"))
+        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(ride("n1", "w2")), mapOf("99" to route)).getValue("99"))
+        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(ride("n1", "n3")), mapOf("99" to null)).getValue("99"))
+        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(ride("n1", "n3"), ride("n1", "n3", "tube")), mapOf("99" to route)).getValue("99"))
         // Two rides of the line, one the route doesn't run: unknown, so on.
-        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(leg("n1", "n3"), leg("x1", "x2")), mapOf("99" to route)).getValue("99"))
+        assertSame(diversion, onBusRides(mapOf("99" to diversion), listOf(ride("n1", "n3"), ride("x1", "x2")), mapOf("99" to route)).getValue("99"))
     }
 
     @Test
     fun `an open route's row and the line page it opens take the leg's placed status`() {
-        val ride = leg("n1", "n3")
+        val near = leg("n1", "n3")
         val state = TripViewModel.State(statuses = mapOf("99" to diversion))
-        assertSame(diversion, legStatusRow(state, ride, at).status)
-        val placed = state.copy(legStatuses = legStatuses(state.statuses, listOf(ride, leg("n1", "w2")), mapOf("99" to route)))
+        assertSame(diversion, legStatusRow(state, near, at).status)
+        val placed = state.copy(legStatuses = legStatuses(state.statuses, listOf(near to LegEnd.planned(near, StepFree.DEFAULT), ride("n1", "w2")), mapOf("99" to route)))
         // Only the ride the diversion is off has a status of its own.
-        assertEquals(setOf(tripLegKey(ride)), placed.legStatuses.keys)
-        assertEquals(null, legStatusRow(placed, ride, at).status)
-        assertEquals(diversion.planned, legStatusRow(placed, ride, at).plannedAlerts)
+        assertEquals(setOf(tripLegKey(near)), placed.legStatuses.keys)
+        assertEquals(null, legStatusRow(placed, near, at).status)
+        assertEquals(diversion.planned, legStatusRow(placed, near, at).plannedAlerts)
         assertSame(diversion, legStatusRow(placed, leg("n1", "w2"), at).status)
     }
 
@@ -70,6 +75,6 @@ class TripBusAlertsTest {
             underWay = listOf(LineAlert(6, "Diversion", diversion.fullText), LineAlert(6, "Diversion", near)),
             planned = diversion.planned,
         )
-        assertSame(several, onBusRides(mapOf("99" to several), listOf(leg("n1", "n3")), mapOf("99" to route)).getValue("99"))
+        assertSame(several, onBusRides(mapOf("99" to several), listOf(ride("n1", "n3")), mapOf("99" to route)).getValue("99"))
     }
 }

@@ -5069,25 +5069,27 @@ internal fun cardStatuses(
 ): Map<String, LineStatus> {
     // Each line once, with where the first ride holding it gets off, as its trains' verdicts are keyed.
     val lines = card.flatMap { rideLines.endsOf(it.route) }.flatMap(rideLines::linesOf).distinctBy { it.first }
-    val legs = lines.map { it.first }
     val along = if (state.statuses.values.none { it.byDirection.isNotEmpty() }) {
         state.statuses
     } else {
         val rides = lines.groupBy { it.first.lineId }.mapValues { (_, byLine) -> byLine.map { (leg, end) -> legTrains(state, leg, end, now, sequences).orEmpty() } }
         LineStatus.alongRides(state.statuses, rides)
     }
-    return onBusRides(along, legs, sequences)
+    // Each ride's lines by the end their ride gets off at, as their spans are weighed.
+    return onBusRides(along, lines, sequences)
 }
 
 /**
- * The statuses of [legs]' lines that placing a bus line's alerts on one leg's ride changes ([onBusRides]),
- * by the leg ([tripLegKey]): [TripViewModel.State.legStatuses].
+ * The statuses of [rides]' lines that placing a bus line's alerts on one leg's ride, by where it gets off,
+ * changes ([onBusRides]), by the leg ([tripLegKey]): [TripViewModel.State.legStatuses]. Still keyed by the
+ * leg alone, lossless while every ride ends where the Planner does (TODO.md, *Arriving by hub*).
  */
 @WorkerThread
-internal fun legStatuses(statuses: Map<String, LineStatus>, legs: List<TripLeg>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> =
-    legs.mapNotNull { leg ->
+internal fun legStatuses(statuses: Map<String, LineStatus>, rides: List<Pair<TripLeg, LegEnd>>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> =
+    rides.mapNotNull { ride ->
+        val leg = ride.first
         val status = statuses[leg.lineId] ?: return@mapNotNull null
-        onBusRides(mapOf(leg.lineId to status), listOf(leg), sequences).getValue(leg.lineId)
+        onBusRides(mapOf(leg.lineId to status), listOf(ride), sequences).getValue(leg.lineId)
             .takeIf { it !== status }?.let { tripLegKey(leg) to it }
     }.toMap()
 
@@ -5105,25 +5107,26 @@ internal fun TripViewModel.State.legStatus(leg: TripLeg): LineStatus? =
     if (legStatuses.isEmpty()) statuses[leg.lineId] else legStatuses[tripLegKey(leg)] ?: statuses[leg.lineId]
 
 /**
- * [statuses] with each bus line's alerts weighed on [legs]' rides of it, by its route ([sequences]), as a
- * saved journey's are ([JourneyAlerts.onRide]): a diversion at the far end of a long route doesn't flag
- * a ride at the near end (maintainer, 2026-10-17: a ride at one end of a route warned of a diversion at
- * the other). An alert off every ride leaves the line a good service, its work to come kept. Unknown is
- * on: no route yet, a ride it doesn't run, or a line also ridden by another mode.
+ * [statuses] with each bus line's alerts weighed on [rides] of it, each with where it gets off ([LegEnd]),
+ * by its route ([sequences]), as a saved journey's are ([JourneyAlerts.onRide]): a diversion at the far
+ * end of a long route doesn't flag a ride at the near end (maintainer, 2026-10-17: a ride at one end of a
+ * route warned of a diversion at the other). An alert off every ride leaves the line a good service, its
+ * work to come kept. Unknown is on: no route yet, a ride it doesn't run, or a line also ridden by another
+ * mode.
  */
 @WorkerThread
-internal fun onBusRides(statuses: Map<String, LineStatus>, legs: List<TripLeg>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> {
-    val byLine = legs.filter { it.lineId.isNotBlank() }.groupBy { it.lineId }
+internal fun onBusRides(statuses: Map<String, LineStatus>, rides: List<Pair<TripLeg, LegEnd>>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> {
+    val byLine = rides.filter { it.first.lineId.isNotBlank() }.groupBy { it.first.lineId }
     if (byLine.isEmpty()) return statuses
     return statuses.mapValues { (line, status) ->
-        val rides = byLine[line]
+        val ridden = byLine[line]
         val sequence = sequences[line]
-        if (rides == null || sequence == null || !status.disrupted || rides.any { !it.mode.equals("bus", ignoreCase = true) }) return@mapValues status
+        if (ridden == null || sequence == null || !status.disrupted || ridden.any { !it.first.mode.equals("bus", ignoreCase = true) }) return@mapValues status
         // Off every ride, the line is a good service; otherwise TfL's status stands whole, its closures,
         // directions and work to come with it. Not the one of several alerts that reaches the ride, as a
         // saved journey shows: that's rebuilt bare, without them (Codex, #941). Each ride its own way,
         // so one the route doesn't run keeps the alert rather than being left out of the rest.
-        if (JourneyAlerts.onRide(status, rides.map { listOf(it) }, sequence) == null) {
+        if (JourneyAlerts.onRide(status, ridden.map { listOf(it) }, sequence) == null) {
             LineStatus(status.lineId, LineStatus.GOOD_SERVICE, GOOD_SERVICE_LABEL, planned = status.planned)
         } else {
             status
