@@ -23,6 +23,7 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.TimetableRepository
+import app.stopdash.domain.hasTrains
 import java.time.Instant
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -163,7 +164,12 @@ internal fun resolveQuietRows(
 ): List<DepartureRow> {
     val since = now.minus(EmptyTimes.MARK_LIFETIME)
     val until = now.plus(EmptyTimes.MARK_LIFETIME)
+    // A line [rows] shows a train for is never quiet: the candidates are worked out at the minute's tick
+    // and the rows on the screen's own, so at a train's edge (one just past its time, kept or gone,
+    // [Countdown.onBoard]) the two can disagree until the next tick.
+    val withTrains = rows.filter { it.hasTrains }.mapTo(HashSet()) { it.lineId }
     val shown = candidates.filter { row ->
+        if (row.lineId in withTrains) return@filter false
         if (Staleness.isStale(row.fetchedAt, screenNow)) return@filter false
         val marked = marks[quietId(row)]
         marked != null && marked.mark == EmptyTimes.Mark.UNKNOWN && !marked.at.isBefore(since) && !marked.at.isAfter(until)

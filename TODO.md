@@ -2067,9 +2067,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               any other since 2026-10-14, as it reads better and isn't a worse guess than TfL's.
               A Settings switch, *Fix train spacing*, turns it off for TfL's own times (2026-10-14);
               on by default.
-              Still open: measure how late trains come after their last shown time, to size a grace
-              before a train leaves the board; test the duplicate signals listed there; and measure
-              platforms two lines share, which are spaced per line for now.
+              *Done (2026-10-20)*: a Tube train stays on the in-app board 30 s past its time, grayed
+              at "0" and read as "due" (`Countdown.onBoard`), sized from the recording and a rider's
+              log that found the feed a minute behind a moving train. Still open: resize it from more
+              rider-logged rides (the real arrival, not the feed's); whether the widget and watch
+              should keep it too once they gray times; the route page a row opens, which still drops a
+              due train at its time (`MainScreen` filters its trains in composition, so the grace there
+              needs that work moved off the main thread first); test the duplicate signals listed there; and
+              measure platforms two lines share, which are spaced per line for now.
         - [ ] **Space the train a trip follows, as the board does** (Codex on #835): once a trip picks
               a train, its wait and ETA come from that train's own calls (`vehicleCalls`), which TfL
               doesn't space, so a train the board shows spaced to 4 min reads 2 min on the trip after

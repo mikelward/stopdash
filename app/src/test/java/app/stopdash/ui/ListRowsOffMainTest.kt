@@ -163,7 +163,8 @@ class ListRowsOffMainTest {
         composeRule.onAllNodesWithText("0 ·", substring = true).assertCountEquals(0)
         composeRule.onAllNodesWithText("1 · 5 min").assertCountEquals(1)
         settle(scheduler)
-        composeRule.onAllNodesWithText("0 ·", substring = true).assertCountEquals(0)
+        // Built for the new time, the train just gone stays its grace, grayed at "0" ([Countdown.onBoard]).
+        composeRule.onAllNodesWithText("0 · 3 min").assertCountEquals(1)
         composeRule.onAllNodesWithText("1 · 5 min").assertCountEquals(0)
     }
 

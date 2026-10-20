@@ -2951,4 +2951,61 @@ class DepartureRowsTest {
         assertEquals(listOf("victoria", "bakerloo"), sorted.map { it.lineId })
         assertTrue(sorted.last().quiet)
     }
+
+    @Test
+    fun `the board's rows keep a tube train just past its time, grayed, and other rows drop it`() {
+        val due = departure("victoria", "Victoria", "inbound", "Walthamstow Central", offsetSeconds = 0)
+        val bus = departure("73", "73", "outbound", "Stoke Newington", offsetSeconds = 0, mode = "bus")
+        val stop = StopArrivals("940GZZLUEUS", "Euston", listOf(due, bus), fetchedAt = now)
+        val later = now.plusSeconds(10)
+        val board = DepartureRows.across(listOf(stop), later, grace = true).filter { it.upcoming.isNotEmpty() }
+        assertEquals(listOf("victoria"), board.map { it.lineId })
+        assertTrue(board.single().upcoming.single().pastDue)
+        assertTrue(DepartureRows.across(listOf(stop), later).none { it.upcoming.isNotEmpty() })
+        assertTrue(DepartureRows.across(listOf(stop), now.plusSeconds(30), grace = true).none { it.upcoming.isNotEmpty() })
+    }
+
+    @Test
+    fun `a row a card shows but for a train just past its time is still shown above, the train alone stays`() {
+        val due = departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = -10).copy(pastDue = true)
+        val later = departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = 240)
+        val card = rowWith(later)
+        assertEquals(emptyList<DepartureRow>(), DepartureRows.withoutShownAbove(listOf(rowWith(due, later)), listOf(card)))
+        assertEquals(listOf(rowWith(due)), DepartureRows.withoutShownAbove(listOf(rowWith(due)), listOf(card)))
+    }
+
+    @Test
+    fun `a tube line whose every train leaves its mode blank keeps a just-due train, by the stop's own line mode`() {
+        val due = departure("victoria", "Victoria", "inbound", "Walthamstow Central", offsetSeconds = 0, mode = "")
+        val stop = StopArrivals("940GZZLUEUS", "Euston", listOf(due), fetchedAt = now, lines = listOf(LineRef("victoria", "Victoria", "tube")))
+        val board = DepartureRows.across(listOf(stop), now.plusSeconds(10), grace = true).filter { it.upcoming.isNotEmpty() }
+        assertTrue(board.single().upcoming.single().pastDue)
+        // With no mode anywhere, it isn't known to be a Tube train, and goes at its time.
+        assertTrue(DepartureRows.across(listOf(stop.copy(lines = emptyList())), now.plusSeconds(10), grace = true).none { it.upcoming.isNotEmpty() })
+    }
+
+    @Test
+    fun `a line whose one train the board keeps just past its time gets no quiet candidate until it goes`() {
+        val due = departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = 0, platform = "Southbound - Platform 5")
+        val stop = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", listOf(due), fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val distances = mapOf("940GZZLUKSX" to 100.0)
+        fun candidates(at: Instant) = DepartureRows.quietCandidates(listOf(stop), at, emptyMap(), setOf("victoria"), distances)
+        // Its "0" is on the board, so the line isn't quiet.
+        assertTrue(candidates(now.plusSeconds(10)).isEmpty())
+        // Once the grace is over, it is.
+        assertEquals(1, candidates(now.plusSeconds(31)).size)
+    }
+
+    @Test
+    fun `a stale stop keeps no train past its time, so its guess is the next train's`() {
+        val due = departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = 0)
+        val next = departure("victoria", "Victoria", "outbound", "Brixton", offsetSeconds = 240)
+        val stale = StopArrivals("940GZZLUEUS", "Euston", listOf(due, next), fetchedAt = now.minus(java.time.Duration.ofHours(1)))
+        val row = DepartureRows.across(listOf(stale), now.plusSeconds(10), grace = true).single()
+        assertEquals(listOf(next), row.upcoming)
+        assertEquals(Countdown.staleLabel(listOf(next)), Countdown.staleLabel(row.upcoming))
+    }
 }
