@@ -2098,6 +2098,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [ ] **Recheck the held rule on later recordings**: platform holds seemed more common than
                 usual when it was measured, so the line may be run differently for now. Rerun the
                 numbers on a recording a few weeks on, off-peak too.
+          - [ ] **A train waiting where its trip starts isn't held** (no change for now, maintainer,
+                2026-10-20): replaying the rule over two recordings, mid-route marks came a median
+                ~5 min late (about 1 in 10 earlier than the grayed time), but trains standing at
+                the station their trip starts from (Battersea Power Station above all, also
+                Edgware and Kennington) slide the same way while they lay over, and up to half
+                came earlier than the grayed time. Decide whether such a train shows its plain
+                time or is grayed with its own wording ("3 min, not yet left"), not "held".
         - [ ] **Gray the trains on a suspended section** (maintainer, 2026-10-20): during a suspension
               ("No service between Camden Town and Kennington via Bank northbound only") TfL's live list
               kept timing the stuck trains as if they ran. Gray their times, kept, only where the
