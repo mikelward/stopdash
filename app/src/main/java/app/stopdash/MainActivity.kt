@@ -28,6 +28,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.HubInfoCache
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
@@ -294,6 +295,7 @@ import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
 import app.stopdash.ui.LocalJourneyWalkMeters
 import app.stopdash.ui.LocalJourneyEndStops
+import app.stopdash.ui.LocalJourneyHubs
 import app.stopdash.ui.LocalLegTimetables
 import app.stopdash.ui.JourneyEndStops
 import app.stopdash.ui.LocalRouteTopology
@@ -4116,8 +4118,9 @@ class MainActivity : ComponentActivity() {
                 // A favorite ride's page gives its timetable's next train while nothing live says (RidePage).
                 LocalLegTimetables provides legTimetables(),
                 LocalJourneyEndStops provides journeyEndStops,
-                // A journey's far end reaches as far as a trip's Direct section reaches a place: the rider's
-                // max walk at their pace.
+                // A ride's ends are hubs: the stops in each come from the station model, once it's loaded.
+                LocalJourneyHubs provides (HubsStore.state.collectAsStateWithLifecycle().value as? Hubs.State.Ready)?.hubs,
+                // How far around a journey's ends to look up their hubs' stops: the rider's max walk at their pace.
                 LocalJourneyWalkMeters provides PlaceStops.walkMeters(
                     MaxWalkSetting.changes.collectAsStateWithLifecycle().value,
                     WalkingSpeedSetting.changes.collectAsStateWithLifecycle().value,

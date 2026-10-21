@@ -195,7 +195,6 @@ import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TflException
 import app.stopdash.domain.Workers
-import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
@@ -607,12 +606,14 @@ fun MainScreen(
             }.toMap()
         }
     }
-    // The stops around each journey's ends (SPEC *Journeys*): beside its origin, the stops it may board
-    // from on any line; at its far end, every stop within the rider's walk, as a trip's Direct section
-    // reaches a place. One TfL lookup by each end's published position, cached a day ([LocalJourneyEndStops]),
-    // on IO off the main thread; a failed one is kept as such (null), unless an earlier answer is held.
+    // The stops around each journey's ends (SPEC *Journeys*): in its origin's hub, the stops it may board
+    // from on any line; in its far end's, every stop it may be set down at, a ride running between hubs
+    // (maintainer, 2026-10-21). One TfL lookup by each end's published position, cached a day
+    // ([LocalJourneyEndStops]), on IO off the main thread; a failed one is kept as such (null), unless an
+    // earlier answer is held.
     val endStopFinder = LocalJourneyEndStops.current
     val journeyWalkMeters = LocalJourneyWalkMeters.current
+    val journeyHubs = LocalJourneyHubs.current
     var endStops by remember { mutableStateOf<Map<String, List<StopLocation>?>>(emptyMap()) }
     // The radius each held answer was asked with: a failed lookup keeps one only if it covers the walk
     // now asked for (a longer max walk reaches further), else the failure stands (Codex, #691).
@@ -645,7 +646,7 @@ fun MainScreen(
             }
         }
     }
-    val aroundWanted = Inputs(cardJourneys, endStops, endStopRadius, journeyWalkMeters, journeyAreas, journeyAreaPoles, endStopFinder)
+    val aroundWanted = Inputs(cardJourneys, endStops, endStopRadius, journeyWalkMeters, journeyAreas, journeyAreaPoles, endStopFinder, journeyHubs)
     // Worked out on the list's worker, the last answer for the same journeys standing in meanwhile.
     val journeyAround = rememberWorked(listWork.journeyAround, aroundWanted, keep = { held, wanted -> held.parts[0] === wanted.parts[0] }) {
         // With no lookup wired (a test, a preview), each journey boards from its origin and stop area alone.
@@ -653,11 +654,11 @@ fun MainScreen(
         // before the rider's own walk is read, waits for the lookup that does (Codex, #691).
         val required = journeyWalkMeters?.let(::journeyEndRadius) ?: Int.MAX_VALUE
         journeyBoardingOf(
-            if (endStopFinder == null) emptyList() else cardJourneys, endStops, journeyWalkMeters ?: PlaceStops.WALK_METERS,
+            if (endStopFinder == null) emptyList() else cardJourneys, endStops, journeyHubs,
             journeyAreas, journeyAreaPoles, cardJourneys, endStopRadius, required,
         )
     }
-    // The far end's stops within the walk, by journey key.
+    // The far end's hub's stops, by journey key.
     val journeyFarEnds = journeyAround?.farEnds.orEmpty()
     // The journeys that weigh stops beside their origin (a position to look around, or a bus stop area),
     // whose cards wait for them.

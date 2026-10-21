@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.PlaceStopsFinder
@@ -45,8 +46,16 @@ class JourneyEndStops(
 val LocalJourneyEndStops = staticCompositionLocalOf<JourneyEndStops?> { null }
 
 /**
- * How far the rider walks from a stop at a journey's far end, in meters, by their max walk and pace
- * ([PlaceStops.walkMeters]); null until both are read, when nothing is looked up or judged on a default
+ * The station model a journey's ends' hubs are read from ([Journeys.stopsInHub]): null while it loads,
+ * where it's unavailable, or with none wired (a test, a preview), when each end is its own stop and stop
+ * area alone.
+ */
+val LocalJourneyHubs = compositionLocalOf<Hubs?> { null }
+
+/**
+ * The rider's walk in meters, by their max walk and pace ([PlaceStops.walkMeters]), which sizes the lookup
+ * around a journey's ends ([journeyEndRadius]); which of the stops found count is their hubs' alone
+ * ([LocalJourneyHubs]). Null until both are read, when nothing is looked up or judged on a default
  * (Codex, #691).
  */
 val LocalJourneyWalkMeters = compositionLocalOf<Int?> { PlaceStops.WALK_METERS }
