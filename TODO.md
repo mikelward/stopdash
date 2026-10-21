@@ -4135,7 +4135,8 @@ Builds on Phase 1's minimal line-status marking.
       reads by the journey's saved name, with no letter. Its line's route gives the pole's own name
       (`LineSequence.stopNames`); the letter, sign and bearing need its stop area's poles, which only
       origins look up today (a new lookup per far end, or `cachedPoles` where already loaded).
-- [ ] **Show the ride's next timetabled train on its card's row, grayed?** (maintainer, 2026-10-21). The
+- [ ] **Show the ride's next timetabled train on its card's row, grayed?** (maintainer, 2026-10-21; left
+      for a decision, see *Decisions needing review*). The
       ride's page says "Next train 05:41 (timetable)"; the card's row still shows a dash. A gray "05:41" in
       the row's time slot would say it at a glance, kept apart from live countdowns (a clock time, never
       "in N min"). Needs the timetable fetched for the card, not only once its page opens. To consider
@@ -5128,6 +5129,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A ride card's row keeps its dash rather than show the next timetabled train** (autopilot,
+  2026-10-21). *Show the ride's next timetabled train on its card's row, grayed?* is put as a question,
+  so it's left unbuilt while the rest of that day's items landed: the ride's page gives its next few
+  trains by the timetable (#1042), and a near-me "?" or dash row's page each way's next few. Building it
+  costs a timetable request per favorite ride a day for the home screen (£0, inside TfL's limits), made
+  before the card's page is opened, and puts a clock time where the row's countdowns go. Alternative:
+  build it, a gray "05:41" in the card's time slot, never "in N min", fetched as a "?" row's timetable
+  is. Reversible: nothing was built; the item stays open.
 - [ ] **The trip page reads the last ride's hub end for its ride lines and verdicts first**
   (autopilot, 2026-10-20). Another line reaching another station of the destination's hub shows on
   the card and a train calling anywhere in the hub is judged to get there; the Planner's own ride, its
