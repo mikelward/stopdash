@@ -2187,11 +2187,19 @@ private fun LoadedContent(
             // was missing) and failed-to-refresh, and both facts have to stay visible —
             // collapsing them into one branch would drop the "stops missing" warning and
             // let the omitted stops go silent (SPEC principle 2).
+            // Each offers "Try again" (a refresh, as a pull is), so the notice isn't a dead end; one at a
+            // time, both being the same refresh. Not for a refused TfL key, which fails again however
+            // soon it's asked: the app-wide bar offers to clear it instead.
+            // The partial warning's reason, read once and only when it shows: it walks the failed stops.
+            val partialReason = if (state.partialRefresh) state.partialReason else null
+            val retries = (state.refreshFailure ?: partialReason) != DeparturesUiState.Error.Kind.KEY_REJECTED
             if (state.refreshFailure != null) {
-                Banner(stringResource(refreshFailureMessage(state.refreshFailure)))
+                val message = stringResource(refreshFailureMessage(state.refreshFailure))
+                if (retries) ActionBanner(message, onTryAgain = onRefresh) else Banner(message)
             }
             if (state.partialRefresh) {
-                Banner(partialRefreshMessage(state.partialStops.values.map { it.name }.distinct(), state.partialReason))
+                val message = partialRefreshMessage(state.partialStops.values.map { it.name }.distinct(), partialReason)
+                if (retries && state.refreshFailure == null) ActionBanner(message, onTryAgain = onRefresh) else Banner(message)
             }
             // Arrivals loaded but their disruption status couldn't be checked — say so
             // rather than let the times read as verified-clean (SPEC *Disruptions*).

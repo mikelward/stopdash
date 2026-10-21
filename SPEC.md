@@ -4176,7 +4176,10 @@ been set, so none keeps showing what it judged before.
   at one station reads as that, not as the app failing somewhere unnamed. The reason shows only when every named stop failed the same way; stops that failed
   differently are named without one, rather than given a reason untrue of some. A failure in an
   opened farther-station card isn't named: the warning falls back to "some stops". A snapshot
-  restored from disk names the stops but not the reason, which isn't kept.
+  restored from disk names the stops but not the reason, which isn't kept. The warning offers
+  **Try again**, the same refresh a pull starts, so it's never a dead end; once, where both
+  warnings show, since one refresh retries both. Not when TfL refused the user's key, which
+  would be refused again: the app-wide bar offers to clear the key instead.
   While any refresh of a shown list is under way (auto, pull, button or re-locate), the stamp reads
   **"Checking…"** in place of the age, over a stale list's "Tap to refresh" too, since the refresh it
   asks for is the one running; a retry from an error screen shows the loading screen's "Loading…". Nothing is drawn over the list for it: a
