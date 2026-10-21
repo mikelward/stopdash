@@ -61,5 +61,37 @@ class TopOverlayTest {
         assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = true))
         // Its own Departures, whose Back finds it again.
         assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false, departures = true))
+        // Lines… opened from its own line pill, whose Back finds it again rather than the route page under it.
+        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false, lines = true))
+    }
+
+    @Test
+    fun `a stop's Departures opened from Lines over the details shows over it`() {
+        // Lines… covers the details alone: Departures picked within it is the window asked for (Codex on #1064).
+        assertEquals(
+            false,
+            routeStopCovered(
+                licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false,
+                lines = true, window = RouteStopWindow.DEPARTURES,
+            ),
+        )
+        // It still steps aside for what takes over the app.
+        assertEquals(
+            true,
+            routeStopCovered(
+                licenses = false, settings = true, onTheWay = false, favoritePlaces = false, favoriteJourneys = false,
+                lines = true, window = RouteStopWindow.DEPARTURES,
+            ),
+        )
+    }
+
+    @Test
+    fun `back to a station from a change of start closes a search its From row opened`() {
+        // A station opened from a route page or Lines…: its From row opened the search, so going back to the
+        // station closes it, and the station's Back doesn't land on a search the rider never opened.
+        assertEquals(false, searchAfterChange(open = true, openedForChange = true))
+        // A station opened from the search: the search stays under it, for its Back.
+        assertEquals(true, searchAfterChange(open = true, openedForChange = false))
+        assertEquals(false, searchAfterChange(open = false, openedForChange = false))
     }
 }

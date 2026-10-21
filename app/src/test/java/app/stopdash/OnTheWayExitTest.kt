@@ -35,6 +35,15 @@ class OnTheWayExitTest {
     }
 
     @Test
+    fun `leaving a trip's options closes the route stop details whose Lines it closes`() {
+        // The details' line pill opened that Lines…: they'd come back over the near-me list Done lands on.
+        assertTrue(doneClosesRouteStop(closesLines = true, linesFromRouteStop = true))
+        // Lines… opened otherwise, or left open: the details are none of the trip's.
+        assertFalse(doneClosesRouteStop(closesLines = true, linesFromRouteStop = false))
+        assertFalse(doneClosesRouteStop(closesLines = false, linesFromRouteStop = true))
+    }
+
+    @Test
     fun `plan again from a station supersedes a near-me trip's options, and only then`() {
         assertTrue(supersedesNearMeTrip(replacing = true, from = "", openStationId = "940GZZLUKSX"))
         // A first start, a replaced station trip, or a trip whose origin is unknown leaves them be.
