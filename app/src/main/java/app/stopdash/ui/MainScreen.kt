@@ -6079,6 +6079,12 @@ internal fun RouteDetailScreen(
     // Whether the page offers [ride]'s ways where more than one joins its ends, for the rider to choose the one
     // listed (a favorite ride's page; Codex on #1036): the ride alone can't say which.
     rideChoices: Boolean = false,
+    // Closure notices bearing on the page beyond its own stop's, each by a row carrying it and its title (a
+    // favorite ride's boarding stops' and far end's, as its card shows them; Codex on #1036). Shown without a
+    // dismiss, which is the card's; any of them means the page never calls the ride clean.
+    closures: List<Pair<DepartureRow, String>> = emptyList(),
+    // A far end whose closure check failed, so it may be closed: said, by its name. Null where it was checked.
+    uncheckedEnd: String? = null,
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
@@ -6568,6 +6574,19 @@ internal fun RouteDetailScreen(
                     onDismiss = dismissPlanned?.let { dismiss -> { dismiss(planned) } },
                 )
             }
+            // The notices the ride's card carries (its far end's, its boarding stops'), as its card shows them: why its
+            // timetable is withheld, said rather than left to guess (Codex on #1036).
+            closures.forEach { (closure, title) ->
+                Box(Modifier.padding(top = 12.dp)) { StopClosureCard(closure, onDismiss = null, title = title) }
+            }
+            if (uncheckedEnd != null) {
+                Text(
+                    text = stringResource(R.string.journey_destination_unchecked, uncheckedEnd),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
             // The disruption-check state, independent of staleness (the two caveats are separate
             // facts, both shown when both apply — Codex): "couldn't check" whenever this row's line
             // was undetermined OR its stop's disruption lookup failed — a known line alert doesn't
@@ -6599,7 +6618,9 @@ internal fun RouteDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-            } else if (status == null && !shown.statusDismissed && shown.statusBehind == null && row.stopDisruption == null && !stale) {
+            } else if (status == null && !shown.statusDismissed && shown.statusBehind == null && row.stopDisruption == null && !stale &&
+                closures.isEmpty() && uncheckedEnd == null
+            ) {
                 // Nor with a notice in force at its stop (a closure, a moved stop): not a clean stop.
                 Text(
                     text = stringResource(R.string.route_detail_no_disruption),

@@ -176,7 +176,14 @@ internal class RideView(
     val lineListed: Boolean = true,
     // The days its line's planned work starts, dismissed or not: dismissing hides work, it doesn't call it off.
     val plannedFrom: List<java.time.LocalDate> = emptyList(),
-)
+) {
+    /**
+     * Its card's closure notices, each by one of its rows and the title its card gives it ([JourneyCard.closures]):
+     * its boarding stops' and its far end's, which its page shows as the card does (Codex on #1036). Paired here, as
+     * the view is made, off the main thread.
+     */
+    val closures: List<Pair<DepartureRow, String>> = card.closures.map { it.first() }.zip(card.closureTitles)
+}
 
 /**
  * [cards]' ride pages by journey key ([RideView]), each row the list's own for the ride's line at its origin with

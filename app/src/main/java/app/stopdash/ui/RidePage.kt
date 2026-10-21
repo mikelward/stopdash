@@ -149,6 +149,9 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
         nextTrains = nextTrains,
         // Where more than one way joins its ends, the rider chooses the one listed.
         rideChoices = true,
+        // Its card's closure notices and an unchecked far end, as the card says them: why its timetable is withheld.
+        closures = view.closures,
+        uncheckedEnd = view.card.journey.to.name.takeIf { view.card.destinationUnchecked },
     )
 }
 

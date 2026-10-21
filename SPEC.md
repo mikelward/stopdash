@@ -1517,8 +1517,10 @@ rather than an "unavailable" with nothing to try (Codex on #1039). Then its
 line's alert if it has one, "View line" for the map, and, while nothing live says and its line has no
 alert, its timetable's next few trains, "Next trains 05:41 · 05:49 · 05:57 (timetable)" (maintainer, 2026-10-21: as
 many as three, the ones the timetable can vouch for; "Next train" for one) — the one place a timetable's time is
-shown, said as the timetable's and never as a countdown. Only a check that failed, or a route that
-couldn't load, is a note under the heading.
+shown, said as the timetable's and never as a countdown. Its card's closure notices, its boarding stops' and
+its far end's, show there as the card shows them, and so does a far end that couldn't be checked, so a timetable
+withheld for one says why (Codex on #1036). Only a check that failed, or a route that couldn't load, is a note
+under the heading.
 
 **On the widget**, a journey's departures lead the list too (maintainer, 2026-09-23), in the
 direction the app last showed, and **nearest ride first** in the order the app's list last showed
