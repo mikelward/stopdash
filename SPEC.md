@@ -985,7 +985,7 @@ Green or Finchley Central shows no "/Bank".
 
 Where the pair won't fit, the **branch is kept whole** — it is the cue that tells the two trunks
 apart, so truncating it would lose which train this is — and the **terminus yields**: it shortens
-common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, `Broadway`→`Bwy`, `Square`→`Sq`, `Terminal`→`T.`, `International`→`Intl` as a station's name already shows it, TfL's own `Cross`→`X`, and the rest —
+common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, `Broadway`→`Bwy`, `Square`→`Sq`, `Terminal`→`T.`, `International`→`Intl` as a station's name already shows it, TfL's own `Cross`→`X`, `Platform`→`Plat` for a tight label, and the rest —
 `DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush
 Market/Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
 the first behind one trailing `…`), then, for a name no word maps, drops to its **floor** — the first word
@@ -3320,9 +3320,12 @@ of the shade and the lock screen with a **progress bar** of the trip's legs, eac
 ride and by the clock on a walk; and a **status-bar chip**: where to stand when the step is
 boarding or a change, as the board heads that stop (D8): the train's platform, or the way it faces
 ("Platform 8", "Southbound"); a bus pole's letter, its sign's "towards", or its bearing ("Stop G",
-"➔ King's Cross", "Northbound"); else where the train goes, shortened as a board shortens it, since the
-chip has few characters. Stops left on a ride ("Next stop" at one); on a walk the distance left,
-in the rider's units, once a fix places them; minutes otherwise. Boarding or
+"➔ King's Cross", "Northbound"); else where the train goes. Each is shortened as every name is
+(`DestinationAbbreviations`), only as far as the chip's few characters need: "Platform 8" in full
+showed as "Platform", the number cut off, so it's "Plat 8" there (maintainer, 2026-10-21), closed up
+where even that runs over ("Plat10A"), as a cut "Plat 10A" would name platform 10. Stops
+left on a ride ("Next stop" at one); on a walk the distance left, in the rider's units, once a fix
+places them; minutes otherwise. Boarding or
 changing, the notification's line also names where the train goes and where to stand ("➔ Stratford ·
 Platform 2 · Due in 4 min"). Where it goes is what its front shows: the board's destination for the
 train followed, else for the next on the step's own line the rider can catch that takes them to their

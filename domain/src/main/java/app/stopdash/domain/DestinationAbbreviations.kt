@@ -56,6 +56,9 @@ object DestinationAbbreviations {
         // An airport's terminals (maintainer, 2026-10-14): "Heathrow T. 5", "Heathrow T. 2 & 3".
         "Terminal" to "T.",
         "Terminals" to "T.",
+        // Where to stand, as a board heads it, in a label with little room ("Plat 8" on the trip's
+        // status-bar chip; maintainer, 2026-10-21).
+        "Platform" to "Plat",
     )
 
     /**

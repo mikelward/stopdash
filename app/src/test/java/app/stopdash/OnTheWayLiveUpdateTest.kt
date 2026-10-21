@@ -91,7 +91,11 @@ class OnTheWayLiveUpdateTest {
         // Beside the train's own destination, a sign's "towards" is left to the chip, not said twice.
         val towards = OnTheWayLiveUpdate.Boarding("Euston", "➔ King's Cross")
         assertEquals("➔ Euston · Due in 20 min", OnTheWayLiveUpdate.withBoarding(app.resources, towards, "Due in 20 min"))
-        assertEquals("➔ King's Cross", OnTheWayLiveUpdate.chipText(app.resources, departing, now, towards))
+        // On the chip, shortened as every name is; with no form short enough, the shortest, for Android to cut.
+        assertEquals("➔ King's X", OnTheWayLiveUpdate.chipText(app.resources, departing, now, towards))
+        // The arrow isn't the name's first word: the place keeps its name, never "➔ A." at its floor.
+        val archway = OnTheWayLiveUpdate.Boarding("Euston", "➔ Archway")
+        assertEquals("➔ Archway", OnTheWayLiveUpdate.chipText(app.resources, departing, now, archway))
     }
 
     @Test
@@ -193,10 +197,16 @@ class OnTheWayLiveUpdateTest {
 
     @Test
     fun `the chip, the platform or stop when boarding, stops riding, minutes walking`() {
-        assertEquals("Platform 8", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Brixton", "Platform 8")))
+        // Shortened as every name is, only where it runs past the chip: in full, "Platform 8" showed as
+        // "Platform", the number cut off.
+        assertEquals("Plat 8", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Brixton", "Platform 8")))
+        assertEquals("Plat 12", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Brixton", "Platform 12")))
+        // Closed up where even that runs over, so a cut can't leave another platform's number ("Plat 10").
+        assertEquals("Plat10A", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Stratford", "Platform 10A")))
         assertEquals("Stop G", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Euston", "Stop G")))
-        // Neither known: where the train goes.
+        // Neither known: where the train goes, in full where it fits, else shortened alike.
         assertEquals("Brixton", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Brixton")))
+        assertEquals("Kew Br", OnTheWayLiveUpdate.chipText(app.resources, waiting, now, OnTheWayLiveUpdate.Boarding("Kew Bridge")))
         assertEquals("4 min", OnTheWayLiveUpdate.chipText(app.resources, waiting, now))
         assertEquals("5 stops", OnTheWayLiveUpdate.chipText(app.resources, TripProgress.Riding(victoria, "Euston", 5, at(12), getOffSoon = false), now))
         assertEquals("Next stop", OnTheWayLiveUpdate.chipText(app.resources, TripProgress.Riding(victoria, "Victoria", 1, at(12), getOffSoon = true), now))
@@ -253,7 +263,8 @@ class OnTheWayLiveUpdateTest {
         assertTrue(notification.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
         assertFalse(notification.extras.getBoolean(android.app.Notification.EXTRA_COLORIZED))
         assertNull(notification.contentView)
-        assertEquals("Platform 8", NotificationCompat.getShortCriticalText(notification))
+        assertEquals("Plat 8", NotificationCompat.getShortCriticalText(notification))
+        // The text has the room the chip hasn't: the platform in full.
         assertEquals("➔ Brixton · Platform 8 · Due in 4 min", notification.extras.getString(android.app.Notification.EXTRA_TEXT))
     }
 
