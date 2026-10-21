@@ -56,17 +56,14 @@ internal class ShownRoutes private constructor(
 
         /**
          * [state]'s routes as shown at [stepFree] through [destination] ([RideEnds.cut], [RideEnds.of]), one for each
-         * in the Planner's order: two the cut draws alike stay two, each its own plan ([TripRoute.drawnFrom]). Not a
-         * Direct row's route ([TripViewModel.State.directKeys]). Work over the routes: off the main thread.
+         * in the Planner's order: two the cut draws alike stay two, each its own plan ([TripRoute.drawnFrom]). A Direct
+         * row's route ([TripViewModel.State.directKeys]) is drawn as the plan's are, its copy that route by key
+         * ([routeKey]), so it's still the row's. Work over the routes: off the main thread.
          */
         @WorkerThread
         fun of(state: TripViewModel.State, stepFree: StepFree, destination: RideEnds.Destination?): ShownRoutes {
             val routes = state.routes ?: return planned(state, stepFree)
-            val direct = state.directKeys
-            val cut = RideEnds.cut(routes, stepFree, destination)
-            val shown = routes.mapIndexed { index, planned ->
-                cut[index].takeUnless { it !== planned && direct.isNotEmpty() && routeKey(planned) in direct } ?: planned
-            }
+            val shown = RideEnds.cut(routes, stepFree, destination)
             if (shown.indices.all { shown[it] === routes[it] }) {
                 return ShownRoutes(state, stepFree, state, RideEnds.of(routes, stepFree, destination))
             }

@@ -70,9 +70,12 @@ class ShownRoutesTest {
     }
 
     @Test
-    fun `a Direct row's route is drawn as planned`() {
+    fun `a Direct row's route is drawn cut as the plan's are, still the row's by key`() {
         val direct = planned.copy(directKeys = setOf(routeKey(changing)))
-        assertTrue(ShownRoutes.of(direct, StepFree.ANY, HillModel.toHill).state.routes!!.single() === changing)
+        val drawn = ShownRoutes.of(direct, StepFree.ANY, HillModel.toHill).state.routes!!.single()
+        assertEquals("940GZZLUHLE", drawn.legs.last().toId)
+        assertTrue(drawn.drawnFrom === changing)
+        assertTrue(routeKey(drawn) in direct.directKeys)
     }
 
     @Test

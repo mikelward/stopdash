@@ -1023,10 +1023,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               cut), or timed from the Planner's own times there where a
                                               timetable gives them, in place of the old end's arrival it
                                               keeps for now.
-                                        - [ ] A Direct row's route (`TripViewModel.findDirect`) cut at
-                                              the hub's first call like the plan's own routes, where a
-                                              Direct row to a stop can arrive by hub; today only the
-                                              plan's answers are cut.
+                                        - [x] A Direct row's route drawn cut at the hub's first call as the
+                                              plan's own routes are (`ShownRoutes.of`), its copy still the row's
+                                              route by key.
                                         - [ ] The trains through a change (`withThroughRoutes`,
                                               `plannedThroughWays`) worked out on the compute dispatcher
                                               with the rest of `ShownRoutes`, not in `TripScreen`'s
@@ -5193,8 +5192,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   and On the way read the Planner's route. What followed: the page holds its last frame, or draws
   none, while a placed plan's drawn routes are worked out, so a ride's end never moves under the
   rider; a route drawn cut is its route as planned by key (below); a train through a change made from a
-  cut route starts made again from the route as planned, its walk on kept; a Direct row's route is never
-  drawn cut, as before; and the trip and a later trip's list choose and order their
+  cut route starts made again from the route as planned, its walk on kept; a Direct row's route, at first
+  never drawn cut, is drawn cut as the plan's are since; and the trip and a later trip's list choose and order their
   routes as planned (the detours another route beats, a later list's time window), drawing only the
   cards cut. Alternative: keep cutting the stored
   routes with the Planner's copy beside them. Reversible: `ShownRoutes` and the one `RideEnds.cut`.
