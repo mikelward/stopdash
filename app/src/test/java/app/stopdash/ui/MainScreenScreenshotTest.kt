@@ -6278,10 +6278,13 @@ class MainScreenScreenshotTest {
         // Both facts stay visible — the list is incomplete AND the refresh failed.
         composeRule.onNodeWithText("Some stops couldn't be refreshed").assertExists()
         composeRule.onNodeWithText("Couldn't refresh — you're offline").assertExists()
+        // One refresh would retry both: offered once.
+        composeRule.onAllNodesWithText("Try again").assertCountEquals(1)
     }
 
     @Test
     fun `refresh failed, showing aged data`() {
+        var refreshed = 0
         capture("main-refresh-failed.png") {
             MainScreen(
                 DeparturesUiState.Loaded(
@@ -6290,10 +6293,49 @@ class MainScreenScreenshotTest {
                     refreshFailure = DeparturesUiState.Error.Kind.OFFLINE,
                 ),
                 now,
-                {},
+                { refreshed++ },
             )
         }
         composeRule.onNodeWithText("Couldn't refresh — you're offline").assertExists()
+        // Not a dead end: it offers what a pull does.
+        composeRule.onNodeWithText("Try again").performClick()
+        assertEquals(1, refreshed)
+    }
+
+    @Test
+    fun `a partial refresh offers to try again`() {
+        var refreshed = 0
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(
+                    DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), partialRefresh = true),
+                    now,
+                    { refreshed++ },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Try again").performClick()
+        assertEquals(1, refreshed)
+    }
+
+    @Test
+    fun `a refresh refused the TfL key offers no retry`() {
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(
+                    DeparturesUiState.Loaded(
+                        stops(now.minusSeconds(120)),
+                        now.minusSeconds(120),
+                        refreshFailure = DeparturesUiState.Error.Kind.KEY_REJECTED,
+                    ),
+                    now,
+                    {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("Couldn't refresh — TfL rejected your API key").assertExists()
+        // It would be refused again: the app-wide bar offers to clear the key instead.
+        composeRule.onNodeWithText("Try again").assertDoesNotExist()
     }
 
     @Test
