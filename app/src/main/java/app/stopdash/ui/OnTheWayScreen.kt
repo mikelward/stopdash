@@ -2285,7 +2285,9 @@ private fun rememberRideStops(on: TripLeg?, stepFree: StepFree, progress: TripPr
             needed = true
         }
         val sequence = read?.sequence?.takeIf { needed }
-        // Where it gets off ([LegEnd.planned]: the Planner's call, as before arriving by hub) is worked out on the worker too.
+        // Where it gets off is [on]'s own end ([LegEnd.planned]), the ride as the trip now has it: once the end moves into
+        // the destination's hub ([OnTheWay.arrivingEnd]), or another line takes it to another station there, the list
+        // ends there too. Worked out on the worker too.
         val ride = sequence?.let { seq -> withContext(worker) { withRouteStops(on, LegEnd.planned(on, stepFree), seq) } } ?: on
         var list = withContext(worker) { rideStopList(ride, progress, boarded, if (needed) read!!.names else emptyMap(), stale) }
         if (list?.missing == true && !needed) {

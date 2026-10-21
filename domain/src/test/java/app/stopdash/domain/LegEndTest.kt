@@ -3,6 +3,7 @@ package app.stopdash.domain
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -214,6 +215,11 @@ class LegEndTest {
         val ids = OnTheWay.arrivingIds(toHill(ride("910GHILL", mode = "national-rail"), StepFree.ANY), hubs)
         assertEquals("1009001:rail", ids["910GHILLLL"])
         assertEquals("1009002:tube", ids["940GZZLUHIL"])
+        // Its end, as its ride lines are given it: the hub, getting off at any of those ids.
+        assertEquals(
+            LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUBEXA"), ids = ids.keys),
+            OnTheWay.arrivingEnd(toHill(ride("910GHILL", mode = "national-rail"), StepFree.ANY), hubs),
+        )
         // An end already moved still reads the route as planned.
         val moved = toHill(ride("910GHILLLL", mode = "national-rail"), StepFree.ANY)
             .copy(plannedLegs = toHill(ride("910GHILL", mode = "national-rail"), StepFree.ANY).route.legs)
@@ -226,6 +232,8 @@ class LegEndTest {
         // Step-free, or a trip kept before its level was: the hub's other calls aren't checked against lifts yet.
         assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, StepFree.STATION), hubs))
         assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, null), hubs))
+        // Nor is it given a hub end: it gets off where the Planner does.
+        assertNull(OnTheWay.arrivingEnd(toHill(last, StepFree.STATION), hubs))
         // The Planner gets off at Vale, outside the destination's hub, and walks on.
         assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(ride("910GVALE", mode = "national-rail"), StepFree.ANY), hubs))
         // A trip to a place, which has no hub.

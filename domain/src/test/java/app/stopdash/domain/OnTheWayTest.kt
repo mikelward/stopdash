@@ -138,6 +138,32 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `another line taking the last ride to another station of the destination's hub gets the rider off there`() {
+        // Green reaches B, another station (T) of the hub of C's station (S), as one of the ride's lines.
+        val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S"))
+        val hub = mapOf("C" to "S", "B" to "T")
+        val green = TripLeg("tube", "green", "Green", "A", "A", "B", "B", at(5), at(12), path = listOf("X", "B"))
+        val train = Departure("green", "Green", "outbound", "B", null, at(5), "tube", vehicleId = "g")
+        val onBoard = OnTheWay.follow(toStation, train, green).copy(boarded = true)
+        val (atB, progress) = OnTheWay.advance(onBoard, listOf(call("X", 8), call("B", 11)), at(6), arriving = hub)
+        assertEquals(at(11), (progress as TripProgress.Riding).getOffAt)
+        // The ride ends at B, the walk planned on from C gone, with the route as planned kept.
+        assertEquals(listOf("B"), atB.route.legs.map { it.toId })
+        assertEquals("B", OnTheWay.ridden(atB)?.toId)
+        assertEquals(toStation.route.legs, atB.plannedLegs)
+        // Gone from B: arrived, with no walk from C.
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(atB, listOf(call("Q", 14)), at(12), arriving = hub).second)
+        // Another of the ride's lines getting off at another record of C's own station isn't elsewhere: the walk stays.
+        val sibling = green.copy(lineId = "purple", lineName = "Purple", toId = "C2", toName = "C", path = listOf("X", "C2"))
+        val (riding, _) = OnTheWay.advance(
+            OnTheWay.follow(toStation, train.copy(lineId = "purple"), sibling).copy(boarded = true),
+            listOf(call("X", 8), call("C2", 11)), at(6), arriving = hub + ("C2" to "S"),
+        )
+        assertEquals(toStation.route, riding.route)
+        assertNull(riding.plannedLegs)
+    }
+
+    @Test
     fun `a National Rail call naming its station's records arrives at the hub's other station by none of them`() {
         // B's call names no one TfL id (a CRS's records): it isn't where the ride gets off by the hub, so on to C.
         val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S"))

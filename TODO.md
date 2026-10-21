@@ -1041,11 +1041,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               (`Row.end`), and its rides cut and named at the hub's first
                                               call as the trip page cuts them (`RideEnds.cut`), so a card
                                               names the ride where the trip page does.
-                                        - [ ] On the way's stop list and ride lines
-                                              (`OnTheWayScreen`'s `withRouteStops`,
-                                              `RideLineChecks.running`, `ActiveTripTracker`'s
-                                              `polesToRead`) reading the last ride's hub end, as its
-                                              arrival already does (`OnTheWay.arrivingIds`).
+                                        - [x] On the way's ride lines (`RideLineChecks.running`) and pair
+                                              boards (`ActiveTripTracker`'s `polesToRead`) reading the last
+                                              ride's hub end (`OnTheWay.arrivingEnd`, `ActiveTripTracker.endOf`),
+                                              so another line reaching another station of the hub is one of
+                                              the ride's lines, as on its cards; a train of it followed, the
+                                              ride ends at that line's own end once the rider is on board, the
+                                              walks on going (`OnTheWay.endedAtDestination`). The stop list
+                                              (`withRouteStops`) reads the ride as the trip now has it, which
+                                              ends where the rider gets off, moved or on that line.
+                                        - [ ] A rider on board another line by where they were seen, with no
+                                              train followed, reaching its end at another station of the
+                                              destination's hub: the ride is done there, but the walk planned on
+                                              from the Planner's end stays until the rider is seen at the
+                                              destination or its time runs out (`OnTheWay.rideDone`), where a
+                                              followed train's end moves (`endedAtDestination`).
                                         - [ ] Middle rides reading their station end (`LegEnd.of`'s
                                               `Level.STOP`): a substitute line calling at another record
                                               of the change's station; today they end at the Planner's
@@ -5218,7 +5228,7 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   the Planner, who checked access when it planned, does. Alternative: arrive by hub regardless, or
   build the first passing call against `StepFreeAccess` and `LiftOutages` now. The trip page's ride
   lines and verdicts hold to the same (`RideEnds.of`). Reversible: one condition each in
-  `OnTheWay.arrivingIds` and `RideEnds.of`.
+  `OnTheWay.arrivingEnd` and `RideEnds.of`.
 - [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
   (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path
   at once, so no path is missed; that is too big for one PR, so each family takes its `LegEnd` in
