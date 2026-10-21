@@ -1441,12 +1441,9 @@ in an even share of the line (the shorter keeping all it needs), so neither is l
 length. A
 stop's platform shortens with them ("Platform 7" → "Plat 7"); a pole's letter never does.
 
-**Hiding a line from a ride** (maintainer, 2026-10-15). A ride counts every line that stops within
-the rider's max walk of its far end, which can offer one a better line beats: a bus that leaves the
-rider a long walk short of a station a train from the same origin reaches. Another ride's long walk
-from its only direct bus is the trip the rider takes, and that walk can be the longer of the two, so
-no one distance for every ride, whether a walk time or a radius, tells them apart: the rider decides,
-ride by ride. (A distance of each ride's own would, and is an open question, `TODO.md`.) A long press on a row of a ride's card, on any line but the one it was saved on, opens a menu: pin the
+**Hiding a line from a ride** (maintainer, 2026-10-15). A ride counts every line between its hubs, which
+can offer one a better line beats: a slow bus between two stations a train links too. The rider decides,
+ride by ride: no one distance for every ride told them apart (2026-10-15). A distance of each ride's own is an open question (`TODO.md`). A long press on a row of a ride's card, on any line but the one it was saved on, opens a menu: pin the
 row, or **Hide ‹line› on this ride**. That leaves the line off the ride both ways, on its card in the
 list, in its own view, in the widget's pins for it and in its alerts, and offers Undo for a moment
 ("‹line› hidden on this ride"). The ride's own view lists its hidden lines under **Hidden on this
@@ -1486,13 +1483,17 @@ from stop K beside the starred bus's stop L). Its buses join the card under thei
 stop area's poles a day, the routes of lines found only at those poles, and one more arrivals
 request per qualifying pole per refresh.
 
-**Every direct route, by any mode** (maintainer, 2026-10-08). A journey between two stations shows
-the buses between them too, and a bus journey the trains: beside its origin the card boards from
-every stop within 320 m (as far as *To…* from the near-me list starts), and a train or bus counts as
-reaching the far end when it calls at **any stop within the rider's max walk** of it, at their pace —
-the reach a trip's *Direct* section gives a place, so the two always agree on what's direct (the 134
-a long walk from the far end counts, as it does there). Only lines that also serve a stop at the far
-end are weighed, so a big station's dozens of buses cost a route lookup only for those that may go
+**Every direct route, by any mode, between hubs** (maintainer, 2026-10-08; between hubs 2026-10-21). A
+journey between two stations shows the buses between them too, and a bus journey the trains, but only
+**within each end's hub**: the card boards from every stop in its origin's hub, and a train or bus counts
+as reaching the far end when it calls at any stop in the far end's. An end's hub is the station model's
+(`dev-docs/station-model.md`): King's Cross and St Pancras are one, and a bus stop's poles across the road
+are in it, but never a pole of the same TfL stop area the model files in another hub. A stop the model
+doesn't hold joins no hub, and an end it can't place (or before it has loaded) is its own stop and stop
+area. This replaced a 320 m boarding radius and a far end as wide as the rider's max walk
+(2026-10-08), which counted a bus stopping a long walk from the far end's station as a way there; a trip's
+*Direct* section still reaches a place by the walk. Only lines that also
+serve a stop at the far end are weighed, so a big station's dozens of buses cost a route lookup only for those that may go
 there. The stops around each end are one TfL lookup by its published position, cached a day (no new
 data leaves the device: public stops around public stations). To keep a hub-to-hub journey within
 the request budget, a card fetches **at most its nearest 6 boarding stops** each refresh (one

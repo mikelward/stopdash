@@ -572,13 +572,13 @@ object Journeys {
     fun directDue(rows: List<DepartureRow>): Boolean = rows.any { it.upcoming.isNotEmpty() }
 
     /**
-     * The other stops beside [originId] ([poles]: its stop area's and those within
-     * [BOARDING_RADIUS_METERS], nearest first) that board a line reaching [journey]'s far end — a bus
-     * from stop K beside the journey's stop L, or from the road outside its station — and, among each
+     * The other stops beside [originId] ([poles]: its stop area's and those in its hub ([stopsInHub]),
+     * nearest first) that board a line reaching [journey]'s far end — a bus from stop K beside the
+     * journey's stop L, or from a pole in its station's interchange — and, among each
      * such stop's lines, those whose route isn't in [sequences] yet ([SiblingPoles.pendingLines]; a line
      * at the origin itself is left to the origin's own check). A stop qualifies once one of its lines'
      * routes calls there and then at the far end, matched as [trains] matches it, or at a stop within
-     * the rider's walk of it ([farEnd]). Only lines that may reach it are weighed ([boardsTowards]):
+     * its hub ([farEnd]). Only lines that may reach it are weighed ([boardsTowards]):
      * with the far end's stops known, a line serving one of them, of any mode; without, the journey's
      * own mode. At most [limit] stops besides the origin, nearest first ([SiblingPoles.capped] when more
      * qualify): a card's [MAX_BOARDING_STOPS] less the origin.
@@ -635,7 +635,10 @@ object Journeys {
     fun boardsTowards(line: LineRef, journey: FavoriteJourney, farEnd: FarEnd?): Boolean =
         !journey.hides(line.id) && if (farEnd != null) line.id in farEnd.lineIds else ofMode(line, journey.mode)
 
-    /** How far from a journey's origin another stop still boards it: as far as To… from the near-me list starts. */
+    /**
+     * The least a lookup around a journey's end covers, so its hub's stops are among those it finds: as far
+     * as To… from the near-me list starts.
+     */
     const val BOARDING_RADIUS_METERS = DirectTrips.ORIGIN_RADIUS_METERS
 
     /**
@@ -646,9 +649,9 @@ object Journeys {
     const val MAX_BOARDING_STOPS = 6
 
     /**
-     * Where a journey ends, as the stops a train or bus may set the rider down at: every stop within
-     * the rider's walk of the far end ([ids]), and the lines serving them ([lineIds]), the lines worth
-     * weighing beside the origin.
+     * Where a journey ends, as the stops a train or bus may set the rider down at: every stop in the far
+     * end's hub ([ids], [stopsInHub]), and the lines serving them ([lineIds]), the lines worth weighing
+     * beside the origin.
      */
     data class FarEnd(
         val ids: Set<String>,
@@ -667,16 +670,38 @@ object Journeys {
     }
 
     /**
-     * [stops] (a lookup around [end]'s position) within [radiusMeters] of it, nearest first and each
-     * once; none when the end has no position.
+     * Whether a stop is in [end]'s hub, by the station model ([hubs]) for the end's stop or stop area: King's
+     * Cross and St Pancras together, a bus stop's poles across the road with it, and never a pole of the
+     * same TfL stop area the model files in another hub; a stop the model doesn't hold joins no hub. Null
+     * where the model can't place the end (still loading, unavailable, or not holding it), when each source
+     * of a ride's stops keeps to the end's own stop and stop area. Every source goes through it — the
+     * lookup around the end ([stopsInHub]) and a bus origin's stop area — so none can admit a stop another
+     * hub holds (Codex, #1047).
      */
     @WorkerThread
-    fun stopsAround(end: JourneyEnd, stops: List<StopLocation>, radiusMeters: Double): List<StopLocation> {
+    fun hubFilter(end: JourneyEnd, hubs: Hubs?): ((StopLocation) -> Boolean)? {
+        hubs ?: return null
+        val endHubs = (setOf(end.stopId, end.areaId) - "").mapNotNullTo(HashSet()) { (hubs.hubOf(it) as? Hubs.Membership.Of)?.id }
+        if (endHubs.isEmpty()) return null
+        return { stop -> stop.id == end.stopId || (hubs.hubOf(stop.id) as? Hubs.Membership.Of)?.id?.let { it in endHubs } == true }
+    }
+
+    /**
+     * The stops of [stops] (a lookup around [end]'s position) in [end]'s hub ([hubFilter]), nearest first and
+     * each once: a ride runs between hubs, never from or to a stop outside one (maintainer, 2026-10-21,
+     * replacing the boarding radius and the max walk of 2026-10-08: a bus ending a walk from the far end
+     * isn't a way there). Where the model can't place the end, the end's own stop and stop area alone. None
+     * when the end has no position.
+     */
+    @WorkerThread
+    fun stopsInHub(end: JourneyEnd, stops: List<StopLocation>, hubs: Hubs?): List<StopLocation> {
         val lat = end.latitude ?: return emptyList()
         val lon = end.longitude ?: return emptyList()
+        val own = setOf(end.stopId, end.areaId) - ""
+        val inHub = hubFilter(end, hubs) ?: { stop -> stop.id in own || stop.clusterId in own }
         return stops.asSequence()
+            .filter(inHub)
             .map { it to NearestStops.distanceMeters(lat, lon, it.latitude, it.longitude) }
-            .filter { (_, meters) -> meters <= radiusMeters }
             .sortedBy { (_, meters) -> meters }
             .map { (stop, _) -> stop }
             .distinctBy { it.id }
@@ -684,15 +709,14 @@ object Journeys {
     }
 
     /**
-     * The far end of a journey ending at [end]: the stops of [stops] (a lookup around it) within
-     * [walkMeters] — as far as the rider's max walk reaches at their pace ([PlaceStops.walkMeters]), as
-     * a trip's Direct section reaches a place — and their lines; null when the end has no position, so
-     * the card matches the far end by its own stop alone, as before.
+     * The far end of a journey ending at [end]: the stops of [stops] (a lookup around it) in its hub
+     * ([stopsInHub]) and their lines; null when the end has no position, so the card matches the far end by
+     * its own stop alone, as before.
      */
     @WorkerThread
-    fun farEnd(end: JourneyEnd, stops: List<StopLocation>, walkMeters: Int): FarEnd? {
+    fun farEnd(end: JourneyEnd, stops: List<StopLocation>, hubs: Hubs?): FarEnd? {
         if (end.latitude == null || end.longitude == null) return null
-        val near = stopsAround(end, stops, walkMeters.toDouble())
+        val near = stopsInHub(end, stops, hubs)
         return FarEnd(
             near.mapTo(HashSet()) { it.id },
             near.flatMapTo(HashSet()) { stop -> stop.lines.map { it.id } },

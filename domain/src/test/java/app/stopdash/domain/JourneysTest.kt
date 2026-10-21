@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import java.io.BufferedReader
+import java.io.StringReader
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,6 +29,18 @@ class JourneysTest {
         to = JourneyEnd("MID", "Mid", 51.49, -0.12),
         lineId = "example",
     )
+
+    // A station model ([Hubs]) of [stations] (a record to its hub, each record its own station) and bus
+    // [poles] (a pole to its hub, each pole its own stop), as the bundle groups them.
+    private fun hubsOf(stations: Map<String, String> = emptyMap(), poles: Map<String, String> = emptyMap()): Hubs {
+        val index = StationIndex(
+            stations.map { (id, hub) -> IndexedStation(id, id, listOf("tube"), latitude = 51.5, longitude = -0.12, station = id, modelHub = hub) },
+            revision = "abc",
+        )
+        val tsv = listOf("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc", "L\t1\tbus\t1") +
+            poles.map { (id, hub) -> "S\t$id\tB\t$id\t51.500000\t-0.120000\t\t\t\t\t\t1\t\t$id\t\t$hub" }
+        return Hubs.of(index, BundledStops.read(BufferedReader(StringReader(tsv.joinToString("\n")))))!!
+    }
 
     // A bus route: each stop has a pole per direction ("…N" northbound, "…S" southbound) in one
     // stop area, except "Lane", served northbound only. Southbound it runs past "Lane" via "Loop".
@@ -425,26 +439,34 @@ class JourneysTest {
     }
 
     @Test
-    fun `a bus beside a station reaching a stop near the far end boards the journey`() {
-        // A rail journey Top → Mid. Outside Top, stop TOPB boards bus b7 to MIDB, a short walk from
-        // Mid; bus b8 from TOPC goes elsewhere; TOPD's tram t9 serves no stop near Mid at all.
+    fun `a bus in a station's hub reaching a stop in the far end's hub boards the journey`() {
+        // A rail journey Top → Mid, each station in its hub. In Top's, stop TOPB boards bus b7 to MIDB, in
+        // Mid's; bus b8 from TOPC goes elsewhere; TOPD's tram t9 serves no stop in Mid's hub at all.
+        val hubs = hubsOf(
+            stations = mapOf("TOP" to "HUBT", "MID" to "HUBM"),
+            poles = mapOf("TOPB" to "HUBT", "TOPC" to "HUBT", "TOPD" to "HUBT", "MIDB" to "HUBM", "MIDV" to "MIDV", "NEAR" to "NEAR"),
+        )
         val far = listOf(
             StopLocation("MID", "Mid", 51.49, -0.12, listOf(LineRef("example", "Example", "tube"))),
             StopLocation("MIDB", "Mid Road", 51.4905, -0.12, listOf(LineRef("b7", "7", "bus"), LineRef("b8", "8", "bus"))),
-            // Beyond the walk.
+            // A short walk from Mid but in a hub of its own: a ride runs between hubs (maintainer, 2026-10-21).
+            StopLocation("MIDV", "Mid Village", 51.4895, -0.12, listOf(LineRef("b9", "9", "bus"))),
             StopLocation("DALE", "Dale", 51.45, -0.12, listOf(LineRef("t9", "T9", "tram"))),
         )
-        val farEnd = Journeys.farEnd(journey.to, far, walkMeters = 800)!!
+        val farEnd = Journeys.farEnd(journey.to, far, hubs)!!
         assertEquals(setOf("MID", "MIDB"), farEnd.ids)
+        assertEquals(setOf("example", "b7", "b8"), farEnd.lineIds)
         val around = listOf(
             StopLocation("TOPC", "Top Lane", 51.5115, -0.12, listOf(LineRef("b8", "8", "bus"))),
             StopLocation("TOPB", "Top Road", 51.5102, -0.12, listOf(LineRef("b7", "7", "bus"))),
             StopLocation("TOPD", "Top Tram", 51.5101, -0.12, listOf(LineRef("t9", "T9", "tram"))),
             StopLocation("TOP", "Top", 51.51, -0.12, listOf(LineRef("example", "Example", "tube"))),
-            // Too far from Top to count as boarding there.
+            // Right outside Top, but in a hub of its own: never boards the ride.
+            StopLocation("NEAR", "Top Corner", 51.5103, -0.12, listOf(LineRef("b7", "7", "bus"))),
+            // One the model doesn't hold is only itself.
             StopLocation("FAR", "Far", 51.52, -0.12, listOf(LineRef("b7", "7", "bus"))),
         )
-        val poles = Journeys.stopsAround(journey.from, around, Journeys.BOARDING_RADIUS_METERS)
+        val poles = Journeys.stopsInHub(journey.from, around, hubs)
         assertEquals(listOf("TOP", "TOPD", "TOPB", "TOPC"), poles.map { it.id })
         val b7 = LineSequence(listOf(LineRoute("Top ↔ Mid", listOf("TOPB", "MIDB"))), mapOf("TOPB" to "Top Road", "MIDB" to "Mid Road"))
         val b8 = LineSequence(listOf(LineRoute("Mid ↔ Top", listOf("MIDB", "TOPC"))), mapOf("TOPC" to "Top Lane", "MIDB" to "Mid Road"))
@@ -482,10 +504,11 @@ class JourneysTest {
 
     @Test
     fun `a stop near the far end listed under its interchange sibling's id is reached`() {
-        // The lookup lists the far end's station as MIDX; the line's route calls at its sibling MIDY,
-        // the same station by the model, in interchange HUBM.
+        // The lookup lists the far end's station as MIDX, in Mid's hub; the line's route calls at its sibling
+        // MIDY, the same station by the model, in interchange HUBM.
         val far = listOf(StopLocation("MIDX", "Mid Road", 51.4905, -0.12, listOf(LineRef("r1", "R1", "national-rail")), interchangeId = "HUBM"))
-        val farEnd = Journeys.farEnd(journey.to, far, walkMeters = 800)!!
+        val farEnd = Journeys.farEnd(journey.to, far, hubsOf(stations = mapOf("MID" to "HUBM", "MIDX" to "HUBM")))!!
+        assertEquals(setOf("MIDX"), farEnd.ids)
         val r1 = LineSequence(
             listOf(LineRoute("Top ↔ Mid", listOf("TOPR", "MIDY"))),
             mapOf("TOPR" to "Top Rail", "MIDY" to "Mid Road"),
@@ -521,8 +544,28 @@ class JourneysTest {
     @Test
     fun `an end with no position has no stops around it`() {
         val end = JourneyEnd("X", "X")
-        assertTrue(Journeys.stopsAround(end, listOf(StopLocation("A", "A", 51.5, -0.12)), 500.0).isEmpty())
-        assertNull(Journeys.farEnd(end, emptyList(), 800))
+        assertTrue(Journeys.stopsInHub(end, listOf(StopLocation("X", "X", 51.5, -0.12)), null).isEmpty())
+        assertNull(Journeys.farEnd(end, emptyList(), null))
+    }
+
+    @Test
+    fun `an end is its hub where the model places it, else its own stop and stop area alone`() {
+        // TfL's stop area G-TOP holds TOPA, TOPB and TOPC; the model files TOPC in another hub. TOPX is in
+        // TOPA's hub but not its area.
+        val end = JourneyEnd("TOPA", "Top", 51.51, -0.12, areaId = "G-TOP")
+        val around = listOf(
+            StopLocation("TOPB", "Top", 51.5101, -0.12, clusterId = "G-TOP"),
+            StopLocation("TOPA", "Top", 51.51, -0.12, clusterId = "G-TOP"),
+            StopLocation("TOPX", "Top", 51.5102, -0.12, interchangeId = "HUBT"),
+            StopLocation("TOPC", "Top", 51.5103, -0.12, clusterId = "G-TOP"),
+        )
+        // The model loaded: the hub, never a pole of the area in another (Codex, #1047).
+        val model = hubsOf(poles = mapOf("TOPA" to "HUBT", "TOPB" to "HUBT", "TOPX" to "HUBT", "TOPC" to "HUBC"))
+        assertEquals(listOf("TOPA", "TOPB", "TOPX"), Journeys.stopsInHub(end, around, model).map { it.id })
+        // Still loading or unavailable, or a model that doesn't hold the end: its own stop and stop area.
+        assertEquals(listOf("TOPA", "TOPB", "TOPC"), Journeys.stopsInHub(end, around, null).map { it.id })
+        val elsewhere = hubsOf(poles = mapOf("ELSE" to "HUBE"))
+        assertEquals(listOf("TOPA", "TOPB", "TOPC"), Journeys.stopsInHub(end, around, elsewhere).map { it.id })
     }
 
     @Test

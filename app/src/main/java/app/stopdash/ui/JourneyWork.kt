@@ -11,6 +11,7 @@ import app.stopdash.domain.Journeys
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.SiblingPoles
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.WidgetJourneyCheck
@@ -239,16 +240,14 @@ internal fun fartherShownOf(
 }
 
 /**
- * What the screen knows of the stops around each journey's ends ([journeyAroundOf]): the stops beside
- * the origin it may board from, the far end's stops within the rider's walk, and whether a lookup is
- * still out.
+ * What the screen knows of the stops around each journey's ends ([journeyAroundOf]): the stops in the
+ * origin's hub it may board from, the far end's hub's stops, and whether a lookup is still out.
  */
 internal class JourneyAround(
-    // The stops within [Journeys.BOARDING_RADIUS_METERS] of the origin, nearest first; null when the
-    // lookup failed.
+    // The stops in the origin's hub ([Journeys.stopsInHub]), nearest first; null when the lookup failed.
     val poles: List<StopLocation>?,
-    // The far end's stops within the walk; null while unknown (no position, failed, or still out),
-    // when the card matches the far end by its own stop alone.
+    // The far end's hub's stops; null while unknown (no position, failed, or still out), when the card
+    // matches the far end by its own stop alone.
     val farEnd: Journeys.FarEnd?,
     val loading: Boolean,
     // The far end's lookup failed: the card can't say every line reaching it was checked (Codex, #691).
@@ -257,30 +256,34 @@ internal class JourneyAround(
 
 /**
  * The stops around each of [journeys]' ends, by journey key, from [endStops] (each end's lookup by stop
- * id: absent while out, null when it failed) within [walkMeters] of the far end. A journey whose origin
- * has no position has none: it boards from its origin (and a bus's stop area) alone, as before.
+ * id: absent while out, null when it failed): those in each end's hub by the station model ([hubs]; null
+ * while it loads, or where it's unavailable: each end's own stop and stop area), a ride running between
+ * hubs (maintainer, 2026-10-21). A journey whose origin has no position has none: it boards from its
+ * origin (and a bus's stop area) alone, as before.
  */
 @WorkerThread
 internal fun journeyAroundOf(
     journeys: List<FavoriteJourney>,
     endStops: Map<String, List<StopLocation>?>,
-    walkMeters: Int,
+    hubs: Hubs?,
 ): Map<String, JourneyAround> =
     journeys.mapNotNull { j ->
         if (j.from.latitude == null || j.from.longitude == null) return@mapNotNull null
         val farKnown = j.to.latitude != null && j.to.longitude != null
         val loading = j.from.stopId !in endStops || farKnown && j.to.stopId !in endStops
-        val poles = endStops[j.from.stopId]?.let { Journeys.stopsAround(j.from, it, Journeys.BOARDING_RADIUS_METERS) }
-        val farEnd = endStops[j.to.stopId]?.let { Journeys.farEnd(j.to, it, walkMeters) }
+        val poles = endStops[j.from.stopId]?.let { Journeys.stopsInHub(j.from, it, hubs) }
+        val farEnd = endStops[j.to.stopId]?.let { Journeys.farEnd(j.to, it, hubs) }
         val farFailed = farKnown && j.to.stopId in endStops && endStops[j.to.stopId] == null
         j.key to JourneyAround(poles, farEnd, loading, farFailed)
     }.toMap()
 
 /**
  * Each journey's boarding stops to weigh beside its origin, by key: those around it ([around]), then its
- * bus stop area's ([areaPoles], by journey key) not among them. Absent while any lookup it needs is out (the far end's
- * too, which says which lines to weigh, so the stops fetched don't change twice); null when
- * one failed, so the card says it couldn't check every stop. Keyed by [areas] for a stop area.
+ * bus stop area's ([areaPoles], by journey key) not among them, those in its origin's hub alone where the
+ * station model ([hubs]) places it ([Journeys.hubFilter]): a TfL stop area can span two hubs (Codex,
+ * #1047). Absent while any lookup it needs is out (the far end's too, which says which lines to weigh, so
+ * the stops fetched don't change twice); null when one failed, so the card says it couldn't check every
+ * stop. Keyed by [areas] for a stop area.
  */
 @WorkerThread
 internal fun journeyPolesOf(
@@ -288,6 +291,7 @@ internal fun journeyPolesOf(
     around: Map<String, JourneyAround>,
     areas: Map<String, String>,
     areaPoles: Map<String, List<StopLocation>?>,
+    hubs: Hubs?,
 ): Map<String, List<StopLocation>?> =
     journeys.mapNotNull { j ->
         val near = around[j.key]
@@ -297,7 +301,12 @@ internal fun journeyPolesOf(
         // Either end's lookup failed: null, so the card says it couldn't check every line, with a retry.
         if (near?.farFailed == true) return@mapNotNull j.key to null
         val nearPoles = near?.let { it.poles ?: return@mapNotNull j.key to null }.orEmpty()
-        val inArea = if (areaId == null) emptyList() else areaPoles[j.key] ?: return@mapNotNull j.key to null
+        val inArea = if (areaId == null) {
+            emptyList()
+        } else {
+            val poles = areaPoles[j.key] ?: return@mapNotNull j.key to null
+            Journeys.hubFilter(j.from, hubs)?.let(poles::filter) ?: poles
+        }
         j.key to (nearPoles + inArea).distinctBy { it.id }
     }.toMap()
 
@@ -314,19 +323,20 @@ internal fun journeyBoardingOf(
     // The journeys to look around: none with no lookup wired.
     lookedAround: List<FavoriteJourney>,
     endStops: Map<String, List<StopLocation>?>,
-    walkMeters: Int,
+    // The station model each end's hub is read from; null while it loads or where it's unavailable.
+    hubs: Hubs?,
     areas: Map<String, String>,
     areaPoles: Map<String, List<StopLocation>?>,
     journeys: List<FavoriteJourney> = lookedAround,
-    // The radius each end's answer was asked with, and the one the walk now needs: an answer short of it
+    // The radius each end's answer was asked with, and the one the lookup now needs: an answer short of it
     // is still out, never a complete check (a failure stands as one).
     radius: Map<String, Int> = emptyMap(),
     required: Int = 0,
 ): JourneyBoarding {
     val covered = endStops.filter { (id, stops) -> stops == null || (radius[id] ?: 0) >= required }
-    val around = journeyAroundOf(lookedAround, covered, walkMeters)
+    val around = journeyAroundOf(lookedAround, covered, hubs)
     return JourneyBoarding(
-        journeyPolesOf(journeys, around, areas, areaPoles),
+        journeyPolesOf(journeys, around, areas, areaPoles, hubs),
         around.mapNotNull { (key, a) -> a.farEnd?.let { key to it } }.toMap(),
         journeys.filter { it.key in around || it.key in areas }.mapTo(HashSet()) { it.key },
     )

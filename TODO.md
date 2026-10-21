@@ -3235,15 +3235,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **Check the line's route reaches To from From**: a line both serve can still need a change
             (two Northern branches); the card then shows its change at the fork. Use the card's cached
             route lookups to say so at Add.
-  - [x] **Every direct route, buses too** (maintainer, 2026-10-08): a card boards from every stop within
-        320 m of its origin, on any mode, and reaches every stop within the rider's max walk of its far end,
-        as Direct does; at most its nearest 6 boarding stops a refresh, 3 rows then "+N more" / "More"
-        opening the journey's own view.
+  - [x] **Every direct route, buses too** (maintainer, 2026-10-08): a card boards from every stop in its
+        origin's hub, on any mode, and reaches every stop in its far end's hub (2026-10-21: between hubs,
+        replacing 320 m and the rider's max walk); at most its nearest 6 boarding stops a refresh, 3 rows
+        then "+N more" / "More" opening the journey's own view.
     - [ ] **Add's direct check weighs only a line both stations serve**: a bus between stops near each
           station is direct on the card but saved grayed at Add. Check with the same lookups before graying it.
       - [x] **A station's own bus stops count** (maintainer, 2026-10-14): where no line serves both, the bus
             stops within 150 m of a station (the near-me list's rule) are weighed before graying the pair,
-            found from the bundled stops. The card's wider reach (320 m, the rider's max walk) is still open.
+            found from the bundled stops. The card's wider reach (each end's hub) is still open.
       - [x] **The station a row folded into a bus stop counts** (2026-10-15): the search's one row for a station
             and a same-named bus stop among the rider's own can carry the bus stop's id, so a ride picked from
             it weighed only that stop's buses and was grayed. A bus-stop end now weighs the station the search
@@ -3262,6 +3262,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             candidates from the bundle and the boards the card fetches, each confirmed on every read against
             `RouteStops`' sequences, the persisted lines only a fallback shown as not checked, and to be built on
             `Hubs`, not `StopPlace`, which phase 4 deletes.
+        - [x] **The card keeps to its ends' hubs** (maintainer, 2026-10-21): it boards only at stops in its
+              origin's hub and counts a line reaching any stop in its far end's, by `Hubs.hubOf`, replacing
+              320 m and the max walk, which offered a bus stopping a long walk short of the far end. Still
+              from one TfL lookup around each end, for the stops' lines; the lines themselves are still the
+              item above.
       - [ ] **Decide the station bus-stop radius** (maintainer, 2026-10-14): 150 m is the near-me list's
             "at the station" rule (`StopPlace.OWN_STOP_METERS`), picked against a small station's own
             stops (under 100 m), not against a big terminus. Measured from the bundled stops, an interchange's
@@ -3343,19 +3348,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           pins, would make both rank by distance. Is that worth a new saved field? Related: the
           app's cards list a ride's own stop before its poles even where a pole is measured nearer,
           so a card can keep both copies of a route; the widget lists them nearest first.
-    - [x] **Hide a line from one ride** (maintainer, 2026-10-15). A ride counts any line that stops
-          within the max walk of its far end, which offered a bus that leaves the rider a long walk
-          short of a station another line reaches; no one cutoff for every ride could drop it and keep
-          another ride's long walk that the rider wants. A long press on a ride's row offers "Hide
+    - [x] **Hide a line from one ride** (maintainer, 2026-10-15). A ride counted any line that stops
+          within the max walk of its far end (between hubs since 2026-10-21), which offered a bus that
+          leaves the rider a long walk short of a station another line reaches; no one cutoff for every
+          ride could drop it and keep another ride's long walk that the rider wants. A long press on a ride's row offers "Hide
           ‹line› on this ride" (with Undo), and the ride's own view lists its hidden lines with a Show.
           Never the line it was saved on.
     - [ ] **Consider a reach of each ride's own** (open question, maintainer, 2026-10-15: "needs more
-          thought"). A ride counts a line that stops within the rider's max walk of its far end, the
-          same walk for every ride. A radius of each ride's own, set on the ride, would drop the bus
-          that stops short on one ride and keep the long walk the rider wants on another, and would
-          cover lines found later, which a hide can't. Against it: one more number on every ride, and
-          a line just inside it still takes a hide. It would sit beside the ride's hidden lines and
-          apply where the far end's walk is checked.
+          thought"; 2026-10-21: rides now keep to their ends' hubs, which may settle it). A ride counted
+          a line that stops within the rider's max walk of its far end, the same walk for every ride. A
+          radius of each ride's own, set on the ride, would drop the bus that stops short on one ride and
+          keep the long walk the rider wants on another, and would cover lines found later, which a hide
+          can't. Against it: one more number on every ride, and a line just inside it still takes a hide.
     - [ ] **Choose a ride's lines when adding it** (maintainer, 2026-10-15: either this or the long
           press is fine; the long press came first). Favoriting a ride could list every line found
           between its ends, each with a checkbox, saving the unticked as hidden (so a line found later
