@@ -155,8 +155,10 @@ internal fun withThroughRoutes(
         .filter { routeKey(it) !in keys && legsKey(it) !in drawn }
     // The open route, unless it's planned or made now (the same route, freshly timed), or it reaches only another
     // station of the hubs at a level that doesn't arrive by hub ([hubOnlyUnchecked]): gone, as it isn't made now.
+    // Here only by the level: whether a step-free trip's train is still step-free at a hub call it reaches is a pass
+    // over the end's ids and its calls, so the screen's close works that out on its worker and closes it.
     val kept = open?.takeIf { route -> routeKey(route).let { key -> key !in keys && through.none { routeKey(it) == key } } }
-        ?.takeUnless { openRef != null && hubOnlyUnchecked(openRef, planned.routes.orEmpty(), ends) }
+        ?.takeUnless { openRef != null && hubOnlyUnchecked(openRef, planned.routes.orEmpty(), ends, byAccess = false) }
         ?.let { route -> openRef?.let { drawnAtHub(route, it, planned.routes.orEmpty(), ends) } ?: route }
     return if (through.isEmpty() && kept == null) state else state.copy(routes = routes + through + listOfNotNull(kept))
 }
@@ -203,16 +205,28 @@ internal fun plannedThroughWays(
 /**
  * Whether [open], a train through a change opened reaching only another station of the destination's hubs (its ride
  * found again only short of the plan's legs after its second ride, [OpenRoute.endsShort]), isn't offered where
- * [ends] gets that second ride off: anywhere but by hub, as at a step-free level, the Planner's call is the one
- * checked, so a step-free trip ends where the Planner's does (SPEC *Step-free*). Any other open route: false.
- * One look up of the plan, as [drawnAtHub]'s: [withThroughRoutes] calls it where it's still worked out in composition
- * (TODO.md, the trains through a change off the main thread); the screen's close calls it on its worker.
+ * [ends] gets that second ride off: anywhere but by hub, as for a step-free trip with no step-free table to check its
+ * other calls by, which ends where the Planner's does (SPEC *Step-free*); or, [byAccess], on a step-free trip arriving
+ * by hub, at none of the calls its train reaches there, its line no longer step-free at any (a lift out since it was
+ * opened). Any other open route: false. One look up of the plan, as [drawnAtHub]'s: [withThroughRoutes] calls it where
+ * it's still worked out in composition (TODO.md, the trains through a change off the main thread), by the level alone;
+ * the screen's close calls it on its worker, [byAccess] too, and closes the route.
  */
-internal fun hubOnlyUnchecked(open: OpenRoute, planned: List<TripRoute>, ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>): Boolean {
+internal fun hubOnlyUnchecked(
+    open: OpenRoute,
+    planned: List<TripRoute>,
+    ends: (TripRoute) -> List<Pair<TripLeg, LegEnd>>,
+    byAccess: Boolean = true,
+): Boolean {
     if (!open.endsShort(planned)) return false
     val plan = planned.firstOrNull { routeKey(it) == open.plan } ?: return false
     val second = plan.legs.getOrNull(open.at + 1) ?: return false
-    return ends(plan).firstOrNull { it.first == second }?.second?.level != LegEnd.Level.HUB
+    val end = ends(plan).firstOrNull { it.first == second }?.second
+    if (end?.level != LegEnd.Level.HUB) return true
+    if (!byAccess || !end.checksAccess) return false
+    val ride = open.ride ?: return false
+    val ids = end.offIds(second, ride.lineId, ride.mode)
+    return ride.path.none { it in ids }
 }
 
 // [route], a train through a change as planned that the open route [open] names, drawn as one made now would be
@@ -225,7 +239,7 @@ private fun drawnAtHub(route: TripRoute, open: OpenRoute, planned: List<TripRout
     if (end.level != LegEnd.Level.HUB) return route
     val ride = route.legs.getOrNull(open.at)?.takeIf { !it.isWalk } ?: return route
     if (route.legs.drop(open.at + 1).any { !it.isWalk }) return route
-    val ids = end.offIds(second)
+    val ids = end.offIds(second, ride.lineId, ride.mode)
     val first = ride.path.indexOfFirst { it in ids }
     if (first < 0 || first == ride.path.lastIndex) return route
     val cut = ride.copy(

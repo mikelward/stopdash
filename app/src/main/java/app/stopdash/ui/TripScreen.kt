@@ -1174,9 +1174,10 @@ internal fun TripScreen(
     // closes: not on Back, nor for a mode hidden or a line avoided. A later trip's list says so on return.
     onOpenNotPlanned: () -> Unit = {},
     // The routes as drawn ([TripViewModel.shownRoutes]): each last ride arriving by hub cut at its first call
-    // there, and where every ride gets off, worked out off the main thread as they come in. By default (a test),
-    // as planned, each ride getting off where the Planner gets it off.
-    shownRoutes: suspend (TripViewModel.State, StepFree) -> ShownRoutes = { placed, level -> ShownRoutes.planned(placed, level) },
+    // there, and where every ride gets off, worked out off the main thread as they come in, a step-free trip's
+    // against the lifts out of service now. By default (a test), as planned, each ride getting off where the
+    // Planner gets it off.
+    shownRoutes: suspend (TripViewModel.State, StepFree, Set<String>) -> ShownRoutes = { placed, level, lifts -> ShownRoutes.planned(placed, level, lifts) },
 ) {
     val asOf = rememberStatusesAndDelaysAsOf(state.statuses, state.statusesSortedOn, now)
     // With the delays as of today, so every cap on the page counts the same ones (Codex, #703).
@@ -1440,9 +1441,18 @@ private fun TripContent(
     // The routes as drawn, last worked out. A route drawn cut is keyed as its route as planned ([routeKey]), so the
     // open route stays open whether a step-free change draws it cut or not.
     val shownSlot = remember { mutableStateOf<ShownRoutes?>(null) }
-    LaunchedEffect(poled, stepFree) { shownSlot.value = resolveShown(poled, stepFree) }
+    // A step-free trip's rides get off at another call only where its line is step-free there today: TfL's lift
+    // outages, asked for only then, its last answer at once, and worked out again as an answer changes them. At no
+    // level, lifts change nothing, so none are passed.
+    val liftsHeld = rememberLiftsOut(byLift = stepFree != StepFree.ANY).ids
+    val liftsOut = if (stepFree == StepFree.ANY) NO_LIFTS else liftsHeld
+    // Keyed by identity: the lifts as the screen passed them, never their contents compared here.
+    val liftsKey = ByIdentity(liftsOut)
+    LaunchedEffect(poled, stepFree, liftsKey) { shownSlot.value = resolveShown(poled, stepFree, liftsOut) }
     val held = shownSlot.value
-    val shown = remember(held, poled, stepFree) { held?.takeIf { it.of === poled && it.stepFree == stepFree } ?: ShownRoutes.pending(poled, stepFree, held) }
+    val shown = remember(held, poled, stepFree, liftsKey) {
+        held?.takeIf { it.of === poled && it.stepFree == stepFree && it.liftsOut === liftsOut } ?: ShownRoutes.pending(poled, stepFree, held, liftsOut)
+    }
     val drawn = shown.state
     // The open route as the plan offers it now ([OpenRoute.routeIn]), as planned: its walks at the current pace,
     // and a train through a change whether or not one is predicted, made from the route as planned so it runs on
@@ -1562,9 +1572,9 @@ private fun TripContent(
     val asPlanned = shown.of
     LaunchedEffect(openRef, asPlanned.routes, asPlanned.planning, excluded, shown.pending, shown.ends) {
         if (openRef == null || shown.pending || asPlanned.routes == null || asPlanned.planning) return@LaunchedEffect
-        // A train through reaching only another station of the hubs, at a level that doesn't arrive by hub
-        // ([hubOnlyUnchecked]): the plan doesn't offer it there, as a step-free trip ends where the Planner's does.
-        // A pass over the plan, so off the main thread.
+        // A train through reaching only another station of the hubs, at a level that doesn't arrive by hub, or on a
+        // step-free trip whose line is step-free at none of the hub's calls it reaches today ([hubOnlyUnchecked]):
+        // the plan doesn't offer it there. A pass over the plan, so off the main thread.
         val ends = shown.ends
         val routes = asPlanned.routes
         val unchecked = withContext(worker) { hubOnlyUnchecked(openRef, routes, ends::ends) }
@@ -2530,7 +2540,12 @@ private fun RouteList(
 internal val LocalTripJourney = staticCompositionLocalOf<Any?> { null }
 
 /** The trip screen's routes as drawn ([TripScreen]'s `shownRoutes`), asked as its routes come in. */
-internal val LocalShownRoutes = compositionLocalOf<suspend (TripViewModel.State, StepFree) -> ShownRoutes> { { placed, level -> ShownRoutes.planned(placed, level) } }
+internal val LocalShownRoutes = compositionLocalOf<suspend (TripViewModel.State, StepFree, Set<String>) -> ShownRoutes> {
+    { placed, level, lifts -> ShownRoutes.planned(placed, level, lifts) }
+}
+
+// No lifts out, one set for every trip at no step-free level, so the screen's identity check holds across frames.
+private val NO_LIFTS: Set<String> = emptySet()
 
 /**
  * A card's header ([RouteLabelHeader]), grown and shrunk over a slide's time ([CARD_MOVE_MILLIS]) as it

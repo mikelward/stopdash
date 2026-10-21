@@ -1034,7 +1034,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               hub). Moving them needs the page's live state to stop
                                               running one worker hop behind (four screen tests broke when
                                               tried: try again planned twice, a journey switch lost its
-                                              routes, a frame stood in, the disruptions row).
+                                              routes, a frame stood in, the disruptions row). On a step-free
+                                              trip the open train through a change is drawn there too
+                                              (`drawnAtHub`), its end's ids filtered by its line's access
+                                              (`LegEnd.offIds`), a pass over the hub's ids as at any level
+                                              (Codex, #1067).
                                         - [x] A later trip's list (`LaterTripViewModel`) taking the
                                               same `RideEnds`: the trip page's model and hubs, read on io
                                               (`awaitDestination`), worked out with each listing on its
@@ -1087,8 +1091,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                                   `DirectTrips.judge` and `settledByStops` (a calling point
                                                   saying only "no" for the other calls). No caller passes a
                                                   table yet.
-                                            - [ ] The trip page and a later trip's list passing the table
-                                                  with today's lifts, worked out again as they change.
+                                            - [x] The trip page and a later trip's list passing the table
+                                                  with today's lifts (`LiftedAccess`): the trip page by the
+                                                  lift outages it asks for on a step-free trip
+                                                  (`rememberLiftsOut`), worked out again as they change
+                                                  (`ShownRoutes.liftsOut`); a later trip's list by the lifts
+                                                  TfL last said were out, a lift out now taken as out at the
+                                                  time picked too, its cards listed again when those change.
                                             - [ ] On the way's ends (`OnTheWay.arrivingEnd`, and its rides'
                                                   station ends) checked the same way.
                                 - [ ] The detour cut, offering every equally good ride.

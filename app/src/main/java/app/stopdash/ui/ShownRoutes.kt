@@ -22,6 +22,11 @@ internal class ShownRoutes private constructor(
     val of: TripViewModel.State,
     /** The step-free level they were worked out at. */
     val stepFree: StepFree,
+    /**
+     * The lifts out of service (TfL's lift ids) a step-free trip's ends were checked against, the very set the screen
+     * passed, so it tells a new answer from this one by identity; empty at no level, where lifts change nothing.
+     */
+    val liftsOut: Set<String>,
     /** [of] with each route as shown. */
     val state: TripViewModel.State,
     /**
@@ -42,35 +47,37 @@ internal class ShownRoutes private constructor(
 
     companion object {
         /** [state]'s routes as planned, each ride getting off where the Planner gets it off ([RideEnds.planned]). */
-        fun planned(state: TripViewModel.State, stepFree: StepFree): ShownRoutes =
-            ShownRoutes(state, stepFree, state, RideEnds.planned(stepFree))
+        fun planned(state: TripViewModel.State, stepFree: StepFree, liftsOut: Set<String> = emptySet()): ShownRoutes =
+            ShownRoutes(state, stepFree, liftsOut, state, RideEnds.planned(stepFree))
 
         /**
          * [state]'s routes standing in while they're worked out ([of]): as planned, with the [held] answer's ends
-         * (looked up by each ride's raw end, so a ride worked out before reads the same).
+         * (looked up by each ride's raw end, so a ride worked out before reads the same), those for the lifts it was
+         * checked against while the new ones are.
          */
-        fun pending(state: TripViewModel.State, stepFree: StepFree, held: ShownRoutes?): ShownRoutes {
+        fun pending(state: TripViewModel.State, stepFree: StepFree, held: ShownRoutes?, liftsOut: Set<String> = emptySet()): ShownRoutes {
             val ends = held?.ends?.takeIf { it.stepFree == stepFree } ?: RideEnds.planned(stepFree)
-            return ShownRoutes(state, stepFree, state, ends, pending = !state.routes.isNullOrEmpty())
+            return ShownRoutes(state, stepFree, liftsOut, state, ends, pending = !state.routes.isNullOrEmpty())
         }
 
         /**
          * [state]'s routes as shown at [stepFree] through [destination] ([RideEnds.cut], [RideEnds.of]), one for each
          * in the Planner's order: two the cut draws alike stay two, each its own plan ([TripRoute.drawnFrom]). A Direct
          * row's route ([TripViewModel.State.directKeys]) is drawn as the plan's are, its copy that route by key
-         * ([routeKey]), so it's still the row's. Work over the routes: off the main thread.
+         * ([routeKey]), so it's still the row's. A step-free trip's ends are checked against [destination]'s step-free
+         * table ([RideEnds.Destination.access]), with the lifts in [liftsOut] out. Work over the routes: off the main thread.
          */
         @WorkerThread
-        fun of(state: TripViewModel.State, stepFree: StepFree, destination: RideEnds.Destination?): ShownRoutes {
-            val routes = state.routes ?: return planned(state, stepFree)
+        fun of(state: TripViewModel.State, stepFree: StepFree, destination: RideEnds.Destination?, liftsOut: Set<String> = emptySet()): ShownRoutes {
+            val routes = state.routes ?: return planned(state, stepFree, liftsOut)
             val shown = RideEnds.cut(routes, stepFree, destination)
             if (shown.indices.all { shown[it] === routes[it] }) {
-                return ShownRoutes(state, stepFree, state, RideEnds.of(routes, stepFree, destination))
+                return ShownRoutes(state, stepFree, liftsOut, state, RideEnds.of(routes, stepFree, destination))
             }
             // The cut copies' ends, and the routes' as planned, which the trains through a change are made from.
             val drawnCut = shown.filterIndexed { index, route -> route !== routes[index] }
             val ends = RideEnds.of(routes + drawnCut, stepFree, destination)
-            return ShownRoutes(state, stepFree, state.copy(routes = shown), ends)
+            return ShownRoutes(state, stepFree, liftsOut, state.copy(routes = shown), ends)
         }
     }
 }

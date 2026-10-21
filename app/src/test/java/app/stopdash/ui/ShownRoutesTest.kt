@@ -2,8 +2,14 @@ package app.stopdash.ui
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRoute
+import app.stopdash.domain.LiftMap
+import app.stopdash.domain.LiftStop
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeLevel
+import app.stopdash.domain.StepFreePlatform
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -245,6 +251,19 @@ class ShownRoutesTest {
                 withThroughRoutes(cut.state, StepFree.ANY, emptyMap(), open = found, ends = cut.ends::ends, planned = cut.of, openRef = open)
                     .routes.orEmpty().any { routeKey(it) == open.key },
             )
+            // Given TfL's table (made up: yellow's platforms at Hill East step-free to the platform, by a lift), a
+            // step-free trip arrives by hub there, so it stays offered; once that lift is out, the screen's close
+            // (on its worker) drops it again. Drawing it in composition reads only the level, not the table.
+            val access = StepFreeAccess(
+                mapOf("940GZZLUHLE" to mapOf("yellow" to listOf(StepFreePlatform(StepFreeLevel.PLATFORM, byLift = LiftStop("HLE", 1))))),
+                mapOf("HLE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+            )
+            fun checkedAt(table: StepFreeAccess) = ShownRoutes.of(board, StepFree.STATION, RideEnds.Destination(HillModel.hubs, setOf("HUBEXA"), table))
+            val checked = checkedAt(access)
+            assertFalse(hubOnlyUnchecked(open, checked.of.routes.orEmpty(), checked.ends::ends))
+            val liftOut = checkedAt(access.withLiftsOut(setOf("LIFT1")))
+            assertTrue(hubOnlyUnchecked(open, liftOut.of.routes.orEmpty(), liftOut.ends::ends))
+            assertFalse(hubOnlyUnchecked(open, liftOut.of.routes.orEmpty(), liftOut.ends::ends, byAccess = false))
         }
     }
 

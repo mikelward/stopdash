@@ -49,7 +49,12 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.LiftMap
+import app.stopdash.domain.LiftStop
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeLevel
+import app.stopdash.domain.StepFreePlatform
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.ViaStops
 import app.stopdash.domain.WalkingSpeed
@@ -671,9 +676,10 @@ class TripViewModelTest {
         val walkOn = TripLeg(TripLeg.WALKING, "", "", "940GZZLUHIL", "Hill", "910GHILL", "Hill", at(20), at(24))
         val planned = TripRoute(listOf(loop, walkOn))
         val plans = TripPlans()
-        fun tripAt(stepFree: StepFree, worker: CoroutineDispatcher = dispatcher) = TripViewModel(
+        fun tripAt(stepFree: StepFree, worker: CoroutineDispatcher = dispatcher, access: StepFreeAccess? = null) = TripViewModel(
             FakePlanner(listOf(planned)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("940GZZLUHIL")),
             clock = { now }, plans = plans, io = dispatcher, compute = worker, arriving = { HillModel.toHill }, stepFree = stepFree,
+            stepFreeAccess = { access },
         )
         // Worked out on a worker thread, never the caller's.
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
@@ -727,12 +733,31 @@ class TripViewModelTest {
         }
         // The plan kept for reuse is the Planner's too.
         assertEquals(listOf(planned), plans.get("A", listOf(TripDestination.Stop("940GZZLUHIL")), stepFree = StepFree.ANY)?.first)
-        // A step-free trip keeps the Planner's call: the hub's other calls aren't checked against today's lifts yet.
+        // A step-free trip with no step-free table to check the hub's other calls by keeps the Planner's call.
         val stepFree = tripAt(StepFree.STATION)
         stepFree.refresh()
         advanceUntilIdle()
         assertEquals(listOf(planned), stepFree.state.value.routes)
         assertEquals(listOf(planned), stepFree.shownRoutes(stepFree.state.value, StepFree.STATION).state.routes)
+        // Given TfL's table (made up: Hill East's circle line platforms step-free to the platform, by a lift), it's
+        // drawn cut at Hill East too, worked out for the lifts the screen passed.
+        val access = StepFreeAccess(
+            mapOf("940GZZLUHLE" to mapOf("circle" to listOf(StepFreePlatform(StepFreeLevel.PLATFORM, byLift = LiftStop("HLE", 1))))),
+            mapOf("HLE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val checked = tripAt(StepFree.STATION, access = access)
+        checked.refresh()
+        advanceUntilIdle()
+        val none = emptySet<String>()
+        val cut = checked.shownRoutes(checked.state.value, StepFree.STATION, none)
+        assertEquals("940GZZLUHLE", cut.state.routes.orEmpty().single().legs.single().toId)
+        assertTrue(cut.liftsOut === none)
+        // With Hill East's lift out now, the rider can't leave it without a step: drawn to the Planner's end.
+        assertEquals(listOf(planned), checked.shownRoutes(checked.state.value, StepFree.STATION, setOf("LIFT1")).state.routes)
+        // Fully step-free, a platform reached without a step isn't enough either.
+        assertEquals(listOf(planned), checked.shownRoutes(checked.state.value, StepFree.FULLY, none).state.routes)
+        // Nothing the trip holds moved.
+        assertEquals(listOf(planned), checked.state.value.routes)
     }
 
     @Test

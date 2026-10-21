@@ -343,7 +343,7 @@ class TripScreenScreenshotTest {
                         menu = menu,
                         ends = ends,
                         onListShown = onListShown,
-                        shownRoutes = { placed, level -> ShownRoutes.of(placed, level, arriving) },
+                        shownRoutes = { placed, level, _ -> ShownRoutes.of(placed, level, arriving) },
                         stepFree = stepFree?.value ?: StepFree.DEFAULT,
                     )
                 }
@@ -1243,7 +1243,7 @@ class TripScreenScreenshotTest {
                     title = "To Hill", state = hill, now = now, access = Duration.ZERO,
                     routeStops = RouteStopsRepository(hillSource), onBack = {}, onRetry = {}, openRoute = openRoute,
                     onOpenNotPlanned = { notPlanned++ },
-                    shownRoutes = { placed, at -> ShownRoutes.of(placed, at, HillModel.toHill) },
+                    shownRoutes = { placed, at, _ -> ShownRoutes.of(placed, at, HillModel.toHill) },
                     stepFree = level.value,
                 )
             }
