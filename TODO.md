@@ -4153,6 +4153,25 @@ Builds on Phase 1's minimal line-status marking.
       them only where its ends are joined by more than one route (Camden Town to Kennington by either
       Northern line branch): its page then lists no stops, as the ride alone can't say which (Codex on
       #1036).
+        - [x] **A list row's route page** (2026-10-21): a chip per way on from the stop, both ways
+              (`RouteChoices`), the tapped route chosen; one with a train moves the page to its row, one
+              with none lists its stops with "No live times" (SPEC *Route detail*). Needs a device check of
+              the chips' look and the room held for them.
+        - [ ] **A favorite ride's page** where its ends are joined by more than one route (above).
+        - [ ] **National Rail lines**: none yet, as a line's routes are its stopping patterns, a dozen from
+              one platform. Chips there would want grouping by where they go first.
+        - [ ] **A journey card's page**: none, as it keeps to the trains the card counts on; chips limited
+              to the ways that reach the journey's end could join them.
+        - [ ] **Follow a train on its own way where its row groups it with another** (Codex on #1038). Two
+              trains to one place by one via (or none named) that take different stops, a bus route's
+              variants, share a row's destination group; the page follows a place and its via
+              (`RouteFocus`), so a chip for the second's way can't hand over to it, and only lists its stops
+              (without claiming no train). Wants the page's focus able to name a path.
+        - [ ] **Keep the page open on a way chosen with no train** (Codex on #1038). The page is anchored to the
+              row it opened on: once that row's route runs out of trains (late at night, as often as not when a
+              trainless chip is chosen), the page closes, the way chosen and all, even on the refresh that brings a
+              train to that way before its hand-over. Wants the page anchored to the way chosen instead of the row,
+              drawn from the stop's rows as they are (not the last row held, whose age would read as stale).
 - [ ] **Guess where a "Check front of train" train goes, said as a guess** (maintainer, 2026-10-21). TfL
       names no destination for some trains ("Check Front of Train"), and StopDash says the same of a
       terminus's arrivals where the line runs on to more than one end. Show the route choices it could take, and

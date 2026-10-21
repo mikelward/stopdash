@@ -1090,7 +1090,25 @@ running the soonest's "via"). **The page is the route's, not the platform's** (m
 2026-10-15): it follows the route's soonest train from any platform, its stop list and "From" with it,
 so a train moved to another platform is still followed. Its row gone (that platform's last train left,
 or the train moved), it moves to the platform that still has a train on the route, and closes only once
-none does; a row still listed falls back as above. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
+none does; a row still listed falls back as above. **Under the title, a chip per way the line runs on from the
+stop** (maintainer, 2026-10-21), both ways: each of its routes from the stop through its end, routes calling at
+the same stops from here one chip, and a way its trains take that no route ends at (a short working) its own.
+A chip is named by where it goes, with its via where two go to one place ("Morden/Bank", "Morden/Charing X"),
+else by the first stop that tells them apart. The tapped row's route is chosen. A route with a train at the stop
+moves the page to it, as a tap on its row would; one with none lists its stops from the line's routes, with
+"No live times" in the countdown's place and no star (the star pins a row it isn't), until a train comes on it.
+A way a train at the stop does run, but one the page can't follow apart from another train to the same place by
+the same via (a bus route's variants, told apart only by their stops), lists its stops without saying it has none.
+Running another way than the row, it shows that way's alerts as its row would, not the row's, and offers no dismiss
+(a dismissal is the row's to make).
+On an old snapshot it doesn't say "No live times", which it can't stand behind; the stale caveat says why nothing
+is shown. A page with no train chooses none, as which way is a guess, unless only one way runs on from the stop. On
+a rail line the chips' room is held while they're worked out and kept once they are (a terminus's one way on shows
+as its chip), so nothing below moves; where the
+line's routes couldn't be loaded, "Couldn't load other routes" and a retry stand in their place, never read as a
+line with no other way on. A journey
+card's page keeps to the card's trains and has none, nor do a trip's pages; nor yet a National Rail line, whose
+routes are its stopping patterns, a dozen from one platform. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
 in for: shown collapsed to its first line, tapped to expand (the same widget the stop-closure card
 uses). A **web link** in an alert — with or without `https://`, as TfL writes them ("visit
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links

@@ -95,8 +95,7 @@ object DepartureRows {
                 // other way round doesn't touch these buses (TfL's affected-route direction,
                 // [LineStatus.forDirection]). One the app found wholly behind this stop for buses
                 // going this way ([LineStatus.behindAt]) doesn't flag them either, as in the app.
-                val status = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.takeIf(LineStatus::disrupted)
-                val behind = status?.takeIf { StopWay(stopId, soonest.direction) in it.behindAt }
+                val way = WayStatus.of(lineStatuses[key.lineId], stopId, soonest.direction)
                 DepartureRow(
                     stopId = stopId,
                     stopName = stopName,
@@ -113,9 +112,9 @@ object DepartureRows {
                     mode = mode,
                     upcoming = group,
                     fetchedAt = fetchedAt,
-                    status = status.takeIf { behind == null },
-                    statusBehind = behind,
-                    plannedAlerts = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.planned.orEmpty(),
+                    status = way.status,
+                    statusBehind = way.behind,
+                    plannedAlerts = way.planned,
                 )
             }
             .sortedWith(rowOrder)
@@ -1752,6 +1751,24 @@ object DepartureRows {
  * stamped [fetchedAt] = now yet has no fetched arrivals, so freshness alone can't stand in
  * for "we know there are no departures" — only a fetch can (SPEC principle 1).
  */
+/**
+ * What a row at [stopId] shows of its line's alerts for its trains running [direction], from the line's whole
+ * status ([LineStatus.forDirection]): the alert that flags it ([status], only where the line is disrupted that
+ * way), else the one the app found wholly behind the stop for them ([behind], [LineStatus.behindAt]), which flags
+ * nothing, and that way's work to come ([planned]). What every row is built with ([DepartureRows.forStop]), and
+ * what a route page shows for a way chosen with no train of its own.
+ */
+data class WayStatus(val status: LineStatus?, val behind: LineStatus?, val planned: List<PlannedAlert>) {
+    companion object {
+        fun of(line: LineStatus?, stopId: String, direction: String): WayStatus {
+            val way = line?.forDirection(direction)
+            val disrupted = way?.takeIf(LineStatus::disrupted)
+            val behind = disrupted?.takeIf { StopWay(stopId, direction) in it.behindAt }
+            return WayStatus(disrupted.takeIf { behind == null }, behind, way?.planned.orEmpty())
+        }
+    }
+}
+
 data class StopArrivals(
     val stopId: String,
     val stopName: String,
