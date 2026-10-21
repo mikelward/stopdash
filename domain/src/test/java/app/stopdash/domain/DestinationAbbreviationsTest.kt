@@ -47,6 +47,12 @@ class DestinationAbbreviationsTest {
     }
 
     @Test
+    fun `a platform, as a board heads it, takes the short form a tight label needs`() {
+        assertEquals("Plat 8", abbrev("Platform 8"))
+        assertEquals(listOf("Platform 12", "Plat 12", "Plat 12"), DestinationAbbreviations.forms("Platform 12"))
+    }
+
+    @Test
     fun `a branch takes the new forms too`() {
         assertEquals("Ealing Bwy", abbreviateBranch("Ealing Broadway"))
     }

@@ -42,10 +42,7 @@ internal object OnTheWayLiveUpdate {
      * Where to board the next ride: the train's destination ([heading]), and where to stand ([where]) as
      * the board heads that stop ("Platform 8", "Southbound", "Stop G", "➔ Archway"; [groupHeaderLabel]).
      */
-    data class Boarding(val heading: String?, val where: String? = null) {
-        /** [heading] as short as a board shortens one, for the chip's few characters where [where] isn't known. */
-        val headingShort: String? = heading?.let(DestinationAbbreviations::abbreviate)
-    }
+    data class Boarding(val heading: String?, val where: String? = null)
 
     /** The bar for [trip] at [progress], or null with nothing to draw. Grows with the route, so off the main thread. */
     @WorkerThread
@@ -58,14 +55,28 @@ internal object OnTheWayLiveUpdate {
 
     /**
      * The chip's text at [progress]: where to stand when the step is boarding or a change
-     * ([boarding]), else where the train goes; stops left on a ride ("Next stop" at one); on a walk
-     * how far its end is, in the rider's units ([system]), where a fix has placed them; minutes to
-     * the next thing otherwise.
+     * ([boarding]), else where the train goes, each shortened only as far as the chip needs
+     * ([fitChip]); stops left on a ride ("Next stop" at one); on a walk how far its end is, in the
+     * rider's units ([system]), where a fix has placed them; minutes to the next thing otherwise.
      */
     fun chipText(resources: Resources, progress: TripProgress?, now: Instant, boarding: Boarding? = null, system: DistanceSystem? = null): String? =
-        boarding?.let { it.where ?: it.headingShort }
+        boarding?.let { it.where ?: it.heading }?.let(::fitChip)
             ?: walkLeft(resources, progress, system)
             ?: countText(resources, progress, now)
+
+    /**
+     * [label] in the longest of the forms every shortened name steps through
+     * ([DestinationAbbreviations.forms]) that fits the chip ([CHIP_CHARS]), then the shortest closed up
+     * as the walk's chip closes its distance ("Plat10A"), else the shortest: Android cuts the rest off,
+     * so "Platform 8" showed as "Platform" and lost the number ("Plat 8"), and "Plat 10A" could read as
+     * platform 10 (Codex on #1037). A sign's "towards" keeps its arrow and shortens only the place after
+     * it: taken as the name's first word, the arrow left "➔ Archway" at its floor, "➔ A." (Codex on #1037).
+     */
+    private fun fitChip(label: String): String {
+        val arrow = label.takeIf { it.startsWith("$ARROW ") }?.let { "$ARROW " }.orEmpty()
+        val forms = DestinationAbbreviations.forms(label.removePrefix(arrow)).map { arrow + it }
+        return (forms + forms.last().replace(" ", "")).firstOrNull { it.length <= CHIP_CHARS } ?: forms.last()
+    }
 
     /**
      * A walk's distance left, as the trip's screen writes it ("~450 m" while estimated), after the
