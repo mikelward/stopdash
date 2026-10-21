@@ -865,6 +865,43 @@ class RouteChipsTest {
     }
 
     @Test
+    fun a_way_a_train_grouped_with_another_runs_hands_the_page_that_train_and_back() {
+        // Two trains to Morden that TfL names no branch for, one by Bank, then one by Charing Cross: one row's one
+        // destination, which the page used to follow only by its soonest (Codex on #1038).
+        val bank = Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(60), "tube", via = "Bank")
+        val charing = Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(120), "tube", via = "Charing Cross")
+        val stop = highgate.copy(departures = listOf(bank, charing))
+        val scheduler = TestCoroutineScheduler()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides routes) {
+                    MainScreen(state = DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now), now = now, onRefresh = {})
+                }
+            }
+        }
+        settle(scheduler)
+        composeRule.onNodeWithText("Morden", substring = true).performTouchInput { click() }
+        settle(scheduler)
+        // The soonest's way, by Bank: its stops.
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(0)
+
+        // By Charing Cross, whose train is the row's later one: the page follows that train, its stops and its star.
+        composeRule.onNodeWithTag("routeChoice-1").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
+        composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(1)
+        composeRule.onNodeWithText("No live times").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+
+        // And back by Bank.
+        composeRule.onNodeWithTag("routeChoice-0").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(0)
+    }
+
+    @Test
     fun a_train_with_no_destination_offers_how_far_it_goes_at_least_as_a_guess() {
         // TfL names no destination for the next southbound train: both its routes run on to Camden Town first.
         val unknown = StopArrivals(

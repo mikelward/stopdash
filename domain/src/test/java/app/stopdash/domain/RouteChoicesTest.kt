@@ -161,22 +161,32 @@ class RouteChoicesTest {
     }
 
     @Test
-    fun `a way a grouped train runs isn't one with no train, though only the group's soonest is followed`() {
+    fun `each way a grouped train runs hands the page its own train, followed by its way`() {
         // Two trains to Morden with no branch named, one by Bank, one by Charing Cross: one row's one destination.
         val bank = Departure("northern", "Northern", "outbound", "Morden", null, now.plusSeconds(60), "tube", null, via = "Bank")
         val charing = Departure("northern", "Northern", "outbound", "Morden", null, now.plusSeconds(120), "tube", null, via = "Charing Cross")
         val board = rows(HGT, bank, charing)
         val south = board.single { it.direction == "outbound" }
-        val choices = RouteChoices.of(northern, south, board, null).choices
-        val viaBank = choices.single { it.path == listOf(HGT, CTN, EUS, BNK, KNG, MDN) }
-        val viaCharing = choices.single { it.path == listOf(HGT, CTN, MTC, EUS, CHX, KNG, MDN) }
-        // The soonest is followed; the other way has a train too, though the page can't follow it on its own.
-        org.junit.Assert.assertNotNull(viaBank.live)
-        assertEquals(false, viaBank.unfollowedTrain)
-        assertEquals(null, viaCharing.live)
-        assertEquals(true, viaCharing.unfollowedTrain)
+        val choices = RouteChoices.of(northern, south, board, null)
+        val viaBank = choices.choices.indexOfFirst { it.path == listOf(HGT, CTN, EUS, BNK, KNG, MDN) }
+        val viaCharing = choices.choices.indexOfFirst { it.path == listOf(HGT, CTN, MTC, EUS, CHX, KNG, MDN) }
+        // Each way's own train, by its way: the page can follow either apart from the other (Codex on #1038).
+        assertEquals(RouteFocus("Morden", null, bank.wayKey), choices.choices[viaBank].live?.focus)
+        assertEquals(RouteFocus("Morden", null, charing.wayKey), choices.choices[viaCharing].live?.focus)
+        assertSame(south, choices.choices[viaCharing].live?.row)
+        // A tap on the row follows the soonest, by Bank; handed the Charing Cross way, the page is on that one.
+        assertEquals(viaBank, choices.current)
+        assertEquals(viaCharing, RouteChoices.of(northern, south, board, choices.choices[viaCharing].live?.focus).current)
         // A way no train runs is just that.
-        assertEquals(false, choices.single { it.path.lastOrNull() == BPS }.unfollowedTrain)
+        assertNull(choices.choices.single { it.path.lastOrNull() == BPS }.live)
+    }
+
+    @Test
+    fun `a group whose trains all run one way hands the page the place, not a way`() {
+        val board = rows(HGT, train("Morden", "Bank", 60), train("Morden", "Bank", 180))
+        val south = board.single { it.direction == "outbound" }
+        val choices = RouteChoices.of(northern, south, board, null)
+        assertEquals(RouteFocus("Morden", "Bank"), choices.choices.single { label(it) == "Morden/Bank" }.live?.focus)
     }
 
     @Test
@@ -230,6 +240,25 @@ class RouteChoicesTest {
         assertEquals(setOf("E2", "W2"), unknown.map { it.atLeast }.toSet())
         assertEquals(2, unknown.map { it.key }.distinct().size)
         assertEquals("W2", choices.choices[choices.current!!].atLeast)
+    }
+
+    @Test
+    fun `trains with no destination on opposite platforms each hand the page their own, not the sooner`() {
+        // Both name the same place, so the page, following it across the stop's platforms, took the sooner (east)
+        // from either chip; each hands over by its own train's way (Codex on #1045).
+        val east = Departure("northern", "Northern", "", "Check Front of Train", "Eastbound - Platform 1", now.plusSeconds(60), "tube", null)
+        val west = Departure("northern", "Northern", "", "Check Front of Train", "Westbound - Platform 2", now.plusSeconds(120), "tube", null)
+        val board = rows("N", east, west)
+        val eastRow = board.single { row -> row.upcoming.any { it.platform == east.platform } }
+        val fromEast = RouteChoices.of(eastWest, eastRow, board, RouteFocus("Check Front of Train", null))
+        val westChoice = fromEast.choices.indexOfFirst { it.atLeast == "W2" }
+        val handed = fromEast.choices[westChoice].live!!
+        assertEquals(west.wayKey, handed.focus.way)
+        assertEquals(east.wayKey, fromEast.choices.single { it.atLeast == "E2" }.live?.focus?.way)
+        // Handed over, the page follows the later train, west, and its chip is the page's own.
+        assertSame(west, followedDeparture(handed.row, handed.focus, RouteTopology.EMPTY, board))
+        val onWest = RouteChoices.of(eastWest, handed.row, board, handed.focus)
+        assertEquals("W2", onWest.choices[onWest.current!!].atLeast)
     }
 
     @Test

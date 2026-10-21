@@ -1119,8 +1119,10 @@ moves the page to it, as a tap on its row would; one with none lists its stops f
 Chosen, it stays open once the row it opened on runs out of trains, while the stop is still in the list (Codex on
 #1038): drawn as of the stop's latest fetch, not the row's last, and with the line's alerts for that way as they
 are now, never saying TfL gave the row no times.
-A way a train at the stop does run, but one the page can't follow apart from another train to the same place by
-the same via (a bus route's variants, told apart only by their stops), lists its stops without saying it has none.
+A way a train at the stop runs that its row groups with another train to the same place by the same via (a bus
+route's variants, told apart only by their stops; a loop's trains on platforms of opposite bounds) moves the page
+to that train too, which the page then follows on its own way, and back to the place's soonest once that way has
+none at the stop (Codex on #1038 and #1045; built on autopilot).
 Running another way than the row, it shows that way's alerts as its row would, not the row's, and offers no dismiss
 (a dismissal is the row's to make).
 On an old snapshot it doesn't say "No live times", which it can't stand behind; the stale caveat says why nothing

@@ -96,4 +96,13 @@ data class Departure(
 
     /** Whether the app grays its time: it [mayNotRun], is [held], or is [pastDue]. */
     val grayed: Boolean get() = mayNotRun || held || pastDue
+
+    /**
+     * What tells this train's way from another's to the same place by the same via, as its stops are found
+     * ([RouteStops.resolve]): its TfL direction, its platform's bound, its TfL destination and the way round a
+     * loop it runs. Two trains alike in all of them take the same stops from here ([RouteFocus.way]). Worked out
+     * once, as the train is made (off the main thread, with its row), so a page's composition only compares it
+     * (AGENTS.md *Main thread*; Codex on #1054). Not part of the train's equality: it follows from the rest.
+     */
+    val wayKey: String = "$direction|${RouteStops.boundOf(platform)?.name.orEmpty()}|$destinationId|$via"
 }

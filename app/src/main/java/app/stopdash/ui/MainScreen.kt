@@ -1260,6 +1260,8 @@ fun MainScreen(
     // RouteFocus, so it survives rotation with no custom Saver; null destination = no focus.
     var detailDestination by rememberSaveable { mutableStateOf<String?>(null) }
     var detailBranch by rememberSaveable { mutableStateOf<String?>(null) }
+    // And its train's own way, where a route chip handed the page a train its row groups with another ([RouteFocus.way]).
+    var detailTrainWay by rememberSaveable { mutableStateOf<String?>(null) }
     // The way the tapped row's trains run (its TfL direction), so the page can move to another platform's
     // row the same way once its own is gone ([routeAnchor]).
     var detailWay by rememberSaveable { mutableStateOf("") }
@@ -1299,6 +1301,7 @@ fun MainScreen(
         detailKey = row.detailKey()
         detailDestination = focus?.destination
         detailBranch = focus?.branch
+        detailTrainWay = focus?.way
         detailWay = row.direction
         detailOpened++
     }
@@ -1378,11 +1381,11 @@ fun MainScreen(
     // lists only its own platforms. Keyed on everything it reads, the rows (the ones they came with) and the
     // topology by identity, so a lookup is done again when any of it changes, and an answer from rows or a
     // topology since replaced never closes a page that the new ones still have (Codex, #854).
-    LaunchedEffect(detailKey, detailFound == null, rowsKnown, drawnFrom, ByIdentity(anchorTopology), detailDestination, detailBranch, detailWay) {
+    LaunchedEffect(detailKey, detailFound == null, rowsKnown, drawnFrom, ByIdentity(anchorTopology), detailDestination, detailBranch, detailTrainWay, detailWay) {
         val key = detailKey
         if (key != null && detailFound == null && rowsKnown) {
             val moved = detailDestination?.let { destination ->
-                movedRouteRow(loadedRows, key, detailWay, RouteFocus(destination, detailBranch), anchorTopology, anchorWorker)
+                movedRouteRow(loadedRows, key, detailWay, RouteFocus(destination, detailBranch, detailTrainWay), anchorTopology, anchorWorker)
             }
             // A way chosen with no train keeps the page open on it while the stop's row for its line is in.
             val onWay = moved == null && detailChosenWay.value != null && detailLineKey?.let { drawnFrom?.byLine?.get(it) } != null
@@ -1500,7 +1503,7 @@ fun MainScreen(
             now = detailNow,
             onToggleStar = { onToggleStar(detailRow) },
             onBack = { detailKey = null },
-            focus = detailDestination?.let { RouteFocus(it, detailBranch) },
+            focus = detailDestination?.let { RouteFocus(it, detailBranch, detailTrainWay) },
             onDismissAlert = if (detailRow.status != null) {
                 { onDismissAlert(detailRow) }
             } else {
@@ -1528,6 +1531,7 @@ fun MainScreen(
                 detailKey = chosenRow.detailKey()
                 detailDestination = chosenFocus.destination
                 detailBranch = chosenFocus.branch
+                detailTrainWay = chosenFocus.way
                 detailWay = chosenRow.direction
             },
             reaching = detailReaching,
@@ -6574,7 +6578,7 @@ internal fun RouteDetailScreen(
                         }
                     }
                 }
-            } else if (trainless != null && !trainless.unfollowedTrain && !stale && routeChoices?.settled == true && !rideChoices) {
+            } else if (trainless != null && !stale && routeChoices?.settled == true && !rideChoices) {
                 // A route chosen with no train at the stop: said, in the countdown's place, so a train coming
                 // on it takes the line without moving what's below. Not from an old snapshot, which can't say
                 // there's none now: its stale caveat below says why nothing is; nor from chips not yet worked out
@@ -6586,7 +6590,7 @@ internal fun RouteDetailScreen(
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
                 )
-            } else if (!stale && (workForRow == null && row.hasTrains || trainless != null && !trainless.unfollowedTrain && !rideChoices)) {
+            } else if (!stale && (workForRow == null && row.hasTrains || trainless != null && !rideChoices)) {
                 // The row's trains are being worked out, or the chips that say whether the way chosen has one now (a
                 // page kept on it with its row gone has no trains of its own): hold the countdown's line, blank.
                 Text(
