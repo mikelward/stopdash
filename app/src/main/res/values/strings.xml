@@ -43,6 +43,13 @@
     <!-- Boarding-stop line in the route detail body. %1$s is the stop/interchange name; the app
          bar already shows where the service is going, so this names where it departs from. -->
     <string name="route_detail_from">From %1$s</string>
+    <!-- TODO: translate -->
+    <!-- A favorite ride's route page with nothing live yet (its line not open for the morning): when its
+         timetable runs the next train. %1$s is the clock time, e.g. "05:41". -->
+    <string name="route_detail_next_timetabled" tools:ignore="MissingTranslation">Next train %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- The same for a bus ride. -->
+    <string name="route_detail_next_bus_timetabled" tools:ignore="MissingTranslation">Next bus %1$s (timetable)</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
          bare. %1$s is the line's name, e.g. "Victoria" → "Victoria line". -->
     <string name="route_detail_line_name">%1$s line</string>

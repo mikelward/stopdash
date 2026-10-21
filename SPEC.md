@@ -1037,7 +1037,8 @@ while trains run — during a disruption it can lose track of a whole branch —
 as "no trains" when they were only unseen; at night the same empty list is honestly "none", and the
 timetable is what tells the two apart. **The timetable decides only which mark: its times are never
 shown in place of live ones**, since it knows nothing of the disruption that emptied the board
-(maintainer, 2026-10-03). It is fetched only for a line with no live times, kept for the service
+(maintainer, 2026-10-03); a favorite ride's page gives its next train before the line opens, marked as the
+timetable's (*Journeys*, maintainer, 2026-10-21). It is fetched only for a line with no live times, kept for the service
 day. While it is still being fetched, or a failed one is being asked for again, the row shows a small **spinner** (heard as "Loading times"),
 not "?": a "?" during a page load read as an answer when it was only a wait (maintainer,
 2026-10-03). A timetable that failed, or can't say, is "?" — StopDash can't be sure. A place card whose
@@ -1487,8 +1488,14 @@ never passes its last answer off as live. A time held past the staleness thresho
 stale guess, as anywhere (D4). Checked for the first time, its one row is the ride's own line with a
 spinner, as it has no answer to fade. With no train due, that row stays,
 a dash for its time, heard as "No trains to … soon"; a suspension's status row gives way to it in
-place, and it to the first train, so through the night the card never moves. Only a check that
-failed, or a route that couldn't load, is a note under the heading.
+place, and it to the first train, so through the night the card never moves. Tapped, that row opens
+the **ride's page** (maintainer, 2026-10-21): the route page for the ride itself, its stops from where
+the card boards to the far end, the direction and branch it takes (so no guess at the line's; none listed
+where its ends are joined by more than one branch, a choice not yet offered), its
+line's alert if it has one, "View line" for the map, and, while nothing live says and its line has no
+alert, its timetable's next train, "Next train 05:41 (timetable)" — the one place a timetable's time is
+shown, said as the timetable's and never as a countdown. Only a check that failed, or a route that
+couldn't load, is a note under the heading.
 
 **On the widget**, a journey's departures lead the list too (maintainer, 2026-09-23), in the
 direction the app last showed, and **nearest ride first** in the order the app's list last showed

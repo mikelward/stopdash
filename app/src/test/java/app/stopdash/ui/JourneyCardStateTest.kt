@@ -291,4 +291,88 @@ class JourneyCardStateTest {
         // Both directions: before its route is in, its own saved stop is all there is to check.
         assertEquals(setOf("HUBKGX"), farEndIds(ride, null))
     }
+
+    @Test
+    fun `a ride's page is the list's own row for its line at its origin, with its stop's notice`() {
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("PARK-K", "Park", areaId = "PARK"),
+            app.stopdash.domain.JourneyEnd("HILL", "Hill", areaId = "HILL-AREA"),
+            "example",
+            lineName = "Example",
+            mode = "tube",
+        )
+        val card = JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("PARK-L", "PARK-K"))
+        val fetched = now.minusSeconds(30)
+        val example = app.stopdash.domain.LineRef("example", "Example", "tube")
+        fun origin(vararg departures: Departure) = StopArrivals(
+            "PARK-L", "Park", departures.toList(), fetchedAt = fetched, lines = listOf(example),
+            disruptions = listOf(app.stopdash.domain.StopDisruption("Park station is closed")),
+        )
+        val severe = app.stopdash.domain.LineStatus("example", 6, "Severe Delays")
+        fun view(
+            stop: StopArrivals,
+            status: app.stopdash.domain.LineStatus,
+            dismissed: Set<app.stopdash.domain.DismissedAlert> = emptySet(),
+            card: JourneyCard = JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("PARK-L", "PARK-K")),
+            destinations: List<StopArrivals> = emptyList(),
+        ): RideView {
+            val source = DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now, lineStatuses = mapOf("example" to status), determinedLineIds = setOf("example"))
+            return rideViews(listOf(card), listRowsOf(source, now, emptyMap(), dismissed, emptySet(), emptyMap(), destinations)).getValue(ride.key)
+        }
+        val disrupted = view(origin(), severe)
+        // Where the card boards, aged as that stop's arrivals are, with the line's alert as the list has it.
+        assertEquals("PARK-L", disrupted.row.stopId)
+        assertEquals(fetched, disrupted.row.fetchedAt)
+        assertEquals("Severe Delays", disrupted.row.status?.description)
+        // Its stop's notice in force, so the page never calls a closed stop clean.
+        assertEquals("Park station is closed", disrupted.row.stopDisruption)
+        assertEquals("PARK-L", disrupted.ride.fromId)
+        assertEquals("HILL", disrupted.ride.toId)
+        assertEquals("HILL-AREA", disrupted.ride.toArea)
+        assertEquals(false, disrupted.live)
+        // An alert the rider dismissed stays dismissed, said as dismissed, not as a clean line.
+        val dismissed = view(origin(), severe, setOf(app.stopdash.domain.DismissedAlert.ofLineStatus(severe)))
+        assertEquals(null, dismissed.row.status)
+        assertTrue(dismissed.row.statusDismissed)
+        // Planned work whose day has come since the check counts as under way, as the list's rows have it.
+        val planned = app.stopdash.domain.PlannedAlert("Part Closure", "Closed today.", java.time.LocalDate.of(2026, 9, 24), severity = 5)
+        val due = view(origin(), app.stopdash.domain.LineStatus("example", 10, "Good Service", planned = listOf(planned)))
+        assertEquals("Part Closure", due.row.status?.description)
+        // Good service with nothing live: the list's quiet row, with no alert.
+        val good = view(origin(), app.stopdash.domain.LineStatus("example", 10, "Good Service"))
+        assertEquals(null, good.row.status)
+        assertTrue(good.row.quiet)
+        // Trains the other way at the origin: still the line's row with no times, by its line-wide alert, never
+        // the verdict of the other way's train, whose own direction may be clear.
+        val outbound = app.stopdash.domain.LineStatus("example", 10, "Good Service")
+        val inbound = severe
+        val split = app.stopdash.domain.LineStatus("example", 6, "Severe Delays", byDirection = mapOf("outbound" to outbound, "inbound" to inbound))
+        val otherWay = view(origin(departure("Elsewhere", 120)), split)
+        assertTrue(otherWay.row.upcoming.isEmpty())
+        assertEquals("Severe Delays", otherWay.row.status?.description)
+        assertEquals(fetched, otherWay.row.fetchedAt)
+        // A far end with a notice in force holds the timetable back, the notice dismissed or not: dismissing hides it,
+        // it doesn't open the stop.
+        val closedEnd = StopArrivals("HILL", "Hill", emptyList(), fetchedAt = now, disruptions = listOf(app.stopdash.domain.StopDisruption("Hill station is closed")))
+        val toClosed = card.copy(destinationIds = setOf("HILL"))
+        assertTrue(view(origin(), severe, card = toClosed, destinations = listOf(closedEnd)).destinationDisrupted)
+        val closedRow = DepartureRows.across(listOf(closedEnd), now).single()
+        assertTrue(
+            view(origin(), severe, setOf(app.stopdash.domain.DismissedAlert.ofStopClosure(closedRow)), toClosed, listOf(closedEnd)).destinationDisrupted,
+        )
+        assertEquals(false, view(origin(), severe, card = toClosed).destinationDisrupted)
+        // The days its line's planned work starts, and whether the origin names its line at all.
+        val later = app.stopdash.domain.PlannedAlert("Part Closure", "Closed from 30 September.", java.time.LocalDate.of(2026, 9, 30), severity = 5)
+        assertEquals(listOf(java.time.LocalDate.of(2026, 9, 30)), view(origin(), app.stopdash.domain.LineStatus("example", 10, "Good Service", planned = listOf(later))).plannedFrom)
+        assertTrue(good.lineListed)
+        assertEquals(false, view(origin().copy(lines = emptyList()), severe).lineListed)
+        // Once the card has trains, the timetable no longer speaks for it.
+        val trains = DepartureRows.across(listOf(StopArrivals("PARK-L", "Park", listOf(departure("Hill", 120)), fetchedAt = now)), now)
+        assertTrue(view(origin(), severe, card = card.copy(state = JourneyCardState.Trains(trains))).live)
+        // Its direct trains count though a nearer ride shows them in its place.
+        assertTrue(view(origin(), severe, card = card.copy(state = JourneyCardState.Trains(trains, repeated = trains.indices.toSet()))).live)
+        // Nor while it's still checking, or with a departure it couldn't check: a live train may yet serve the ride.
+        assertTrue(view(origin(), severe, card = card.copy(state = JourneyCardState.Checking("the ride's route"))).live)
+        assertTrue(view(origin(), severe, card = card.copy(state = JourneyCardState.Trains(emptyList(), incomplete = true))).live)
+    }
 }

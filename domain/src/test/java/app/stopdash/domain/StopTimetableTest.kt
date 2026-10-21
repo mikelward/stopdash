@@ -206,4 +206,43 @@ class StopTimetableTest {
         assertNull(peak.copy(readable = false).longestGapAround(tuesday("08:30:00")))
         assertNull(StopTimetable(listOf(peak.schedules[0].copy(complete = false))).longestGapAround(tuesday("08:30:00")))
     }
+
+    @Test
+    fun `the next departure is the first one at or after the time asked`() {
+        // Before the line opens for the morning: its first train.
+        assertEquals(tuesday("05:40:00"), timetable.nextDeparture(tuesday("04:51:00")))
+        assertEquals(tuesday("12:00:00"), timetable.nextDeparture(tuesday("12:00:00")))
+        // Past the last daytime one: tonight's, past midnight, ahead of tomorrow's first.
+        assertEquals(tuesday("12:00:00").plus(Duration.ofMinutes(12 * 60 + 30)), timetable.nextDeparture(tuesday("12:01:00")))
+    }
+
+    @Test
+    fun `a departure in autumn's repeated hour is still to come in its second occurrence`() {
+        // 2026-10-25, a Sunday, London falls back at 02:00 BST to 01:00 GMT; a 01:30 is in both hours.
+        // Saturday's service, running past midnight into it, is known to end at 23:00.
+        val sundays = StopTimetable(
+            listOf(StopTimetable.DaySchedule(setOf(SUNDAY), listOf(90, 10 * 60)), StopTimetable.DaySchedule(setOf(SATURDAY), listOf(23 * 60))),
+        )
+        // 01:10 GMT, the second 01:10: the second 01:30 (01:30 GMT) is next, not 10:00.
+        assertEquals(Instant.parse("2026-10-25T01:30:00Z"), sundays.nextDeparture(Instant.parse("2026-10-25T01:10:00Z")))
+        // 00:10 GMT, the first 01:10 (BST): the first 01:30.
+        assertEquals(Instant.parse("2026-10-25T00:30:00Z"), sundays.nextDeparture(Instant.parse("2026-10-25T00:10:00Z")))
+    }
+
+    @Test
+    fun `no next departure where a day that could run one sooner isn't known`() {
+        val thursdayNoon = tuesday("12:30:00").plus(Duration.ofDays(2))
+        // Thursday's 24:30 is Friday 00:30, and Friday, which no schedule covers, might run one before it.
+        assertNull(timetable.nextDeparture(thursdayNoon))
+        assertNull(timetable.copy(readable = false).nextDeparture(tuesday("04:51:00")))
+        assertNull(StopTimetable(listOf(weekdays.copy(complete = false))).nextDeparture(tuesday("04:51:00")))
+        // 2026-08-31 is the August bank holiday, a Monday.
+        assertNull(timetable.nextDeparture(Instant.parse("2026-08-31T03:51:00Z")))
+    }
+
+    @Test
+    fun `no next departure past a day ahead`() {
+        val sundays = StopTimetable(listOf(StopTimetable.DaySchedule(setOf(SUNDAY), listOf(10 * 60)), weekdays.copy(days = setOf(MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY), minutes = emptyList())))
+        assertNull(sundays.nextDeparture(tuesday("12:00:00")))
+    }
 }

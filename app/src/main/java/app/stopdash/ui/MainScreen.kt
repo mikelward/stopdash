@@ -1261,6 +1261,15 @@ fun MainScreen(
     var detailFromCard by rememberSaveable { mutableStateOf(false) }
     // Opens a row's route page, counted as a tap on [tap]'s kind (UsageEvent; opted in only): a
     // row on a journey's change card is a change card, any other a stop row.
+    // The favorite journey whose ride page is open, by key: opened from its line's row with no train
+    // ([JourneyCard.lineCard]), drawn from its card while the card is shown.
+    var rideKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val openRide: (String) -> Unit = { key ->
+        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STOP_ROW))
+        rideKey = key
+        // A new opening, so its line page ("View line") starts closed, as a route page's does (Codex on #1036).
+        detailOpened++
+    }
     fun openDetail(tap: UsageEvent.Tap, fromCard: Boolean = false): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
         UsageEvents.log(UsageEvent.Tapped(tap))
         detailFromCard = fromCard
@@ -1399,7 +1408,15 @@ fun MainScreen(
     val routeLineOpen = rememberSaveable(detailOpened) { mutableStateOf(false) }
     // For the usage stats: the route's page, its line's page over it, or what's beneath. A page still
     // open while its rows are worked out again (a rotation, a return to the list) is still that page.
-    val routeOpen = (detailLoaded != null && detailRow != null) || (detailKey != null && !rowsKnown)
+    // A journey's ride page, while its card is shown: gone with the card (unstarred, or the list moved on).
+    val rideView = rideKey?.let { shown?.rides?.get(it) }
+    val rideLoaded = drawnFrom?.source
+    // Closed once its card is gone from rows worked out, so it never reopens on a card shown again later.
+    LaunchedEffect(rideKey, rideView == null, rowsKnown, shown == null) {
+        if (rideKey != null && rideView == null && rowsKnown && shown != null) rideKey = null
+    }
+    val routeOpen = (detailLoaded != null && detailRow != null) || (detailKey != null && !rowsKnown) ||
+        (rideView != null && rideLoaded != null)
     ReportScreen(
         when {
             !routeOpen -> usageScreen
@@ -1407,6 +1424,10 @@ fun MainScreen(
             else -> UsageEvent.Screen.ROUTE
         },
     )
+    if (rideView != null && rideLoaded != null) {
+        RidePage(rideView, rideLoaded, now, onBack = { rideKey = null }, lineOpen = routeLineOpen)
+        return
+    }
     if (detailLoaded != null && detailRow != null) {
         RouteDetailScreen(
             lineOpen = routeLineOpen,
@@ -1721,6 +1742,7 @@ fun MainScreen(
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
                             onOpenCardDetail = openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true),
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
+                            onOpenRide = openRide,
                             onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
@@ -1780,6 +1802,7 @@ fun MainScreen(
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
                             onOpenCardDetail = openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true),
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
+                            onOpenRide = openRide,
                             onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
@@ -1983,6 +2006,9 @@ private fun LoadedContent(
     onOpenCardDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // The same for a row on a journey's change card, counted apart (UsageEvent).
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
+    // Opens a journey's ride page, by its key, from its line's row with no train ([JourneyCard.lineCard]);
+    // null leaves that row inert.
+    onOpenRide: ((String) -> Unit)? = null,
     // Opens Settings at the National Rail key, from a National Rail line's "No key".
     onAddRailKey: () -> Unit = {},
     dismissed: Set<DismissedAlert> = emptySet(),
@@ -2198,6 +2224,7 @@ private fun LoadedContent(
                         onOpenDetail = onOpenDetail,
                         onOpenCardDetail = onOpenCardDetail,
                         onOpenChangeDetail = onOpenChangeDetail,
+                        onOpenRide = onOpenRide,
                         onDismissAlert = onDismissAlert,
                         dismissedClosures = dismissedClosures,
                         sharedNotices = sharedNotices,
@@ -2705,6 +2732,8 @@ private fun DepartureList(
     // A journey card's row, whose page reads the cards' rows.
     onOpenCardDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
+    // A journey's ride page, from its line's row with no train; null leaves that row inert.
+    onOpenRide: ((String) -> Unit)? = null,
     listState: LazyListState,
     farther: List<FartherCard> = emptyList(),
     onOpenFarther: (CollapsedPlaces.Place) -> Unit = {},
@@ -3009,7 +3038,9 @@ private fun DepartureList(
                 }
                 // One of the card's stop cards. Every one is drawn from here, checking or not, so a card that
                 // checks again keeps its place in the list and its rows their place in it (SPEC *Journeys*).
-                // The ride's own line with no train ([JourneyCard.lineCard]) opens nothing.
+                // The ride's own line with no train ([JourneyCard.lineCard]) opens the ride's page: its stops and
+                // its timetable's next train (maintainer, 2026-10-21).
+                val openRide = onOpenRide?.let { open -> { _: DepartureRow, _: RouteFocus? -> open(card.journey.key) } }
                 fun rideStopCard(key: String, stopCard: StopCard, checking: Boolean, atOnce: Boolean = false, noneRes: Int? = null) {
                     item(key = "journey-card|${card.journey.key}|$key") {
                         StopGroupCard(
@@ -3018,7 +3049,7 @@ private fun DepartureList(
                             starred = starred,
                             onToggleStar = onToggleStar,
                             starringAvailable = starringAvailable,
-                            onOpenDetail = onOpenCardDetail.takeUnless { stopCard === card.lineCard },
+                            onOpenDetail = if (stopCard === card.lineCard) openRide else onOpenCardDetail,
                             onAddRailKey = onAddRailKey,
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
@@ -6013,6 +6044,9 @@ internal fun RouteDetailScreen(
     // as they are, a Tube train just past its time kept, grayed, as on the list ([Countdown.onBoard]). Otherwise
     // (a trip's rows, built at another time) a train goes at its time, against [now].
     boardRows: Boolean = false,
+    // A favorite ride's next train by its timetable, shown while nothing live says and its line has no
+    // alert, marked as the timetable's ([rememberNextTrain]); null shows none.
+    nextTrain: Instant? = null,
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
@@ -6280,6 +6314,18 @@ internal fun RouteDetailScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp)
                         .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
+                )
+            }
+            if (nextTrain != null && departures.isEmpty() && untimed.isEmpty() && !stale && row.status == null) {
+                // Nothing live yet (a line not open for the morning): when the timetable runs the next one,
+                // said as the timetable's, never as a countdown (maintainer, 2026-10-21).
+                Text(
+                    text = stringResource(
+                        if (row.mode.equals("bus", ignoreCase = true)) R.string.route_detail_next_bus_timetabled else R.string.route_detail_next_timetabled,
+                        CLOCK.format(nextTrain.atZone(LONDON)),
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
                 )
             }
             val status = row.status

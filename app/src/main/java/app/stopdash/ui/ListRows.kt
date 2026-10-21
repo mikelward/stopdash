@@ -15,7 +15,9 @@ import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripVia
+import app.stopdash.domain.hasTrains
 import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.stopPlaceKey
 import java.time.Instant
@@ -79,6 +81,11 @@ internal class ListRows(
     val quietRevision: Long = 0,
     // [forCards] found by identity, for a route page opened from a journey card ([byKey] is [all]'s).
     val cardsByKey: RowsByKey = RowsByKey.NONE,
+    // Each stop's row for each of its lines with no times, as the list reads it ([byLineOf]), for a favorite ride's page.
+    val byLine: Map<String, DepartureRow> = emptyMap(),
+    // The journeys' far ends with a notice in force, dismissed or not: a dismissal hides a notice, it doesn't open the
+    // stop, so a ride's page still holds its timetable back for one (Codex on #1036).
+    val destinationsDisrupted: Set<String> = emptySet(),
 )
 
 /**
@@ -149,7 +156,88 @@ internal class ShownRows(
     val rideMeters: Map<String, Double> = emptyMap(),
     val rowsByKey: RowsByKey = RowsByKey.NONE,
     val cardRowsByKey: RowsByKey = RowsByKey.NONE,
+    // Each of [cards]' ride pages, by journey key ([rideViews]).
+    val rides: Map<String, RideView> = emptyMap(),
 )
+
+/**
+ * A journey card's ride page ([RidePage]), as its line's row with no train opens it ([JourneyCard.lineCard]):
+ * the [card], that [row] as the page shows it, and the [ride] from its origin to its far end. [live] unless the
+ * card's check is done and complete with no train to show: only then does the timetable speak for the ride.
+ */
+internal class RideView(
+    val card: JourneyCard,
+    val row: DepartureRow,
+    val ride: TripLeg,
+    val live: Boolean,
+    // Its far end has a notice in force, dismissed or not ([ListRows.destinationsDisrupted]).
+    val destinationDisrupted: Boolean = false,
+    // Its origin's fetch names its line, so [row] is the list's own, its line checked there; false for a stand-in.
+    val lineListed: Boolean = true,
+    // The days its line's planned work starts, dismissed or not: dismissing hides work, it doesn't call it off.
+    val plannedFrom: List<java.time.LocalDate> = emptyList(),
+)
+
+/**
+ * [cards]' ride pages by journey key ([RideView]), each row the list's own for the ride's line at its origin with
+ * no times ([ListRows.byLine]): its age, its line-wide alert as of now less what the rider dismissed, and its
+ * planned work are the list's, so the page reads the line exactly as the list does. With the origin's notice in
+ * force at [from]'s time, as the line's rows don't carry it. On the worker.
+ */
+@WorkerThread
+internal fun rideViews(cards: List<JourneyCard>, from: ListRows): Map<String, RideView> {
+    val stops = from.source.stops.associateBy { it.stopId }
+    val statuses = LineStatus.asOf(from.source.lineStatuses, from.now)
+    return cards.associate { card ->
+        val line = card.lineCard.group.rows.first()
+        // A line the origin's fetch doesn't name: unchecked there, so its page never stands behind a time (Codex on #1036).
+        val listed = from.byLine[lineKey(line.stopId, line.lineId)]
+        val row = (listed ?: line.copy(fetchedAt = stops[line.stopId]?.fetchedAt ?: from.source.fetchedAt)).copy(
+            // Its stop's notice in force, dismissed or not, so the page never calls a closed stop clean (Codex on #1036).
+            stopDisruption = stops[line.stopId]?.let { DepartureRows.stopNotice(it, from.now) },
+        )
+        // The timetable speaks only once the card's check is done and complete with no train for the ride: while it
+        // checks, or with a departure it couldn't check, a live train may yet serve it (Codex on #1036).
+        val state = card.state
+        // Every direct train it checked, those a nearer ride shows in its place included (Codex on #1036).
+        val live = state !is JourneyCardState.Trains || state.incomplete || state.rows.any { it.hasTrains }
+        val destinationDisrupted = card.destinationIds.any { it in from.destinationsDisrupted }
+        val planned = statuses[line.lineId]?.planned.orEmpty().map { it.startsOn }
+        card.journey.key to RideView(card, row, journeyRide(card.journey, line.stopId), live, destinationDisrupted, listed != null, planned)
+    }
+}
+
+/** The key [ListRows.byLine] files a stop's row for a line under. */
+internal fun lineKey(stopId: String, lineId: String): String = "$stopId|$lineId"
+
+/**
+ * Each stop's row for each of its lines with its times left out, as the list would read it, by [lineKey]: the row
+ * the list gives a line with no times there ([DepartureRows.across]), a status row by its line-wide alert as of
+ * [now] or a quiet row on good service, never one direction's verdict borrowed from a train the other way (Codex
+ * on #1036); its alerts less those [dismissed], and one whose alert was dismissed outright, which the list leaves
+ * out, marked so. For a page about a line at a stop with no train to show (a favorite ride's, [rideViews]). One
+ * more pass over the stops, on the list's worker.
+ */
+@WorkerThread
+private fun byLineOf(
+    stops: List<StopArrivals>,
+    now: Instant,
+    lineStatuses: Map<String, LineStatus>,
+    dismissed: Set<DismissedAlert>,
+    alertSequences: Map<String, LineSequence?>,
+): Map<String, DepartureRow> {
+    val untimed = DepartureRows.across(stops.map { it.copy(departures = emptyList()) }, now, lineStatuses, quietRows = true)
+        .filter { it.lineId.isNotBlank() }
+    val byLine = HashMap<String, DepartureRow>()
+    DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(untimed, dismissed), alertSequences)
+        .forEach { byLine.putIfAbsent(lineKey(it.stopId, it.lineId), it) }
+    untimed.forEach { row ->
+        if (row.isStatusOnly) {
+            byLine.putIfAbsent(lineKey(row.stopId, row.lineId), row.copy(status = null, statusDismissed = true, plannedAlerts = emptyList()))
+        }
+    }
+    return byLine
+}
 
 /**
  * How far each place the journey [cards] board from is, as a near-me heading says it: the place's
@@ -304,7 +392,8 @@ internal fun listRowsOf(
     // Hide the service alerts the user has dismissed (until their content changes), and unflag a bus
     // alert wholly behind its stop.
     val marked = RowsRevision(DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearby, dismissed), alertSequences), now)
-    val destinationClosures = DepartureRows.withoutDismissed(DepartureRows.across(journeyDestinationStops, now), dismissed)
+    val destinationNotices = DepartureRows.across(journeyDestinationStops, now)
+    val destinationClosures = DepartureRows.withoutDismissed(destinationNotices, dismissed)
         .filter { it.stopDisruption != null }
     val modes = placeModes(stops).mapValues { (_, modes) -> modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) } }
     // A disrupted line whose only train is just past its time keeps the status row a card shows without it.
@@ -324,6 +413,8 @@ internal fun listRowsOf(
             else -> last.quietRevision + 1
         },
         cardsByKey = RowsByKey.of(forCards),
+        byLine = byLineOf(stops, now, lineStatuses, dismissed, alertSequences),
+        destinationsDisrupted = destinationNotices.filter { it.stopDisruption != null }.mapTo(HashSet()) { it.stopId },
     )
 }
 
@@ -368,6 +459,7 @@ internal fun shownRowsOf(
         // A card's row opens its route page with the card's own trains, the ones it counts on: no just-due
         // train, which the list's page keeps (maintainer, 2026-10-20).
         RowsByKey.of(journeyRowsShown),
+        rideViews(cards, from),
     )
 }
 
