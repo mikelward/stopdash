@@ -4185,11 +4185,11 @@ Builds on Phase 1's minimal line-status marking.
               trains TfL names no destination for, on platforms of opposite bounds under one TfL direction (a
               loop): each has a chip of its own, by how far it goes at least (#1045), but both hand the page the
               same place, so the page follows the sooner and the later's chip hands back to it (Codex on #1045).
-        - [ ] **Keep the page open on a way chosen with no train** (Codex on #1038). The page is anchored to the
-              row it opened on: once that row's route runs out of trains (late at night, as often as not when a
-              trainless chip is chosen), the page closes, the way chosen and all, even on the refresh that brings a
-              train to that way before its hand-over. Wants the page anchored to the way chosen instead of the row,
-              drawn from the stop's rows as they are (not the last row held, whose age would read as stale).
+        - [x] **Keep the page open on a way chosen with no train** (Codex on #1038). Done (2026-10-21): with its
+              row gone and no other platform's to move to, the page stays on the way chosen while the stop is in
+              the list, its row as last held with its trains gone, as of the stop's latest fetch and alerts
+              (`standingOnWay`); a train come on the way still moves the page to its row. A stop that declares
+              none of its lines (so has no row for one with no times) still closes it. Needs a device check.
 - [x] **Guess where a "Check front of train" train goes, said as a guess** (maintainer, 2026-10-21). TfL
       names no destination for some trains ("Check Front of Train"), and StopDash says the same of a
       terminus's arrivals where the line runs on to more than one end. Show the route choices it could take, and

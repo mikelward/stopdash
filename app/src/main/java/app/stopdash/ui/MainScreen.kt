@@ -1276,6 +1276,9 @@ fun MainScreen(
     // draws it: until another way is chosen from its chips, which reads the stop's every train (as the cards judge
     // them, so still never a just-due one; maintainer, 2026-10-21).
     var detailCardTrains by rememberSaveable { mutableStateOf(false) }
+    // The open page's stop and line ([lineKey]), for the stop's own row for its line ([ListRows.byLine]) the page
+    // stays on once its row is gone with a way chosen that has no train ([detailOnWay]).
+    var detailLineKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Opens a row's route page, counted as a tap on [tap]'s kind (UsageEvent; opted in only): a
     // row on a journey's change card is a change card, any other a stop row.
     // The favorite journey whose ride page is open, by key: opened from its line's row with no train
@@ -1292,6 +1295,7 @@ fun MainScreen(
         detailFromCard = fromCard
         detailCardTrains = fromCard
         detailReaching = reaching
+        detailLineKey = lineKey(row.stopId, row.lineId)
         detailKey = row.detailKey()
         detailDestination = focus?.destination
         detailBranch = focus?.branch
@@ -1330,9 +1334,18 @@ fun MainScreen(
                     ?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
         }
     }
+    // The way chosen on the page's chips with no train ([RouteDetailScreen]'s chosenWay), held with its opening; and
+    // whether the page stays on it, its row gone with no other platform's to move to: then it's drawn from the row
+    // last held, its trains gone, as of the stop's own row for its line as the list has it now ([standingOnWay]), not
+    // as of the row's own fetch, whose age would read as stale (Codex on #1038); from that row itself where none is
+    // held (a rotation since). A train come on the way moves the page to its row, as the chips do.
+    val detailChosenWay = rememberSaveable(detailOpened) { mutableStateOf<String?>(null) }
+    var detailOnWay by rememberSaveable(detailOpened) { mutableStateOf(false) }
+    // Only while the page is open: Back clears its key, and the page closes with it (Codex on #1051).
+    val onWayLine = if (detailKey != null && detailFound == null && detailOnWay) detailLineKey?.let { drawnFrom?.byLine?.get(it) } else null
     // Every loaded stop's rows, where the row came from the list's own snapshot: the route's trains on its
     // stop's other platforms are listed too (maintainer, 2026-10-14).
-    val detailSiblings = loadedRows.takeIf { detailFound != null && detailFound.second === drawnFrom?.source }.orEmpty()
+    val detailSiblings = loadedRows.takeIf { detailFound != null && detailFound.second === drawnFrom?.source || onWayLine != null }.orEmpty()
     // What the open page was last drawn from, standing in while its row is gone and the route is looked
     // for at another platform ([routeAnchor], below): the page holds still for the worker's hop rather than
     // flash the list between the two (Codex, #854). Kept with the page's opening, so another page never
@@ -1344,7 +1357,9 @@ fun MainScreen(
             detailDrawn.siblings = detailSiblings
         }
     }
-    val detailHit = detailFound ?: detailDrawn.hit?.takeIf { detailKey != null }
+    val heldRow = detailDrawn.hit?.first
+    val onWayRow = remember(heldRow, onWayLine) { onWayLine?.let { line -> heldRow?.standingOnWay(line) ?: line } }
+    val detailHit = detailFound ?: onWayRow?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) } ?: detailDrawn.hit?.takeIf { detailKey != null }
     val detailRow = detailHit?.first
     // When the open route's row leaves the list — its last departure passed on the 10s clock, or it
     // was pruned — clear the saved key so the vanished page stays closed rather than silently
@@ -1369,7 +1384,12 @@ fun MainScreen(
             val moved = detailDestination?.let { destination ->
                 movedRouteRow(loadedRows, key, detailWay, RouteFocus(destination, detailBranch), anchorTopology, anchorWorker)
             }
-            detailKey = moved?.detailKey()
+            // A way chosen with no train keeps the page open on it while the stop's row for its line is in.
+            val onWay = moved == null && detailChosenWay.value != null && detailLineKey?.let { drawnFrom?.byLine?.get(it) } != null
+            detailOnWay = onWay
+            detailKey = moved?.detailKey() ?: key.takeIf { onWay }
+        } else if (detailFound != null) {
+            detailOnWay = false
         }
     }
     // Surface a failed star write as a snackbar (SPEC principle 2: a tap that didn't take isn't
@@ -1496,19 +1516,22 @@ fun MainScreen(
             onDismissJourneyTip = onDismissJourneyTip,
             onOpenStop = LocalOpenRouteStop.current,
             // Held with the row while it stands in, so the page's work isn't asked again for the hop.
-            siblings = if (detailFound != null) detailSiblings else detailDrawn.siblings,
+            siblings = if (detailFound != null || onWayRow != null) detailSiblings else detailDrawn.siblings,
+            rowGone = detailFound == null && onWayRow != null,
             // Another route of the line at the stop, from the page's chips: the page moves to it, as if its row
             // had been tapped. From a journey card too, every way on from the stop, the ways reaching its far end
             // first (maintainer, 2026-10-21): the page still reads the cards' rows, so never gains a train just due.
             lineStatus = detailLoaded.lineStatuses[detailRow.lineId],
             onChooseRoute = { chosenRow, chosenFocus ->
                 detailCardTrains = false
+                detailLineKey = lineKey(chosenRow.stopId, chosenRow.lineId)
                 detailKey = chosenRow.detailKey()
                 detailDestination = chosenFocus.destination
                 detailBranch = chosenFocus.branch
                 detailWay = chosenRow.direction
             },
             reaching = detailReaching,
+            chosenWay = detailChosenWay,
         )
         return
     }
@@ -5879,6 +5902,24 @@ internal suspend fun movedRouteRow(
 }
 
 /**
+ * An open route page's row once it's gone, standing for the way chosen on its chips with no train ([RouteDetailScreen]'s
+ * rowGone): its own stop, platform and way, with none of its trains (gone), and the alerts, stop notice and age of
+ * [line], the stop's row for its line as the list has it now ([ListRows.byLine]), so it never reads as stale for the
+ * row's last fetch, nor as clean for its old alerts.
+ */
+internal fun DepartureRow.standingOnWay(line: DepartureRow): DepartureRow = copy(
+    upcoming = emptyList(),
+    untimed = emptyList(),
+    fetchedAt = line.fetchedAt,
+    status = line.status,
+    statusDismissed = line.statusDismissed,
+    statusBehind = line.statusBehind,
+    plannedAlerts = line.plannedAlerts,
+    stopDisruption = line.stopDisruption,
+    stopDisruptionWindows = line.stopDisruptionWindows,
+)
+
+/**
  * What an open route page was last drawn from: its row with the snapshot and time it's drawn against, and the
  * rows beside it ([RouteDetailScreen]'s siblings). Written after each composition that found the row, read
  * only once it's gone.
@@ -6106,6 +6147,13 @@ internal fun RouteDetailScreen(
     // A favorite ride's far end, by its stops and stop area, on a page opened from its card: the chips calling
     // there come first in their way (maintainer, 2026-10-21). Empty orders them by the line's routes alone.
     reaching: Set<String> = emptySet(),
+    // The way chosen from its chips with no train, by its key ([RouteChoice.key]): held by the caller, which keeps
+    // the page open on it once the row it opened on is gone (Codex on #1038); one of its own otherwise.
+    chosenWay: MutableState<String?> = rememberSaveable(row.stopId, row.lineId) { mutableStateOf(null) },
+    // Whether [row] is gone from the list, the page kept open on the way chosen with no train ([standingOnWay]): the
+    // row had trains, so the page never says TfL gave it none, and the way's alerts are the line's as of now, whichever
+    // way it runs.
+    rowGone: Boolean = false,
     // The line's whole status as the list has it, every way's alerts in it: what a way chosen with no train shows
     // where it runs another way than [row], whose alerts are its own way's ([WayStatus]). Null keeps [row]'s.
     lineStatus: LineStatus? = null,
@@ -6153,7 +6201,7 @@ internal fun RouteDetailScreen(
         rideChoices && ride != null -> rememberRideChoices(ride, routeStopsRetry)
         else -> null
     }
-    var chosenKey by rememberSaveable(row.stopId, row.lineId) { mutableStateOf<String?>(null) }
+    var chosenKey by chosenWay
     val chosenIndex = routeChoices?.indexOf(chosenKey)
     val chosen = chosenIndex?.let { routeChoices.choices.choices[it] }
     // The route the page lists with no train to follow: the one chosen, else, with no train of its own, the
@@ -6165,7 +6213,7 @@ internal fun RouteDetailScreen(
     // while the line's good service and the stop's notices are checked, current and clean, a dismissed alert still
     // counting as one: a timetable knows nothing of a disruption (SPEC *Departures*).
     // A line's disruption or a stop's notice says why itself. Not a ride's page, whose timetable line says it ([nextTrains]).
-    val timesMissing = ride == null && !row.hasTrains && row.lineId.isNotBlank() && !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
+    val timesMissing = ride == null && !rowGone && !row.hasTrains && row.lineId.isNotBlank() && !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
         !row.notRunningHere && row.status == null && row.stopDisruption == null
     val timetableClean = timesMissing && !stale && !disruptionUnknown && !disruptionChecking && !lineUnknown && !lineChecking &&
         !row.statusDismissed
@@ -6178,10 +6226,11 @@ internal fun RouteDetailScreen(
         chosenKey = null
         onChooseRoute?.invoke(live.row, live.focus)
     }
-    // A way chosen with no train that runs another way than the row: that way's alerts, as its row would show them
-    // ([WayStatus]), not the row's own way's (Codex on #1038). Its dismissals are the row's to make, so none is
-    // offered for it, and one made on the row doesn't hide it: a disruption shown too many times beats one missed.
-    val otherWay = trainless?.direction?.takeIf { lineStatus != null && it != row.direction }
+    // A way chosen with no train that runs another way than the row, or any once the row is gone ([rowGone]): that
+    // way's alerts, as its row would show them ([WayStatus]), not the row's own way's (Codex on #1038). Its
+    // dismissals are the row's to make, so none is offered for it, and one made on the row doesn't hide it: a
+    // disruption shown too many times beats one missed.
+    val otherWay = trainless?.direction?.takeIf { lineStatus != null && (rowGone || it != row.direction) }
     // Worked out on the worker from the line's status as of today, as the rows' are ([LineStatus.asOf]): a status
     // kept from an earlier fetch may hold planned work whose day has come, under way now, not to come (Codex on
     // #1038). Null while it's worked out, when the page says it's checking rather than call the way clean.
@@ -6537,8 +6586,9 @@ internal fun RouteDetailScreen(
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
                 )
-            } else if (workForRow == null && row.hasTrains && !stale) {
-                // The row's trains are being worked out: hold the countdown's line, blank.
+            } else if (!stale && (workForRow == null && row.hasTrains || trainless != null && !trainless.unfollowedTrain && !rideChoices)) {
+                // The row's trains are being worked out, or the chips that say whether the way chosen has one now (a
+                // page kept on it with its row gone has no trains of its own): hold the countdown's line, blank.
                 Text(
                     text = "",
                     style = MaterialTheme.typography.titleMedium,

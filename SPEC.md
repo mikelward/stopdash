@@ -1116,6 +1116,9 @@ on it, whichever platform's the page follows. TfL's own words stay on
 the page's title; where its way isn't known, or its routes part at once, the chip keeps them. The tapped row's route is chosen. A route with a train at the stop
 moves the page to it, as a tap on its row would; one with none lists its stops from the line's routes, with
 "No live times" in the countdown's place and no star (the star pins a row it isn't), until a train comes on it.
+Chosen, it stays open once the row it opened on runs out of trains, while the stop is still in the list (Codex on
+#1038): drawn as of the stop's latest fetch, not the row's last, and with the line's alerts for that way as they
+are now, never saying TfL gave the row no times.
 A way a train at the stop does run, but one the page can't follow apart from another train to the same place by
 the same via (a bus route's variants, told apart only by their stops), lists its stops without saying it has none.
 Running another way than the row, it shows that way's alerts as its row would, not the row's, and offers no dismiss
