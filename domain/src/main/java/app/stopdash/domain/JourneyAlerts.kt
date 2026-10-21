@@ -428,7 +428,8 @@ object JourneyAlerts {
      * nothing it didn't hear (SPEC principle 1), so the journey keeps whatever it last showed.
      * [names] gives a line's rider-facing name where known. A bus line's alert whose stretch lies off
      * the ride each open direction takes, on the line's route in [routes], isn't the journey's
-     * ([onRide]), nor is any line's alert TfL scopes to the direction the ride doesn't go ([towardRide]);
+     * ([onRide]), nor is another line's part closure whose sections the ride never runs through
+     * ([closuresOnRide]), nor any line's alert TfL scopes to the direction the ride doesn't go ([towardRide]);
      * a line is ridden as the journey's mode where it was saved on it, else as [modes] says,
      * from the journey's ends and from the poles its [pins] board and get off at ([ridesOn]).
      */
@@ -469,7 +470,11 @@ object JourneyAlerts {
                 // other's (Codex on #1020).
                 ways.mapNotNull { way ->
                     val rides = ridesOn(way, status.lineId, mode, pins[journey.key].orEmpty())
-                    towardRide(status, rides, sequence).takeIf { it.disrupted }?.let { onRide(it, listOf(rides), sequence) }
+                    towardRide(status, rides, sequence).takeIf { it.disrupted }?.let { toward ->
+                        // A bus line's alerts are placed by their words, any other's part closures by their sections.
+                        if (mode.equals("bus", ignoreCase = true)) onRide(toward, listOf(rides), sequence)
+                        else closuresOnRide(toward, rides, sequence)
+                    }
                 }.minByOrNull { it.severity }
             }
             .sortedWith(compareBy<LineStatus> { it.severity }.thenBy { it.lineId })
@@ -484,9 +489,10 @@ object JourneyAlerts {
 
     /**
      * The lines whose routes [results] would weigh an alert on: each journey's lines among [lines] whose
-     * status in [statuses] TfL split by direction ([towardRide]), and its bus lines ([modeOf]) with an alert
-     * under way that a route could place ([RouteDisruption.placeable], [onRide]). None other is worth a
-     * request: a tube line's delays spread along it.
+     * status in [statuses] TfL split by direction ([towardRide]), its bus lines ([modeOf]) with an alert
+     * under way that a route could place ([RouteDisruption.placeable], [onRide]), and its other lines with
+     * a part closure whose sections TfL gave ([closuresOnRide]). None other is worth a request: a tube
+     * line's delays spread along it.
      */
     @WorkerThread
     fun routesToRead(
@@ -499,8 +505,10 @@ object JourneyAlerts {
             lines[journey.key].orEmpty().filter { line ->
                 val status = statuses[line]?.takeIf { it.disrupted } ?: return@filter false
                 // Any mode's alert TfL split by direction: the route says which way the ride goes ([towardRide]).
+                val bus = modeOf(journey, line, modes).equals("bus", ignoreCase = true)
                 status.byDirection.isNotEmpty() ||
-                    modeOf(journey, line, modes).equals("bus", ignoreCase = true) && RouteDisruption.placeable(status)
+                    bus && RouteDisruption.placeable(status) ||
+                    !bus && status.closures.any { it.sections.isNotEmpty() }
             }
         }
 
@@ -530,6 +538,45 @@ object JourneyAlerts {
         val on = rides.flatMap { RouteDisruption.alertsOnRide(it, status, sequence) ?: return status }
         if (on.any { it.description == status.description && it.fullText == status.fullText }) return status
         return on.minByOrNull { it.severity } ?: status
+    }
+
+    /**
+     * [status] as it bears on a favorite ride's [rides] on a line other than a bus's ([ridesOn]), its part
+     * closures placed by the sections TfL gives them on the line's route ([sequence]), as a trip places them
+     * on its leg ([RouteDisruption.lineSignal]; maintainer, 2026-10-20): a both-ways closure at the far end
+     * of the line says nothing of a ride that never reaches it. A closure the ride runs through is what it's
+     * told of, named for itself ([LineStatus.naming]), unless the alert shown is already on it or says the
+     * line isn't running; null where every alert under way is a closure the ride never runs through; else
+     * [status], an alert other than a closure spreading along the line. Unknown is on: no route, rides no
+     * route runs, a closure TfL gave no sections for, or other alerts under way whose words weren't kept.
+     * A bus line's alerts are placed by their words instead ([onRide]).
+     */
+    @WorkerThread
+    fun closuresOnRide(status: LineStatus, rides: List<Pair<TripLeg, LegEnd>>, sequence: LineSequence?): LineStatus? {
+        val placeable = status.closures.filter { it.sections.isNotEmpty() }
+        if (sequence == null || placeable.isEmpty()) return status
+        val spans = rides.flatMap { ridesOf(it, sequence) }.map { it.second }
+        if (spans.isEmpty()) return status
+        fun reaches(closure: PartClosure) = spans.any(closure::coversRide)
+        // The closure an alert is, told apart by its words as a trip tells them (RouteDisruption.signals).
+        fun closureOf(alert: LineStatus) = placeable.firstOrNull { closure ->
+            closure.severity == alert.severity && closure.description == alert.description &&
+                closure.fullText?.ifBlank { null } == alert.fullText?.ifBlank { null }
+        }
+        val shown = closureOf(status)
+        if (shown != null && reaches(shown) || status.severity in TripTiming.NOT_RUNNING_SEVERITIES) return status
+        placeable.filter(::reaches).minByOrNull { it.severity }?.let { return status.naming(it) }
+        if (shown == null) return status
+        // The alert shown is a closure off the ride: the ride's is the worst other alert under way that isn't
+        // one too, in its own words, where TfL's answer kept them all.
+        val others = when {
+            status.soleAlert -> emptyList()
+            status.underWay.size > 1 -> status.underWay.map { alert ->
+                status.copy(severity = alert.severity, description = alert.description, fullText = alert.fullText, isFallback = false, byDirection = emptyMap(), behindAt = emptySet())
+            }
+            else -> return status
+        }
+        return others.filter { closureOf(it) == null }.minByOrNull { it.severity }
     }
 
     /**
