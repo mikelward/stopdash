@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-17
+last_modified: 2026-10-21
 ---
 
 # AGENTS.md
@@ -58,6 +58,10 @@ the battery, say why); principles win over rules below:
   #502). Test each from a single-thread caller that checks the work ran elsewhere. Mark
   data-scaling domain work `@WorkerThread` (enforced by lint's `WorkerThreadCall`;
   `app/lint-baseline.xml` only shrinks).
+- **A worker's answer shows only for what it was worked out for**: `rememberWorked`
+  (`Worked.kt`, `keep` for what may stand in), or a `produceState` answer kept as `Worked`
+  with its key and read only while that key holds. `produceState` keeps its last value across
+  new keys, and a reset inside the producer still leaves a frame of the old one (#1036, #1044).
 
 When unable to verify locally (no emulator/device), say so in chat ("verified by unit test;
 lock-screen placement needs a device check").
