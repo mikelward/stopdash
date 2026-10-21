@@ -535,8 +535,9 @@ class RouteChipsTest {
         timetable: app.stopdash.domain.StopTimetable = quietTimetable,
         lookup: app.stopdash.domain.EmptyTimes.Lookup = app.stopdash.domain.EmptyTimes.Lookup.Found(timetable),
         unknown: androidx.compose.runtime.State<Boolean>? = null,
+        lookups: kotlinx.coroutines.flow.MutableStateFlow<Map<app.stopdash.domain.EmptyTimes.Key, app.stopdash.domain.EmptyTimes.Lookup>> =
+            kotlinx.coroutines.flow.MutableStateFlow(mapOf(app.stopdash.domain.EmptyTimes.Key(HGT, "northern") to lookup)),
     ) {
-        val lookups = kotlinx.coroutines.flow.MutableStateFlow(mapOf(app.stopdash.domain.EmptyTimes.Key(HGT, "northern") to lookup))
         val emptyTimes = EmptyTimesState(kotlinx.coroutines.flow.MutableStateFlow(emptyMap()), now, lookups = lookups) { _, _ -> }
         composeRule.setContent {
             StopDashTheme {
@@ -600,6 +601,32 @@ class RouteChipsTest {
         composeRule.onNodeWithText("Timetable").assertDoesNotExist()
         composeRule.onNodeWithText("09:05").assertDoesNotExist()
         composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_quiet_rows_page_shows_no_times_from_a_timetable_since_replaced_even_while_the_new_ones_are_worked_out() {
+        val scheduler = TestCoroutineScheduler()
+        val lookups = kotlinx.coroutines.flow.MutableStateFlow<Map<app.stopdash.domain.EmptyTimes.Key, app.stopdash.domain.EmptyTimes.Lookup>>(
+            mapOf(app.stopdash.domain.EmptyTimes.Key(HGT, "northern") to app.stopdash.domain.EmptyTimes.Lookup.Found(quietTimetable)),
+        )
+        showQuietPage(scheduler, lookups = lookups)
+        composeRule.onNodeWithText("09:05").assertIsDisplayed()
+        // The stop's timetable fetched again, its trains later: the old one's go with the frame, not once the new
+        // one's are worked out ([rememberWorked]).
+        val later = app.stopdash.domain.StopTimetable(
+            listOf(
+                app.stopdash.domain.StopTimetable.DaySchedule(
+                    setOf(java.time.DayOfWeek.WEDNESDAY),
+                    listOf(10 * 60, 10 * 60 + 5, 10 * 60 + 10),
+                    calls = listOf(listOf(CTN, EUS, BNK, KNG, MDN), listOf(CTN, MTC, EUS, CHX, KNG, MDN), listOf(HBT)),
+                ),
+            ),
+        )
+        composeRule.runOnIdle { lookups.value = mapOf(app.stopdash.domain.EmptyTimes.Key(HGT, "northern") to app.stopdash.domain.EmptyTimes.Lookup.Found(later)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("09:05").assertDoesNotExist()
+        settle(scheduler)
+        composeRule.onNodeWithText("10:00").assertIsDisplayed()
     }
 
     @Test

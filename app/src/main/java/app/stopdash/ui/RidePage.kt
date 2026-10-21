@@ -46,16 +46,17 @@ internal fun journeyRide(journey: FavoriteJourney, origin: String): TripLeg = Tr
 /**
  * [ride] placed on the poles its line's route uses ([placedRide], from [LocalRouteStops]), as its stop list's
  * ends are: a saved bus ride's far end is the pole of the way it was saved, across the road from the one it
- * gets off at the other way (Codex on #1036). Null until placed, on the worker ([LocalWorker]).
+ * gets off at the other way (Codex on #1036). Null until placed, on the worker ([LocalWorker]); only ever [ride]'s own
+ * ([Worked]), never another ride's placed for the frame the page moves on to this one.
  */
 @Composable
 internal fun rememberPlacedRide(ride: TripLeg): TripLeg? {
     val worker = LocalWorker.current
     val routes = LocalRouteStops.current
-    val placed by produceState<TripLeg?>(null, worker, routes, ride) {
-        value = withContext(worker) { placedRide(ride, routes) }
+    val placed by produceState<Worked<TripLeg, TripLeg>?>(null, worker, routes, ride) {
+        value = Worked(ride, withContext(worker) { placedRide(ride, routes) })
     }
-    return placed
+    return placed?.takeIf { it.key == ride }?.value
 }
 
 /**
@@ -63,28 +64,40 @@ internal fun rememberPlacedRide(ride: TripLeg): TripLeg? {
  * worked out again each minute; none while it's fetched, where the timetable can't say, while the ride isn't placed
  * yet ([rememberPlacedRide]), and none on or after a day in [plannedFrom] ([departureBefore]). Fetched and read on
  * the worker ([LocalWorker]): one request per ride a day, shared with trips' ([LegTimetables]).
+ *
+ * Each answer is paired with the ride, planned work and count it was worked out for ([Worked]), so none outlives
+ * them: a ride no longer eligible, another one, or other planned work shows none from that very frame, not for the
+ * frame or worker's turn until the next is in (Codex on #1036 and #1044), nor comes back when it's eligible again
+ * (Codex on #1048). A minute's tick keeps the last one up.
  */
 @Composable
 internal fun rememberTimetabledTrains(ride: TripLeg?, now: Instant, plannedFrom: List<LocalDate> = emptyList(), count: Int = TIMETABLED_TRAINS): TimetabledTimes {
     val timetables = LocalLegTimetables.current ?: return TimetabledTimes.NONE
     val worker = LocalWorker.current
     val current by rememberUpdatedState(now)
-    val next by produceState(TimetabledTimes.NONE, timetables, worker, ride, plannedFrom, count) {
-        // produceState keeps its last value across new keys: a ride no longer eligible, or another one, starts
-        // with none (Codex on #1036).
-        value = TimetabledTimes.NONE
-        val key = ride?.let { LegTimetables.Key(it.lineId, it.fromId, it.toId) } ?: return@produceState
+    // What the trains are worked out for, compared in constant time: the planned-work days by identity, kept the same
+    // list while unchanged ([rideViews]), never walked here (AGENTS.md *Main thread*, Codex on #1048).
+    val asked = ride?.let { Inputs(it.lineId, it.fromId, it.toId, plannedFrom, count) }
+    val next by produceState<Worked<Inputs, TimetabledTimes>?>(null, timetables, worker, asked) {
+        // No longer eligible: its answer goes, so one from minutes ago isn't back up when it is again (Codex on #1048).
+        val ask = asked
+        if (ask == null || ride == null) {
+            value = null
+            return@produceState
+        }
+        val key = LegTimetables.Key(ride.lineId, ride.fromId, ride.toId)
         snapshotFlow { current.epochSecond / 60 }.collect {
             val at = current
-            value = withContext(worker) {
-                timetables.fetch(listOf(key))
-                TimetabledTimes.of(
-                    timetables.known().timetables[key]?.nextDepartures(at, count).orEmpty().mapNotNull { departureBefore(it, plannedFrom) },
-                )
-            }
+            value = Worked(
+                ask,
+                withContext(worker) {
+                    timetables.fetch(listOf(key))
+                    TimetabledTimes.of(timetables.known().timetables[key]?.nextDepartures(at, count).orEmpty().mapNotNull { departureBefore(it, plannedFrom) })
+                },
+            )
         }
     }
-    return if (ride != null) next else TimetabledTimes.NONE
+    return next?.takeIf { asked != null && it.key == asked }?.value ?: TimetabledTimes.NONE
 }
 
 /**
