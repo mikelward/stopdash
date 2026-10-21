@@ -86,6 +86,18 @@ internal class RouteChoicesUi private constructor(
     /** The place of the choice [key] names, null where none does (it's gone since it was chosen). */
     fun indexOf(key: String?): Int? = key?.let { index[it] }
 
+    /**
+     * These choices with each way's stop list [held]'s own where it's the same: a refreshed row works the ways out
+     * anew, and a list made again would lay out its map again, which took the map down and the page back to its
+     * top every refresh on a way with no train (maintainer, 2026-10-21). Compared here, on the worker.
+     */
+    @WorkerThread
+    fun keeping(held: RouteChoicesUi?): RouteChoicesUi {
+        val before = held?.lists ?: return this
+        if (lists.none { (key, list) -> before[key] == list }) return this
+        return RouteChoicesUi(choices, labels, lists.mapValues { (key, list) -> before[key]?.takeIf { it == list } ?: list }, failure, settled, index, keys)
+    }
+
     companion object {
         /** No chips: where no routes are wired, or TfL has none for the line. */
         val NONE = RouteChoicesUi(RouteChoices.NONE, emptyList(), emptyMap())
@@ -198,9 +210,11 @@ internal fun rememberRouteChoices(
     return key(row.stopId, row.lineId, repository) {
         // Each answer with the ask it was worked out for, so one for rows since refreshed is known for what it is.
         val answer by produceState<Pair<Any, RouteChoicesUi>?>(null, ask, worker, via, atLeast, first, retry) {
+            val held = value?.second
             value = ask to try {
                 withContext(worker) {
                     RouteChoicesUi.of(repository.load(row.lineId, ""), row, siblings, focus, topology, via, first, atLeast, reaching)
+                        .keeping(held)
                 }
             } catch (e: CancellationException) {
                 throw e

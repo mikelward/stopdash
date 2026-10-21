@@ -6945,6 +6945,16 @@ internal fun RouteDetailScreen(
             // nor another way's stops, in place of the train's stops in hand.
             val mapDrawable = mapSection != null && mapSection.ui !is LineMapUi.Failed && mapSection.ui !is LineMapUi.Unavailable &&
                 pathDrawn != false && (pathDrawn == true || mapSection.ui !is LineMapUi.Ready)
+            // The train's stops in hand but the map that stands for them still being worked out (its route's inputs, its
+            // layout, then whether it shows the path): its place held for the moment, so the list isn't drawn just to be
+            // replaced, which flashed the list, "Loading map…", the list again and the map on each chip's tap
+            // (maintainer, 2026-10-21). Once that takes a while ([settled]), the list, as where the map can't be drawn.
+            val mapPending = railLoaded != null && (
+                routeMap == null || mapSection == null || mapSection.ui is LineMapUi.Loading ||
+                    (mapSection.ui is LineMapUi.Ready && pathDrawn == null)
+                )
+            val mapSlow = settled(mapPending, at = !mapPending, initial = false)
+            val mapHeld = mapPending && !mapSlow
             // A ride more than one way joins the ends of: its ways, where its stops go, the one chosen listed below.
             val ways = routeChoices?.choices?.takeIf { rideChoices }
             if (ways != null && ways.choices.size >= 2) {
@@ -6956,9 +6966,7 @@ internal fun RouteDetailScreen(
                     modifier = Modifier.padding(top = 16.dp),
                 )
             }
-            if (mapDrawable && mapSection != null && routeMap != null) {
-                val inputs = routeMap
-                val stations = mapStations ?: if (drawnAs.isNullOrEmpty()) inputs.asDrawn else RouteMapStations.NONE
+            if (mapHeld || !mapPending && mapDrawable && mapSection != null && routeMap != null) {
                 // No tip where nothing past the boarding stop can be starred (a train ending here).
                 if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && railLoaded?.endsHere != true) {
                     JourneyTip(onDismissJourneyTip, Modifier.padding(top = 16.dp))
@@ -6969,32 +6977,37 @@ internal fun RouteDetailScreen(
                 heading?.let {
                     Text(it, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
                 }
-                val toggle = onToggleJourney?.takeIf { journeysHereFavorable }
-                val extras = LineMapExtras(
-                    connections = stations.connections,
-                    stepFree = stepFreeDrawn,
-                    onLongPress = toggle?.let { t -> { id, name -> stations.after[id]?.let { t(journeyTo(RouteStop(it, name))) } } },
-                    // Not while the map drawn shows the stars from before a change: the press would act on the new.
-                    longPressReady = (journeysHere.current || noJourneysHere) && mapSection.current,
-                    longPressStops = stations.after.keys,
-                    terminus = stations.terminus,
-                )
-                // No tap until the stations are mapped to the stops the train calls at: before, a pole drawn as another
-                // would open the wrong one.
-                val mapped = mapStations != null || drawnAs.isNullOrEmpty()
-                val openMapStop: ((String, String, Pair<Double, Double>?) -> Unit)? = onOpenStop?.takeIf { mapped }?.let { open ->
-                    { id, name, _ ->
-                        // The stop the train calls at, not the one the map draws it as (a bus's pole across the road).
-                        val stop = stations.path[id] ?: id
-                        val routeId = stations.after[id]
-                        // The map draws a station once, the boarding stop as "you are here": by its id.
-                        open(stopOpen(stop, name, if (routeId != null && journeysHereFavorable) journeyTo(RouteStop(routeId, name)) else null, null, routeId != null))
+                // Held, the map's place stays empty under its heading for the moment it's worked out.
+                if (!mapHeld && mapSection != null && routeMap != null) {
+                    val inputs = routeMap
+                    val stations = mapStations ?: if (drawnAs.isNullOrEmpty()) inputs.asDrawn else RouteMapStations.NONE
+                    val toggle = onToggleJourney?.takeIf { journeysHereFavorable }
+                    val extras = LineMapExtras(
+                        connections = stations.connections,
+                        stepFree = stepFreeDrawn,
+                        onLongPress = toggle?.let { t -> { id, name -> stations.after[id]?.let { t(journeyTo(RouteStop(it, name))) } } },
+                        // Not while the map drawn shows the stars from before a change: the press would act on the new.
+                        longPressReady = (journeysHere.current || noJourneysHere) && mapSection.current,
+                        longPressStops = stations.after.keys,
+                        terminus = stations.terminus,
+                    )
+                    // No tap until the stations are mapped to the stops the train calls at: before, a pole drawn as another
+                    // would open the wrong one.
+                    val mapped = mapStations != null || drawnAs.isNullOrEmpty()
+                    val openMapStop: ((String, String, Pair<Double, Double>?) -> Unit)? = onOpenStop?.takeIf { mapped }?.let { open ->
+                        { id, name, _ ->
+                            // The stop the train calls at, not the one the map draws it as (a bus's pole across the road).
+                            val stop = stations.path[id] ?: id
+                            val routeId = stations.after[id]
+                            // The map draws a station once, the boarding stop as "you are here": by its id.
+                            open(stopOpen(stop, name, if (routeId != null && journeysHereFavorable) journeyTo(RouteStop(routeId, name)) else null, null, routeId != null))
+                        }
                     }
-                }
-                CompositionLocalProvider(LocalLineMapExtras provides extras, LocalOpenLineMapStop provides openMapStop) {
-                    // No "Show all stations": drawn in the page's column, the whole line at once would stall it; its
-                    // folds open one by one, as the stop list drew a route's every stop.
-                    LineMapColumn(mapSection, railColorFor(row), offerAll = false)
+                    CompositionLocalProvider(LocalLineMapExtras provides extras, LocalOpenLineMapStop provides openMapStop) {
+                        // No "Show all stations": drawn in the page's column, the whole line at once would stall it; its
+                        // folds open one by one, as the stop list drew a route's every stop.
+                        LineMapColumn(mapSection, railColorFor(row), offerAll = false)
+                    }
                 }
             } else RouteStopsSection(
                 state = railState,
