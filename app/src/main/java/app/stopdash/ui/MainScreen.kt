@@ -164,6 +164,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.WayStatus
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.RailKeyDefault
 import app.stopdash.domain.NATIONAL_RAIL_MODE
@@ -1477,6 +1478,19 @@ fun MainScreen(
             onOpenStop = LocalOpenRouteStop.current,
             // Held with the row while it stands in, so the page's work isn't asked again for the hop.
             siblings = if (detailFound != null) detailSiblings else detailDrawn.siblings,
+            // Another route of the line at the stop, from the page's chips: the page moves to it, as if its row
+            // had been tapped. Not from a journey card, whose page keeps to the trains the card counts on.
+            lineStatus = detailLoaded.lineStatuses[detailRow.lineId],
+            onChooseRoute = if (detailFromCard) {
+                null
+            } else {
+                { chosenRow, chosenFocus ->
+                    detailKey = chosenRow.detailKey()
+                    detailDestination = chosenFocus.destination
+                    detailBranch = chosenFocus.branch
+                    detailWay = chosenRow.direction
+                }
+            },
         )
         return
     }
@@ -6055,12 +6069,18 @@ internal fun RouteDetailScreen(
     // A favorite ride's next train by its timetable, shown while nothing live says and its line has no
     // alert, marked as the timetable's ([rememberNextTrain]); null shows none.
     nextTrain: Instant? = null,
+    // Moves the page to another route of its line at the stop, chosen from its chips (maintainer, 2026-10-21):
+    // the row holding that route's soonest train, among [row] and [siblings], and the route a tap on that row
+    // follows. Null offers no chips.
+    onChooseRoute: ((DepartureRow, RouteFocus) -> Unit)? = null,
+    // The line's whole status as the list has it, every way's alerts in it: what a way chosen with no train shows
+    // where it runs another way than [row], whose alerts are its own way's ([WayStatus]). Null keeps [row]'s.
+    lineStatus: LineStatus? = null,
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
     // 2026-10-06).
     var lineShown by lineOpen
-    if (lineShown) RouteLinePage(row, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineShown = false })
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
     val topology = LocalRouteTopology.current
@@ -6079,11 +6099,65 @@ internal fun RouteDetailScreen(
     }
     // The route's soonest train at any platform, from the answer for this ask alone, the row's own standing in
     // until it lands ([pageFollowed]).
-    val followed = pageFollowed(row, focus, topology, routeWork, routeAsk, siblings.isNotEmpty())
+    // The ways the line runs on from the stop, one chip each, the page's own route chosen (maintainer,
+    // 2026-10-21). A route with a train at the stop moves the page to it ([onChooseRoute]); one with none is
+    // listed by its stops alone, here, until the rider picks another or a train comes on it.
+    // The way the page opened on, its chips first, so moving to another of them doesn't reorder them.
+    val openedWay by rememberSaveable(row.stopId, row.lineId) { mutableStateOf(row.direction) }
+    // Bumped by the stop list's retry, and the chips' where their routes couldn't be loaded.
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
+    val routeChoices = if (onChooseRoute != null) rememberRouteChoices(row, siblings, focus, openedWay, routeStopsRetry) else null
+    var chosenKey by rememberSaveable(row.stopId, row.lineId) { mutableStateOf<String?>(null) }
+    val chosenIndex = routeChoices?.indexOf(chosenKey)
+    val chosen = chosenIndex?.let { routeChoices.choices.choices[it] }
+    // The route the page lists with no train to follow: the one chosen, else, with no train of its own, the
+    // only way on from here (no guess).
+    val trainlessIndex = chosenIndex ?: routeChoices?.choices?.current?.takeIf { routeChoices.choices.choices[it].live == null }
+    val trainless = trainlessIndex?.let { routeChoices?.choices?.choices?.get(it) }
+    // A train come on the route chosen: the page follows it, as from a tap on its row. Only from chips worked out from
+    // the rows as they are now ([RouteChoicesUi.settled]): an old one's train may have gone.
+    LaunchedEffect(ByIdentity(chosen?.live), routeChoices?.settled) {
+        val live = chosen?.live?.takeIf { routeChoices?.settled == true } ?: return@LaunchedEffect
+        chosenKey = null
+        onChooseRoute?.invoke(live.row, live.focus)
+    }
+    // A way chosen with no train that runs another way than the row: that way's alerts, as its row would show them
+    // ([WayStatus]), not the row's own way's (Codex on #1038). Its dismissals are the row's to make, so none is
+    // offered for it, and one made on the row doesn't hide it: a disruption shown too many times beats one missed.
+    val otherWay = trainless?.direction?.takeIf { lineStatus != null && it != row.direction }
+    // Worked out on the worker from the line's status as of today, as the rows' are ([LineStatus.asOf]): a status
+    // kept from an earlier fetch may hold planned work whose day has come, under way now, not to come (Codex on
+    // #1038). Null while it's worked out, when the page says it's checking rather than call the way clean.
+    val wayWorker = LocalWorker.current
+    val today = now.atZone(AlertStart.ZONE).toLocalDate()
+    val wayStatus by produceState<WayStatus?>(null, otherWay, lineStatus, row.stopId, today, wayWorker) {
+        value = null
+        val way = otherWay ?: return@produceState
+        val status = lineStatus ?: return@produceState
+        value = withContext(wayWorker) { WayStatus.of(status.asOf(today), row.stopId, way) }
+    }
+    val wayPending = otherWay != null && wayStatus == null
+    val shown = remember(row, otherWay, wayStatus) {
+        if (otherWay == null) {
+            row
+        } else {
+            // While pending, none of the row's own way's alerts: they're another way's.
+            val status = wayStatus
+            row.copy(
+                status = status?.status, statusBehind = status?.behind, plannedAlerts = status?.planned.orEmpty(),
+                statusDismissed = false,
+            )
+        }
+    }
+    val dismissAlert = onDismissAlert?.takeIf { otherWay == null }
+    val dismissPlanned = onDismissPlanned?.takeIf { otherWay == null }
+    if (lineShown) RouteLinePage(shown, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineShown = false })
+    val followed = if (trainless != null) null else pageFollowed(row, focus, topology, routeWork, routeAsk, siblings.isNotEmpty())
     // A stale row's soonest prediction may not be the next train any more, so its stop list is
     // withheld rather than shown as current (SPEC D4); it returns as soon as a refresh lands.
     val stops = when {
+        // A route chosen with no train: its stops from the line's routes, which no prediction dates.
+        trainless != null -> routeChoices?.lists?.get(trainless.key) ?: RouteStopsUi.Hidden
         // Only a row with a train to follow: a status row has no list to withhold.
         stale && row.hasTrains && row.lineId.isNotBlank() -> RouteStopsUi.Stale
         routeStops != null -> routeStops
@@ -6099,7 +6173,7 @@ internal fun RouteDetailScreen(
     // ([DepartureRow.statusBehind]), told muted. Read in the words the page shows ([LineStatus.shownText]):
     // a rail alert's TfL text is only a link to National Rail's page, naming no station.
     // Read again when National Rail's words grow too old ([rememberShownWords]).
-    val alertText = rememberShownWords(row.status ?: row.statusBehind)
+    val alertText = rememberShownWords(shown.status ?: shown.statusBehind)
     val lineStops = rememberLineStops(
         row.lineId,
         // Not for a line TfL doesn't know: its route request already failed, and asking again can't
@@ -6120,8 +6194,8 @@ internal fun RouteDetailScreen(
     // shows at once, unmarked, and the marks follow.
     val trainStops = (stops as? RouteStopsUi.Loaded)?.stops
     val trainSequence = (stops as? RouteStopsUi.Loaded)?.sequence
-    val statusText = row.status?.shownText
-    val hasStatus = row.status != null
+    val statusText = shown.status?.shownText
+    val hasStatus = shown.status != null
     // A new alert's marks clear the old ones at once, so a reworded or cleared alert never shows the
     // last one's ⚠s or places while its own are read; a stop list refreshed under the same alert keeps
     // them, so an ordinary refresh doesn't make them blink.
@@ -6141,17 +6215,20 @@ internal fun RouteDetailScreen(
     val alertMarks = readAlert.second
     val alertStretchIds = alertMarks.stretch
     val alertPlaces = alertMarks.places
-    val workForRow = routeWork?.takeIf { it.first === routeAsk }?.second
+    // None of the row's trains for a route chosen with none of its own.
+    val workForRow = routeWork?.takeIf { it.first === routeAsk && trainless == null }?.second
     // A board's rows built at [now] already left out what had gone, as the list did ([boardRows]): no walk here.
     val departures = workForRow?.departures.orEmpty().let { trains -> if (boardRows) trains else trains.filterNot { Countdown.hasDeparted(it, now) } }
     // The route's trains its board lists with no time, among its countdowns in their place; a
     // canceled one gone at its time, as a timed one is ([Countdown.stillShown]).
     val untimed = workForRow?.untimed.orEmpty().let { trains -> if (boardRows) trains else trains.filter { Countdown.stillShown(it, now) } }
-    val destinations = routeWork?.second?.destinations.orEmpty()
+    // A route chosen with no train is named as its chip names it.
+    val trainlessLabel = trainlessIndex?.let { routeChoices?.labels?.getOrNull(it) }
+    val destinations = if (trainless != null) listOfNotNull(trainlessLabel) else routeWork?.second?.destinations.orEmpty()
     // The followed train's branch as the card labels it ("Hainault/Newbury Park"), so the title names
     // the same route the tapped row did; null where the card shows no branch (it makes no difference
     // from this stop, or the row has none).
-    val titleBranch = if (focus != null && followed != null && destinations.size == 1) {
+    val titleBranch = if (trainless == null && focus != null && followed != null && destinations.size == 1) {
         topology.grouping(row.lineId, row.stopId, followed.destination, followed.branch).label
     } else {
         null
@@ -6198,7 +6275,8 @@ internal fun RouteDetailScreen(
                     // star when not (material-icons-core ships the filled Star but not its outline).
                     // No visible label — the contentDescription flips with state so a screen reader
                     // still hears what the tap does (SPEC principle 2).
-                    if (starrable) {
+                    // Not on a route chosen with no train: the star pins the row, which isn't this route's.
+                    if (starrable && trainless == null) {
                         IconButton(onClick = onToggleStar) {
                             Icon(
                                 imageVector = if (isStarred) Icons.Filled.Star else StarBorderIcon,
@@ -6241,6 +6319,46 @@ internal fun RouteDetailScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
+            // The route chips, under the title they choose for: their room held on a rail line while they're
+            // worked out, so nothing below moves when they come in, and kept there once they are, a single way's chip
+            // and all (a terminus), or empty where none runs from here (Codex on #1038). Elsewhere (a bus pole, one
+            // way's) only where there are ways to choose between.
+            val choices = routeChoices?.choices
+            val holdsChips = onChooseRoute != null && holdsRouteChoices(row)
+            val chipsShown = choices != null && choices.choices.size >= (if (holdsChips) 1 else 2)
+            val chipsFailed = routeChoices?.failure != null
+            // One slot, the chips' height, whichever of them, a failure or nothing is in it ([RouteChipsSlot]).
+            if (chipsShown || chipsFailed || holdsChips) {
+                RouteChipsSlot(Modifier.padding(bottom = 8.dp)) {
+                    if (chipsShown) {
+                        val selected = chosenIndex ?: choices.current
+                        RouteChips(
+                            routeChoices.labels,
+                            routeChoices.keys,
+                            selected,
+                            onSelect = { index ->
+                                val choice = choices.choices[index]
+                                val live = choice.live
+                                when {
+                                    // The page's own route.
+                                    index == choices.current && live != null -> chosenKey = null
+                                    // One with no train at the stop: listed here.
+                                    live == null -> chosenKey = choice.key
+                                    // Its train as the rows were before a refresh, being worked out again: not followed,
+                                    // as it may have gone; the chips are settled again in a moment (Codex on #1038).
+                                    !routeChoices.settled -> Unit
+                                    else -> {
+                                        chosenKey = null
+                                        onChooseRoute?.invoke(live.row, live.focus)
+                                    }
+                                }
+                            },
+                        )
+                    } else if (chipsFailed) {
+                        RouteChoicesFailed(onRetry = { routeStopsRetry++ })
+                    }
+                }
+            }
             // "From King's Cross St. Pancras – Platform 7" names where the tapped departure leaves
             // from, with or without the stop list: a favorite ride's card holds several stops'
             // trains under one heading, so the page is where its stop and platform are told
@@ -6285,7 +6403,19 @@ internal fun RouteDetailScreen(
             // only, but across the page's full width so more fit; the ones that don't ellipsize off
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
-            if (workForRow == null && row.hasTrains && !stale) {
+            if (trainless != null && !trainless.unfollowedTrain && !stale && routeChoices?.settled == true) {
+                // A route chosen with no train at the stop: said, in the countdown's place, so a train coming
+                // on it takes the line without moving what's below. Not from an old snapshot, which can't say
+                // there's none now: its stale caveat below says why nothing is; nor from chips not yet worked out
+                // from the rows as they are, which may have a train on it now (Codex on #1038).
+                Text(
+                    text = stringResource(R.string.route_detail_no_live_times),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
+                )
+            } else if (workForRow == null && row.hasTrains && !stale) {
                 // The row's trains are being worked out: hold the countdown's line, blank.
                 Text(
                     text = "",
@@ -6324,7 +6454,7 @@ internal fun RouteDetailScreen(
                         .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
                 )
             }
-            if (nextTrain != null && departures.isEmpty() && untimed.isEmpty() && !stale && row.status == null) {
+            if (nextTrain != null && trainless == null && departures.isEmpty() && untimed.isEmpty() && !stale && shown.status == null) {
                 // Nothing live yet (a line not open for the morning): when the timetable runs the next one,
                 // said as the timetable's, never as a countdown (maintainer, 2026-10-21).
                 Text(
@@ -6336,7 +6466,7 @@ internal fun RouteDetailScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
                 )
             }
-            val status = row.status
+            val status = shown.status
             if (status != null) {
                 // The short chip label always; the full prose below it, collapsed to its first line
                 // with tap-to-expand, when TfL gave a reason (SPEC *Disruptions*). The dismiss (×) sits
@@ -6361,8 +6491,8 @@ internal fun RouteDetailScreen(
                             )
                         }
                     }
-                    if (onDismissAlert != null) {
-                        IconButton(onClick = onDismissAlert) {
+                    if (dismissAlert != null) {
+                        IconButton(onClick = dismissAlert) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = stringResource(R.string.alert_dismiss),
@@ -6381,7 +6511,7 @@ internal fun RouteDetailScreen(
             }
             // A line alert wholly behind this stop (a bus diversion a bus from here has passed): told,
             // muted, with where it is, but never flagged as this row's (SPEC *Disruptions*).
-            val behind = row.statusBehind
+            val behind = shown.statusBehind
             if (status == null && behind != null) {
                 Text(
                     text = if (alertPlaces.isEmpty()) {
@@ -6405,11 +6535,11 @@ internal fun RouteDetailScreen(
             }
             // Work still to come, after any disruption now: each with the day it starts, so a
             // closure next month reads as notice, not as today's trouble (SPEC *Disruptions*).
-            row.plannedAlerts.forEach { planned ->
+            shown.plannedAlerts.forEach { planned ->
                 PlannedAlertBlock(
                     planned,
                     Modifier.padding(top = 12.dp),
-                    onDismiss = onDismissPlanned?.let { dismiss -> { dismiss(planned) } },
+                    onDismiss = dismissPlanned?.let { dismiss -> { dismiss(planned) } },
                 )
             }
             // The disruption-check state, independent of staleness (the two caveats are separate
@@ -6421,7 +6551,7 @@ internal fun RouteDetailScreen(
             // 1 / D4). A stale but determined-clean row shows neither here; the stale caveat covers it.
             // A dismissed line alert is its own fact, shown beside any "couldn't check" note: the line
             // IS disrupted, the user only hid the alert, so never claim a clean line (SPEC principle 1).
-            if (row.statusDismissed) {
+            if (shown.statusDismissed) {
                 Text(
                     text = stringResource(R.string.route_detail_alert_dismissed),
                     style = MaterialTheme.typography.bodyMedium,
@@ -6429,7 +6559,7 @@ internal fun RouteDetailScreen(
                     modifier = Modifier.padding(top = 12.dp),
                 )
             }
-            if (disruptionChecking) {
+            if (disruptionChecking || wayPending) {
                 Text(
                     text = stringResource(R.string.disruptions_checking),
                     style = MaterialTheme.typography.bodyMedium,
@@ -6443,7 +6573,7 @@ internal fun RouteDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-            } else if (status == null && !row.statusDismissed && row.statusBehind == null && row.stopDisruption == null && !stale) {
+            } else if (status == null && !shown.statusDismissed && shown.statusBehind == null && row.stopDisruption == null && !stale) {
                 // Nor with a notice in force at its stop (a closure, a moved stop): not a clean stop.
                 Text(
                     text = stringResource(R.string.route_detail_no_disruption),
@@ -6493,7 +6623,7 @@ internal fun RouteDetailScreen(
             // another branch, or under the bus rule, even from the memo) waits for its own marks.
             val railKey = "${row.stopId}|${row.lineId}|${row.direction}|${rowMode.equals("bus", ignoreCase = true)}|" +
                 "${followed?.destination}|${followed?.branch}|${followed?.platform}|${followed?.direction}|" +
-                "${followed?.destinationId}|${followed?.via}"
+                "${followed?.destinationId}|${followed?.via}|${trainless?.key}"
             val railState = rememberRailState(stops, marksReady = stepFree.known && starsReady, page = railKey)
             // Whether a journey from here can be favorited: a line to place it on, rail or bus.
             val journeysHereFavorable = row.lineId.isNotBlank() &&
@@ -6540,7 +6670,7 @@ internal fun RouteDetailScreen(
                     fromName = row.stopName.ifBlank { loaded?.stops?.firstOrNull()?.name.orEmpty() },
                     // As its card names it, the " Station" suffix dropped; blank where TfL names none, so the heading
                     // then says only where it was boarded.
-                    towards = DepartureLabels.destinationLabel(followed?.destination ?: row.destination, "").orEmpty(),
+                    towards = DepartureLabels.destinationLabel(trainless?.destination ?: followed?.destination ?: row.destination, "").orEmpty(),
                     position = position,
                     boarding = if (at != null) at == 0 else loaded?.stops?.firstOrNull()?.id == stopId,
                     ridden = ridden,
@@ -6565,16 +6695,16 @@ internal fun RouteDetailScreen(
             // The map stands for this train's route and what it draws of the status ([LineStatus.mapKey], worked out
             // with the status): another route or another alert never has the last one's map stand in, while the same
             // alert fetched again as a new status keeps the map up. Built once per status, never compared whole here.
-            val routeMapKey = remember(railKey, ByIdentity(row.status)) { "$railKey|${row.status?.mapKey.orEmpty()}" }
+            val routeMapKey = remember(railKey, ByIdentity(shown.status)) { "$railKey|${shown.status?.mapKey.orEmpty()}" }
             val mapSection = routeMap?.let { inputs ->
                 rememberLineMapSection(
                     row.lineId,
-                    row.status,
+                    shown.status,
                     journeysHere.here.starredStopIds,
                     inputs.riding,
                     statusKey = routeMapKey,
                     rides = inputs.rides,
-                    planned = row.plannedAlerts,
+                    planned = shown.plannedAlerts,
                     ridesOpen = true,
                     seed = railLoaded?.sequence,
                     singleOpen = true,

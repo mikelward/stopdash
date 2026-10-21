@@ -50,6 +50,17 @@
     <!-- TODO: translate -->
     <!-- The same for a bus ride. -->
     <string name="route_detail_next_bus_timetabled" tools:ignore="MissingTranslation">Next bus %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- A route chip atop a route page, for one of two ways to one place that only a stop tells apart:
+         %1$s is where it goes, %2$s the first stop it calls at that the other doesn't. -->
+    <string name="route_choice_via" tools:ignore="MissingTranslation">%1$s via %2$s</string>
+    <!-- TODO: translate -->
+    <!-- In a route page's chips' place, where the line's routes they come from couldn't be loaded; a Retry
+         button follows. -->
+    <string name="route_choices_failed" tools:ignore="MissingTranslation">Couldn\'t load other routes</string>
+    <!-- TODO: translate -->
+    <!-- In a route page's countdown's place, on a route chosen from its chips with no train at the stop. -->
+    <string name="route_detail_no_live_times" tools:ignore="MissingTranslation">No live times</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
          bare. %1$s is the line's name, e.g. "Victoria" → "Victoria line". -->
     <string name="route_detail_line_name">%1$s line</string>

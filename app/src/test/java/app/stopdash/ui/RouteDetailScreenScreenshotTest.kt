@@ -23,6 +23,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -2300,6 +2301,73 @@ class RouteDetailScreenScreenshotTest {
         "Seven Sisters" to listOf(LineRef("weaver", "Weaver", "overground")),
         "Walthamstow Central" to listOf(LineRef("weaver", "Weaver", "overground")),
     )
+
+    @Test
+    fun routeChips_offerEachWayOnFromTheStop_andListOneWithNoTrain() {
+        // The Northern line at Highgate (synthetic routes): south to Morden by Bank or by Charing Cross, or north.
+        val names = mapOf(
+            "940GZZLUHBT" to "High Barnet", "940GZZLUHGT" to "Highgate", "940GZZLUCTN" to "Camden Town",
+            "940GZZLUMTC" to "Mornington Crescent", "940GZZLUEUS" to "Euston", "940GZZLUBNK" to "Bank",
+            "940GZZLUCHX" to "Charing Cross", "940GZZLUKNG" to "Kennington", "940GZZLUMDN" to "Morden",
+        )
+        val south = listOf(
+            LineRoute("High Barnet &harr; Morden via Bank", listOf("940GZZLUHBT", "940GZZLUHGT", "940GZZLUCTN", "940GZZLUEUS", "940GZZLUBNK", "940GZZLUKNG", "940GZZLUMDN"), "outbound"),
+            LineRoute(
+                "High Barnet &harr; Morden via Charing Cross",
+                listOf("940GZZLUHBT", "940GZZLUHGT", "940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS", "940GZZLUCHX", "940GZZLUKNG", "940GZZLUMDN"),
+                "outbound",
+            ),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = LineSequence(
+                    if (direction == "outbound") south else south.map { it.copy(stopIds = it.stopIds.asReversed(), direction = "inbound") },
+                    names,
+                )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val stop = StopArrivals(
+            stopId = "940GZZLUHGT",
+            stopName = "Highgate",
+            departures = listOf(
+                Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(120), "tube", "Bank"),
+                Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(420), "tube", "Bank"),
+            ),
+            fetchedAt = now,
+        )
+        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        focus = RouteFocus("Morden", "Bank"),
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Morden/Charing X").assertIsDisplayed()
+        // North too (the map names it as well, as the end the line runs back to).
+        composeRule.onNodeWithTag("routeChoice-2").assert(hasText("High Barnet"))
+        captureSnapshot("route-detail-route-chips.png")
+
+        composeRule.onNodeWithText("Morden/Charing X").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onNodeWithText("Mornington Crescent").assertIsDisplayed()
+        captureSnapshot("route-detail-route-chip-no-train.png")
+    }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 2400) {
         val recording = System.getProperty("roborazzi.test.record") == "true"
