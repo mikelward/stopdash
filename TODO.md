@@ -3874,6 +3874,15 @@ Builds on Phase 1's minimal line-status marking.
         the right of the title row; consider a top-left up arrow as the rest of the app has, and the
         options: whether every Settings page follows, how it sits beside the overflow menu, and whether
         up and Back ever differ (a page opened from the lines page going up to Settings).
+  - [x] **Back returns to the page a screen was opened from** (maintainer, 2026-10-21: "back skips
+        pages"): every overlay keeps the near-me view's pages and the pages of any overlay under it
+        (SPEC *Back*), and a route stop's details step aside for the line and editor they open.
+    - [ ] **A station opened from a route page stop's details takes the place of the station under
+          it**: From there closes the details and replaces the open station, so Back skips both the
+          details and the first station. Needs a stack of stations under the flow; going back
+          reloads the first one, as the flow's models are kept for one station at a time.
+    - [ ] **Predictive back** (maintainer, 2026-10-21: "use the standard android back peeking"):
+          the system's back preview, peeking at the page underneath during the gesture.
   - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their
         favorite journeys' lines covered wherever their stop is, starred rows' while in the list.
   - [x] **Pick individual lines** (maintainer, 2026-10-06): a chip per line, grouped under Tube,
