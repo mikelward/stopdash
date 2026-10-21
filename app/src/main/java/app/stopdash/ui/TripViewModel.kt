@@ -2410,6 +2410,12 @@ class TripViewModel(
          * show (maintainer, 2026-10-16). One route more at most for each of those two, and one for each
          * bus stop towards the destination the plan asked via ([TripRoute.towardStop], at most
          * [TowardStops.MAX_ASKS]), which is listed whatever, so the cap still bounds the requests.
+         *
+         * Each route is ranked as planned ([TripRoute.drawnFrom]), whether [routes] are the trip's or the page's
+         * copies drawn cut at the destination's hub ([app.stopdash.domain.RideEnds.cut]): a cut drops the walk on
+         * (an earlier arrival, less walking) and a train's fare (another cheapest), so ranking the copies as drawn
+         * would keep other routes than the trip fetches for, and one drawn into the page's few would be timed from
+         * the timetable alone until a refresh fetched it.
          */
         internal fun bestOf(
             routes: List<TripRoute>,
@@ -2421,20 +2427,22 @@ class TripViewModel(
             // One riding a [delayed] line counts as [TripTiming.DELAYED_BY] later, as it ranks, so a route
             // clear of the delays isn't cut before it can be timed (Codex, #703): judged once a route, and only
             // when a line is delayed.
+            fun planned(route: TripRoute) = route.drawnFrom ?: route
             val candidates = routes.filterNot { direct.isNotEmpty() && routeKey(it) in direct }
             val soonest = if (delayed.isEmpty()) {
-                candidates.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+                candidates.sortedBy { planned(it).legs.lastOrNull()?.arrival ?: Instant.MAX }
             } else {
                 candidates.map { route ->
-                    val arrival = route.legs.lastOrNull()?.arrival
-                    route to (arrival?.let { if (route.legs.any { leg -> !leg.isWalk && leg.lineId in delayed }) it.plus(TripTiming.DELAYED_BY) else it } ?: Instant.MAX)
+                    val legs = planned(route).legs
+                    val arrival = legs.lastOrNull()?.arrival
+                    route to (arrival?.let { if (legs.any { leg -> !leg.isWalk && leg.lineId in delayed }) it.plus(TripTiming.DELAYED_BY) else it } ?: Instant.MAX)
                 }.sortedBy { it.second }.map { it.first }
             }
             // Of routes walking as little, the soonest: so a plan with no walks adds none past the cap.
-            val leastWalking = soonest.minByOrNull { it.walking }
+            val leastWalking = soonest.minByOrNull { planned(it).walking }
             // Of the priced routes costing least, the soonest; none where every fare is alike, so the
             // unpriced crowding the cap never pull a priced one past it for a label no card can carry.
-            val priced = soonest.mapNotNull { route -> route.fare?.let { route to it.pence } }
+            val priced = soonest.mapNotNull { route -> planned(route).fare?.let { route to it.pence } }
             val cheapest = priced.minByOrNull { it.second }?.takeIf { (_, least) -> priced.any { it.second > least } }?.first
             val toward = candidates.filter { it.towardStop }.map(::routeKey)
             val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep +

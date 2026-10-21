@@ -1014,13 +1014,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               and the ride keeps its Planner arrival at the old end (see
                                               *Decisions needing review*). The routes the trip holds,
                                               keeps and starts stay the Planner's. Not on a step-free trip.
-                                        - [ ] The trip's fetch cap (`TripViewModel.bestOf` over the routes
-                                              as planned) and the page's (over the routes as drawn) can
-                                              part where a cut drops a walk on (an earlier arrival) or a
-                                              train's fare (another cheapest): a route drawn into the
-                                              page's few but outside the trip's is timed from the
-                                              timetable until a refresh fetches it. Rank both by the
-                                              routes as planned (`TripRoute.drawnFrom`).
+                                        - [x] The trip's fetch cap and the page's rank each route as
+                                              planned (`TripViewModel.bestOf` reads `TripRoute.drawnFrom`),
+                                              so a cut dropping a walk on or a train's fare never draws a
+                                              route into the page's few that the trip doesn't fetch for.
                                         - [ ] A cut ride timed at its cut call: its arrival withheld
                                               until then (dev-docs/station-resolution.md, the detour
                                               cut), or timed from the Planner's own times there where a

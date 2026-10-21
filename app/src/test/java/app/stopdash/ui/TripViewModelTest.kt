@@ -3485,6 +3485,20 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `routes drawn cut at the destination's hub are capped as planned, as the trip's fetches are`() {
+        // The cap's worth of routes, and a seventh whose walk on ends after them all, though its ride gets there first:
+        // drawn cut at the hub, the walk gone, it would arrive sooner than the sixth as drawn.
+        val routes = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "C", 5, 10L + i))) }
+        val walkOn = leg("", "D", "E", 9, 20).copy(mode = TripLeg.WALKING)
+        val detour = TripRoute(listOf(leg("green", "A", "D", 2, 9), walkOn))
+        val cut = TripRoute(listOf(detour.legs.first()), drawnFrom = detour)
+        val asPlanned = TripViewModel.bestOf(routes + detour).map(::routeKey)
+        assertFalse(routeKey(detour) in asPlanned)
+        // The page's copies keep the same routes as the trip's: the cut one is left out, the sixth kept.
+        assertEquals(asPlanned, TripViewModel.bestOf(routes + cut).map(::routeKey))
+    }
+
+    @Test
     fun `the open route is timed past the cap while the plan offers it`() {
         val routes = (0..TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "C", 5, 10L + i))) }
         val last = routes.last()
