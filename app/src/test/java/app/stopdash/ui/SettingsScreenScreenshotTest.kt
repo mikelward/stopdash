@@ -311,7 +311,7 @@ class SettingsScreenScreenshotTest {
                 DisruptionsSummaryPage(
                     show = true, onShowChange = {}, showLoaded = loaded, showWriteFailed = false, onDismissShowError = {},
                     networks = setOf("tube"), onToggleLine = {}, networksLoaded = loaded, networksWriteFailed = false,
-                    onDismissNetworksError = {}, onBack = {}, nearbyLoaded = loaded,
+                    onDismissNetworksError = {}, onBack = {}, nearbyLoaded = loaded, ridesLoaded = loaded,
                 )
             }
         }
@@ -319,11 +319,13 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
         composeRule.onNodeWithTag("disruptionsRowSwitch").assertDoesNotExist()
         composeRule.onNodeWithTag("summaryNearbySwitch").assertDoesNotExist()
+        composeRule.onNodeWithTag("summaryRidesSwitch").assertDoesNotExist()
         composeRule.onNodeWithTag("summaryLine-victoria").assertDoesNotExist()
         loaded = true
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsRowSwitch").assertIsOn()
         composeRule.onNodeWithTag("summaryNearbySwitch").assertIsOn()
+        composeRule.onNodeWithTag("summaryRidesSwitch").assertIsOn()
         composeRule.onNodeWithTag("summaryLine-victoria").assertIsSelected()
     }
 
@@ -347,16 +349,15 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Lines near you").assertIsDisplayed()
         composeRule.onNodeWithText("Watch the lines your home screen shows").assertIsDisplayed()
-        // Above what's always watched, which no longer speaks for the lines near the rider.
+        // Above the favorite rides' switch.
         val switch = composeRule.onNodeWithTag("summaryNearbySwitch").assertIsOn().getUnclippedBoundsInRoot().top
-        val always = composeRule.onNodeWithText("Always watch").getUnclippedBoundsInRoot().top
-        org.junit.Assert.assertTrue("the switch above what's always watched", switch < always)
+        val rides = composeRule.onNodeWithTag("summaryRidesSwitch").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("the nearby switch above the rides'", switch < rides)
         composeRule.onNodeWithTag("summaryNearbySwitch").performClick()
         org.junit.Assert.assertEquals(listOf(false), chosen)
         nearby = false
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("summaryNearbySwitch").assertIsOff()
-        composeRule.onNodeWithText("Your favourite rides are always watched").assertIsDisplayed()
         // With the row off, it says nothing, as the rest of what the row watches.
         show = false
         composeRule.waitForIdle()
@@ -382,6 +383,65 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun the_summary_page_turns_the_favorite_rides_off_and_opens_them() {
+        // A choice, on by default, where "Always watch" said they always were (maintainer, 2026-10-21).
+        val chosen = mutableListOf<Boolean>()
+        var show by mutableStateOf(true)
+        var rides by mutableStateOf(true)
+        var opened = 0
+        composeRule.setContent {
+            StopDashTheme {
+                DisruptionsSummaryPage(
+                    show = show, onShowChange = {}, showLoaded = true, showWriteFailed = false, onDismissShowError = {},
+                    networks = emptySet(), onToggleLine = {}, networksLoaded = true, networksWriteFailed = false,
+                    onDismissNetworksError = {}, onBack = {}, onOpenFavoriteJourneys = { opened++ },
+                    rides = rides, onRidesChange = { chosen += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Always watch").assertDoesNotExist()
+        composeRule.onNodeWithText("Favourite rides").assertIsDisplayed()
+        composeRule.onNodeWithText("Watch your favourite rides' lines").assertIsDisplayed()
+        composeRule.onNodeWithTag("summaryRidesSwitch").assertIsOn().performClick()
+        org.junit.Assert.assertEquals(listOf(false), chosen)
+        rides = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("summaryRidesSwitch").assertIsOff()
+        // The rides stay a tap away either way, under their switch and above the chosen lines.
+        val switch = composeRule.onNodeWithTag("summaryRidesSwitch").getUnclippedBoundsInRoot().bottom
+        val button = composeRule.onNodeWithTag("summaryFavoriteRides").assertTextEquals("Edit favourite rides")
+        val alsoWatch = composeRule.onNodeWithTag("summaryAlsoWatch").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("the button under the switch", switch <= button.getUnclippedBoundsInRoot().top)
+        org.junit.Assert.assertTrue("the button above the chosen lines", button.getUnclippedBoundsInRoot().bottom <= alsoWatch)
+        button.performClick()
+        org.junit.Assert.assertEquals(1, opened)
+        // With the row off, neither shows.
+        show = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("summaryRidesSwitch").assertDoesNotExist()
+        composeRule.onNodeWithTag("summaryFavoriteRides").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_favorite_rides_choice_that_didnt_save_is_said_under_its_switch() {
+        composeRule.setContent {
+            StopDashTheme {
+                DisruptionsSummaryPage(
+                    show = true, onShowChange = {}, showLoaded = true, showWriteFailed = false, onDismissShowError = {},
+                    networks = emptySet(), onToggleLine = {}, networksLoaded = true, networksWriteFailed = false,
+                    onDismissNetworksError = {}, onBack = {},
+                    rides = false, ridesWriteFailed = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val switch = composeRule.onNodeWithTag("summaryRidesSwitch").getUnclippedBoundsInRoot().bottom
+        val error = composeRule.onNodeWithText("Couldn't save that; it resets when StopDash restarts").assertIsDisplayed()
+        org.junit.Assert.assertTrue("the error under its switch", switch <= error.getUnclippedBoundsInRoot().top)
+    }
+
+    @Test
     fun the_summary_always_includes_the_chosen_networks() {
         val tapped = mutableListOf<String>()
         var ridesOpened = 0
@@ -396,10 +456,9 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
-        composeRule.onNodeWithText("Always watch").assertIsDisplayed()
         // The rider's favorite rides are watched, not their places (maintainer, 2026-10-17), a tap away.
-        composeRule.onNodeWithText("Your favourite rides are always watched").assertIsDisplayed()
-        composeRule.onNodeWithTag("summaryFavoriteRides").assertTextEquals("Favourite rides").performClick()
+        composeRule.onNodeWithTag("summaryRidesSwitch").assertIsOn()
+        composeRule.onNodeWithTag("summaryFavoriteRides").assertTextEquals("Edit favourite rides").performClick()
         org.junit.Assert.assertEquals(1, ridesOpened)
         // The lines chosen one by one go under their own heading (maintainer, 2026-10-17).
         composeRule.onNodeWithTag("summaryAlsoWatch").assertTextEquals("Also watch")

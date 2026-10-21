@@ -3850,6 +3850,9 @@ Builds on Phase 1's minimal line-status marking.
         favorite rides): "Lines near you" on the Disruptions summary's page, on by default. Off, the row
         watches only the rider's own lines and the chosen ones, and the list's banner says what it couldn't
         check. The picker's line now reads "Your favorite rides are always watched".
+  - [x] **A switch for the favorite rides' lines** (maintainer, 2026-10-21): "Favorite rides" replaces
+        "Always watch", on by default, with an "Edit favorite rides" button under it. Off, a ride's line is
+        watched only as any other line is; starred rows and the trip on the way stay watched.
   - [x] ~~**Include buses near favorite places**~~ (maintainer, 2026-10-07: a setting, off by default):
         moot since the places' lines stopped counting (2026-10-17).
   - [x] ~~**Maybe the closures of the stations near favorite places** too~~ (maintainer, 2026-10-06):

@@ -215,6 +215,7 @@ import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.DepartureSourceSettings
 import app.stopdash.data.DisruptionsRowSetting
 import app.stopdash.data.DistanceUnitsSetting
+import app.stopdash.data.FavoriteRidesSetting
 import app.stopdash.data.FileActiveTripStore
 import app.stopdash.data.FileNearbyStopsStore
 import app.stopdash.data.FileRecentStationsStore
@@ -1450,6 +1451,9 @@ class MainActivity : ComponentActivity() {
                 val watchNearbyLines by NearbyLinesSetting.changes.collectAsStateWithLifecycle()
                 val watchNearbyLinesLoaded by NearbyLinesSetting.isLoaded.collectAsStateWithLifecycle()
                 val watchNearbyLinesWriteFailed by NearbyLinesSetting.writeFailed.collectAsStateWithLifecycle()
+                val watchFavoriteRides by FavoriteRidesSetting.changes.collectAsStateWithLifecycle()
+                val watchFavoriteRidesLoaded by FavoriteRidesSetting.isLoaded.collectAsStateWithLifecycle()
+                val watchFavoriteRidesWriteFailed by FavoriteRidesSetting.writeFailed.collectAsStateWithLifecycle()
                 val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
                 val walkingSpeedLoaded by WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle()
                 val walkingSpeedWriteFailed by WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2890,6 +2894,11 @@ class MainActivity : ComponentActivity() {
                                     watchNearbyLinesLoaded = watchNearbyLinesLoaded,
                                     watchNearbyLinesWriteFailed = watchNearbyLinesWriteFailed,
                                     onDismissWatchNearbyLinesError = NearbyLinesSetting::writeFailureShown,
+                                    watchFavoriteRides = watchFavoriteRides,
+                                    onWatchFavoriteRidesChange = FavoriteRidesSetting::set,
+                                    watchFavoriteRidesLoaded = watchFavoriteRidesLoaded,
+                                    watchFavoriteRidesWriteFailed = watchFavoriteRidesWriteFailed,
+                                    onDismissWatchFavoriteRidesError = FavoriteRidesSetting::writeFailureShown,
                                     walkingSpeed = walkingSpeed,
                                     onWalkingSpeedChange = WalkingSpeedSetting::set,
                                     walkingSpeedLoaded = walkingSpeedLoaded,
@@ -3773,7 +3782,9 @@ class MainActivity : ComponentActivity() {
                                 if (DisruptionsRowSetting.loaded()) {
                                     // The trip's as read so far: none while the kept trip is still read, so the
                                     // refresh never waits on it; the check on a change asks once it's in.
-                                    favoriteLineIds(appContext) + tripLinesOf(appContext).value?.lines.orEmpty().map { it.id }
+                                    // The rides' only while the rider watches them (maintainer, 2026-10-21).
+                                    val rides = if (FavoriteRidesSetting.loaded()) favoriteLineIds(appContext) else emptySet()
+                                    rides + tripLinesOf(appContext).value?.lines.orEmpty().map { it.id }
                                 } else {
                                     emptySet()
                                 }
@@ -3814,8 +3825,9 @@ class MainActivity : ComponentActivity() {
                     SummaryNetworksSetting.changes,
                     journeyLines,
                     tripLinesOf(appContext),
-                ) { on, networks, lines, trip ->
-                    listOf(on, networks, lines, trip?.lines)
+                    FavoriteRidesSetting.changes,
+                ) { on, networks, lines, trip, rides ->
+                    listOf(on, networks, lines, trip?.lines, rides)
                 }
                     .distinctUntilChanged()
                     // Combined and compared on the worker: the lists grow with the rider's favorites (Codex, #657).
@@ -4158,10 +4170,12 @@ class MainActivity : ComponentActivity() {
                     showDisruptionsRow = DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         NearbyLinesSetting.isLoaded.collectAsStateWithLifecycle().value &&
+                        FavoriteRidesSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         DisruptionsRowSetting.changes.collectAsStateWithLifecycle().value,
                     // And the lines it shows among them, unless the rider watches only their own (maintainer,
                     // 2026-10-21); the row waits for the choice with the others, so none flash up first.
                     watchNearbyLines = NearbyLinesSetting.changes.collectAsStateWithLifecycle().value,
+                    watchFavoriteRides = FavoriteRidesSetting.changes.collectAsStateWithLifecycle().value,
                     always = viewModel.always.collectAsStateWithLifecycle().value,
                     // The lines it shows, each watched: a farther card's are asked about though its stop isn't fetched.
                     onScreenLines = viewModel::screenLines,

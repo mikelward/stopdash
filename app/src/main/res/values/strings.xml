@@ -830,14 +830,17 @@
     <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
     <!-- TODO: translate -->
     <!-- Under the Disruptions summary's Show switch: whether it watches every line the home screen shows
-         (on by default), or only the rider's favorite rides and the lines they choose below. -->
+         (on by default), or only the rider's own lines and the lines they choose below. -->
     <string name="settings_summary_nearby_title" tools:ignore="MissingTranslation">Lines near you</string>
     <!-- TODO: translate -->
     <string name="settings_summary_nearby_summary" tools:ignore="MissingTranslation">Watch the lines your home screen shows</string>
-    <!-- Under the Disruptions summary switch: what the summary always watches, whatever's chosen below. -->
-    <string name="settings_summary_networks_title">Always watch</string>
     <!-- TODO: translate -->
-    <string name="settings_summary_networks_summary" tools:ignore="MissingTranslation">Your favorite rides are always watched</string>
+    <!-- Under the Disruptions summary's "Lines near you": whether it watches the favorite rides' lines wherever
+         they run (on by default). Its title is settings_favorite_journeys_title, "Favorite rides". -->
+    <string name="settings_summary_rides_summary" tools:ignore="MissingTranslation">Watch your favorite rides\' lines</string>
+    <!-- TODO: translate -->
+    <!-- The button under that switch that opens the favorite rides. -->
+    <string name="settings_summary_rides_edit" tools:ignore="MissingTranslation">Edit favorite rides</string>
     <!-- The heading over the line chips: lines the summary watches by choice, wherever the rider is. -->
     <string name="settings_summary_lines_title">Also watch</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->

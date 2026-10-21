@@ -158,6 +158,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(watchNearbyLines = watch) }
     }
 
+    override fun watchFavoriteRides(): Flow<Boolean> =
+        persisted().map { it?.watchFavoriteRides ?: true }
+
+    override suspend fun setWatchFavoriteRides(watch: Boolean) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(watchFavoriteRides = watch) }
+    }
+
     override fun rememberWifiAtPlaces(): Flow<Boolean> =
         persisted().map { it?.rememberWifiAtPlaces ?: true }
 
@@ -344,6 +351,8 @@ data class PersistedSettings(
     val showDisruptionsRow: Boolean? = null,
     // Whether the disruptions row watches the lines the home screen shows; null (an older file) for the default, on.
     val watchNearbyLines: Boolean? = null,
+    // Whether the disruptions row watches the favorite rides' lines; null (an older file) for the default, on.
+    val watchFavoriteRides: Boolean? = null,
     // The lines the disruptions row always covers on top of the rider's own, by id; null (never chosen) for
     // none. Stored under a new key so every choice an older build saved was cleared once (maintainer,
     // 2026-10-17): those were whole networks, from when the row covered the tube by default, and kept the

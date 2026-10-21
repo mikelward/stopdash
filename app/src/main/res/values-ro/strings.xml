@@ -435,7 +435,6 @@
     <string name="settings_disruptions_row_show">Afișați pe ecranul principal</string>
     <string name="settings_disruptions_row_off">Dezactivat</string>
     <string name="settings_disruptions_row_description">Afișați alertele și întârzierile pe ecranul principal</string>
-    <string name="settings_summary_networks_title">Mereu urmărite</string>
     <string name="settings_summary_lines_title">Urmăriți și</string>
     <string name="settings_disruptions_row_write_failed">Nu s-a putut salva; se resetează când StopDash repornește</string>
     <string name="settings_hidden_title">Ascunse</string>

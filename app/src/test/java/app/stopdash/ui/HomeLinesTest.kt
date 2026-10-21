@@ -599,6 +599,41 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `with the favorite rides turned off, a ride's line is watched only as any other is`() {
+        // A favorite ride on the Northern far away, a starred bus at the near stop, the trip's Victoria and a chosen
+        // Central (maintainer, 2026-10-21: the rides' lines are a choice too, on by default).
+        val northern = LineStatus("northern", 6, "Severe Delays")
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus", "38" to "bus")), now, determinedLineIds = setOf("73", "38"),
+        )
+        val distances = mapOf("near" to 50.0)
+        val starred = setOf(app.stopdash.domain.StarredRow("near", "38", "outbound"))
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
+        )
+        fun watched(rides: Boolean, nearby: Boolean = true, checked: HomeLines.Always? = HomeLines.Always(mapOf("northern" to northern), now)) = HomeLines.row(
+            loaded, distances, checked, emptySet(), now, networks = setOf("central"), starred = starred,
+            journeyLines = setOf("northern"), journeys = listOf(ride), tripLines = listOf(LineRef("victoria", "Victoria", "tube")),
+            screen = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus"), LineRef("38", "38", "bus"))),
+            watchNearby = nearby, watchRides = rides,
+        )
+        // On, the default: the ride's line is watched far away, its delays a pill.
+        val on = watched(true)
+        assertEquals(setOf("central", "73", "38", "northern", "victoria"), on.watchedIds.toSet())
+        assertEquals(listOf("northern"), on.lines.map { it.lineId })
+        // Off: it goes under Other with every rail line the rider doesn't watch, never a pill; the rest stand.
+        val off = watched(false)
+        assertEquals(setOf("central", "73", "38", "victoria"), off.watchedIds.toSet())
+        assertTrue("northern" in off.otherIds)
+        assertTrue(off.lines.isEmpty())
+        // Nor does the card wait on a check of it: off, nothing asks about it, so it's never "Checking…" there.
+        assertFalse(row(watched(false, checked = null), "northern").watched == true)
+        assertTrue(row(watched(true, checked = null), "northern").checking)
+        // With both switches off, what's left is the rider's star, the trip and the chosen line.
+        assertEquals(setOf("central", "38", "victoria"), watched(false, nearby = false).watchedIds.toSet())
+    }
+
+    @Test
     fun `the screen's lines are its rows', its journey cards' and its farther cards', each card's line by the nearest card`() {
         fun departureRow(stopId: String, lineId: String, mode: String) = app.stopdash.domain.DepartureRow(
             stopId = stopId, stopName = stopId, lineId = lineId, lineName = lineId.uppercase(), direction = "outbound",
