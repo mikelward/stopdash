@@ -795,9 +795,16 @@
     <string name="settings_disruptions_row_off">Off</string>
     <!-- Under "Disruptions summary" in Settings while the row shows: what it does. -->
     <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
+    <!-- TODO: translate -->
+    <!-- Under the Disruptions summary's Show switch: whether it watches every line the home screen shows
+         (on by default), or only the rider's favorite rides and the lines they choose below. -->
+    <string name="settings_summary_nearby_title" tools:ignore="MissingTranslation">Lines near you</string>
+    <!-- TODO: translate -->
+    <string name="settings_summary_nearby_summary" tools:ignore="MissingTranslation">Watch the lines your home screen shows</string>
     <!-- Under the Disruptions summary switch: what the summary always watches, whatever's chosen below. -->
     <string name="settings_summary_networks_title">Always watch</string>
-    <string name="settings_summary_networks_summary">Lines near you and your favorite rides are always watched</string>
+    <!-- TODO: translate -->
+    <string name="settings_summary_networks_summary" tools:ignore="MissingTranslation">Your favorite rides are always watched</string>
     <!-- The heading over the line chips: lines the summary watches by choice, wherever the rider is. -->
     <string name="settings_summary_lines_title">Also watch</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->

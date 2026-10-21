@@ -192,6 +192,13 @@ fun SettingsScreen(
     summaryNetworksLoaded: Boolean = true,
     summaryNetworksWriteFailed: Boolean = false,
     onDismissSummaryNetworksError: () -> Unit = {},
+    // Whether the row watches the lines the home screen shows, as well as the rider's own (maintainer,
+    // 2026-10-21; on by default), handled as [showDisruptionsRow] is.
+    watchNearbyLines: Boolean = true,
+    onWatchNearbyLinesChange: (Boolean) -> Unit = {},
+    watchNearbyLinesLoaded: Boolean = true,
+    watchNearbyLinesWriteFailed: Boolean = false,
+    onDismissWatchNearbyLinesError: () -> Unit = {},
     // The modes and lines hidden from the near-me list (SPEC *Finding stops → Hiding a mode*), listed
     // while any are, each with a Show that brings back just that one ([onShowHidden]).
     hiddenModes: Set<String> = emptySet(),
@@ -322,24 +329,25 @@ fun SettingsScreen(
                 // the app's at large (maintainer, 2026-10-05).
                 SettingNavRow(
                     title = stringResource(R.string.settings_disruptions_row_title),
-                    // Until both stored choices are read, neither "Off" nor a default that may not be the rider's
+                    // Until every stored choice is read, neither "Off" nor a default that may not be the rider's
                     // (Codex, #592): a dash, as the trip pickers show.
-                    summary = if (showDisruptionsRowLoaded && summaryNetworksLoaded) {
+                    summary = if (showDisruptionsRowLoaded && summaryNetworksLoaded && watchNearbyLinesLoaded) {
                         disruptionsSummary(showDisruptionsRow)
                     } else {
                         "–"
                     },
                     onClick = { disruptionsOpen = true },
                     testTag = "disruptionsSummaryRow",
-                    // Its page opens once both are read, so its controls never jump as they land (Codex, #592).
-                    enabled = showDisruptionsRowLoaded && summaryNetworksLoaded,
+                    // Its page opens once they're all read, so its controls never jump as they land (Codex, #592).
+                    enabled = showDisruptionsRowLoaded && summaryNetworksLoaded && watchNearbyLinesLoaded,
                 )
-                if (showDisruptionsRowWriteFailed || summaryNetworksWriteFailed) {
+                if (showDisruptionsRowWriteFailed || summaryNetworksWriteFailed || watchNearbyLinesWriteFailed) {
                     SettingErrorRow(
                         text = stringResource(R.string.settings_disruptions_row_write_failed),
                         onDismiss = {
                             onDismissShowDisruptionsRowError()
                             onDismissSummaryNetworksError()
+                            onDismissWatchNearbyLinesError()
                         },
                     )
                 }
@@ -599,6 +607,11 @@ fun SettingsScreen(
             networksLoaded = summaryNetworksLoaded,
             networksWriteFailed = summaryNetworksWriteFailed,
             onDismissNetworksError = onDismissSummaryNetworksError,
+            nearby = watchNearbyLines,
+            onNearbyChange = onWatchNearbyLinesChange,
+            nearbyLoaded = watchNearbyLinesLoaded,
+            nearbyWriteFailed = watchNearbyLinesWriteFailed,
+            onDismissNearbyError = onDismissWatchNearbyLinesError,
             onOpenFavoriteJourneys = onOpenFavoriteJourneysFromDisruptions,
             onBack = {
                 disruptionsOpen = false
@@ -1094,7 +1107,8 @@ private fun disruptionsSummary(on: Boolean): String =
 /**
  * The disruptions summary's own page (maintainer, 2026-10-05: its settings control only the row, so
  * they sit under it, not at the top level): the switch that shows the row, then, while it shows, the
- * networks it always covers ([SummaryNetworksRow]). Back returns to Settings.
+ * switch that has it watch the lines near the rider too (maintainer, 2026-10-21) and the lines it always
+ * covers ([SummaryNetworksRow]). Back returns to Settings.
  */
 @Composable
 internal fun DisruptionsSummaryPage(
@@ -1110,6 +1124,11 @@ internal fun DisruptionsSummaryPage(
     onDismissNetworksError: () -> Unit,
     onBack: () -> Unit,
     onOpenFavoriteJourneys: () -> Unit = {},
+    nearby: Boolean = true,
+    onNearbyChange: (Boolean) -> Unit = {},
+    nearbyLoaded: Boolean = true,
+    nearbyWriteFailed: Boolean = false,
+    onDismissNearbyError: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize().testTag("disruptionsSummaryPage")) {
@@ -1127,9 +1146,9 @@ internal fun DisruptionsSummaryPage(
                 )
                 TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
             }
-            // Its controls only once both choices are read: a page restored after process death opens
+            // Its controls only once every choice is read: a page restored after process death opens
             // before they are, and would otherwise show the defaults, then jump (Codex, #592).
-            if (!showLoaded || !networksLoaded) return@Column
+            if (!showLoaded || !networksLoaded || !nearbyLoaded) return@Column
             val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
@@ -1162,8 +1181,25 @@ internal fun DisruptionsSummaryPage(
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
-                // Which lines it always covers: only while the row shows, as it says nothing otherwise.
-                if (show) SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded, onOpenFavoriteJourneys = onOpenFavoriteJourneys)
+                // What it watches: only while the row shows, as it says nothing otherwise.
+                if (show) {
+                    // The lines near the rider, or only their own (maintainer, 2026-10-21).
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_summary_nearby_title),
+                        summary = stringResource(R.string.settings_summary_nearby_summary),
+                        checked = nearby,
+                        onCheckedChange = onNearbyChange,
+                        enabled = nearbyLoaded,
+                        switchTestTag = "summaryNearbySwitch",
+                    )
+                    if (nearbyWriteFailed) {
+                        SettingErrorRow(
+                            text = stringResource(R.string.settings_disruptions_row_write_failed),
+                            onDismiss = onDismissNearbyError,
+                        )
+                    }
+                    SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded, onOpenFavoriteJourneys = onOpenFavoriteJourneys)
+                }
             }
         }
     }
@@ -1213,9 +1249,8 @@ private fun lineChipStyle(pill: PillColors?, on: Boolean, enabled: Boolean): Lin
  * What the disruptions summary always covers: a chip per line, the Tube's and the Overground's each under
  * the network's name and the single-line networks' under "Other" (maintainer, 2026-10-06: lines picked
  * one by one, in groups; 2026-10-07: no chip for a whole network, the row leans on the rider's own). A chip shows
- * selected while covered. The lines near the rider, their favorites', and the stations' near each favorite
- * place (a button away) are covered whatever's chosen,
- * so none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
+ * selected while covered. The rider's favorite rides' lines (a button away) are covered whatever's chosen, and
+ * the lines near them unless they turned that off, so none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
  *
  * A tap names its line, and the setting turns it the other way on its latest choice, off the main
  * thread and in order, whether or not this page is still open ([app.stopdash.data.SummaryNetworksSetting.toggle]).

@@ -436,7 +436,6 @@
     <string name="settings_disruptions_row_off">Desativado</string>
     <string name="settings_disruptions_row_description">Mostrar alertas e atrasos no ecrã principal</string>
     <string name="settings_summary_networks_title">Sempre seguidas</string>
-    <string name="settings_summary_networks_summary">As linhas perto de si e os seus trajetos favoritos são sempre seguidos</string>
     <string name="settings_summary_lines_title">Seguir também</string>
     <string name="settings_disruptions_row_write_failed">Não foi possível guardar; será revertido quando o StopDash reiniciar</string>
     <string name="settings_hidden_title">Ocultos</string>
