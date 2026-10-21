@@ -384,6 +384,8 @@ fun MainScreen(
     // Whether the row watches the lines the screen shows (maintainer, 2026-10-21); off, only the rider's own
     // and the chosen lines, the list's own banner saying what it couldn't check.
     watchNearbyLines: Boolean = true,
+    // Whether the row watches the favorite rides' lines wherever they run (maintainer, 2026-10-21).
+    watchFavoriteRides: Boolean = true,
     always: HomeLines.Always? = null,
     // Told the lines only the screen's farther cards show as they change ([HomeLines.ScreenLines.farIds]), for the
     // row's check to ask about.
@@ -1091,7 +1093,7 @@ fun MainScreen(
             rememberWorked(
                 homeWork,
                 // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
-                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, tripLines, screenLines, watchNearbyLines),
+                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, tripLines, screenLines, watchNearbyLines, watchFavoriteRides),
                 keep = { _, _ -> true },
             ) {
                 // A journey card still checking may yet show another line it rides: the last row (or
@@ -1113,6 +1115,7 @@ fun MainScreen(
                 HomeLines.row(
                     loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, lineMeters,
                     tripLines?.lines.orEmpty(), tripLines?.unread == true, screen = screenLines.lines, watchNearby = watchNearbyLines,
+                    watchRides = watchFavoriteRides,
                 )
             } ?: TripRow.CHECKING
         }

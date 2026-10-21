@@ -302,6 +302,7 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
             fun distanceUnits(units: DistanceUnits) = SettingChanged("distance_units", distanceUnitsValue(units))
             fun disruptionsRow(shown: Boolean) = SettingChanged("disruptions_row", onOff(shown))
             fun nearbyLines(watched: Boolean) = SettingChanged("nearby_lines", onOff(watched))
+            fun favoriteRides(watched: Boolean) = SettingChanged("favorite_rides", onOff(watched))
 
             /** A line added to the disruptions row or taken off, never which. */
             @WorkerThread

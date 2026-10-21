@@ -790,6 +790,47 @@ object NearbyLinesSetting {
 }
 
 /**
+ * Whether the disruptions row watches the rider's favorite rides' lines wherever they run (maintainer,
+ * 2026-10-21), held and persisted as [NearbyLinesSetting] is. On by default; off, a ride's line is watched
+ * only as any other line is, for being near or chosen.
+ */
+object FavoriteRidesSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = true,
+        read = AppSettings::watchFavoriteRides,
+        write = { settings, watch -> settings.setWatchFavoriteRides(watch) },
+        label = "favorite rides watched",
+        changed = { _, after ->
+            // Noted in the debug log too, so a report of a ride's line missing from the row says why.
+            StopdashDebugLog.info("settings: favorite rides %s", if (after) "watched" else "not watched")
+            UsageEvents.settingChanged(UsageEvent.SettingChanged.favoriteRides(after))
+        },
+    )
+
+    /** Whether they're watched, as a flow, for the list and the Settings switch. */
+    val changes: StateFlow<Boolean> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The choice once the stored one has been read (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): Boolean = holder.loaded()
+
+    /** The user turned it on or off: applied at once, persisted in order. */
+    fun set(watch: Boolean) = holder.set(watch)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
  * Whether a saved place is recognized by its Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*),
  * held in memory and persisted in order as [DisruptionsRowSetting] is. On by default; turning it off
  * also deletes what was learned, which the caller does ([AndroidWifiPlaces.forget]).

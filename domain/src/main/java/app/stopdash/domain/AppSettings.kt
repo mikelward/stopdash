@@ -153,6 +153,15 @@ interface AppSettings {
     suspend fun setWatchNearbyLines(watch: Boolean) {}
 
     /**
+     * Whether the disruptions row watches the rider's favorite rides' lines wherever they run (maintainer,
+     * 2026-10-21: a choice, as the lines near them are); on by default.
+     */
+    fun watchFavoriteRides(): Flow<Boolean> = flowOf(true)
+
+    /** Set [watchFavoriteRides]. Suspending, off the main thread; best-effort. */
+    suspend fun setWatchFavoriteRides(watch: Boolean) {}
+
+    /**
      * Whether a saved place is recognized by its Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*);
      * on by default.
      */

@@ -30,9 +30,9 @@ import kotlinx.coroutines.flow.map
  * The home screen's disruptions row (maintainer, 2026-10-05): the trip's one-row summary ([TripRow])
  * over the lines the rider watches: every line the home screen shows (maintainer, 2026-10-17: its rows'
  * and its farther cards', [ScreenLines]) unless they turned that off (2026-10-21), their favorites' lines
- * (a journey's wherever it is, a starred row's in the list), the trip's on the way, and every line they
- * chose ([Network], none by default). A tap opens the same lines page as a trip's ([TripLinesPage]), which
- * lists every other rail line too, under *Other* ([RAIL]).
+ * (a journey's wherever it is, unless they turned that off too, and a starred row's in the list), the
+ * trip's on the way, and every line they chose ([Network], none by default). A tap opens the same lines
+ * page as a trip's ([TripLinesPage]), which lists every other rail line too, under *Other* ([RAIL]).
  */
 object HomeLines {
     /**
@@ -372,7 +372,7 @@ object HomeLines {
      * the list doesn't check itself ([always]), and what the rider [dismissed]. A line both lists is judged by
      * the list's own check where it has one. The lines the screen shows ([screen]) are watched, wherever they
      * are (maintainer, 2026-10-17), unless the rider turned that off ([watchNearby]); with none given, every
-     * stop's are. Walks every stop's departures: on a worker only.
+     * stop's are. The favorite rides' lines are watched wherever they run, unless turned off too ([watchRides]). Walks every stop's departures: on a worker only.
      */
     @WorkerThread
     internal fun row(
@@ -406,7 +406,12 @@ object HomeLines {
         // Whether the lines the screen shows are watched at all (maintainer, 2026-10-21): off, only the rider's
         // own and the chosen lines are, and what the list couldn't check is the list's banner's to say.
         watchNearby: Boolean = true,
+        // Whether the favorite rides' lines are watched wherever they run (maintainer, 2026-10-21); off, a ride's
+        // line is watched only as any other is, for being on the screen or chosen.
+        watchRides: Boolean = true,
     ): TripRow {
+        val rideLines = if (watchRides) journeyLines else emptySet()
+        val rides = if (watchRides) journeys else emptyList()
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
         alwaysLines.forEach { refs[it.id] = it }
@@ -454,16 +459,16 @@ object HomeLines {
                 if (id.isBlank()) return false
                 val star = (stop.stopId to id) in starredAt
                 if (star) starredHere += id
-                return star || id in journeyLines
+                return star || id in rideLines
             }
             stop.departures.forEach { if (wanted(it.lineId)) refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode)) }
             stop.lines.forEach { if (wanted(it.id)) refs.putIfAbsent(it.id, it) }
         }
-        journeys.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
+        rides.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
         tripLines.forEach { refs.putIfAbsent(it.id, it) }
         // Asked about with the always-covered lines: a farther card's line too, whose stop isn't fetched.
         val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
-            journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
+            rides.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
             tripLines.forEach { add(it.id) }
             if (watchNearby) screen?.farIds?.let { addAll(it) }
         }
@@ -528,7 +533,7 @@ object HomeLines {
         // rides to work matter, not everything near work).
         val mine = HashSet<String>(nearby)
         mine += starredHere
-        mine += journeyLines
+        mine += rideLines
         tripLines.forEach { mine += it.id }
         // Each line's nearest stop, however far, the list's or the near-me lookup's (Codex, #710): as bad and
         // as much the rider's own, the nearer goes first.

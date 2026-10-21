@@ -435,7 +435,6 @@
     <string name="settings_disruptions_row_show">Mostrar en la pantalla de inicio</string>
     <string name="settings_disruptions_row_off">Desactivado</string>
     <string name="settings_disruptions_row_description">Muestra alertas y retrasos en la pantalla de inicio</string>
-    <string name="settings_summary_networks_title">Siempre se siguen</string>
     <string name="settings_summary_lines_title">Seguir también</string>
     <string name="settings_disruptions_row_write_failed">No se pudo guardar; se restablecerá al reiniciar StopDash</string>
     <string name="settings_hidden_title">Ocultos</string>

@@ -199,6 +199,13 @@ fun SettingsScreen(
     watchNearbyLinesLoaded: Boolean = true,
     watchNearbyLinesWriteFailed: Boolean = false,
     onDismissWatchNearbyLinesError: () -> Unit = {},
+    // Whether the row watches the favorite rides' lines wherever they run (maintainer, 2026-10-21; on by
+    // default), handled as [showDisruptionsRow] is.
+    watchFavoriteRides: Boolean = true,
+    onWatchFavoriteRidesChange: (Boolean) -> Unit = {},
+    watchFavoriteRidesLoaded: Boolean = true,
+    watchFavoriteRidesWriteFailed: Boolean = false,
+    onDismissWatchFavoriteRidesError: () -> Unit = {},
     // The modes and lines hidden from the near-me list (SPEC *Finding stops → Hiding a mode*), listed
     // while any are, each with a Show that brings back just that one ([onShowHidden]).
     hiddenModes: Set<String> = emptySet(),
@@ -331,7 +338,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_disruptions_row_title),
                     // Until every stored choice is read, neither "Off" nor a default that may not be the rider's
                     // (Codex, #592): a dash, as the trip pickers show.
-                    summary = if (showDisruptionsRowLoaded && summaryNetworksLoaded && watchNearbyLinesLoaded) {
+                    summary = if (showDisruptionsRowLoaded && summaryNetworksLoaded && watchNearbyLinesLoaded && watchFavoriteRidesLoaded) {
                         disruptionsSummary(showDisruptionsRow)
                     } else {
                         "–"
@@ -339,15 +346,16 @@ fun SettingsScreen(
                     onClick = { disruptionsOpen = true },
                     testTag = "disruptionsSummaryRow",
                     // Its page opens once they're all read, so its controls never jump as they land (Codex, #592).
-                    enabled = showDisruptionsRowLoaded && summaryNetworksLoaded && watchNearbyLinesLoaded,
+                    enabled = showDisruptionsRowLoaded && summaryNetworksLoaded && watchNearbyLinesLoaded && watchFavoriteRidesLoaded,
                 )
-                if (showDisruptionsRowWriteFailed || summaryNetworksWriteFailed || watchNearbyLinesWriteFailed) {
+                if (showDisruptionsRowWriteFailed || summaryNetworksWriteFailed || watchNearbyLinesWriteFailed || watchFavoriteRidesWriteFailed) {
                     SettingErrorRow(
                         text = stringResource(R.string.settings_disruptions_row_write_failed),
                         onDismiss = {
                             onDismissShowDisruptionsRowError()
                             onDismissSummaryNetworksError()
                             onDismissWatchNearbyLinesError()
+                            onDismissWatchFavoriteRidesError()
                         },
                     )
                 }
@@ -612,6 +620,11 @@ fun SettingsScreen(
             nearbyLoaded = watchNearbyLinesLoaded,
             nearbyWriteFailed = watchNearbyLinesWriteFailed,
             onDismissNearbyError = onDismissWatchNearbyLinesError,
+            rides = watchFavoriteRides,
+            onRidesChange = onWatchFavoriteRidesChange,
+            ridesLoaded = watchFavoriteRidesLoaded,
+            ridesWriteFailed = watchFavoriteRidesWriteFailed,
+            onDismissRidesError = onDismissWatchFavoriteRidesError,
             onOpenFavoriteJourneys = onOpenFavoriteJourneysFromDisruptions,
             onBack = {
                 disruptionsOpen = false
@@ -1107,8 +1120,8 @@ private fun disruptionsSummary(on: Boolean): String =
 /**
  * The disruptions summary's own page (maintainer, 2026-10-05: its settings control only the row, so
  * they sit under it, not at the top level): the switch that shows the row, then, while it shows, the
- * switch that has it watch the lines near the rider too (maintainer, 2026-10-21) and the lines it always
- * covers ([SummaryNetworksRow]). Back returns to Settings.
+ * switches that have it watch the lines near the rider and their favorite rides' lines (maintainer,
+ * 2026-10-21), and the lines it watches by choice ([SummaryNetworksRow]). Back returns to Settings.
  */
 @Composable
 internal fun DisruptionsSummaryPage(
@@ -1129,6 +1142,11 @@ internal fun DisruptionsSummaryPage(
     nearbyLoaded: Boolean = true,
     nearbyWriteFailed: Boolean = false,
     onDismissNearbyError: () -> Unit = {},
+    rides: Boolean = true,
+    onRidesChange: (Boolean) -> Unit = {},
+    ridesLoaded: Boolean = true,
+    ridesWriteFailed: Boolean = false,
+    onDismissRidesError: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize().testTag("disruptionsSummaryPage")) {
@@ -1148,7 +1166,7 @@ internal fun DisruptionsSummaryPage(
             }
             // Its controls only once every choice is read: a page restored after process death opens
             // before they are, and would otherwise show the defaults, then jump (Codex, #592).
-            if (!showLoaded || !networksLoaded || !nearbyLoaded) return@Column
+            if (!showLoaded || !networksLoaded || !nearbyLoaded || !ridesLoaded) return@Column
             val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
@@ -1198,7 +1216,27 @@ internal fun DisruptionsSummaryPage(
                             onDismiss = onDismissNearbyError,
                         )
                     }
-                    SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded, onOpenFavoriteJourneys = onOpenFavoriteJourneys)
+                    // The favorite rides' lines, wherever they run, or not (maintainer, 2026-10-21: was "Always
+                    // watch", not a choice).
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_favorite_journeys_title),
+                        summary = stringResource(R.string.settings_summary_rides_summary),
+                        checked = rides,
+                        onCheckedChange = onRidesChange,
+                        enabled = ridesLoaded,
+                        switchTestTag = "summaryRidesSwitch",
+                    )
+                    if (ridesWriteFailed) {
+                        SettingErrorRow(
+                            text = stringResource(R.string.settings_disruptions_row_write_failed),
+                            onDismiss = onDismissRidesError,
+                        )
+                    }
+                    // The rides themselves, a tap away (maintainer, 2026-10-17), Back returning here.
+                    TextButton(onClick = onOpenFavoriteJourneys, modifier = Modifier.padding(horizontal = 16.dp).testTag("summaryFavoriteRides")) {
+                        Text(stringResource(R.string.settings_summary_rides_edit))
+                    }
+                    SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded)
                 }
             }
         }
@@ -1246,18 +1284,18 @@ private fun lineChipStyle(pill: PillColors?, on: Boolean, enabled: Boolean): Lin
 }
 
 /**
- * What the disruptions summary always covers: a chip per line, the Tube's and the Overground's each under
+ * What the disruptions summary watches by choice: a chip per line, the Tube's and the Overground's each under
  * the network's name and the single-line networks' under "Other" (maintainer, 2026-10-06: lines picked
  * one by one, in groups; 2026-10-07: no chip for a whole network, the row leans on the rider's own). A chip shows
- * selected while covered. The rider's favorite rides' lines (a button away) are covered whatever's chosen, and
- * the lines near them unless they turned that off, so none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
+ * selected while covered. The lines near the rider and their favorite rides' are watched by the switches above
+ * unless turned off, so none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
  *
  * A tap names its line, and the setting turns it the other way on its latest choice, off the main
  * thread and in order, whether or not this page is still open ([app.stopdash.data.SummaryNetworksSetting.toggle]).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean, onOpenFavoriteJourneys: () -> Unit) {
+private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean) {
     val slot = remember { mutableStateOf<Worked<Inputs, PickerChips>?>(null) }
     // The last chips stand while a tap's are worked out, so nothing blinks out under the finger. Keyed by
     // the choice's identity ([Inputs]), so nothing compares the set's contents on this thread (Codex, #642),
@@ -1268,21 +1306,12 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
     }
     val covered = chips?.covered
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("summaryNetworks")) {
-        Text(stringResource(R.string.settings_summary_networks_title), style = MaterialTheme.typography.bodyLarge)
-        Text(
-            stringResource(R.string.settings_summary_networks_summary),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        // The rides whose lines it always watches, a tap away (maintainer, 2026-10-17).
-        TextButton(onClick = onOpenFavoriteJourneys, modifier = Modifier.testTag("summaryFavoriteRides")) {
-            Text(stringResource(R.string.settings_favorite_journeys_title))
-        }
         // The lines watched by choice, under a heading of their own (maintainer, 2026-10-17).
         Text(
             stringResource(R.string.settings_summary_lines_title),
             style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(top = 16.dp).testTag("summaryAlsoWatch"),
+            // 16dp under the rides' button above, as before.
+            modifier = Modifier.padding(top = 8.dp).testTag("summaryAlsoWatch"),
         )
         // Every chip is drawn from the first frame, none selected or tappable until which are selected is
         // worked out (Codex, #642).

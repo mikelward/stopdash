@@ -432,7 +432,6 @@
     <string name="settings_disruptions_row_show">Auf der Startseite anzeigen</string>
     <string name="settings_disruptions_row_off">Aus</string>
     <string name="settings_disruptions_row_description">Meldungen und Verspätungen auf der Startseite anzeigen</string>
-    <string name="settings_summary_networks_title">Immer beobachtet</string>
     <string name="settings_summary_lines_title">Auch beobachten</string>
     <string name="settings_disruptions_row_write_failed">Nicht gespeichert – wird beim Neustart von StopDash zurückgesetzt</string>
     <string name="settings_hidden_title">Ausgeblendet</string>

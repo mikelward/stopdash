@@ -27,7 +27,7 @@ class UsageEventTest {
             "here", "stop", "place", "first", "again",
             // setting_change's settings, then their values.
             "walking_speed", "max_walk", "step_free", "trip_mode", "avoided_line", "avoided_stop", "hidden_mode",
-            "distance_units", "disruptions_row", "nearby_lines", "disruption_line", "live_widget", "text_size",
+            "distance_units", "disruptions_row", "nearby_lines", "favorite_rides", "disruption_line", "live_widget", "text_size",
             "pinch_resize", "tfl_key", "rail_key", "bug_report_consent",
             "slow", "average", "fast", "10", "15", "20", "30", "45", "60", "any", "station", "fully",
             "automatic", "meters", "yards", "feet", "on", "off", "added", "removed", "set", "cleared", "skipped",
@@ -212,7 +212,7 @@ class UsageEventTest {
                 listOf(
                     UsageEvent.SettingChanged.disruptionsRow(it), UsageEvent.SettingChanged.liveWidget(it),
                     UsageEvent.SettingChanged.pinchToResize(it), UsageEvent.SettingChanged.tflKey(it),
-                    UsageEvent.SettingChanged.railKey(it), UsageEvent.SettingChanged.nearbyLines(it),
+                    UsageEvent.SettingChanged.railKey(it), UsageEvent.SettingChanged.nearbyLines(it), UsageEvent.SettingChanged.favoriteRides(it),
                 )
             } +
             listOf(0.8f, 1f, 1.2f, 1.6f, Float.NaN).map(UsageEvent.SettingChanged::textSize) +
@@ -223,6 +223,7 @@ class UsageEventTest {
         assertEquals(mapOf("setting" to "max_walk", "setting_value" to "45"), UsageEvent.SettingChanged.maxWalk(MaxWalk.FORTY_FIVE).params)
         assertEquals(mapOf("setting" to "tfl_key", "setting_value" to "cleared"), UsageEvent.SettingChanged.tflKey(false).params)
         assertEquals(mapOf("setting" to "nearby_lines", "setting_value" to "off"), UsageEvent.SettingChanged.nearbyLines(false).params)
+        assertEquals(mapOf("setting" to "favorite_rides", "setting_value" to "off"), UsageEvent.SettingChanged.favoriteRides(false).params)
     }
 
     @Test

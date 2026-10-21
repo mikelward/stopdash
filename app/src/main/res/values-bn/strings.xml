@@ -432,7 +432,6 @@
     <string name="settings_disruptions_row_show">হোম স্ক্রিনে দেখান</string>
     <string name="settings_disruptions_row_off">বন্ধ</string>
     <string name="settings_disruptions_row_description">হোম স্ক্রিনে সতর্কতা ও বিলম্ব দেখায়</string>
-    <string name="settings_summary_networks_title">সবসময় নজরে রাখা হয়</string>
     <string name="settings_summary_lines_title">এগুলোও নজরে রাখুন</string>
     <string name="settings_disruptions_row_write_failed">সেভ করা যায়নি; StopDash রিস্টার্ট হলে এটি রিসেট হবে</string>
     <string name="settings_hidden_title">লুকানো</string>

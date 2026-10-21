@@ -172,6 +172,24 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
+    fun `the summary watches the favorite rides by default and persists turning that off and on`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertTrue(store.watchFavoriteRides().first())
+        store.setWatchFavoriteRides(false)
+        assertFalse(store.watchFavoriteRides().first())
+        store.setWatchFavoriteRides(true)
+        assertTrue(store.watchFavoriteRides().first())
+    }
+
+    @Test
+    fun `a settings file from before the favorite rides choice reads it as on`() = runTest {
+        // Written by an older build: no watchFavoriteRides key at all.
+        val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true,"watchNearbyLines":false}""".byteInputStream())
+        assertNull(checkNotNull(older).watchFavoriteRides)
+        assertTrue(DataStoreAppSettings(FakeDataStore(older)).watchFavoriteRides().first())
+    }
+
+    @Test
     fun `the summary's lines read none by default and persist a choice`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(null))
         assertNull(store.summaryNetworks().first())
