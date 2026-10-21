@@ -4435,7 +4435,9 @@ or notice coming or going) **slide** there over 300 ms, as a trip's cards do, wi
 everything has stopped (at least 200 ms, as above), so a tap aimed at one departure never opens
 another that slid under it. A banner coming or going above the list moves it at once, and taps
 pause for those 200 ms too. The user's own scrolling moves things by their own hand, so it never
-pauses a tap. On the **location gate** ("finding stops") and the departures
+pauses a tap. Every row a tap opens shows a press under the finger, so the rider sees the tap land;
+a tap ignored during a pause shows none.
+On the **location gate** ("finding stops") and the departures
 **cold-load** spinner alike, the overflow (with its dot) is there too, so the button is a more **direct** prompt than a dot
 the user may not notice while waiting, not the only path to it. Either way a user sitting on a
 slow fix or a cold load can act on the update without hunting a menu, and it stays a secondary

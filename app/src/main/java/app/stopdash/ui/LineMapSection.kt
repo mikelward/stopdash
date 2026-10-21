@@ -19,7 +19,10 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -742,6 +745,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
     val currentOpen by rememberUpdatedState(open)
     val currentSave by rememberUpdatedState(save)
     val opens = open != null
+    val presses = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
             .then(
@@ -749,8 +753,10 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                     // A tap opens the station; saving the journey is a long press, so a stray tap while
                     // scrolling can't save one, as on the route page's list (maintainer, 2026-10-05).
                     longPress != null -> Modifier
+                        .indication(presses, LocalIndication.current)
                         .pointerInput(opens) {
                             detectTapGestures(
+                                onPress = { if (opens) showPress(it, presses) },
                                 onTap = if (opens) ({ _ -> currentOpen?.invoke() }) else null,
                                 onLongPress = {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
