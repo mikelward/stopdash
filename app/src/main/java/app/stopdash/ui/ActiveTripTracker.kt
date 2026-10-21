@@ -21,6 +21,7 @@ import app.stopdash.domain.RailFollow
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RideArrivals
 import app.stopdash.domain.LegEnd
+import app.stopdash.domain.RideEnds
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StationIndex
@@ -409,11 +410,12 @@ class ActiveTripTracker(
     private fun levelOf(trip: ActiveTrip): StepFree = trip.stepFree ?: StepFree.DEFAULT
 
     // Where the last ride gets off by arriving at the destination's hub ([OnTheWay.arrivingEnd]), its end and
-    // the ids it arrives by ([OnTheWay.arrivingIds]), with the route as planned they were worked out for (by
-    // identity: a trip's copies share it, a replan or restore doesn't). Worked out through the model when a
-    // check first needs them, on [compute], and kept only while the route is the same, so nothing resolved
-    // outlives it; with no model, none, and asked for again next check.
-    private class Arriving(val planned: List<TripLeg>, val end: LegEnd?, val ids: Map<String, String>)
+    // the ids it arrives by ([OnTheWay.arrivingIds]), and where every other ride gets off, at its station or bus
+    // stop by every id of it ([RideEnds.of], as the trip's cards have it), with the route as planned they were
+    // worked out for (by identity: a trip's copies share it, a replan or restore doesn't). Worked out through
+    // the model when a check first needs them, on [compute], and kept only while the route is the same, so
+    // nothing resolved outlives it; with no model, none, and asked for again next check.
+    private class Arriving(val planned: List<TripLeg>, val end: LegEnd?, val ids: Map<String, String>, val stations: RideEnds)
 
     @Volatile
     private var arriving: Arriving? = null
@@ -427,20 +429,33 @@ class ActiveTripTracker(
         val model = hubs() ?: return null
         val found = withContext(compute) {
             val end = OnTheWay.arrivingEnd(trip, model)
-            Arriving(planned, end, end?.let(model::idsOf).orEmpty())
+            // Not on a step-free trip, nor one whose level isn't known, as for the hub: a station's other record
+            // may not be step-free where the Planner's is.
+            val stations = if (trip.stepFree == StepFree.ANY) {
+                RideEnds.of(listOf(TripRoute(planned)), StepFree.ANY, RideEnds.Destination(model, emptySet()))
+            } else {
+                RideEnds.planned(levelOf(trip))
+            }
+            Arriving(planned, end, end?.let(model::idsOf).orEmpty(), stations)
         }
         arriving = found
         return found
     }
 
-    // Where [ride] of [trip] gets off ([LegEnd]): as the last ride arriving by hub, anywhere in the destination's
-    // hub ([arrivalOf]), as the trip's cards have it; otherwise, and with no model, where the Planner does at the
-    // trip's step-free level ([LegEnd.planned]). Walks the route's few legs.
+    // Where [ride] of [trip] gets off ([LegEnd]), as the trip's cards have it: as the last ride arriving by hub,
+    // anywhere in the destination's hub; otherwise at the station or bus stop of its Planner's call, by every id
+    // of it ([arrivalOf]). A ride the trip has since changed (an end moved), and every ride with no model or on a
+    // step-free trip, where the Planner gets it off at the trip's step-free level ([LegEnd.planned]). Walks the
+    // route's few legs.
     private suspend fun endOf(trip: ActiveTrip, ride: TripLeg): LegEnd {
         val legs = trip.route.legs
         val index = legs.indexOf(ride)
         val last = index >= 0 && legs.subList(index + 1, legs.size).all { it.isWalk }
-        return (if (last) arrivalOf(trip)?.end else null) ?: LegEnd.planned(ride, levelOf(trip))
+        val arrival = arrivalOf(trip)
+        return (if (last) arrival?.end else null)
+            // By the ride's own raw end, wherever it is in the route.
+            ?: arrival?.stations?.ends(TripRoute(listOf(ride)))?.single()?.second
+            ?: LegEnd.planned(ride, levelOf(trip))
     }
 
     // [ride]'s boarding stop pair's poles ([stopPoles]) when it boards at a bus stop, read once: the

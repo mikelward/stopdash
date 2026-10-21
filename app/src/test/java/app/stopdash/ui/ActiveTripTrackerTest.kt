@@ -485,6 +485,46 @@ class ActiveTripTrackerTest {
         assertEquals(app.stopdash.domain.LegEnd.planned(toHamlet, StepFree.FULLY), endsGiven.last().second)
     }
 
+    // Synthetic: a station Mid of two records, its main one (940GZZLUMID) and its low level (940GZZLUMLL), where a
+    // trip changes.
+    private val twoRecordStation = app.stopdash.domain.Hubs.of(
+        app.stopdash.domain.StationIndex(
+            listOf(
+                app.stopdash.domain.IndexedStation("HUBMID", "Mid", listOf("tube")),
+                app.stopdash.domain.IndexedStation("940GZZLUMID", "Mid", listOf("tube"), "HUBMID", 51.5, -0.12,
+                    icsCode = "1009020", station = "1009020:tube", modelHub = "HUBMID"),
+                app.stopdash.domain.IndexedStation("940GZZLUMLL", "Mid LL", listOf("tube"), "HUBMID", 51.5005, -0.12,
+                    icsCode = "1009020", station = "1009020:tube", modelHub = "HUBMID"),
+            ),
+            revision = "abc",
+        ),
+        app.stopdash.domain.BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
+    )!!
+
+    @Test
+    fun `on the way a ride changing at a station has its lines asked for at any record of it`() = runTest {
+        // Red to Mid, then blue on from there: red's lines, as the trip's cards find them, get off anywhere in Mid.
+        val toMid = ride.copy(toId = "940GZZLUMID", toName = "Mid", path = listOf("B", "940GZZLUMID"))
+        val onward = TripLeg("tube", "blue", "Blue", "940GZZLUMID", "Mid", "E", "E", at(20), at(30), path = listOf("E"))
+        suspend fun endWith(stepFree: StepFree?): app.stopdash.domain.LegEnd {
+            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoRecordStation)
+            now = t0
+            endsGiven.clear()
+            departures["A"] = listOf(train("3", 8))
+            trains["3"] = listOf(call("A", 8), call("B", 11), call("940GZZLUMID", 14))
+            tracker.start(TripRoute(listOf(toMid, onward)), "E", readyAt = now, stepFree = stepFree)
+            tracker.refresh()
+            tracker.end()
+            return endsGiven.last { it.first == toMid }.second
+        }
+        val end = endWith(StepFree.ANY)
+        assertEquals(app.stopdash.domain.LegEnd.Level.STOP, end.level)
+        assertTrue("${end.ids}", "940GZZLUMID" in end.ids && "940GZZLUMLL" in end.ids)
+        // A step-free trip, or one kept before its level was, gets off where the Planner does.
+        assertEquals(app.stopdash.domain.LegEnd.planned(toMid, StepFree.FULLY), endWith(StepFree.FULLY))
+        assertEquals(app.stopdash.domain.LegEnd.planned(toMid, StepFree.ANY), endWith(null))
+    }
+
     @Test
     fun `a ride is followed on another of its lines when that train comes first and takes the rider`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
