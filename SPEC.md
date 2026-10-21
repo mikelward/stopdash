@@ -4380,6 +4380,17 @@ number and one boolean about how the app draws itself — nothing about the user
 the time — and travels with the rest of the config through Android's backup like any other
 setting.
 
+### Back
+
+Back, the system's gesture or button and a screen's own back arrow alike, returns to the page the one
+showing was opened from, **as it was left**: its own open page (a route page, a platform view, a journey's
+view), its scroll and what it had open. That holds whatever was opened over it: Settings, Licenses,
+Lines…, a station or the station search, the saved places or favorite rides, the trip on the way's screen,
+or the trip from here (maintainer, 2026-10-21: Back skipped pages, landing on the bare list from Settings
+opened over a route page, or on a station's top from Licenses opened over its route page). A page closed
+is forgotten: opened again, it starts afresh. Two ways land somewhere on purpose: an arrived trip's Done
+lands on the near-me list (*On the way*), as a place shared into the app does (*Finding stops*).
+
 ### Scroll cue
 
 A scrolling screen marks its top or bottom edge while there is more to scroll past that edge,

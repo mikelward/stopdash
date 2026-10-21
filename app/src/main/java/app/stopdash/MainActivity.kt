@@ -191,6 +191,7 @@ import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.ui.LocalOpenLineStop
 import app.stopdash.ui.LocalOpenLines
 import app.stopdash.ui.RevealsAfterLoading
+import app.stopdash.ui.KeptPages
 import app.stopdash.ui.LocalTapPause
 import app.stopdash.ui.TapPause
 import app.stopdash.ui.ignoresPausedTaps
@@ -1131,6 +1132,10 @@ class MainActivity : ComponentActivity() {
                 // A stop tapped on a route page's stop list: the departure it was tapped on, what Go rides there,
                 // and the journey there its details offer to favorite.
                 var routeStopOpened by rememberSaveable(stateSaver = RouteStopOpenSaver) { mutableStateOf<RouteStopOpen?>(null) }
+                // Bumped to drop the near-me view's kept pages (a route page, a platform view) where the app lands
+                // on the near-me list afresh: an arrived trip's Done closing the options it was started from, or a
+                // shared place ([NearbyArea]).
+                var nearbyBodyGeneration by rememberSaveable { mutableIntStateOf(0) }
                 // Its details' page, over the route page it was tapped on, and the stations opened from it beside
                 // it, for Back; null with none up. Their pages' scrolls are kept in [routeStopSaveable] under the opening's
                 // own number ([routeStopSession]), so closing drops them all at once, never by walking the trail.
@@ -1622,6 +1627,8 @@ class MainActivity : ComponentActivity() {
                         routeStopSaveable.removeState(routeStopSession)
                         routeStopTrail = null
                         routeStopOpened = null
+                        // The near-me view's own pages too: it opens afresh, as a fresh start would.
+                        nearbyBodyGeneration++
                     }
                     when (ask) {
                         null -> Toast.makeText(applicationContext, R.string.shared_place_unreadable, Toast.LENGTH_SHORT).show()
@@ -1905,10 +1912,22 @@ class MainActivity : ComponentActivity() {
                         OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt, onTheWayAnsweredAt) { onTheWayOpen = true }
                     },
                 ) {
+                    // Which overlay shows when several are open ([topOverlay]); each closes via its own Back.
+                    val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesPresence.shown,
+                        // The station flow over Lines… is a stop's From: its page, or the From… search
+                        // a trip from it opens to change the start (Codex on #659). Lines… is offered
+                        // only on the near-me screen, so it never opens above that flow.
+                        station = openStationId != null || stationSearchOpen)
                     NearbyArea(
                         overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || linesPresence.shown || stationSearchOpen || openStationId != null,
-                        // A stop's details opened from a line page's map keep that page under Lines…, for Back.
-                        keepBody = linesForStop,
+                        // Each overlay under the one showing keeps its pages for Back, as the near-me view does.
+                        overlayPage = overlayPage(top, openStationId),
+                        openOverlayPages = openOverlayPages(
+                            licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen,
+                            favoriteJourneys = favoriteJourneysOpen, settings = settingsOpen, lines = linesPresence.isOpen,
+                            stationSearch = stationSearchOpen, stationId = openStationId,
+                        ),
+                        bodyGeneration = nearbyBodyGeneration,
                         aboveOverlay = {
                             ForegroundReturnLatcher(
                                 isReady = { nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready },
@@ -1921,12 +1940,6 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         overlayContent = {
-                            // Which one shows when several are open ([topOverlay]); each closes via its own Back.
-                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesPresence.shown,
-                                // The station flow over Lines… is a stop's From: its page, or the From… search
-                                // a trip from it opens to change the start (Codex on #659). Lines… is offered
-                                // only on the near-me screen, so it never opens above that flow.
-                                station = openStationId != null || stationSearchOpen)
                             if (top == TopOverlay.LICENSES) {
                                 ReportScreen(UsageEvent.Screen.LICENSES)
                                 LicensesScreen(onBack = { licensesOpen = false })
@@ -1992,9 +2005,13 @@ class MainActivity : ComponentActivity() {
                                                 stationTo = ToChoice.NONE
                                                 originChange = null
                                                 replanning = false
+                                                // Onto the near-me list afresh, not a page kept under the station.
+                                                nearbyBodyGeneration++
                                             }
                                         } else {
                                             leaveNearMeTrip()
+                                            // Onto the near-me list afresh, not the page the trip was opened from.
+                                            nearbyBodyGeneration++
                                             // Its From row's search, a change of start under way from it, is its own
                                             // too (Codex, #658); a search opened otherwise stays.
                                             if (originChange is OriginChange.NearMe) {
@@ -3060,6 +3077,9 @@ class MainActivity : ComponentActivity() {
                             // messages come in the same way inside it ([LocationGate]). The trip's own
                             // spinner, while its origin is worked out, counts as loading too, so the reveal
                             // waits for the trip itself (Codex, #714).
+                            // What the departures list saved (a platform, journey or route page, its scroll), kept
+                            // while the trip from here takes its place, and dropped with its stores under the gate.
+                            val nearMeListPages = rememberSaveableStateHolder()
                             RevealsAfterLoading(
                                 state = NearMeShown(nearby, hereTripOpen, originPending = hereTripOpen && nearbyNow is NearbyStopsViewModel.State.Ready && hereOrigin == null),
                                 loading = { it.loading },
@@ -3086,78 +3106,82 @@ class MainActivity : ComponentActivity() {
                                             noneNearby = false,
                                         )
                                     } else {
-                                        DeparturesForStops(
-                                            ready = state,
-                                            relocate = { onSameSet -> nearbyViewModel.relocate(onSameSet) },
-                                            relocating = nearbyViewModel.relocating,
-                                            returnBusy = nearbyViewModel::relocatingSinceLeft,
-                                            locationBanner = nearbyViewModel.locationBanner,
-                                            refinement = nearbyViewModel.refinement,
-                                            applyRefinement = nearbyViewModel::applyRefinement,
-                                            onOpenLicenses = openLicenses,
-                                            onOpenSettings = {
-                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
-                                                settingsOnDisruptions = false
-                                                settingsOpen = true
-                                            },
-                                            onFindStation = {
-                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                                stationSearchOpen = true
-                                            },
-                                            onPlanTo = {
-                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                                listStores.clearAll()
-                                                hereTripOpen = true
-                                                herePicking = true
-                                            },
-                                            // As To…, the trip going via the view's stop from the start.
-                                            onPlanVia = { via ->
-                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                                listStores.clearAll()
-                                                hereVia.value = DestinationViaChoice(null, ViaChoice().picked(via, via.stopId.startsWith(HUB_PREFIX), toId = null))
-                                                hereTripOpen = true
-                                                herePicking = true
-                                            },
-                                            favoritePlaces = savedPlaces,
-                                            favoritePlacesRead = savedPlacesState.read,
-                                            shownPlacesKey = "shown-places",
-                                            today = today,
-                                            onRouteToPlace = routeToPlace,
-                                            // A long press on a chip edits the places (maintainer, 2026-09-28).
-                                            onEditFavoritePlaces = { favoritePlacesOpen = true },
-                                            riderFix = nearbyViewModel.riderFix,
-                                            hiddenPlaceIds = hiddenPlaceIds.toSet(),
-                                            onHiddenPlaceIds = { hiddenPlaceIds = it.toList() },
-                                            updateAvailable = updateAvailable.value,
-                                            onOpenAppListing = ::openPlayListing,
-                                            onSendBugReport = requestBugReport,
-                                            // A foreground return that landed while an overlay was open is latched
-                                            // above; consume it here so re-entering departures relocates.
-                                            foregroundReturnPending = returnLatch.pending,
-                                            onForegroundReturnConsumed = { returnLatch.pending = false },
-                                            listState = departuresListState,
-                                            farReveal = farReveal,
-                                            pendingTracker = departuresTracker,
-                                            listWork = departuresWork,
-                                            watchInstall = watchInstallCard.takeIf { !widgetCardHeld },
-                                            widgetUpdate = widgetUpdateCard,
-                                            onUnpauseAlerts = unpauseAlerts,
-                                            // The station page opens over the list, as one found by search does, and
-                                            // Back returns to the ride's view: its area where TfL gave one, so a bus
-                                            // ride's page holds all the place's poles.
-                                            onOpenRideStation = { journey ->
-                                                val end = journey.from
-                                                val id = end.areaId.ifBlank { end.stopId }
-                                                rideStation = RideReturn.record(id, journey)
-                                                openStationId = id
-                                                openStationName = end.name
-                                                openStationLead = null
-                                                openStationLevel = null
-                                            },
-                                            reopenJourneyKey = RideReturn.key(rideToReopen),
-                                            reopenOrigin = RideReturn.origin(rideToReopen),
-                                            onJourneyReopened = { rideToReopen = null },
-                                        )
+                                        // Kept under the trip from here, so Back from one opened from a platform or
+                                        // journey view returns to that view as it was left (SPEC *Back*).
+                                        nearMeListPages.SaveableStateProvider(NEAR_ME_LIST) {
+                                            DeparturesForStops(
+                                                ready = state,
+                                                relocate = { onSameSet -> nearbyViewModel.relocate(onSameSet) },
+                                                relocating = nearbyViewModel.relocating,
+                                                returnBusy = nearbyViewModel::relocatingSinceLeft,
+                                                locationBanner = nearbyViewModel.locationBanner,
+                                                refinement = nearbyViewModel.refinement,
+                                                applyRefinement = nearbyViewModel::applyRefinement,
+                                                onOpenLicenses = openLicenses,
+                                                onOpenSettings = {
+                                                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                                    settingsOnDisruptions = false
+                                                    settingsOpen = true
+                                                },
+                                                onFindStation = {
+                                                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                    stationSearchOpen = true
+                                                },
+                                                onPlanTo = {
+                                                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                    listStores.clearAll()
+                                                    hereTripOpen = true
+                                                    herePicking = true
+                                                },
+                                                // As To…, the trip going via the view's stop from the start.
+                                                onPlanVia = { via ->
+                                                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                    listStores.clearAll()
+                                                    hereVia.value = DestinationViaChoice(null, ViaChoice().picked(via, via.stopId.startsWith(HUB_PREFIX), toId = null))
+                                                    hereTripOpen = true
+                                                    herePicking = true
+                                                },
+                                                favoritePlaces = savedPlaces,
+                                                favoritePlacesRead = savedPlacesState.read,
+                                                shownPlacesKey = "shown-places",
+                                                today = today,
+                                                onRouteToPlace = routeToPlace,
+                                                // A long press on a chip edits the places (maintainer, 2026-09-28).
+                                                onEditFavoritePlaces = { favoritePlacesOpen = true },
+                                                riderFix = nearbyViewModel.riderFix,
+                                                hiddenPlaceIds = hiddenPlaceIds.toSet(),
+                                                onHiddenPlaceIds = { hiddenPlaceIds = it.toList() },
+                                                updateAvailable = updateAvailable.value,
+                                                onOpenAppListing = ::openPlayListing,
+                                                onSendBugReport = requestBugReport,
+                                                // A foreground return that landed while an overlay was open is latched
+                                                // above; consume it here so re-entering departures relocates.
+                                                foregroundReturnPending = returnLatch.pending,
+                                                onForegroundReturnConsumed = { returnLatch.pending = false },
+                                                listState = departuresListState,
+                                                farReveal = farReveal,
+                                                pendingTracker = departuresTracker,
+                                                listWork = departuresWork,
+                                                watchInstall = watchInstallCard.takeIf { !widgetCardHeld },
+                                                widgetUpdate = widgetUpdateCard,
+                                                onUnpauseAlerts = unpauseAlerts,
+                                                // The station page opens over the list, as one found by search does, and
+                                                // Back returns to the ride's view: its area where TfL gave one, so a bus
+                                                // ride's page holds all the place's poles.
+                                                onOpenRideStation = { journey ->
+                                                    val end = journey.from
+                                                    val id = end.areaId.ifBlank { end.stopId }
+                                                    rideStation = RideReturn.record(id, journey)
+                                                    openStationId = id
+                                                    openStationName = end.name
+                                                    openStationLead = null
+                                                    openStationLevel = null
+                                                },
+                                                reopenJourneyKey = RideReturn.key(rideToReopen),
+                                                reopenOrigin = RideReturn.origin(rideToReopen),
+                                                onJourneyReopened = { rideToReopen = null },
+                                            )
+                                        }
                                     }
                                     // A place chip on "No stops found nearby" opens the trip from where the
                                     // rider is, which needs no stop in range (Codex on #315).
@@ -3182,6 +3206,7 @@ class MainActivity : ComponentActivity() {
                                         DisposableEffect(Unit) {
                                             stores.clearAll()
                                             hereTripStores.clearAll()
+                                            nearMeListPages.removeState(NEAR_ME_LIST)
                                             onDispose {}
                                         }
                                         // "No stops nearby" from a coarse fix: a precise fix that lands
@@ -7002,6 +7027,39 @@ internal fun topOverlay(
 }
 
 /**
+ * The page [KeptPages] keeps [top]'s state under: the overlay's own name, and for the station flow its
+ * station's page by that station ([stationId]) or its search, so one station's pages are never given to another.
+ */
+internal fun overlayPage(top: TopOverlay, stationId: String?): String =
+    if (top == TopOverlay.STATIONS) stationPage(stationId) else top.name
+
+private fun stationPage(stationId: String?): String = if (stationId == null) TopOverlay.STATIONS.name else "${TopOverlay.STATIONS.name}:$stationId"
+
+/**
+ * The overlay pages open now ([overlayPage]), shown or covered by another: each keeps what it saved until it
+ * closes. The station flow's search stays open under a station opened from it, as its Back returns there.
+ */
+internal fun openOverlayPages(
+    licenses: Boolean,
+    onTheWay: Boolean,
+    favoritePlaces: Boolean,
+    favoriteJourneys: Boolean,
+    settings: Boolean,
+    lines: Boolean,
+    stationSearch: Boolean,
+    stationId: String?,
+): Set<String> = buildSet {
+    if (licenses) add(TopOverlay.LICENSES.name)
+    if (onTheWay) add(TopOverlay.ON_THE_WAY.name)
+    if (favoritePlaces) add(TopOverlay.FAVORITE_PLACES.name)
+    if (favoriteJourneys) add(TopOverlay.FAVORITE_JOURNEYS.name)
+    if (settings) add(TopOverlay.SETTINGS.name)
+    if (lines) add(TopOverlay.LINES.name)
+    if (stationSearch) add(stationPage(null))
+    if (stationId != null) add(stationPage(stationId))
+}
+
+/**
  * The near-me area's overlay host. [aboveOverlay] composes **unconditionally** — regardless of
  * whether a Settings/Licenses overlay is open — while [overlayContent] (the open overlay) and [body]
  * (the location gate or the departures view) switch on [overlayOpen]. Production puts the
@@ -7011,10 +7069,10 @@ internal fun topOverlay(
  * render it and pin that the above-overlay slot survives the overlay, rather than reconstructing the
  * topology in the test.
  *
- * With [keepBody], what [body] saved (an open route page, its scroll) is kept while the overlay is
- * up and given back when it closes: a stop opened from a route page returns there on Back (Codex on
- * #631). Otherwise it's dropped, so any other overlay closes onto the list afresh, as it always has.
- * A new [bodyGeneration] drops it whatever [keepBody] says: an arrived trip's Done lands on the list.
+ * What [body] saved (an open route page, a platform view, its scroll) is kept while an overlay is up
+ * and given back when it closes, so Back from any overlay returns to the page it was opened over, as it
+ * was left (SPEC *Back*; it used to close onto the list afresh for all but a stop opened from a route
+ * page). A new [bodyGeneration] drops it: an arrived trip's Done, or a shared place, lands on the list.
  */
 @Composable
 internal fun NearbyArea(
@@ -7022,8 +7080,11 @@ internal fun NearbyArea(
     aboveOverlay: @Composable () -> Unit,
     overlayContent: @Composable () -> Unit,
     body: @Composable () -> Unit,
-    keepBody: Boolean = false,
     bodyGeneration: Int = 0,
+    // The overlay page [overlayContent] draws, and every overlay page open now, shown or covered: each keeps
+    // its own pages while another covers it ([KeptPages], [overlayPage], [openOverlayPages]).
+    overlayPage: String = "",
+    openOverlayPages: Set<String> = setOf(overlayPage),
 ) {
     aboveOverlay()
     val saved = rememberSaveableStateHolder()
@@ -7031,14 +7092,16 @@ internal fun NearbyArea(
     val key = "$NEARBY_BODY-$bodyGeneration"
     LaunchedEffect(bodyGeneration) { if (bodyGeneration > 0) saved.removeState("$NEARBY_BODY-${bodyGeneration - 1}") }
     if (overlayOpen) {
-        overlayContent()
-        LaunchedEffect(keepBody, key) { if (!keepBody) saved.removeState(key) }
+        KeptPages(overlayPage, openOverlayPages) { overlayContent() }
     } else {
         saved.SaveableStateProvider(key) { body() }
     }
 }
 
 private const val NEARBY_BODY = "nearby-body"
+
+// The departures list's pages, kept under the trip from here ([NearbyArea]'s body).
+private const val NEAR_ME_LIST = "near-me-list"
 
 /**
  * The favorite ride a station page was opened from (its Whole station, SPEC *Journeys*), kept as saveable strings:
