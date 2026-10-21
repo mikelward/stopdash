@@ -309,7 +309,8 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    `RideLines.polesToRead` by `ActiveTripTracker.endOf`), so another line reaching another station of
    the hub is one the trip follows, as its cards offer it; once the rider is on board that line's
    train, the ride ends at the line's own end and the walks on go, the route as planned kept
-   (`OnTheWay.endedAtDestination`). The trip page's ride lines and verdicts follow
+   (`OnTheWay.endedAtDestination`); a rider seen there on it, no train followed, has arrived
+   (`OnTheWay.rideDone`). The trip page's ride lines and verdicts follow
    (2026-10-20): `TripViewModel.shownRoutes` works out a `RideEnds` for the screen's placed routes on
    its compute dispatcher (`LegEnd.of`, then `Hubs.idsOf` into the hub end's `LegEnd.ids`), keyed on
    each last ride's raw end, and the screen reads it as it builds the page; `RideLines.runTo` and

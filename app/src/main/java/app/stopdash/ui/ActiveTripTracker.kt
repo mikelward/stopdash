@@ -2050,7 +2050,7 @@ class ActiveTripTracker(
         // there say anything but "get off" to a rider already off (Codex, PR #383).
         if (along?.atEnd == true) {
             note(leg, along)
-            return SeenAlong(OnTheWay.rideDone(trip, now))
+            return SeenAlong(OnTheWay.rideDone(trip, now, on = leg, arriving = arrivingOf(trip)))
         }
         // Already on board by where they were seen further on, a fix no further than that keeps where they
         // are and matches nothing: a train placed from it could be one behind them (Codex, PR #449). Seen
@@ -2129,7 +2129,8 @@ class ActiveTripTracker(
                 } ?: continue
                 if (onAlong.atEnd) {
                     note(on, onAlong)
-                    return SeenAlong(OnTheWay.rideDone(trip, now))
+                    // Seen where another line gets them off, another station of the destination's hub too.
+                    return SeenAlong(OnTheWay.rideDone(trip, now, on = on, arriving = arrivingOf(trip)))
                 }
                 if (positional == null) positional = on to onAlong
                 // With one its route can't place (no destination, where the line parts beyond), kept as

@@ -1050,12 +1050,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               walks on going (`OnTheWay.endedAtDestination`). The stop list
                                               (`withRouteStops`) reads the ride as the trip now has it, which
                                               ends where the rider gets off, moved or on that line.
-                                        - [ ] A rider on board another line by where they were seen, with no
-                                              train followed, reaching its end at another station of the
-                                              destination's hub: the ride is done there, but the walk planned on
-                                              from the Planner's end stays until the rider is seen at the
-                                              destination or its time runs out (`OnTheWay.rideDone`), where a
-                                              followed train's end moves (`endedAtDestination`).
+                                        - [x] A rider seen where another line gets them off at another
+                                              station of the destination's hub, with no train followed, has
+                                              arrived there, the walk planned on from the Planner's end gone
+                                              (`OnTheWay.rideDone`'s `on`), as a followed train's moved end
+                                              has it (`endedAtDestination`).
                                         - [ ] Middle rides reading their station end (`LegEnd.of`'s
                                               `Level.STOP`): a substitute line calling at another record
                                               of the change's station; today they end at the Planner's
