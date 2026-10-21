@@ -19,6 +19,17 @@ enum class StepFree(
     FULLY("StepFreeToVehicle"),
     ;
 
+    /**
+     * The level a platform must meet for this ([StepFreeAccess]): [STATION] to the platform; [FULLY] onto the
+     * train as well, a staff ramp included. Null for [ANY], which needs none.
+     */
+    val needs: StepFreeLevel?
+        get() = when (this) {
+            ANY -> null
+            STATION -> StepFreeLevel.PLATFORM
+            FULLY -> StepFreeLevel.RAMP
+        }
+
     companion object {
         /** The stored default: no requirement, the Planner's own. */
         val DEFAULT = ANY

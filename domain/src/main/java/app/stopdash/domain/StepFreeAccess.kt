@@ -108,6 +108,10 @@ class StepFreeAccess(
     /** The lines TfL describes at [stopId]. */
     fun lines(stopId: String): Set<String> = stops[stopId]?.keys.orEmpty()
 
+    /** Each line TfL describes at [stopId] with the [level] all its platforms there meet; empty where it describes none. */
+    fun levels(stopId: String): Map<String, StepFreeLevel> =
+        stops[stopId].orEmpty().mapNotNull { (line, platforms) -> platforms.minOfOrNull { it.level }?.let { line to it } }.toMap()
+
     /** Whether any of [stopId]'s platforms is step-free only by a lift, so a lift outage can change it. */
     fun byLift(stopId: String): Boolean = stops[stopId].orEmpty().values.any { platforms -> platforms.any { it.byLift != null } }
 
@@ -139,5 +143,11 @@ class StepFreeAccess(
         /** The line id TfL's station data gives every National Rail service. */
         const val NATIONAL_RAIL = "national-rail"
         val EMPTY = StepFreeAccess(emptyMap())
+
+        // Modes TfL describes no step-free platforms for: their stops are at the street.
+        private val NO_PLATFORMS = setOf("bus", "replacement-bus", "coach", "river-bus", "river-tour")
+
+        /** Whether a stop of [mode] is at the street, with no platforms TfL describes access for (a bus stop, a pier). */
+        fun atStreet(mode: String): Boolean = mode.lowercase() in NO_PLATFORMS
     }
 }

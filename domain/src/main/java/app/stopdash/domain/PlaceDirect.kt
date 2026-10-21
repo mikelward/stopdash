@@ -82,20 +82,7 @@ object PlaceDirect {
      */
     data class Result(val rows: List<Row>, val pending: Boolean, val unresolved: Boolean, val misses: Set<RouteMiss> = emptySet())
 
-    /**
-     * The level [stepFree] needs at a platform (SPEC *Step-free*): Station to the platform; Fully onto
-     * the train as well, a staff ramp included. Null for Any, which needs none.
-     */
-    private fun needed(stepFree: StepFree): StepFreeLevel? = when (stepFree) {
-        StepFree.ANY -> null
-        StepFree.STATION -> StepFreeLevel.PLATFORM
-        StepFree.FULLY -> StepFreeLevel.RAMP
-    }
-
-    // Modes TfL describes no step-free platforms for: their stops are at the street.
-    private val NO_PLATFORMS = setOf("bus", "replacement-bus", "coach", "river-bus", "river-tour")
-
-    private fun atStreet(mode: String) = mode.lowercase() in NO_PLATFORMS
+    private fun atStreet(mode: String) = StepFreeAccess.atStreet(mode)
 
     /**
      * The lines in [stops] (their fresh arrivals) whose route reaches one of [ends] after boarding, each
@@ -144,7 +131,7 @@ object PlaceDirect {
         val sameAt: (DirectTrips.End, DirectTrips.End) -> Boolean = { a, b -> a.id == b.id || oneStop(a.id, b.id) }
         val misses = LinkedHashSet<RouteMiss>()
         val hubs = stops.associate { it.stopId to it.interchangeId }
-        val level = needed(stepFree)
+        val level = stepFree.needs
         var unknownAccess = false
         val kept: List<StopArrivals>
         var pending: Boolean

@@ -50,6 +50,29 @@ class LegEndTest {
     }
 
     @Test
+    fun `a step-free end's calls meet its level by the train's line, a National Rail train's by its station's`() {
+        // Made-up access at one record of STA1: its Southern platforms not step-free, its National Rail ones to the platform.
+        val levels = mapOf("910GA1" to mapOf("southern" to StepFreeLevel.NONE, StepFreeAccess.NATIONAL_RAIL to StepFreeLevel.PLATFORM))
+        val end = LegEnd(StepFree.STATION, LegEnd.Level.STOP, setOf("STA1"), ids = setOf("910GA1", "940GA1"), levels = levels)
+        // An operator TfL describes there is read by its own platforms; one it doesn't, by the station's National Rail ones.
+        assertFalse(end.meets("910GA1", "southern", "national-rail"))
+        assertTrue(end.meets("910GA1", "thameslink", "national-rail"))
+        // A tube train isn't National Rail, and isn't described there: unknown, so no; nor anywhere the table is silent.
+        assertFalse(end.meets("910GA1", "victoria", "tube"))
+        assertFalse(end.meets("940GA1", "victoria", "tube"))
+        // A bus stop is at the street; and with no level, every call meets it.
+        assertTrue(end.meets("490GA1", "7", "bus"))
+        assertTrue(end.copy(stepFree = StepFree.ANY).meets("940GA1", "victoria", "tube"))
+        // So a Thameslink train, its own line, gets off at the record that meets the level and the Planner's own call.
+        val leg = ride("940GA1", mode = "national-rail").copy(lineId = "thameslink")
+        assertTrue(end.checksAccess)
+        assertEquals(setOf("910GA1", "940GA1"), end.offIds(leg))
+        assertEquals(setOf("910GA1"), end.offIds(leg, "southern2", "national-rail"))
+        // Fully step-free, the platform isn't enough: only the Planner's own call, for its own line.
+        assertEquals(setOf("940GA1"), end.copy(stepFree = StepFree.FULLY).offIds(leg))
+    }
+
+    @Test
     fun `a pole end takes only its own poles`() {
         val area = Resolved(tflId = "490GAREA", station = "S1", hub = "H", stops = setOf("S1", "S2"), poles = setOf("490A"))
         val end = LegEnd(StepFree.ANY, LegEnd.Level.POLE, area.poles)

@@ -66,7 +66,7 @@ class RideEndsTest {
     fun `with no model, on a step-free trip, or for a route not worked out, a ride gets off where the Planner does`() {
         val planned = LegEnd.planned(viaVale, StepFree.ANY)
         assertEquals(planned, RideEnds.of(listOf(viaVale), StepFree.ANY, null).ends(viaVale))
-        // A step-free trip: a station's and a hub's other calls aren't checked against today's lifts yet.
+        // A step-free trip with no step-free table: a station's and a hub's other calls can't be checked.
         val stepFree = RideEnds.of(listOf(viaVale), StepFree.STATION, toHill)
         assertFalse(stepFree.arrivesByHub)
         assertEquals(LegEnd.planned(viaVale, StepFree.STATION), stepFree.ends(viaVale))
@@ -150,6 +150,57 @@ class RideEndsTest {
         assertTrue("940GZZLUHLE" in end.offIds(ride))
     }
 
+    // TfL's step-free table for the Hill model (made up): line l's platforms at Hill East step-free to the platform,
+    // by a lift; at Hill, not.
+    private val hillAccess = StepFreeAccess(
+        mapOf(
+            "940GZZLUHLE" to mapOf("l" to listOf(StepFreePlatform(StepFreeLevel.PLATFORM, byLift = LiftStop("HLE", 1)))),
+            "940GZZLUHIL" to mapOf("l" to listOf(StepFreePlatform(StepFreeLevel.NONE))),
+        ),
+        mapOf("HLE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+    )
+    private fun toHillBy(access: StepFreeAccess) = RideEnds.Destination(hubs, setOf("HUBEXA"), access)
+
+    @Test
+    fun `a step-free trip arrives by hub where its train's line meets the trip's level today`() {
+        val route = loop(walk())
+        val ends = RideEnds.of(listOf(route), StepFree.STATION, toHillBy(hillAccess))
+        assertTrue(ends.arrivesByHub)
+        val (ride, end) = ends.ends(route).single()
+        assertEquals(LegEnd.Level.HUB, end.level)
+        // Hill East's platforms meet it; the Planner's own call stays, as it checked it, though the table says no.
+        assertEquals(setOf("940GZZLUHLE", "940GZZLUHIL"), end.offIds(ride))
+        // Another line isn't described there, nor checked by the Planner: nowhere. A bus gets off at the street.
+        assertEquals(emptySet<String>(), end.offIds(ride, "m", "tube"))
+        assertTrue("490000001A" in end.offIds(ride, "b", "bus"))
+        // Drawn cut at Hill East, its first call in the hub that meets it.
+        val cut = RideEnds.cut(listOf(route), StepFree.STATION, toHillBy(hillAccess)).single()
+        assertEquals("940GZZLUHLE", cut.legs.single().toId)
+        assertTrue(cut.drawnFrom === route)
+        // Fully step-free, Hill East's platform isn't enough: drawn whole to the Planner's end.
+        assertEquals(setOf("940GZZLUHIL"), RideEnds.of(listOf(route), StepFree.FULLY, toHillBy(hillAccess)).ends(route).single().second.offIds(ride))
+        assertTrue(RideEnds.cut(listOf(route), StepFree.FULLY, toHillBy(hillAccess)).single() === route)
+        // With Hill East's lift out today, nor is it at the platform.
+        val liftOut = hillAccess.withLiftsOut(setOf("LIFT1"))
+        assertEquals(setOf("940GZZLUHIL"), RideEnds.of(listOf(route), StepFree.STATION, toHillBy(liftOut)).ends(route).single().second.offIds(ride))
+        assertTrue(RideEnds.cut(listOf(route), StepFree.STATION, toHillBy(liftOut)).single() === route)
+    }
+
+    @Test
+    fun `a step-free trip's middle ride gets off at another record of its station only where it meets the level`() {
+        // Changing at Hill's rail station, whose low level is step-free for line l (made up) and whose main record isn't described.
+        val toVale = RideEnds.Destination(
+            hubs, setOf("910GVALE"),
+            StepFreeAccess(mapOf("910GHILLLL" to mapOf(StepFreeAccess.NATIONAL_RAIL to listOf(StepFreePlatform(StepFreeLevel.LEVEL))))),
+        )
+        val viaHill = TripRoute(listOf(ride("910GFROM", "910GHILL"), ride("910GHILL", "910GVALE")))
+        val (middle, _) = RideEnds.of(listOf(viaHill), StepFree.FULLY, toVale).ends(viaHill)
+        // A National Rail train is read by the station's National Rail platforms; the Planner's own call stays.
+        assertEquals(setOf("910GHILL", "910GHILLLL"), middle.second.offIds(middle.first))
+        // A tube line isn't described there: only the Planner's call, and that only for the Planner's own line.
+        assertEquals(emptySet<String>(), middle.second.offIds(middle.first, "t", "tube"))
+    }
+
     @Test
     fun `a bus cut at a pole keeps its fare`() {
         val bus = TripRoute(
@@ -169,7 +220,7 @@ class RideEndsTest {
     @Test
     fun `a ride stays as planned where it has no first call in the hubs to move to`() {
         val route = loop()
-        // A step-free trip, no model, or no hub to arrive at.
+        // A step-free trip with no step-free table to check by, no model, or no hub to arrive at.
         // The same object, not a copy, as it isn't cut.
         assertTrue(RideEnds.cut(listOf(route), StepFree.STATION, toHill).single() === route)
         assertEquals(listOf(route), RideEnds.cut(listOf(route), StepFree.STATION, toHill))

@@ -22,8 +22,10 @@ import java.time.Duration
  * The Planner's own last ride arriving by hub is shown cut at its first call in the hubs ([cut]): a copy for the
  * page to draw, worked out from the route as planned, which is kept, started and asked for as the Planner gave it.
  *
- * Not on a step-free trip: none of a station's or hub's other calls is checked against today's lifts yet, so a
- * step-free ride still gets off where the Planner, who checked, does (TODO.md, *Decisions needing review*).
+ * On a step-free trip, a ride gets off at another call only where TfL's step-free table, with today's lifts out,
+ * says that train's line meets the trip's level there ([LegEnd.meets], through [Destination.access]), and at the
+ * Planner's own call for its own line, which the Planner checked. With no table to check by, a step-free trip's
+ * rides get off where the Planner does.
  */
 class RideEnds private constructor(
     /** The trip's step-free level every end is for. */
@@ -57,8 +59,11 @@ class RideEnds private constructor(
     /**
      * The station model and the destination's matchable hubs ([Hubs.destinationHubs]) a trip's ends are resolved
      * through: none for a trip to a place, which has no hub, whose rides still get off at their stations ([of]).
+     * [access] is TfL's step-free table with the lifts out of service now ([StepFreeAccess.withLiftsOut]), which a
+     * step-free trip's other calls are checked against; without it a step-free trip's rides get off where the
+     * Planner gets them off.
      */
-    class Destination(val model: Hubs, val hubs: Set<String>)
+    class Destination(val model: Hubs, val hubs: Set<String>, val access: StepFreeAccess? = null)
 
     companion object {
         /** Every ride getting off where the Planner gets it off at [stepFree] ([LegEnd.planned]). */
@@ -67,17 +72,25 @@ class RideEnds private constructor(
         /**
          * Where [routes]' rides get off at [stepFree], arriving at [destination]'s hubs where the model
          * places a route's last ride's Planner's call in one of them ([LegEnd.of]), and every other ride at
-         * the station or bus stop the model places its Planner's call at; [planned] with no destination or on
-         * a step-free trip. Work over the routes and their ends' ids: off the main thread.
+         * the station or bus stop the model places its Planner's call at, a step-free trip's by how step-free
+         * each line is at each of their ids today ([LegEnd.levels]); [planned] with no destination, or on a
+         * step-free trip with no step-free table ([Destination.access]). Work over the routes and their ends'
+         * ids: off the main thread.
          */
         @WorkerThread
         fun of(routes: Collection<TripRoute>, stepFree: StepFree, destination: Destination?): RideEnds {
-            if (destination == null || stepFree != StepFree.ANY) return planned(stepFree)
+            if (destination == null || !checks(stepFree, destination)) return planned(stepFree)
             val model = destination.model
+            // An end with every TfL id it gets off at, and on a step-free trip how step-free each is today.
+            fun withIds(end: LegEnd): LegEnd {
+                val ids = model.idsOf(end).keys
+                val access = destination.access?.takeIf { stepFree != StepFree.ANY } ?: return end.copy(ids = ids)
+                return end.copy(ids = ids, levels = ids.associateWith(access::levels).filterValues { it.isNotEmpty() })
+            }
             val arriving = HashSet<List<Any?>>()
             val stops = HashMap<List<Any?>, LegEnd>()
             // Each end's ids once: many routes change at one station.
-            val withIds = HashMap<LegEnd, LegEnd>()
+            val worked = HashMap<LegEnd, LegEnd>()
             var hub: LegEnd? = null
             for (route in routes) {
                 val ends = LegEnd.of(route, stepFree, destination.hubs, model)
@@ -86,10 +99,10 @@ class RideEnds private constructor(
                     when {
                         end.level == LegEnd.Level.HUB && index == ends.lastIndex -> {
                             arriving += keyOf(ride)
-                            if (hub == null) hub = end.copy(ids = model.idsOf(end).keys)
+                            if (hub == null) hub = withIds(end)
                         }
                         end.level == LegEnd.Level.STOP ->
-                            stops[keyOf(ride)] = withIds.getOrPut(end) { end.copy(ids = model.idsOf(end).keys) }
+                            stops[keyOf(ride)] = worked.getOrPut(end) { withIds(end) }
                     }
                 }
             }
@@ -105,9 +118,11 @@ class RideEnds private constructor(
          * started from it, the plan kept for reuse and On the way (which moves the end itself,
          * [OnTheWay.arrivingIds]) all read the Planner's; the copy names it ([TripRoute.drawnFrom]), so it is that
          * route wherever routes are told apart, and two routes cut alike stay two, each its own. Every other route is
-         * the same object: no destination, no hub to arrive at, a step-free trip (as [of]), a first call in the hubs
-         * at the Planner's own station or stop, or one naming no one TfL id to get off at (a bus stop area, its two
-         * poles) or no name, where the ride doesn't move.
+         * the same object: no destination, no hub to arrive at, a step-free trip with no step-free table (as [of]), a
+         * first call in the hubs at the Planner's own station or stop, or one naming no one TfL id to get off at (a bus
+         * stop area, its two poles) or no name, where the ride doesn't move. On a step-free trip the first call counts
+         * only where the ride's line meets the trip's level there today ([LegEnd.meets]): the train is drawn to the
+         * Planner's end past a station the rider can't leave without a step.
          *
          * The cut ride keeps the Planner's arrival at the call it no longer reaches, the latest it gets there,
          * since the Planner timed only the whole ride (TODO.md, *Decisions needing review*); a fare is kept only
@@ -116,19 +131,29 @@ class RideEnds private constructor(
          */
         @WorkerThread
         fun cut(routes: List<TripRoute>, stepFree: StepFree, destination: Destination?): List<TripRoute> {
-            if (destination == null || destination.hubs.isEmpty() || stepFree != StepFree.ANY) return routes
+            if (destination == null || destination.hubs.isEmpty() || !checks(stepFree, destination)) return routes
             val model = destination.model
-            return routes.map { route -> cutAt(route, stepFree, destination.hubs, model) ?: route }
+            val access = destination.access?.takeIf { stepFree != StepFree.ANY }
+            return routes.map { route -> cutAt(route, stepFree, destination.hubs, model, access) ?: route }
         }
 
-        // [route] cut at its last ride's first call in [destinationHubs] ([cut]), or null where it isn't.
+        // Whether a trip at [stepFree] can have its rides' other calls checked: any with no level, a step-free one
+        // only against a step-free table.
+        private fun checks(stepFree: StepFree, destination: Destination): Boolean =
+            stepFree == StepFree.ANY || destination.access != null
+
+        // [route] cut at its last ride's first call in [destinationHubs] ([cut]), or null where it isn't: on a step-free
+        // trip ([access]) its first there that meets the trip's level, or its own station or stop.
         @WorkerThread
-        private fun cutAt(route: TripRoute, stepFree: StepFree, destinationHubs: Set<String>, model: Hubs): TripRoute? {
+        private fun cutAt(route: TripRoute, stepFree: StepFree, destinationHubs: Set<String>, model: Hubs, access: StepFreeAccess?): TripRoute? {
             val (ride, end) = LegEnd.of(route, stepFree, destinationHubs, model).lastOrNull() ?: return null
             if (end.level != LegEnd.Level.HUB) return null
             // Where the Planner gets it off, as [LegEnd.of] resolved it: by its pole and point, never its raw area.
             val own = LegEnd.callOf(ride, model).station ?: return null
-            val first = ride.path.indexOfFirst { end.endsAt(model.resolve(it)) }
+            val first = ride.path.indexOfFirst { id ->
+                val call = model.resolve(id)
+                end.endsAt(call) && (access == null || call.station == own || LegEnd.meets(stepFree, access.levels(id), ride.lineId, ride.mode))
+            }
             if (first < 0) return null
             val call = model.resolve(ride.path[first])
             // Its own station or stop (another of its records or platforms, the other side of its road): already there.

@@ -162,11 +162,21 @@ object DirectTrips {
      * when they don't settle it. A ride is judged by where it gets off ([LegEnd]), so a trip's verdicts
      * are keyed on the pair, never on the leg alone (dev-docs/station-resolution.md, phase 2): a last ride
      * arriving by hub ([LegEnd.offIds]) is reached by a train calling anywhere in the destination's hubs, and
-     * every other ride by one calling at any record of its station where its end holds them.
+     * every other ride by one calling at any record of its station where its end holds them. On a step-free
+     * trip ([LegEnd.checksAccess]) a calling point settles a "yes" only at the ride's own call, which the
+     * Planner checked: it names a station, never which of its ids, and TfL gives each id its own access.
      */
     @WorkerThread
-    fun settledByStops(departure: Departure, ride: Pair<TripLeg, LegEnd>): Boolean? =
-        settledByStops(departure, endIds(ride))
+    fun settledByStops(departure: Departure, ride: Pair<TripLeg, LegEnd>): Boolean? {
+        val (leg, end) = ride
+        val ids = endIds(ride, departure)
+        if (!end.checksAccess) return settledByStops(departure, ids)
+        val own = if (departure.lineId == leg.lineId) settledByStops(departure, setOf(leg.toId)) else false
+        if (own == true) return true
+        val others = if (departure.lineId == leg.lineId) ids - leg.toId else ids
+        val elsewhere = if (others.isEmpty()) false else settledByStops(departure, others, byStation = false)
+        return if (own == false && elsewhere == false) false else null
+    }
 
     /**
      * [settledByStops], but where [byStation] is false (the rider's own stop matters, as for step-free
@@ -236,16 +246,31 @@ object DirectTrips {
     /**
      * Whether [departure], boarding [ride] at its stop, calls where the ride gets off ([judge]), on its
      * line's [route] as seen for the ride ([routeAt]; null when the route failed). By the pair, as
-     * [settledByStops] is.
+     * [settledByStops] is: on a step-free trip ([LegEnd.checksAccess]) it reaches by calling at the ride's own
+     * call, as the Planner checked it, or at another call its line meets the trip's level at, by that call's
+     * own id.
      */
     @WorkerThread
-    fun judge(departure: Departure, ride: Pair<TripLeg, LegEnd>, route: LineSequence?): Verdict =
-        judge(departure, ride.first.fromId, route, endIds(ride))
+    fun judge(departure: Departure, ride: Pair<TripLeg, LegEnd>, route: LineSequence?): Verdict {
+        val (leg, end) = ride
+        val ids = endIds(ride, departure)
+        if (!end.checksAccess) return judge(departure, leg.fromId, route, ids)
+        // A step-free trip: its own calling points say "yes" only at the ride's own call ([settledByStops]). Then
+        // every call it may get off at judged together, so a train whose ways part, one to the ride's own call and
+        // one to another the line meets the level at, still reaches: the ride's own call by its station, as the
+        // Planner checked it, and the rest only by their own ids, each of which TfL gives its own access.
+        settledByStops(departure, ride)?.let { return if (it) Verdict.Reaches else Verdict.Misses }
+        val own = if (departure.lineId == leg.lineId) setOf(leg.toId) else emptySet()
+        val ends = ids + (route?.stationIds(own) ?: own)
+        return judge(departure, leg.fromId, route, ends, byStation = false)
+    }
 
-    // Where [ride] gets off, as ids a departure's calls and route are matched against ([LegEnd.offIds]): a
-    // last ride arriving by hub anywhere in the destination's hubs, every other ride at its own call, or any
-    // record or pole of its station or stop where its end holds them.
-    private fun endIds(ride: Pair<TripLeg, LegEnd>): Set<String> = ride.second.offIds(ride.first)
+    // Where [ride] gets off by [departure]'s line, as ids its calls and route are matched against ([LegEnd.offIds]):
+    // a last ride arriving by hub anywhere in the destination's hubs, every other ride at its own call, or any
+    // record or pole of its station or stop where its end holds them; on a step-free trip, those that line meets
+    // the trip's level at.
+    private fun endIds(ride: Pair<TripLeg, LegEnd>, departure: Departure): Set<String> =
+        ride.second.offIds(ride.first, departure.lineId, departure.mode)
 
     /**
      * Whether [departure], boarding at [stopId], calls at one of [destinationIds] on its line's [route]
