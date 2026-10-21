@@ -22,7 +22,17 @@ class LineMap internal constructor(
     // Each stop of the way back drawn as an outbound stop (a bus's pole across the road), by that outbound
     // stop's id: what a page that names stops by its route's own ids maps a drawn row's back to.
     val drawnAs: Map<String, String> = emptyMap(),
+    // A route page's stretch behind where its train is boarded ([Behind]), folded whole at first; null elsewhere.
+    val behind: Behind? = null,
 ) {
+    /**
+     * The rows of a route page's map ([of]'s `ridesOpen`) on the far side of where its train is boarded from
+     * where it goes, [from] until [until], and the line's ends there its trains come from ([origins]): what
+     * [folded] folds into one line at first, named by those ends (maintainer, 2026-10-21: "fully collapse and
+     * show High Barnet/Mill Hill East (both origins) and tapping could expand one level").
+     */
+    class Behind(val from: Int, val until: Int, val origins: List<String>, val key: String, internal val rowKeys: Set<String>)
+
     /** How bad an alert placed on a station is: no service there, or its name in an alert's words. */
     enum class Level { WARNING, CLOSURE }
 
@@ -277,25 +287,57 @@ class LineMap internal constructor(
      * and its plain runs fold. A fold opened shows every station it holds. An alert off the rider's own stops and
      * stretches shows the first and last stations it's placed on (maintainer, 2026-10-18), the stations
      * inside it folding between them, saying how many and how bad ([Item.Fold.level],
-     * [Item.Fold.unnamed]). The rider's own stops never fold (SPEC *Line page → Map*).
+     * [Item.Fold.unnamed]). The rider's own stops never fold (SPEC *Line page → Map*). A route page's stretch
+     * behind its train ([behind]) folds whole at first, named by where its trains come from, and folds as the
+     * rest of the line does once opened, or a fold in it is.
      */
     @WorkerThread
     fun folded(opened: Set<String>, all: Boolean = false): List<Item> {
         if (all) return rows.map { Item.Station(it) }
+        val items = ArrayList<Item>()
+        // A route page's stretch behind its train, one line at first; opened, or a fold in it opened (one at a
+        // time on a route page), to its ends and junctions with their runs folded, an alert on the way ahead or
+        // not: else the tap would only swap one line for another (Codex on #1062). Never over a stop of the
+        // rider's own, nor over an alert, whose first and last stations show as anywhere else rather than the
+        // whole stretch reading as shut.
+        val behind = behind?.takeIf { b -> (b.from until b.until).none { rows[it].kept || rows[it].alerted } }
+        if (behind == null) {
+            foldInto(0, rows.size, opened, items)
+            return items
+        }
+        val open = behind.key in opened || opened.any { it.substringAfter(':') in behind.rowKeys }
+        fun behindItems() {
+            if (open) {
+                foldInto(behind.from, behind.until, opened, items, byAlerts = false)
+            } else {
+                items += sectionFold(behind.key, behind.from, behind.until).let { if (behind.origins.isEmpty()) it else it.copy(ends = behind.origins) }
+            }
+        }
+        if (behind.from == 0) {
+            behindItems()
+            foldInto(behind.until, rows.size, opened, items)
+        } else {
+            foldInto(0, behind.from, opened, items)
+            behindItems()
+        }
+        return items
+    }
+
+    // [folded]'s rows [from] until [until], folded the way an alert on the rider has the map fold ([byAlerts]).
+    private fun foldInto(from: Int, until: Int, opened: Set<String>, items: MutableList<Item>, byAlerts: Boolean = alerted) {
         // Its own row from the first: the rider's, and with nothing of theirs alerted, the line's ends and
         // junctions, an alert on one or not, so where the line goes and parts reads at a glance
         // (maintainer, 2026-10-06).
-        fun shown(row: Row) = row.kept || !alerted && (row.end || row.junction)
-        val items = ArrayList<Item>()
-        var i = 0
-        while (i < rows.size) {
+        fun shown(row: Row) = row.kept || !byAlerts && (row.end || row.junction)
+        var i = from
+        while (i < until) {
             if (shown(rows[i])) {
                 items += Item.Station(rows[i])
                 i++
                 continue
             }
             var end = i
-            while (end < rows.size && !shown(rows[end])) end++
+            while (end < until && !shown(rows[end])) end++
             val key = "section:${rows[i].key}"
             // A stretch holding none of the line's ends leads nowhere to name it by, and may run down
             // two trunks: shown by its runs, each on one track, rather than a "from A to B" that
@@ -304,12 +346,11 @@ class LineMap internal constructor(
             when {
                 // Opened in one tap, every station it holds, never to its ends with the rest folded again.
                 key in opened -> (i until end).mapTo(items) { Item.Station(rows[it]) }
-                alerted && leadsSomewhere -> sections(i, end, opened, items)
+                byAlerts && leadsSomewhere -> sections(i, end, opened, items)
                 else -> runs(i, end, opened, items)
             }
             i = end
         }
-        return items
     }
 
     /** Whether [folded] at first, nothing opened, folds anything: else the page offers nothing to unfold. */
@@ -629,25 +670,50 @@ class LineMap internal constructor(
                 if (placed || lost) riding += row.key
                 if (lost) unplaced += row.key
             }
+            val drawnRows = rows.map { row ->
+                val stop = row.stopId
+                row.copy(
+                    name = sequence.stopNames[stop]?.takeIf { it.isNotBlank() } ?: stop,
+                    marked = stop in marked,
+                    named = stop in marked && stop in mentioned,
+                    starred = nodePlaces.getValue(row.key).any { it in starredPlaces },
+                    nearby = nodePlaces.getValue(row.key).any { it in nearbyPlaces },
+                    riding = row.key in riding,
+                    ridingUnplaced = row.key in unplaced,
+                    ridden = row.key in ridden,
+                    onPath = ridesOpen && row.key in ridden,
+                )
+            }
             return LineMap(
-                rows.map { row ->
-                    val stop = row.stopId
-                    row.copy(
-                        name = sequence.stopNames[stop]?.takeIf { it.isNotBlank() } ?: stop,
-                        marked = stop in marked,
-                        named = stop in marked && stop in mentioned,
-                        starred = nodePlaces.getValue(row.key).any { it in starredPlaces },
-                        nearby = nodePlaces.getValue(row.key).any { it in nearbyPlaces },
-                        riding = row.key in riding,
-                        ridingUnplaced = row.key in unplaced,
-                        ridden = row.key in ridden,
-                        onPath = ridesOpen && row.key in ridden,
-                    )
-                },
+                drawnRows,
                 columns,
                 closurePlaced = byWords.none { it.isEmpty() },
                 drawnAs = way.same,
+                behind = if (ridesOpen) behindOf(drawnRows, graph, way.travel) else null,
             )
+        }
+
+        // A route page's stretch behind where its train is boarded ([Behind]): the rows above the boarding row where
+        // the train runs down the map, below it where it runs up, and the line's ends there a way runs from to the
+        // boarding row, the way the line runs each track ([travel]; null, both ways): a bus's stand it only arrives
+        // at is nowhere its buses come from (Codex on #1062). None for a train going nowhere from here, or whose
+        // path runs both ways from it, or with one station behind it: a fold of it saves no room, as with a run.
+        private fun behindOf(rows: List<Row>, graph: Graph, travel: Set<String>?): Behind? {
+            val board = rows.indexOfFirst { it.riding && it.onPath }.takeIf { it >= 0 } ?: return null
+            val ahead = rows.indices.filter { it != board && rows[it].onPath }
+            if (ahead.isEmpty()) return null
+            val down = ahead.all { it > board }
+            if (!down && ahead.any { it > board }) return null
+            val (from, until) = if (down) 0 to board else board + 1 to rows.size
+            if (until - from < 2) return null
+            val boardKey = rows[board].key
+            fun runs(a: String, b: String) = travel == null || "${base(a)}>${base(b)}" in travel
+            val origins = (from until until).filter { rows[it].end }.filter { k ->
+                val end = setOf(rows[k].key)
+                if (down) graph.between(end, setOf(boardKey)) { a, b -> runs(a, b) } != null
+                else graph.between(setOf(boardKey), end) { a, b -> runs(b, a) } != null
+            }.map { rows[it].name }.distinct()
+            return Behind(from, until, origins, "behind:$boardKey", (from until until).mapTo(HashSet()) { rows[it].key })
         }
 
         /**
@@ -905,9 +971,10 @@ class LineMap internal constructor(
 
             /**
              * The nodes on a shortest way down the map from one of [from] to one of [to], both included,
-             * listed from the [to] end back up; null where none runs.
+             * listed from the [to] end back up, by the tracks [takes] lets it (each one's upper and lower
+             * node); null where none runs.
              */
-            fun between(from: Set<String>, to: Set<String>): List<String>? {
+            fun between(from: Set<String>, to: Set<String>, takes: (String, String) -> Boolean = { _, _ -> true }): List<String>? {
                 val seen = HashSet<String>()
                 val back = HashMap<String, String>()
                 val queue = ArrayDeque<String>()
@@ -924,7 +991,7 @@ class LineMap internal constructor(
                         return way
                     }
                     for (n in nextOf(node)) {
-                        if (seen.add(n)) {
+                        if (takes(node, n) && seen.add(n)) {
                             back[n] = node
                             queue += n
                         }
