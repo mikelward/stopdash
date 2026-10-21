@@ -2107,7 +2107,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               log that found the feed a minute behind a moving train. The board's rows are built once,
               with the grace, at one instant, and the list, journey cards, "?" rows, platform views and
               a row's route page all read them (maintainer, 2026-10-20). Still open: resize it from more
-              rider-logged rides (the real arrival, not the feed's); whether the widget and watch
+              rider-logged rides (the real arrival, not the feed's; one ride so far, in
+              `dev-docs/arrivals-measurements.md` *Field reports*: the latest train came 29 s after
+              its last time, at the grace's edge); whether the widget and watch
               should keep it too once they gray times; test the duplicate signals listed there; and
               measure platforms two lines share, which are spaced per line for now.
         - [ ] **Confirm on a device: a journey card's route page leaves out the just-due train the list's
@@ -2125,6 +2127,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               the next refresh. Before boarding, take the boarding-stop board's spaced time for the
               followed train (the board is read every step) and decide whether its later calls move by
               the same amount; the candidate picks (`pick`, `boardedAlong`) read raw calls too.
+              Measured (`dev-docs/arrivals-measurements.md` *The second train of a close pair*, half
+              an hour of one peak, from each stop's arrivals rather than the train's own, which a spot
+              check found carry the same predictions within 35 s): they should. TfL's later calls for
+              a train spaced at the boarding stop run early by about as much as the board moved it,
+              and moving them by the same amount takes out most of that for the next 10 minutes.
+              Both trains of a close pair still came about 80 s later than a train alone at stops
+              10–20 minutes on, so whether a trip allows extra for a bunched train is open.
         - [x] **Gray the earlier of two trains a minute or less apart** (maintainer, 2026-10-13): one of
               the pair may not come and nothing says which, so both are grayed and read as maybe not
               running (`DoubtfulTrains.PAIR`), where the first is due within five minutes (as far as the
@@ -2160,7 +2169,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 on its own), which covered every real pair recorded. Before either, record a
                 confirmed copy (`arrivals_recorder.py record --vehicles`) to see what tells it
                 apart: its own calls ahead, when its prediction was made, whether it moves. Needs
-                the maintainer's call.
+                the maintainer's call. A rider-logged pair to one destination from one branch was
+                two real trains too (*Field reports*, the ride): only the second test keeps it.
         - [ ] **Tell a train back from the end of the line from one that moved platform** (2026-10-16
               recording): the recorder voids a train listed at two platforms of one line within
               `REAPPEARS_AFTER` (10 min). At Stockwell and Waterloo that was mostly the same train

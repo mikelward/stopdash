@@ -31,7 +31,8 @@ method:
 - **Mean signed and absolute error** of each prediction against the arrival. A negative signed
   error means trains came later than shown.
 
-Recordings stay outside the repository (AGENTS.md *Privacy*). All of these stops are hubs.
+Recordings stay outside the repository (AGENTS.md *Privacy*). All of these stops are hubs, except
+on the route a rider took, whose stations and date are left out.
 
 ## Recordings
 
@@ -44,6 +45,7 @@ Recordings stay outside the repository (AGENTS.md *Privacy*). All of these stops
 | Evening | Tue 19:01 – 20:31 | 15 below |
 | End of morning peak | Wed 2026-10-14, 09:14 – 10:14 | Camden Town, Euston, King's Cross, Tottenham Court Road |
 | End of morning peak | Fri 2026-10-16, 09:17 – 11:14 | 15 below |
+| End of morning peak | Half an hour, date left out | 14 stations along one Northern line route, not all hubs (the ride in *Field reports*) |
 
 The 15: King's Cross, Bond Street, Liverpool Street, Stratford, Waterloo, Camden Town,
 Stockwell, Baker Street, Farringdon, Paddington (both tube stations), and the Elizabeth line at
@@ -295,6 +297,53 @@ time would already have taken it off.
   reading "0", grayed, and read as "due" (`Countdown.onBoard`). To be resized from rider-logged
   arrivals rather than the feed's (`TODO.md`).
 
+## The second train of a close pair
+
+From the ride's recording (*Recordings*), each stop's newest answer kept as the app keeps it. Each
+time a tube train was shown 1–5 minutes out, it counts as the **second** of a close pair if the
+train ahead at its platform was shown 60 s or less before it (`DoubtfulTrains.PAIR`), the
+**first** if the train behind was, and **alone** if neither was within 2 minutes. "Came" is TfL's
+own record, as above, which ran 10–25 s behind the doors the rider saw. "Spaced" applies the
+app's gap per line (*Conclusion* above). Positive means the train came after the time; "late" is
+more than a minute after it.
+
+**At the platform:**
+
+| | Times shown | Trains | Against TfL's time | Against the spaced time |
+|---|---|---|---|---|
+| Second of a pair | 925 | 160 | +84 s, 62% late | −6 s, 20% late |
+| First of a pair | 762 | 162 | +16 s, 24% late | +5 s, 20% late |
+| Alone | 2,134 | 320 | +10 s, 13% late | +8 s, 12% late |
+
+**Further down the line:** at the same moment, TfL's time for the same train at a later stop on
+the recording (that stop's poll within 20 s), against when it came there. That's what a trip
+following the train reads (`vehicleCalls`), since TfL's calls ahead aren't spaced, though a trip
+asks the train's own endpoint (`/Vehicle/{id}/Arrivals`) where this reads each stop's
+(`/StopPoint/{id}/Arrivals`). Both carry TfL's same predictions, cached apart: in a spot check of
+448 calls at five hubs, 365 gave the same time, and the rest, where one answer was older than the
+other, were within 35 s. That's small beside the differences below, but a `--vehicles` recording
+would settle it. "Shifted" moves each by however far the app spaced the train at the first stop.
+Each cell covers 110–600 trains at a stop.
+
+| Due at the later stop in | Second, TfL's time | Second, shifted | First, TfL's time | Alone, TfL's time |
+|---|---|---|---|---|
+| 0–5 min | +103 s, 71% late | +10 s, 29% late | +57 s, 50% late | +22 s, 23% late |
+| 5–10 min | +100 s, 64% late | +22 s, 38% late | +24 s, 36% late | +12 s, 24% late |
+| 10–20 min | +176 s, 64% late | +84 s, 56% late | +82 s, 56% late | −4 s, 27% late |
+
+- **The second train's early time is TfL squeezing it, and spacing takes that out.** At the
+  platform TfL's time for it is a median 84 s early; spaced, it's as good as a train alone.
+- **A trip following it should move its later calls by the same amount.** TfL's times for it at
+  the stops after are early by about as much, and shifting them by the first stop's spacing takes
+  out most of it for the next 10 minutes.
+- **Both trains of a pair keep losing time further on.** At stops 10–20 minutes ahead, the shifted
+  second train and the first both came a median 80 s or so late, where a train alone came on
+  time: bunched trains get held behind one another, as on the ride. Too few were followed past 20
+  minutes to say more.
+
+Numbers only: half an hour at the end of one morning peak, two-thirds of it Northern line trains
+and most of the rest Victoria, judged by TfL's own record; not yet run on the earlier recordings.
+
 ## Field reports
 
 Reports from a rider at a platform, against the board the app showed. The station isn't named
@@ -356,9 +405,41 @@ are kept.
 - **Three regulation holds on the Northern line and a long dwell on the Piccadilly** slowed the
   trains behind them; the feed's times slid later with them.
 
+**A ride on the Northern line, the station display and each stop's doors noted.** A rider at a
+Northern line platform reported each train as it came and what the station display and the app
+showed, then rode one train, reporting when its doors opened at each stop. The stations along the
+ride were recorded every 20 s with `arrivals_recorder.py`, each stop's newest answer kept as the
+app keeps it. Stations, the date and the time of day are left out (AGENTS.md *Privacy*); only
+intervals are kept. The rider's times are to within about 15 s, the last two to the minute.
+
+- **The display was right, and TfL squeezed the trains behind.** Twice TfL listed the next two
+  trains 30 s apart while the second was still about a station behind the first. The first
+  time, the app showed the second train at 3 min where the display said 5; it came 2.5 minutes
+  after the train ahead, as the display had it. Each time TfL's time for the second train slid
+  later as it neared, and both pairs were two real trains. The second pair had one destination
+  and came from one branch, 2 min 10 s apart doors to doors: the app grayed both as a doubtful
+  pair (`DoubtfulTrains`), and spacing (`SpacedTrains`) set the second 100 s behind, half a
+  minute short. Passing a pair from different branches or destinations (the open item in
+  `TODO.md`) wouldn't have kept that pair; passing one whose locations move on their own would
+  have kept both.
+- **The second train kept losing time.** The rider rode the second train of that pair. By TfL's
+  placements it closed to about 80 s behind the first a few stations on, then stood at a
+  platform for 1.5 minutes and stopped short of the next station twice ("being held"), reaching
+  that station about 3 min 20 s behind. TfL's time for the ride's last stop read about 3 minutes
+  early for most of the 19-minute ride, catching up only in its last few minutes. *The second
+  train of a close pair* has the numbers across trains.
+- **TfL's times at each stop were close; its locations lagged.** Against 8 door openings, a
+  train came a median 17 s after the last time TfL showed for it before its doors opened, from
+  32 s before that time to 29 s after. None came more than 30 s after, so the 30 s grace covered
+  each, though the latest sat at its edge, within the rider's timing error. TfL first placed the
+  train "At Platform" 9–26 s after its doors opened (at the 4 stops a poll caught), and once
+  still listed a train as approaching half a minute after it had come.
+
 ## Not yet measured
 
 - A weekend morning.
 - The real arrival behind the 30 s grace: rider-logged times at more stations and lines.
+- The second train of a close pair on the earlier recordings, off-peak, and on lines other than
+  the Northern and Victoria.
 - Platforms two lines share (Circle and District at Victoria, say). Spacing treats each line
   separately, though the trains share one track.
