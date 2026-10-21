@@ -1148,7 +1148,12 @@ color. **Where the line's sequence is in hand it is drawn as the line page's map
 the ends it leads to, a closure's ⛔ and the work to come's calendar marked as on the line page. It is
 drawn from the route data the page already holds for the train's way, never a second request for the
 line's other way. Its folds open one at a time, the last folding again as the next opens, with no "Show all stations". The list below stays wherever that map can't be drawn (a route still loading or
-failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. **A tap on a station opens its details over the route page** (maintainer, 2026-10-09; it opened the
+failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. While the map is
+worked out for stops in hand, its place is held under the heading for a moment rather than the list drawn only to
+be replaced, so opening the page or tapping a chip draws the map once (maintainer, 2026-10-21: the page flashed);
+the list shows if the map takes longer. A refresh that leaves the route's stops as they were keeps its map up as
+it is, on a way with no train too, where the page left open had flickered and jumped back to its top on each
+refresh (maintainer, 2026-10-21). **A tap on a station opens its details over the route page** (maintainer, 2026-10-09; it opened the
 station's own departures page from 2026-10-06): the same page a stop tapped on a line's map opens (*Finding a
 line*), with the lines there and around it, step-free access, zone and Departures, but headed by the
 departure tapped ("From Victoria, towards Walthamstow Central", behind the line's pill) and where the ride

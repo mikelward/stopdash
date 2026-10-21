@@ -14,6 +14,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -324,6 +325,98 @@ class RouteChipsTest {
         settle(scheduler)
         composeRule.onNodeWithText("No live times").assertDoesNotExist()
         composeRule.onNodeWithTag("routeChoice-1").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_chips_tap_never_draws_the_stop_list_for_the_moment_before_the_map() {
+        // Each worker hop drawn in turn: the list drew in the frames before its map replaced it, and again between the
+        // map's layout and its path being checked, so the page flashed as it opened and on each chip's tap
+        // (maintainer, 2026-10-21).
+        val scheduler = TestCoroutineScheduler()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides routes) {
+                    MainScreen(state = DeparturesUiState.Loaded(stops = listOf(highgate), fetchedAt = now), now = now, onRefresh = {})
+                }
+            }
+        }
+        settle(scheduler)
+        // On the route page (not the list beneath it, headed by the stop too), its stops drawn with no map.
+        fun listWithoutMap() = composeRule.onAllNodesWithText("From Highgate", substring = true).fetchSemanticsNodes().isNotEmpty() &&
+            composeRule.onAllNodesWithText("Highgate").fetchSemanticsNodes().isNotEmpty() &&
+            composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isEmpty()
+        // A frame at a time, the clock held, so the moment the map's place is held for is the page's own, well inside
+        // it: the map comes in within those frames, with no list drawn before it.
+        fun hopByHop(after: String) {
+            composeRule.mainClock.autoAdvance = false
+            repeat(40) {
+                composeRule.mainClock.advanceTimeByFrame()
+                assertEquals("the stop list drawn before the map, $after, hop $it", false, listWithoutMap())
+                scheduler.runCurrent()
+            }
+            composeRule.onNodeWithTag("lineMap").assertExists()
+            composeRule.mainClock.autoAdvance = true
+        }
+        composeRule.onNodeWithText("Morden", substring = true).performTouchInput { click() }
+        hopByHop("opening")
+        // North, with a train; then by Charing Cross, with none.
+        for (chip in listOf("routeChoice-2", "routeChoice-1")) {
+            composeRule.onNodeWithTag(chip).performClick()
+            hopByHop("after $chip")
+        }
+    }
+
+    @Test
+    fun a_refresh_or_the_next_train_never_takes_the_map_down_for_a_moment() {
+        // Left open, the page flickered on its own (maintainer, 2026-10-21): each refresh, and each train gone with the
+        // next followed, made the train's stops anew, and the map came down until it was laid out again for them.
+        val scheduler = TestCoroutineScheduler()
+        var state by mutableStateOf(DeparturesUiState.Loaded(stops = listOf(highgate), fetchedAt = now))
+        var at by mutableStateOf(now)
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides routes) {
+                    MainScreen(state = state, now = at, onRefresh = {})
+                }
+            }
+        }
+        settle(scheduler)
+        composeRule.onNodeWithText("Morden", substring = true).performTouchInput { click() }
+        settle(scheduler, rounds = 10)
+        composeRule.onNodeWithTag("lineMap").assertExists()
+        fun mapStaysUp(after: String) {
+            composeRule.mainClock.autoAdvance = false
+            repeat(40) {
+                composeRule.mainClock.advanceTimeByFrame()
+                assertEquals("the map taken down $after, hop $it", true, composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty())
+                scheduler.runCurrent()
+            }
+            composeRule.mainClock.autoAdvance = true
+        }
+        fun southbound(inSeconds: Long, fetched: Instant) = highgate.copy(
+            departures = listOf(
+                Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(inSeconds), "tube", "Bank"),
+                Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(inSeconds + 240), "tube", "Bank"),
+                highgate.departures.last(),
+            ),
+            fetchedAt = fetched,
+        )
+        // A refresh: the same trains, their times moved on, every object new.
+        state = DeparturesUiState.Loaded(stops = listOf(southbound(90, now.plusSeconds(30))), fetchedAt = now.plusSeconds(30))
+        at = now.plusSeconds(30)
+        mapStaysUp("by a refresh")
+        // The train followed gone: the next, on the same way, followed in its place.
+        state = DeparturesUiState.Loaded(stops = listOf(southbound(240, now.plusSeconds(150)).let { it.copy(departures = it.departures.drop(1)) }), fetchedAt = now.plusSeconds(150))
+        at = now.plusSeconds(150)
+        mapStaysUp("by the next train")
+        // A way chosen with no train, its stops listed from the line's routes: a refresh made them anew too.
+        composeRule.onNodeWithTag("routeChoice-1").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onNodeWithTag("lineMap").assertExists()
+        state = DeparturesUiState.Loaded(stops = listOf(southbound(210, now.plusSeconds(180))), fetchedAt = now.plusSeconds(180))
+        at = now.plusSeconds(180)
+        mapStaysUp("on a way with no train, by a refresh")
     }
 
     @Test
