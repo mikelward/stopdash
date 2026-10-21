@@ -1119,6 +1119,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                       no further toward the trip (Codex, #1070). So does the Planner's own
                                       call, which stays for its line, if its lift goes out.
                                 - [ ] The detour cut, offering every equally good ride.
+                                    - [x] On the way: a ride before the last gets the rider off where
+                                          the route first reaches the destination, once on board: at its
+                                          first call at one of the destination's ids or in its hub, or at
+                                          its own end where that's one of them, the legs after it going
+                                          (`OnTheWay.endedAtDestination`, `endsDetours`). On a step-free
+                                          trip only by TfL's table with today's lifts; never with no table
+                                          or no level known.
+                                    - [ ] The trip page and a later trip's list: a route reaching the
+                                          destination's hub on a ride before its last, or by a change
+                                          there, drawn cut at that call, kept rather than dropped
+                                          (`withoutDetours`), its fare cleared, its arrival withheld where
+                                          the Planner gives no time there, listed after the timed routes
+                                          and kept past the route cap.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.

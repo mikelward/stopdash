@@ -2588,7 +2588,14 @@ yet: a trip will arrive at its first call anywhere in the destination's hub,
 `dev-docs/station-resolution.md`). A trip on the way keeps those ids.
 On its last ride, once the rider is on a train seen due first at another of them, the ride ends
 there, and any walk planned on from the old end goes (maintainer, 2026-10-19). So a route riding on
-past the low level to St Pancras's main record counts down to the low level and names it. On the way
+past the low level to St Pancras's main record counts down to the low level and names it. A ride
+before the last does the same where the route rides through the destination, or changes there, and
+rides on: once the rider is on board, it ends at its first call at one of those ids or anywhere in the
+destination's hub, or at its own end where that's one of them, and the legs after it go, so On the
+way never tells the rider to ride on or change after they've arrived (the detour cut,
+`dev-docs/station-resolution.md`). On a step-free trip, only where TfL's step-free data says the
+train's line meets the trip's level there today; with none to check by, or on a trip kept before its
+level was, the ride goes on to its change as planned. On the way
 is the first to arrive by hub: where the Planner's own end for the last ride is in the destination's
 hub, the ride ends at the train's first call anywhere in that hub, another station or bus stop of it
 included (a Circle train reaching one Paddington before the other gets the rider off at the first),

@@ -96,7 +96,9 @@ Fully):
   let the rider off there, however that came about: lifts that changed mid-ride, or a trip read back
   after the app was gone; and `endedAtDestination` moves it again from the calls ahead. It's a check
   of the end each step, not a watch for changes, so a trip kept across a restart is checked too,
-  Codex on #1070).
+  Codex on #1070. Every end the detour cut makes is checked the same way, a ride before the last
+  ended at its own end in the destination's hub included: with its lift out, the change and the
+  rides after it come back, Codex on #1072).
   Only calls still ahead are rechecked: once the rider has boarded, the call they boarded at is
   behind them and keeps its verdict, so a lift failing there never replaces the train they're on
   or offers a replan (Codex on #1005).
@@ -355,7 +357,11 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    which routes are listed, and in what order, is judged on the routes as planned.
    - **Who asks.** `DirectTrips`, `RideLines`, `RouteStops.forLeg`, `FavoriteJourney` and on the
      way's arrival check (`OnTheWay.endedAtDestination`) ask "first call whose hub is one of the
-     destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only; and the
+     destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only (on the
+     way's for an earlier ride too, 2026-10-21: a route started as planned that rides through the
+     destination, or changes there, ends at its first call there once the rider is on board, or at the
+     ride's own end where that's the destination's, the legs after it going; on a step-free trip only
+     where the call is checked against today's lifts, never with no table or no level known); and the
      detour scan (`withoutDetours`, run by `TripViewModel` and `LaterTripViewModel` before any
      `LegEnd` exists) reads a route's whole path the same way, so a route whose earlier ride or
      change already reaches the destination's hub ends there, never telling the rider to ride on
