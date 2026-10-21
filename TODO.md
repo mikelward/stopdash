@@ -4158,13 +4158,14 @@ Builds on Phase 1's minimal line-status marking.
       reads by the journey's saved name, with no letter. Its line's route gives the pole's own name
       (`LineSequence.stopNames`); the letter, sign and bearing need its stop area's poles, which only
       origins look up today (a new lookup per far end, or `cachedPoles` where already loaded).
-- [ ] **Show the ride's next timetabled train on its card's row, grayed?** (maintainer, 2026-10-21; left
-      for a decision, see *Decisions needing review*). The
-      ride's page says "Next train 05:41 (timetable)"; the card's row still shows a dash. A gray "05:41" in
-      the row's time slot would say it at a glance, kept apart from live countdowns (a clock time, never
-      "in N min"). Needs the timetable fetched for the card, not only once its page opens. To consider
-      widening it to the near-me list's "?" and dash line rows: each route the line runs from the stop
-      with its first scheduled time, in gray.
+- [x] **Show the ride's next timetabled train on its card's row, grayed?** (maintainer, 2026-10-21: "Yes").
+      Done (2026-10-21): the card's line row with no train gives its
+      next train by the ride's timetable in the dash's place, a gray clock time ("05:41"), heard as "Next train
+      05:41 (timetable)", under the conditions its page gives them (`RideView.timetableSpeaks`), fetched only
+      then. Needs a device check of the gray time beside live countdowns.
+- [ ] **The near-me list's "?" and dash line rows' first scheduled times, in gray** (from the item above): each
+      route the line runs from the stop with its first scheduled time. Not built: a row there stands for every
+      way the line runs, so it's one time per way, not one per row; wants its own look.
 - [x] **Show a ride's far-end closure on its ride page** (Codex on #1036). The journey card shows its far
       end's closure notice (or that it couldn't be checked); the ride page opened from its empty line row
       shows the boarding stop's notice only, and withholds the timetable for either, but doesn't say why.
@@ -5160,14 +5161,6 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   which needs the line's routes wherever the followed train is picked, composition's fallback included.
   The way key is what tells their stops apart already (`RouteStops.resolve`), so it can't split a way the
   chips don't. Reversible: revert the commit; a saved page with a way reopens on it, else on the place.
-- [ ] **A ride card's row keeps its dash rather than show the next timetabled train** (autopilot,
-  2026-10-21). *Show the ride's next timetabled train on its card's row, grayed?* is put as a question,
-  so it's left unbuilt while the rest of that day's items landed: the ride's page gives its next few
-  trains by the timetable (#1042), and a near-me "?" or dash row's page each way's next few. Building it
-  costs a timetable request per favorite ride a day for the home screen (£0, inside TfL's limits), made
-  before the card's page is opened, and puts a clock time where the row's countdowns go. Alternative:
-  build it, a gray "05:41" in the card's time slot, never "in N min", fetched as a "?" row's timetable
-  is. Reversible: nothing was built; the item stays open.
 - [ ] **The trip page reads the last ride's hub end for its ride lines and verdicts first**
   (autopilot, 2026-10-20). Another line reaching another station of the destination's hub shows on
   the card and a train calling anywhere in the hub is judged to get there; the Planner's own ride, its

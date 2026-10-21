@@ -5121,6 +5121,119 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a ride's line with no train due shows its next one by the timetable, gray, once its checks are in`() {
+        // TfL lists no train at the origin; the ride's timetable has one at 09:12 (08:00 UTC is 09:00 BST).
+        val quiet = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            departures = emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val journey = victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")
+        val asked = mutableListOf<String>()
+        val timetables = app.stopdash.domain.LegTimetables(
+            object : app.stopdash.domain.LegTimetableSource {
+                override suspend fun legTimetable(lineId: String, fromId: String, toId: String): app.stopdash.domain.StopTimetable {
+                    asked += "$lineId|$fromId|$toId"
+                    return app.stopdash.domain.StopTimetable(
+                        listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(9 * 60 + 12))),
+                    )
+                }
+            },
+            clock = { now },
+        )
+        var statuses by mutableStateOf(mapOf("victoria" to LineStatus("victoria", severity = 10, description = "Good Service")))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                        LocalLegTimetables provides timetables,
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(
+                                listOf(manorHouse(), quiet), now.minusSeconds(60), lineStatuses = statuses,
+                                determinedLineIds = setOf("victoria"),
+                            ),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            rideGrouping = RideGrouping.RIDE,
+                        )
+                    }
+                }
+            }
+        }
+        // Its time in the dash's place, said as the timetable's.
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("09:12").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithContentDescription("Next train 09:12 (timetable)").assertExists()
+        composeRule.onAllNodesWithText("–").assertCountEquals(0)
+        assertEquals(listOf("victoria|940GZZLUVIC|940GZZLUWRR"), asked.distinct())
+        captureSnapshot("main-journey-card-timetabled.png")
+
+        // Its line disrupted: a timetable knows nothing of that, so the dash again, as its page withholds the time.
+        statuses = mapOf("victoria" to LineStatus("victoria", severity = 6, description = "Severe Delays"))
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("09:12").fetchSemanticsNodes().isEmpty() }
+        composeRule.onAllNodesWithContentDescription("Next train 09:12 (timetable)").assertCountEquals(0)
+        composeRule.onNodeWithText("Severe Delays").assertExists()
+    }
+
+    @Test
+    fun `a ride's line not yet checked keeps its dash and asks for no timetable`() {
+        val quiet = StopArrivals(
+            "940GZZLUVIC", "Victoria", departures = emptyList(), fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val asked = mutableListOf<String>()
+        val timetables = app.stopdash.domain.LegTimetables(
+            object : app.stopdash.domain.LegTimetableSource {
+                override suspend fun legTimetable(lineId: String, fromId: String, toId: String): app.stopdash.domain.StopTimetable {
+                    asked += lineId
+                    return app.stopdash.domain.StopTimetable(
+                        listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(9 * 60 + 12))),
+                    )
+                }
+            },
+            clock = { now },
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                        LocalLegTimetables provides timetables,
+                    ) {
+                        // Its line's status not checked: a timetable can't stand for it.
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), quiet), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")),
+                            rideGrouping = RideGrouping.RIDE,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithContentDescription("No trains to Warren Street soon").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithText("09:12").assertCountEquals(0)
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test
     fun `a journey whose origin failed to refresh says it couldn't check, not that there are no trains`() {
         // The origin's last refresh failed: kept aged, with nothing current left to show.
         val aged = StopArrivals("940GZZLUVIC", "Victoria", emptyList(), fetchedAt = now.minusSeconds(600), arrivalsFresh = false)

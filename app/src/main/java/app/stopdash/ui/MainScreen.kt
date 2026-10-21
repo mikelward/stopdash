@@ -1458,6 +1458,11 @@ fun MainScreen(
     // A journey's ride page, while its card is shown: gone with the card (unstarred, or the list moved on).
     val rideView = rideKey?.let { shown?.rides?.get(it) }
     val rideLoaded = drawnFrom?.source
+    // The same pages for their cards' rows, each one's next train by its timetable ([rememberRideCardTime]), drawn
+    // against the same fetch. By identity: both are the list's, made again with it.
+    val rideTimes = remember(ByIdentity(shown?.rides), ByIdentity(rideLoaded)) {
+        shown?.rides?.let { rides -> rideLoaded?.let { RideTimes(rides, it) } }
+    }
     // Closed once its card is gone from rows worked out, so it never reopens on a card shown again later.
     LaunchedEffect(rideKey, rideView == null, rowsKnown, shown == null) {
         if (rideKey != null && rideView == null && rowsKnown && shown != null) rideKey = null
@@ -1806,6 +1811,7 @@ fun MainScreen(
                             onOpenCardDetail = openCardDetail,
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
                             onOpenRide = openRide,
+                            rideTimes = rideTimes,
                             onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
@@ -1866,6 +1872,7 @@ fun MainScreen(
                             onOpenCardDetail = openCardDetail,
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
                             onOpenRide = openRide,
+                            rideTimes = rideTimes,
                             onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
@@ -2076,6 +2083,8 @@ private fun LoadedContent(
     // Opens a journey's ride page, by its key, from its line's row with no train ([JourneyCard.lineCard]);
     // null leaves that row inert.
     onOpenRide: ((String) -> Unit)? = null,
+    // The rides' pages, for their cards' rows' next train by the timetable; null gives none.
+    rideTimes: RideTimes? = null,
     // Opens Settings at the National Rail key, from a National Rail line's "No key".
     onAddRailKey: () -> Unit = {},
     dismissed: Set<DismissedAlert> = emptySet(),
@@ -2299,6 +2308,7 @@ private fun LoadedContent(
                         onOpenCardDetail = onOpenCardDetail,
                         onOpenChangeDetail = onOpenChangeDetail,
                         onOpenRide = onOpenRide,
+                        rideTimes = rideTimes,
                         onDismissAlert = onDismissAlert,
                         dismissedClosures = dismissedClosures,
                         sharedNotices = sharedNotices,
@@ -2808,6 +2818,8 @@ private fun DepartureList(
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // A journey's ride page, from its line's row with no train; null leaves that row inert.
     onOpenRide: ((String) -> Unit)? = null,
+    // The rides' pages, for that row's next train by the timetable ([rememberRideCardTime]); null gives none.
+    rideTimes: RideTimes? = null,
     listState: LazyListState,
     farther: List<FartherCard> = emptyList(),
     onOpenFarther: (CollapsedPlaces.Place) -> Unit = {},
@@ -3119,6 +3131,9 @@ private fun DepartureList(
                 val openTrain = { row: DepartureRow, focus: RouteFocus? -> onOpenCardDetail(row, focus, card.destinationIds) }
                 fun rideStopCard(key: String, stopCard: StopCard, checking: Boolean, atOnce: Boolean = false, noneRes: Int? = null) {
                     item(key = "journey-card|${card.journey.key}|$key") {
+                        // Its line with no train due: its next one by the timetable, where its page would give it.
+                        val view = rideTimes?.rides?.get(card.journey.key)?.takeIf { noneRes != null && stopCard === card.lineCard }
+                        val timetabled = rememberRideCardTime(view, rideTimes?.loaded, now)
                         StopGroupCard(
                             stopCard,
                             now,
@@ -3129,6 +3144,7 @@ private fun DepartureList(
                             onAddRailKey = onAddRailKey,
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
+                            noTrainsTimetabled = timetabled,
                             rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                         )
                     }
@@ -5191,6 +5207,9 @@ internal fun StopGroupCard(
     // A ride's own line with no train due ([JourneyCard.lineCard]): its row's dash, heard as this. Not the
     // near-me list's "?", so no timetable is asked for (SPEC *Departures*).
     noTrainsSpoken: String? = null,
+    // That row's next train by the ride's timetable, where its page would give it ([rememberRideCardTime]): its
+    // clock time, gray, in the dash's place. None keeps the dash.
+    noTrainsTimetabled: TimetabledTimes = TimetabledTimes.NONE,
 ) {
     val group = card.group
     // Rows stand a moment as they are ([settled]) before they say they're being checked, so a quick check
@@ -5257,14 +5276,23 @@ internal fun StopGroupCard(
                                         return@RouteRow
                                     }
                                     if (noTrainsSpoken != null) {
+                                        // A clock time, never a countdown: the timetable's, not a train TfL sees
+                                        // (maintainer, 2026-10-21). Its text written on the worker ([TimetabledTimes]).
+                                        val timetabled = noTrainsTimetabled.text.takeIf { it.isNotEmpty() }
+                                        val spoken = timetabled?.let {
+                                            stringResource(
+                                                if (row.mode.equals("bus", ignoreCase = true)) R.string.route_detail_next_bus_timetabled else R.string.route_detail_next_timetabled,
+                                                it,
+                                            )
+                                        } ?: noTrainsSpoken
                                         Text(
-                                            text = stringResource(R.string.status_no_departures),
+                                            text = timetabled ?: stringResource(R.string.status_no_departures),
                                             style = MaterialTheme.typography.titleMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             modifier = Modifier
                                                 .padding(start = 12.dp)
-                                                .semantics { contentDescription = noTrainsSpoken }
+                                                .semantics { contentDescription = spoken }
                                                 .then(checkingFade(cardChecking?.spoken)),
                                         )
                                         return@RouteRow

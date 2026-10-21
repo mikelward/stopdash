@@ -50,13 +50,14 @@ internal fun journeyRide(journey: FavoriteJourney, origin: String): TripLeg = Tr
  * ([Worked]), never another ride's placed for the frame the page moves on to this one.
  */
 @Composable
-internal fun rememberPlacedRide(ride: TripLeg): TripLeg? {
+internal fun rememberPlacedRide(ride: TripLeg?): TripLeg? {
     val worker = LocalWorker.current
     val routes = LocalRouteStops.current
     val placed by produceState<Worked<TripLeg, TripLeg>?>(null, worker, routes, ride) {
-        value = Worked(ride, withContext(worker) { placedRide(ride, routes) })
+        // None asked: none placed, nothing fetched.
+        value = ride?.let { Worked(it, withContext(worker) { placedRide(it, routes) }) }
     }
-    return placed?.takeIf { it.key == ride }?.value
+    return placed?.takeIf { ride != null && it.key == ride }?.value
 }
 
 /**
@@ -114,6 +115,12 @@ internal class TimetabledTimes(val times: List<Instant>, val text: String) {
     }
 }
 
+/**
+ * The favorite rides' pages by journey key ([ShownRows.rides]) with the fetch they're drawn against, as the list has
+ * them: for each card's line row with no train, its next train by the timetable ([rememberRideCardTime]).
+ */
+internal class RideTimes(val rides: Map<String, RideView>, val loaded: DeparturesUiState.Loaded)
+
 /** How many of a ride's next trains its page gives by the timetable (maintainer, 2026-10-21: "the next few"). */
 internal const val TIMETABLED_TRAINS = 3
 
@@ -130,20 +137,11 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
     val disruptionChecking = loaded.checkingDisruptionsFor(row)
     val lineUnknown = loaded.lineDoubtedFor(row, now)
     val lineChecking = loaded.checkingLineFor(row)
-    // A timetable knows nothing of a disruption, so its time only once the line's good service is checked,
-    // current, and its stop's closure check is back clean (Codex on #1036).
     // Its ends where its bus really stops, for its timetable and its line's page alike (Codex on #1036).
     val placed = rememberPlacedRide(view.ride)
     val stale = Staleness.isStale(row.fetchedAt, now)
-    // Only while nothing live says (once the card has trains, the timetable speaks for none) and every check is
-    // in clean and current, a dismissed alert still counting as one; not even fetched till then (Codex on #1036).
-    val eligible = !view.live && !stale && !disruptionUnknown && !disruptionChecking && !lineUnknown && !lineChecking &&
-        row.stopDisruption == null && row.status == null && !row.statusDismissed &&
-        // Nor for a ride whose card holds a closure notice, whose far end has one (dismissed or not), or whose far end
-        // couldn't be checked.
-        view.card.closures.isEmpty() && !view.card.destinationUnchecked && !view.destinationDisrupted && view.lineListed
     // Nor a train on or after a day its line's planned work starts, which the timetable knows nothing of (Codex on #1036).
-    val nextTrains = rememberTimetabledTrains(placed?.takeIf { eligible }, now, view.plannedFrom)
+    val nextTrains = rememberTimetabledTrains(placed?.takeIf { view.timetableSpeaks(loaded, now) }, now, view.plannedFrom)
     RouteDetailScreen(
         lineOpen = lineOpen,
         row = row,
@@ -166,6 +164,33 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
         closures = view.closures,
         uncheckedEnd = view.card.journey.to.name.takeIf { view.card.destinationUnchecked },
     )
+}
+
+/**
+ * Whether [this] ride's timetable may speak for it at [now], drawn against [loaded]: only while nothing live says
+ * (once its card has trains, the timetable speaks for none) and every check is in, clean and current, a dismissed
+ * alert still counting as one, since a timetable knows nothing of a disruption (Codex on #1036). Nor for a ride whose
+ * card holds a closure notice, whose far end has one (dismissed or not), whose far end couldn't be checked, or whose
+ * origin's fetch doesn't name its line. Its page's next trains and its card's row's next one alike; neither is even
+ * fetched till then.
+ */
+internal fun RideView.timetableSpeaks(loaded: DeparturesUiState.Loaded, now: Instant): Boolean =
+    !live && !Staleness.isStale(row.fetchedAt, now) && !loaded.lineUncheckedFor(row) && row.stopId !in loaded.stopsDisruptionUnknown &&
+        !loaded.checkingDisruptionsFor(row) && !loaded.lineDoubtedFor(row, now) && !loaded.checkingLineFor(row) &&
+        row.stopDisruption == null && row.status == null && !row.statusDismissed &&
+        card.closures.isEmpty() && !card.destinationUnchecked && !destinationDisrupted && lineListed
+
+/**
+ * A favorite ride's next train by its timetable, for its card's line row with no train ([JourneyCard.lineCard]), said
+ * gray in the row's time slot ("05:41"), never as a countdown (maintainer, 2026-10-21): only where its page would give
+ * its timetable's ([timetableSpeaks]), and only then placed and fetched, the request its page would make, shared with
+ * it ([LegTimetables]). None for no [view] or [loaded].
+ */
+@Composable
+internal fun rememberRideCardTime(view: RideView?, loaded: DeparturesUiState.Loaded?, now: Instant): TimetabledTimes {
+    val eligible = view != null && loaded != null && view.timetableSpeaks(loaded, now)
+    val placed = rememberPlacedRide(view?.ride?.takeIf { eligible })
+    return rememberTimetabledTrains(placed?.takeIf { eligible }, now, view?.plannedFrom.orEmpty(), count = 1)
 }
 
 /**
