@@ -42,6 +42,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -159,6 +160,45 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("2 · 5 · 7 · 10 · 12 · 15 · 17 min").assertIsDisplayed()
 
         captureSnapshot("route-detail-many-departures.png")
+    }
+
+    @Test
+    fun aRideWithNothingLive_saysItsTimetablesNextTrain_asTheTimetables() {
+        // A favorite ride's line row with no train, before its line opens for the morning.
+        val row = DepartureRow(
+            stopId = "940GZZLUVIC",
+            stopName = "Victoria",
+            lineId = "victoria",
+            lineName = "Victoria",
+            direction = "",
+            directionKey = STATUS_DIRECTION_KEY,
+            destination = "",
+            mode = "tube",
+            upcoming = emptyList(),
+            fetchedAt = now,
+        )
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = false,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                    // 05:41 in London (BST).
+                    nextTrain = Instant.parse("2026-09-18T04:41:00Z"),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Next train 05:41 (timetable)").assertIsDisplayed()
+
+        captureSnapshot("route-detail-ride-next-timetabled.png")
     }
 
     @Test

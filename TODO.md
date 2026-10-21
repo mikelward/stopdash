@@ -4085,6 +4085,37 @@ Builds on Phase 1's minimal line-status marking.
       reads by the journey's saved name, with no letter. Its line's route gives the pole's own name
       (`LineSequence.stopNames`); the letter, sign and bearing need its stop area's poles, which only
       origins look up today (a new lookup per far end, or `cachedPoles` where already loaded).
+- [ ] **Show the ride's next timetabled train on its card's row, grayed?** (maintainer, 2026-10-21). The
+      ride's page says "Next train 05:41 (timetable)"; the card's row still shows a dash. A gray "05:41" in
+      the row's time slot would say it at a glance, kept apart from live countdowns (a clock time, never
+      "in N min"). Needs the timetable fetched for the card, not only once its page opens. To consider
+      widening it to the near-me list's "?" and dash line rows: each route the line runs from the stop
+      with its first scheduled time, in gray.
+- [ ] **Show a ride's far-end closure on its ride page** (Codex on #1036). The journey card shows its far
+      end's closure notice (or that it couldn't be checked); the ride page opened from its empty line row
+      shows the boarding stop's notice only, and withholds the timetable for either, but doesn't say why.
+- [ ] **Show more of a ride's timetable than the next train** (maintainer, 2026-10-21): the next few, or
+      the morning's first and the gaps after it, on the ride's page, still said as the timetable's.
+- [ ] **Open the near-me list's "?" and dash line rows** (maintainer, 2026-10-21). A quiet "?" row opens
+      nothing (Codex, #505: its page would read as a clean line), and its station has no ride to say which
+      way. Its page would say why the times are missing and show the scheduled departures for every route
+      the line runs from the stop (Highgate's Northern line: via Bank, via Charing Cross, each branch),
+      said as the timetable's; then the route chips below choose one route's stops.
+- [ ] **Choose the route on the route page** (maintainer, 2026-10-21). A line row with no train (a quiet
+      or status row) opens a page that can't list stops, since which direction or branch is a guess.
+      Proposed: a row of chips under the title, one per route from the stop ("via Bank", "via Charing
+      Cross", "to Morden", "to Battersea"), starting on the soonest train's; the whole line stays "View
+      line"'s map. A live row's page keeps the chips too, with the tapped row's destination and branch
+      chosen, so the rider can switch to another route of the same line. A favorite ride's page needs
+      them only where its ends are joined by more than one route (Camden Town to Kennington by either
+      Northern line branch): its page then lists no stops, as the ride alone can't say which (Codex on
+      #1036).
+- [ ] **Guess where a "Check front of train" train goes, said as a guess** (maintainer, 2026-10-21). TfL
+      names no destination for some trains ("Check Front of Train"), and StopDash says the same of a
+      terminus's arrivals where the line runs on to more than one end. Show the route choices it could take, and
+      the stretch every one of them shares as a likely "at least as far as": a Hammersmith & City train
+      from Edgware Road, say, may always reach Aldgate. Mark it as a guess, never as TfL's destination;
+      learn what's common from the route data (and the train's later predictions, where it has them).
 - [ ] **Show a chip per disruption condition, not just the single most-severe one**
       (requested 2026-09-20). Today `mostSevereDisruption` collapses coexisting statuses to
       one label; the maintainer wants to revisit that — show a chip for each condition a line

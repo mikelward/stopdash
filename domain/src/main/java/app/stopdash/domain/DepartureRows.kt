@@ -1322,6 +1322,13 @@ object DepartureRows {
     }
 
     /**
+     * [stop]'s notices in force at [now] (a closure, a moved stop), as its stop-status row carries them
+     * ([DepartureRow.stopDisruption]); null when it's clear. For a page about a row with no fetch of its
+     * own, a favorite ride's line row, so it never calls a closed stop clean.
+     */
+    fun stopNotice(stop: StopArrivals, now: Instant): String? = stopStatusRow(stop, now).firstOrNull()?.stopDisruption
+
+    /**
      * A stop-level status row for a stop with its own disruption(s) — a closure or moved
      * stop — so it isn't shown as if its departures were catchable (SPEC *Disruptions*).
      * One row per stop, its descriptions joined; the stop's timed rows are kept (marked,

@@ -293,6 +293,7 @@ import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
 import app.stopdash.ui.LocalJourneyWalkMeters
 import app.stopdash.ui.LocalJourneyEndStops
+import app.stopdash.ui.LocalLegTimetables
 import app.stopdash.ui.JourneyEndStops
 import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocalRiderPosition
@@ -4103,6 +4104,8 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalRouteTopology provides routeTopology.value,
                 LocalRouteStops provides routeStops(appContext),
+                // A favorite ride's page gives its timetable's next train while nothing live says (RidePage).
+                LocalLegTimetables provides legTimetables(),
                 LocalJourneyEndStops provides journeyEndStops,
                 // A journey's far end reaches as far as a trip's Direct section reaches a place: the rider's
                 // max walk at their pace.
@@ -6074,6 +6077,7 @@ class MainActivity : ComponentActivity() {
         CompositionLocalProvider(
             LocalRouteTopology provides routeTopology.value,
             LocalRouteStops provides routeStops(appContext),
+            LocalLegTimetables provides legTimetables(),
             LocalDismissLineAlert provides LineAlertDismissal(
                 viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
                 viewModel::dismissPlannedAlert, viewModel.dismissed.collectByIdentityWithLifecycle().value,

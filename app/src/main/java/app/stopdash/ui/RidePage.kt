@@ -1,0 +1,158 @@
+package app.stopdash.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LegTimetables
+import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.Staleness
+import app.stopdash.domain.StepFree
+import app.stopdash.domain.TflException
+import app.stopdash.domain.TripLeg
+import app.stopdash.domain.onPoles
+import java.time.Instant
+import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+
+/** Rides' timetables ([LegTimetables]), for a favorite ride's next train while nothing live says ([rememberNextTrain]); null gives none. */
+val LocalLegTimetables = staticCompositionLocalOf<LegTimetables?> { null }
+
+/**
+ * [journey] as a trip's ride from [origin], where its card boards, to its far end: its page's stop list and
+ * timetable are then the ride's own, the direction and branch it takes, not a guess at the line's.
+ */
+internal fun journeyRide(journey: FavoriteJourney, origin: String): TripLeg = TripLeg(
+    mode = journey.mode,
+    lineId = journey.lineId,
+    lineName = journey.lineName.ifBlank { journey.lineId },
+    fromId = origin,
+    fromName = journey.from.name,
+    toId = journey.to.stopId,
+    toName = journey.to.name,
+    // Not a planned ride: no times of its own.
+    departure = Instant.EPOCH,
+    arrival = Instant.EPOCH,
+    fromArea = journey.from.areaId,
+    toArea = journey.to.areaId,
+)
+
+/**
+ * [ride] placed on the poles its line's route uses ([placedRide], from [LocalRouteStops]), as its stop list's
+ * ends are: a saved bus ride's far end is the pole of the way it was saved, across the road from the one it
+ * gets off at the other way (Codex on #1036). Null until placed, on the worker ([LocalWorker]).
+ */
+@Composable
+internal fun rememberPlacedRide(ride: TripLeg): TripLeg? {
+    val worker = LocalWorker.current
+    val routes = LocalRouteStops.current
+    val placed by produceState<TripLeg?>(null, worker, routes, ride) {
+        value = withContext(worker) { placedRide(ride, routes) }
+    }
+    return placed
+}
+
+/**
+ * [ride]'s next train by its timetable as of [now] ([app.stopdash.domain.StopTimetable.nextDeparture]), worked
+ * out again each minute; null while it's fetched, where the timetable can't say, while the ride isn't placed yet
+ * ([rememberPlacedRide]), and on or after a day in [plannedFrom] ([departureBefore]). Fetched and read on the worker ([LocalWorker]): one request per ride a
+ * day, shared with trips' ([LegTimetables]).
+ */
+@Composable
+internal fun rememberNextTrain(ride: TripLeg?, now: Instant, plannedFrom: List<LocalDate> = emptyList()): Instant? {
+    val timetables = LocalLegTimetables.current ?: return null
+    val worker = LocalWorker.current
+    val current by rememberUpdatedState(now)
+    val next by produceState<Instant?>(null, timetables, worker, ride, plannedFrom) {
+        // produceState keeps its last value across new keys: a ride no longer eligible, or another one, starts
+        // with none (Codex on #1036).
+        value = null
+        val key = ride?.let { LegTimetables.Key(it.lineId, it.fromId, it.toId) } ?: return@produceState
+        snapshotFlow { current.epochSecond / 60 }.collect {
+            val at = current
+            value = withContext(worker) {
+                timetables.fetch(listOf(key))
+                timetables.known().timetables[key]?.nextDeparture(at)?.let { departureBefore(it, plannedFrom) }
+            }
+        }
+    }
+    return next.takeIf { ride != null }
+}
+
+/**
+ * A favorite ride's page, from its line's row with no train ([JourneyCard.lineCard]): the route page for the
+ * ride ([RouteDetailScreen]), with its stops from where its card boards to its far end, the direction and
+ * branch it takes ([rememberLegRouteStops]), its line's alert if it has one, and, while nothing live says,
+ * its timetable's next train ([rememberNextTrain]). Drawn against [loaded], the list's fetch, at [now].
+ */
+@Composable
+internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Instant, onBack: () -> Unit, lineOpen: MutableState<Boolean>) {
+    val row = view.row
+    val disruptionUnknown = loaded.lineUncheckedFor(row) || row.stopId in loaded.stopsDisruptionUnknown
+    val disruptionChecking = loaded.checkingDisruptionsFor(row)
+    val lineUnknown = loaded.lineDoubtedFor(row, now)
+    val lineChecking = loaded.checkingLineFor(row)
+    // A timetable knows nothing of a disruption, so its time only once the line's good service is checked,
+    // current, and its stop's closure check is back clean (Codex on #1036).
+    // Its ends where its bus really stops, for its timetable and its line's page alike (Codex on #1036).
+    val placed = rememberPlacedRide(view.ride)
+    val stale = Staleness.isStale(row.fetchedAt, now)
+    // Only while nothing live says (once the card has trains, the timetable speaks for none) and every check is
+    // in clean and current, a dismissed alert still counting as one; not even fetched till then (Codex on #1036).
+    val eligible = !view.live && !stale && !disruptionUnknown && !disruptionChecking && !lineUnknown && !lineChecking &&
+        row.stopDisruption == null && row.status == null && !row.statusDismissed &&
+        // Nor for a ride whose card holds a closure notice, whose far end has one (dismissed or not), or whose far end
+        // couldn't be checked.
+        view.card.closures.isEmpty() && !view.card.destinationUnchecked && !view.destinationDisrupted && view.lineListed
+    // Nor a train on or after a day its line's planned work starts, which the timetable knows nothing of (Codex on #1036).
+    val nextTrain = rememberNextTrain(placed?.takeIf { eligible }, now, view.plannedFrom)
+    RouteDetailScreen(
+        lineOpen = lineOpen,
+        row = row,
+        isStarred = false,
+        starrable = false,
+        disruptionUnknown = disruptionUnknown,
+        disruptionChecking = disruptionChecking,
+        lineUnknown = lineUnknown,
+        lineChecking = lineChecking,
+        stale = stale,
+        now = now,
+        onToggleStar = {},
+        onBack = onBack,
+        loadRouteStops = { retry: Int -> rememberLegRouteStops(view.ride, StepFree.ANY, retry) },
+        ride = placed ?: view.ride,
+        nextTrain = nextTrain,
+    )
+}
+
+/**
+ * [ride] on the poles its line's route uses ([onPoles]), the route from [routes]; as it was where the route
+ * can't be had (none in the composition, or its load failed, said by the repository), so the timetable is
+ * asked for the saved stops rather than not at all.
+ */
+internal suspend fun placedRide(ride: TripLeg, routes: RouteStopsRepository?): TripLeg {
+    routes ?: return ride
+    val sequence = try {
+        routes.load(ride.lineId, "")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: TflException) {
+        // Already logged (sanitized) by the repository: the saved stops are asked for instead.
+        return ride
+    }
+    return onPoles(ride, mapOf(ride.lineId to sequence))
+}
+
+/**
+ * [train] if it leaves before every day in [plannedFrom], the days its line's planned work starts, in London; else
+ * null: the timetable knows nothing of that work, so its time then isn't one to stand behind (Codex on #1036).
+ */
+internal fun departureBefore(train: Instant, plannedFrom: List<LocalDate>): Instant? {
+    val day = train.atZone(LONDON).toLocalDate()
+    return train.takeIf { plannedFrom.none { !it.isAfter(day) } }
+}

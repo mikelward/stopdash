@@ -15,10 +15,12 @@ import java.time.temporal.TemporalAdjusters
  * minutes after that service day's midnight in London. A service day runs past midnight, so a
  * night's last trains read 24:00 and later (TfL's "25:34" is 01:34 the next morning).
  *
- * Never used to show a time: a timetable knows nothing of the disruption that empties a board
- * (maintainer, 2026-10-03). It tells an empty board's "none coming" from "none known" ([EmptyTimes]),
- * and how long a trip may wait for the next train past its live predictions on a line running a good
- * service ([longestGapAround], maintainer, 2026-10-19).
+ * A timetable knows nothing of the disruption that empties a board (maintainer, 2026-10-03), so a
+ * time from it is shown only where nothing live can say and the line runs a good service, marked as
+ * the timetable's: a favorite ride's next train before its line opens ([nextDeparture], maintainer,
+ * 2026-10-21). It tells an empty board's "none coming" from "none known" ([EmptyTimes]), and how long
+ * a trip may wait for the next train past its live predictions on a line running a good service
+ * ([longestGapAround], maintainer, 2026-10-19).
  *
  * [readable] is false when some schedule's days couldn't be read ("School days"): it's left out of
  * [schedules], but it might run on any day, so the timetable can then never say nothing is due.
@@ -91,6 +93,39 @@ data class StopTimetable(val schedules: List<DaySchedule>, val readable: Boolean
     }
 
     /**
+     * The first departure at or after [at] and within [NEXT_LIMIT] of it, by this timetable. Null when it
+     * can't say for sure: a schedule left unread, or a day that could run one sooner than the one found
+     * that's a holiday ([publicHoliday]), has no schedule, or has a journey that couldn't be read; and
+     * null when nothing leaves within the limit.
+     */
+    @WorkerThread
+    fun nextDeparture(at: Instant): Instant? {
+        if (!readable) return null
+        val today = at.atZone(LONDON).toLocalDate()
+        val end = at.plus(NEXT_LIMIT)
+        var next: Instant? = null
+        for (day in listOf(today.minusDays(1), today, today.plusDays(1))) {
+            val midnight = day.atStartOfDay()
+            val opens = midnight.atZone(LONDON).toInstant()
+            val closes = midnight.plusMinutes(SERVICE_DAY_MINUTES.toLong()).atZone(LONDON).toInstant()
+            // A service day that's over by [at], or starts after the one found or the limit, can't run it sooner.
+            if (closes.isBefore(at) || opens.isAfter(end) || next?.let { opens.isAfter(it) } == true) continue
+            val its = schedules.filter { day.dayOfWeek in it.days }
+            if (its.isEmpty() || its.any { !it.complete } || publicHoliday(day)) return null
+            // In autumn's repeated hour a time has two instants, and the timetable doesn't say which: the soonest
+            // not yet gone, so asked in the second 01:10, a 01:30 is still to come (Codex on #1036).
+            val first = its.flatMap { schedule ->
+                schedule.minutes.flatMap { minute ->
+                    val zoned = midnight.plusMinutes(minute.toLong()).atZone(LONDON)
+                    listOf(zoned.withEarlierOffsetAtOverlap().toInstant(), zoned.withLaterOffsetAtOverlap().toInstant())
+                }
+            }.filter { !it.isBefore(at) && !it.isAfter(end) }.minOrNull()
+            if (first != null && (next == null || first.isBefore(next))) next = first
+        }
+        return next
+    }
+
+    /**
      * The longest a rider reaching the stop around [at] may wait for a departure, by this timetable:
      * the longest gap between departures over [GAP_BEFORE] before [at] to [GAP_AFTER] after it, since
      * when the rider gets there is itself an estimate. Null when the timetable can't say: a schedule
@@ -135,6 +170,9 @@ data class StopTimetable(val schedules: List<DaySchedule>, val readable: Boolean
 
         /** How far after the time asked [longestGapAround] reads the timetable. */
         val GAP_AFTER: Duration = Duration.ofMinutes(15)
+
+        /** How far ahead [nextDeparture] looks: a day, so a line closed for the night still gives its first train. */
+        val NEXT_LIMIT: Duration = Duration.ofHours(24)
 
         /** The longest gap [longestGapAround] reads past its stretch before it gives no answer. */
         val GAP_LIMIT: Duration = Duration.ofMinutes(60)
