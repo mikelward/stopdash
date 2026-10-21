@@ -23,6 +23,7 @@ import okhttp3.Request
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -43,9 +44,9 @@ class QuietConnectionsTest {
         watch.acquired(connection, stalled)
         val sent = watch.sent()
         assertEquals("the one other request waiting on it", listOf(waiting), watch.timedOut(connection, stalled, sent))
-        assertTrue("the request waiting on it is told so", watch.takeAbandoned(waiting))
-        assertFalse("once only", watch.takeAbandoned(waiting))
-        assertFalse("the one that timed out failed for its own wait", watch.takeAbandoned(stalled))
+        assertNotNull("the request waiting on it is told so", watch.takeAbandoned(waiting))
+        assertNull("once only", watch.takeAbandoned(waiting))
+        assertNull("the one that timed out failed for its own wait", watch.takeAbandoned(stalled))
     }
 
     @Test
@@ -57,7 +58,7 @@ class QuietConnectionsTest {
         watch.answerStarted(connection, answered)
         watch.answerEnded(connection, answered)
         assertNull(watch.timedOut(connection, stalled, sent))
-        assertFalse("nothing waiting on it is told so", watch.takeAbandoned(waiting))
+        assertNull("nothing waiting on it is told so", watch.takeAbandoned(waiting))
     }
 
     @Test
@@ -106,7 +107,38 @@ class QuietConnectionsTest {
         watch.acquired(connection, stalled)
         watch.timedOut(connection, stalled, watch.sent())
         watch.ended(waiting)
-        assertFalse(watch.takeAbandoned(waiting))
+        assertNull(watch.takeAbandoned(waiting))
+    }
+
+    // Failed before the close, a request's retry, asked at once, could be handed the quiet connection still open,
+    // and OkHttp would ask it again itself once the close landed: a trip's plan asked three times (2026-10-20).
+    @Test
+    fun `a request waiting on a connection that went quiet is failed only once the connection is closed`() {
+        watch.acquired(connection, waiting)
+        watch.acquired(connection, stalled)
+        watch.timedOut(connection, stalled, watch.sent())
+        val close = watch.takeAbandoned(waiting)!!
+        assertEquals("still closing", 1L, close.count)
+        watch.closed(connection)
+        assertEquals("closed", 0L, close.count)
+    }
+
+    @Test
+    fun `two requests timing out on one quiet connection at once wait on its one close`() {
+        val stalledToo = Any()
+        watch.acquired(connection, waiting)
+        watch.acquired(connection, stalled)
+        watch.acquired(connection, stalledToo)
+        val sent = watch.sent()
+        watch.timedOut(connection, stalled, sent)
+        watch.timedOut(connection, stalledToo, sent)
+        val close = watch.takeAbandoned(waiting)!!
+        // The first to close it lets everything waiting on it fail, whichever timed out with it.
+        watch.closed(connection)
+        assertEquals(0L, close.count)
+        assertEquals(0L, watch.takeAbandoned(stalled)!!.count)
+        // The second's close finds nothing left to let go.
+        watch.closed(connection)
     }
 
     @Test
