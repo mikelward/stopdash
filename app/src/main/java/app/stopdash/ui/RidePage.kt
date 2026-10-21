@@ -127,6 +127,8 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
         loadRouteStops = { retry: Int -> rememberLegRouteStops(view.ride, StepFree.ANY, retry) },
         ride = placed ?: view.ride,
         nextTrain = nextTrain,
+        // Where more than one way joins its ends, the rider chooses the one listed.
+        rideChoices = true,
     )
 }
 

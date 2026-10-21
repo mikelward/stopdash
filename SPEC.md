@@ -1508,8 +1508,12 @@ spinner, as it has no answer to fade. With no train due, that row stays,
 a dash for its time, heard as "No trains to … soon"; a suspension's status row gives way to it in
 place, and it to the first train, so through the night the card never moves. Tapped, that row opens
 the **ride's page** (maintainer, 2026-10-21): the route page for the ride itself, its stops from where
-the card boards to the far end, the direction and branch it takes (so no guess at the line's; none listed
-where its ends are joined by more than one branch, a choice not yet offered), its
+the card boards to the far end, the direction and branch it takes (so no guess at the line's). Where its ends
+are joined by more than one way (Camden Town to Kennington by either Northern line branch), the ride alone can't
+say which, so a chip per way stands where its stops go ("via Bank", "via Charing X"; else by the first station
+that tells them apart), none chosen, and the way chosen is listed (Codex on #1036); a way calling at either
+end under another id of its station is among them, and ways that couldn't be loaded are said, with a retry,
+rather than an "unavailable" with nothing to try (Codex on #1039). Then its
 line's alert if it has one, "View line" for the map, and, while nothing live says and its line has no
 alert, its timetable's next train, "Next train 05:41 (timetable)" — the one place a timetable's time is
 shown, said as the timetable's and never as a countdown. Only a check that failed, or a route that

@@ -39,6 +39,8 @@ import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripLeg
+import app.stopdash.domain.eachCallingAt
 import app.stopdash.domain.stopsOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -106,7 +108,7 @@ internal class RouteChoicesUi private constructor(
             first: String,
         ): RouteChoicesUi {
             val choices = RouteChoices.of(sequence, row, rows, focus, topology, first)
-            val routes = sequence.callingAt(row.stopId)
+            val routes = sequence.eachCallingAt(row.stopId)
             val lists = choices.choices.filter { it.path.isNotEmpty() }.associate { choice ->
                 choice.key to RouteStopsUi.Loaded(
                     RouteStops.stopsOf(routes, choice.path, row.lineId),
@@ -115,6 +117,28 @@ internal class RouteChoicesUi private constructor(
                 )
             }
             return RouteChoicesUi(choices, choices.choices.map { labelOf(it, row, via) }, lists)
+        }
+
+        /**
+         * The ways [ride] can be ridden on [sequence] ([RouteChoices.forRide]), each named by its via or where it
+         * parts ([by]: "via %1$s"), as they all end where the ride does.
+         */
+        @WorkerThread
+        fun forRide(sequence: LineSequence, ride: TripLeg, by: String): RouteChoicesUi {
+            val choices = RouteChoices.forRide(sequence, ride)
+            val routes = sequence.eachCallingAt(ride.fromId)
+            val lists = choices.choices.associate { choice ->
+                choice.key to RouteStopsUi.Loaded(
+                    RouteStops.stopsOf(routes, choice.path, ride.lineId),
+                    choice.path.mapNotNull { id -> routes.stopPositions[id]?.let { id to it } }.toMap(),
+                    routes,
+                )
+            }
+            val labels = choices.choices.map { choice ->
+                val via = choice.branch.takeIf { choice.showBranch } ?: choice.parting
+                if (via != null) by.format(via) else DepartureLabels.destinationLabel(choice.destination, "") ?: choice.destination
+            }
+            return RouteChoicesUi(choices, labels, lists)
         }
 
         // "Morden/Bank" where the via tells two ways to one place apart, as a card names the route; "Zulu via
@@ -176,6 +200,38 @@ internal fun rememberRouteChoices(row: DepartureRow, siblings: List<DepartureRow
         }
         // The unsettled copy made once for each answer and ask, not on every recomposition.
         remember(answer, ask) { answer?.let { (asked, choices) -> if (asked === ask) choices else choices.unsettled() } }
+    }
+}
+
+/**
+ * The ways a favorite [ride]'s page can list it by ([RouteChoicesUi.forRide]), from its line's routes both ways
+ * ([LocalRouteStops]), worked out on the worker ([LocalWorker]): null until in, [RouteChoicesUi.NONE] where no
+ * routes are wired or TfL has none, and one carrying its [RouteChoicesUi.failure] where they couldn't be loaded
+ * (said by the repository), asked again on the stop list's [retry].
+ */
+@Composable
+internal fun rememberRideChoices(ride: TripLeg, retry: Int): RouteChoicesUi? {
+    val repository = LocalRouteStops.current ?: return RouteChoicesUi.NONE
+    val worker = LocalWorker.current
+    val by = stringResource(R.string.route_choice_by)
+    return key(repository, ride, worker, by) {
+        // Asked again with the page's stop list ([retry]) after a failure, as the routes it failed for may load now
+        // (Codex on #1039); an answer in hand stands meanwhile.
+        val answer by produceState<RouteChoicesUi?>(null, retry) {
+            if (value != null && value?.failure == null) return@produceState
+            value = try {
+                withContext(worker) { RouteChoicesUi.forRide(repository.load(ride.lineId, ""), ride, by) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TflException.NotFound) {
+                // TfL has no route for this line: no ways to offer, and no retry that could ever find one.
+                RouteChoicesUi.NONE
+            } catch (e: TflException) {
+                // Already logged (sanitized) by the repository: no chips, and why, so the page can offer its retry.
+                RouteChoicesUi.failed(errorKindOf(e))
+            }
+        }
+        answer
     }
 }
 

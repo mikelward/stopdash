@@ -6076,6 +6076,9 @@ internal fun RouteDetailScreen(
     // The line's whole status as the list has it, every way's alerts in it: what a way chosen with no train shows
     // where it runs another way than [row], whose alerts are its own way's ([WayStatus]). Null keeps [row]'s.
     lineStatus: LineStatus? = null,
+    // Whether the page offers [ride]'s ways where more than one joins its ends, for the rider to choose the one
+    // listed (a favorite ride's page; Codex on #1036): the ride alone can't say which.
+    rideChoices: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
@@ -6104,9 +6107,13 @@ internal fun RouteDetailScreen(
     // listed by its stops alone, here, until the rider picks another or a train comes on it.
     // The way the page opened on, its chips first, so moving to another of them doesn't reorder them.
     val openedWay by rememberSaveable(row.stopId, row.lineId) { mutableStateOf(row.direction) }
-    // Bumped by the stop list's retry, and the chips' where their routes couldn't be loaded.
+    // Bumped by the stop list's retry, which asks the chips' routes again too, and a ride's ways.
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
-    val routeChoices = if (onChooseRoute != null) rememberRouteChoices(row, siblings, focus, openedWay, routeStopsRetry) else null
+    val routeChoices = when {
+        onChooseRoute != null -> rememberRouteChoices(row, siblings, focus, openedWay, routeStopsRetry)
+        rideChoices && ride != null -> rememberRideChoices(ride, routeStopsRetry)
+        else -> null
+    }
     var chosenKey by rememberSaveable(row.stopId, row.lineId) { mutableStateOf<String?>(null) }
     val chosenIndex = routeChoices?.indexOf(chosenKey)
     val chosen = chosenIndex?.let { routeChoices.choices.choices[it] }
@@ -6155,14 +6162,24 @@ internal fun RouteDetailScreen(
     val followed = if (trainless != null) null else pageFollowed(row, focus, topology, routeWork, routeAsk, siblings.isNotEmpty())
     // A stale row's soonest prediction may not be the next train any more, so its stop list is
     // withheld rather than shown as current (SPEC D4); it returns as soon as a refresh lands.
-    val stops = when {
+    val listed = when {
         // A route chosen with no train: its stops from the line's routes, which no prediction dates.
         trainless != null -> routeChoices?.lists?.get(trainless.key) ?: RouteStopsUi.Hidden
+        // A ride more than one way joins the ends of, none chosen yet: its ways offered instead of "unavailable".
+        rideChoices && (routeChoices?.choices?.choices?.size ?: 0) >= 2 -> RouteStopsUi.Hidden
         // Only a row with a train to follow: a status row has no list to withhold.
         stale && row.hasTrains && row.lineId.isNotBlank() -> RouteStopsUi.Stale
         routeStops != null -> routeStops
         loadRouteStops != null -> loadRouteStops(routeStopsRetry)
         else -> rememberRouteStops(row, followed, routeStopsRetry)
+    }
+    // A ride's ways that couldn't be loaded, where its list can't say which way it takes: the failure, with the
+    // list's retry, which asks for its ways again, rather than "unavailable" with nothing to try (Codex on #1039).
+    val waysFailure = routeChoices?.failure?.takeIf { rideChoices }
+    val stops = if (waysFailure != null && (listed as? RouteStopsUi.Unavailable)?.reason is RouteStops.Resolution.Ambiguous) {
+        RouteStopsUi.Failed(waysFailure)
+    } else {
+        listed
     }
     // A first guess at the stretch the line's alert is about: the listed stations its prose names
     // (SPEC *Disruptions*). Only for a shown alert, so a dismissed one leaves the page unmarked too.
@@ -6224,7 +6241,8 @@ internal fun RouteDetailScreen(
     val untimed = workForRow?.untimed.orEmpty().let { trains -> if (boardRows) trains else trains.filter { Countdown.stillShown(it, now) } }
     // A route chosen with no train is named as its chip names it.
     val trainlessLabel = trainlessIndex?.let { routeChoices?.labels?.getOrNull(it) }
-    val destinations = if (trainless != null) listOfNotNull(trainlessLabel) else routeWork?.second?.destinations.orEmpty()
+    // A ride's way keeps its page's title: the chip says which way.
+    val destinations = if (trainless != null && !rideChoices) listOfNotNull(trainlessLabel) else routeWork?.second?.destinations.orEmpty()
     // The followed train's branch as the card labels it ("Hainault/Newbury Park"), so the title names
     // the same route the tapped row did; null where the card shows no branch (it makes no difference
     // from this stop, or the row has none).
@@ -6325,8 +6343,9 @@ internal fun RouteDetailScreen(
             // way's) only where there are ways to choose between.
             val choices = routeChoices?.choices
             val holdsChips = onChooseRoute != null && holdsRouteChoices(row)
-            val chipsShown = choices != null && choices.choices.size >= (if (holdsChips) 1 else 2)
-            val chipsFailed = routeChoices?.failure != null
+            // A ride's ways go where its stops do instead (below).
+            val chipsShown = !rideChoices && choices != null && choices.choices.size >= (if (holdsChips) 1 else 2)
+            val chipsFailed = !rideChoices && routeChoices?.failure != null
             // One slot, the chips' height, whichever of them, a failure or nothing is in it ([RouteChipsSlot]).
             if (chipsShown || chipsFailed || holdsChips) {
                 RouteChipsSlot(Modifier.padding(bottom = 8.dp)) {
@@ -6403,7 +6422,7 @@ internal fun RouteDetailScreen(
             // only, but across the page's full width so more fit; the ones that don't ellipsize off
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
-            if (trainless != null && !trainless.unfollowedTrain && !stale && routeChoices?.settled == true) {
+            if (trainless != null && !trainless.unfollowedTrain && !stale && routeChoices?.settled == true && !rideChoices) {
                 // A route chosen with no train at the stop: said, in the countdown's place, so a train coming
                 // on it takes the line without moving what's below. Not from an old snapshot, which can't say
                 // there's none now: its stale caveat below says why nothing is; nor from chips not yet worked out
@@ -6454,7 +6473,7 @@ internal fun RouteDetailScreen(
                         .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
                 )
             }
-            if (nextTrain != null && trainless == null && departures.isEmpty() && untimed.isEmpty() && !stale && shown.status == null) {
+            if (nextTrain != null && (trainless == null || rideChoices) && departures.isEmpty() && untimed.isEmpty() && !stale && shown.status == null) {
                 // Nothing live yet (a line not open for the morning): when the timetable runs the next one,
                 // said as the timetable's, never as a countdown (maintainer, 2026-10-21).
                 Text(
@@ -6747,6 +6766,17 @@ internal fun RouteDetailScreen(
             // nor another way's stops, in place of the train's stops in hand.
             val mapDrawable = mapSection != null && mapSection.ui !is LineMapUi.Failed && mapSection.ui !is LineMapUi.Unavailable &&
                 pathDrawn != false && (pathDrawn == true || mapSection.ui !is LineMapUi.Ready)
+            // A ride more than one way joins the ends of: its ways, where its stops go, the one chosen listed below.
+            val ways = routeChoices?.choices?.takeIf { rideChoices }
+            if (ways != null && ways.choices.size >= 2) {
+                RouteChips(
+                    routeChoices.labels,
+                    routeChoices.keys,
+                    chosenIndex,
+                    onSelect = { chosenKey = ways.choices[it].key },
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
             if (mapDrawable && mapSection != null && routeMap != null) {
                 val inputs = routeMap
                 val stations = mapStations ?: if (drawnAs.isNullOrEmpty()) inputs.asDrawn else RouteMapStations.NONE

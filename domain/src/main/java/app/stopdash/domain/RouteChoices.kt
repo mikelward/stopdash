@@ -64,7 +64,7 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
             // A National Rail line's routes are its stopping patterns, a dozen from one platform: not chips to pick
             // a train by, so none yet (`TODO.md`).
             if (lineId.isBlank() || nationalRail(row)) return NONE
-            val routes = sequence.callingAt(stopId)
+            val routes = sequence.eachCallingAt(stopId)
             val bus = isBus(row)
             val choices = ArrayList<RouteChoice>()
             // The line's routes from here: one choice per path ([merged]).
@@ -151,6 +151,39 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
         }
 
         /**
+         * The ways [ride] can be ridden on its line ([sequence], both ways): each route calling where it boards and,
+         * later, where it gets off, from the one to the other, one choice per distinct path (maintainer, 2026-10-21;
+         * Codex on #1036). Each route is read from where the ride boards on its own ([eachCallingAt]), and gets off
+         * at its stop or its stop area, else, where that route calls at neither after boarding, another id of its
+         * station, so a way calling at the station under another id is offered too (Codex on #1039). More than one is
+         * a ride its ends alone can't say the way of (Camden Town to Kennington by either Northern line branch), for
+         * the rider to choose; none is [current], since the ride itself can't say. A National Rail ride offers none,
+         * as a list row's page doesn't ([of]).
+         */
+        @WorkerThread
+        fun forRide(sequence: LineSequence, ride: TripLeg): RouteChoices {
+            // A ride saved with no mode is its line's known one, as a list row's is (Codex on #1039).
+            val mode = ride.mode.ifBlank { Connections.knownMode(ride.lineId).orEmpty() }
+            if (ride.lineId.isBlank() || mode.equals("national-rail", ignoreCase = true)) return NONE
+            val routes = sequence.eachCallingAt(ride.fromId)
+            fun exactly(id: String) = id == ride.toId || (ride.toArea.isNotEmpty() && routes.stopAreas[id] == ride.toArea)
+            fun after(route: LineRoute, i: Int, alights: (String) -> Boolean) =
+                (i + 1 until route.stopIds.size).firstOrNull { alights(route.stopIds[it]) }
+            val starts = routes.routes.flatMap { route -> route.stopIds.indices.filter { route.stopIds[it] == ride.fromId }.map { route to it } }
+            val paths = starts.mapNotNull { (route, i) ->
+                // A bus's poles have no station: by its stop or stop area alone.
+                val j = after(route, i, ::exactly)
+                    ?: after(route, i) { !mode.equals("bus", ignoreCase = true) && routes.sameStationId(it, ride.toId) }
+                    ?: return@mapNotNull null
+                val path = route.stopIds.subList(i, j + 1).toList()
+                Triple(path, route, routes.stopNames[path.last()].orEmpty().ifBlank { ride.toName })
+            }
+            val choices = ArrayList<RouteChoice>()
+            merged(paths, HashMap(), choices)
+            return RouteChoices(labeled(choices, routes), null)
+        }
+
+        /**
          * One choice per distinct path of [paths] (each with the route it's on and where it ends), into [choices], in
          * the order first met, its place by path in [byPath]: its via the one the routes sharing it name, where they
          * name one and agree (Battersea's unnamed route runs the Charing Cross branch's stops); its way where they
@@ -206,6 +239,16 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
             row.mode.equals("bus", ignoreCase = true) || row.upcoming.any { it.mode.equals("bus", ignoreCase = true) }
     }
 }
+
+/**
+ * This sequence with each of its routes seen from [stopId] on its own ([LineSequence.callingAt]): there, one route
+ * calling at the stop's own id leaves another that calls at a sibling id of its station as it is, which this
+ * doesn't, so every way on from the station is found (Codex on #1039; `OnTheWay`'s ride routes are read the same
+ * way).
+ */
+@WorkerThread
+fun LineSequence.eachCallingAt(stopId: String): LineSequence =
+    callingAt(stopId).copy(routes = routes.map { route -> copy(routes = listOf(route)).callingAt(stopId).routes.single() })
 
 /**
  * The stops of [path] on [sequence] as a stop list lists them, each with its connections other than [lineId], the

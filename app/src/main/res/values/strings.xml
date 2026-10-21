@@ -59,6 +59,10 @@
          button follows. -->
     <string name="route_choices_failed" tools:ignore="MissingTranslation">Couldn\'t load other routes</string>
     <!-- TODO: translate -->
+    <!-- A route chip on a favorite ride's page, where more than one way joins its two ends: %1$s is what
+         tells it apart, its branch ("Bank") or the first station it calls at that the other doesn't. -->
+    <string name="route_choice_by" tools:ignore="MissingTranslation">via %1$s</string>
+    <!-- TODO: translate -->
     <!-- In a route page's countdown's place, on a route chosen from its chips with no train at the stop. -->
     <string name="route_detail_no_live_times" tools:ignore="MissingTranslation">No live times</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
