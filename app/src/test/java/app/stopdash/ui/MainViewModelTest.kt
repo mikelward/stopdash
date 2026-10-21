@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.TestWorker
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Departure
@@ -58,7 +59,6 @@ import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.drop
@@ -7611,43 +7611,6 @@ class MainViewModelTest {
         } finally {
             store.clear()
             worker.close(this)
-        }
-    }
-
-    /**
-     * A worker on a real thread named [name], for a test that checks work runs off the caller's.
-     * [close] stops it only once nothing is left to hop between it and the test's queue: shutting it
-     * down sooner rejects a hop still to come, which kotlinx reruns on [Dispatchers.IO], where nothing
-     * waits for it, so it can reach Main after the test has reset it and fail whichever test is next.
-     */
-    private class TestWorker(name: String) : CoroutineDispatcher() {
-        private val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, name) }
-        private val inner = executor.asCoroutineDispatcher()
-        private val dispatched = java.util.concurrent.atomic.AtomicInteger()
-        private val late = java.util.concurrent.atomic.AtomicInteger()
-
-        override fun dispatch(context: CoroutineContext, block: Runnable) {
-            if (executor.isShutdown) late.incrementAndGet()
-            dispatched.incrementAndGet()
-            inner.dispatch(context, block)
-        }
-
-        /** Waits until everything handed to the worker so far has run. */
-        fun flush() {
-            executor.submit {}.get()
-        }
-
-        /** Hands work back and forth with [scope]'s queue until a round hands the worker none, then stops it. */
-        fun close(scope: TestScope) {
-            do {
-                val before = dispatched.get()
-                scope.advanceUntilIdle()
-                flush()
-                scope.advanceUntilIdle()
-            } while (dispatched.get() != before)
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            check(late.get() == 0) { "work reached the worker after it stopped" }
         }
     }
 
