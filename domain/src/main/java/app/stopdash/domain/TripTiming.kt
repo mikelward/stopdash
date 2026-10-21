@@ -104,6 +104,9 @@ object TripTiming {
 
         /** A mode never boarded on arrival (National Rail, tram): a wait there can be long. */
         MODE,
+
+        /** Its ride gets off at a call the Planner gave no time for: the route cut where it first reaches the destination ([TripRoute.untimed]). */
+        CUT,
     }
 
     /**
@@ -270,10 +273,17 @@ object TripTiming {
                 else -> unknown()
             }
         }
+        // A route cut at a call the Planner gave no time for ([TripRoute.untimed]): its last leg boards as timed, but
+        // gets there at a time nothing gives, so the arrival is withheld, never the old end's the leg still carries.
+        fun untimed(index: Int, leg: TripLeg, timed: Timed): Timed {
+            if (withheld == null) withheld = Withheld(index, leg.mode, leg.lineId, Reason.CUT, predicted(index), null, null, Duration.ZERO)
+            return Timed(timed.timing.copy(arrive = null), Basis.UNKNOWN)
+        }
+        val cutAt = if (route.untimed) route.legs.lastIndex else -1
         var at: Instant? = now.plus(access)
         val timed = route.legs.mapIndexed { index, leg ->
             val ready = at ?: return@mapIndexed null
-            time(index, leg, ready).also {
+            time(index, leg, ready).let { if (index == cutAt) untimed(index, leg, it) else it }.also {
                 if (it.basis > basis) basis = it.basis
                 at = it.timing.arrive?.plus(leg.changeAfter)
             }

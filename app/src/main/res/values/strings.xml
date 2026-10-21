@@ -634,6 +634,9 @@
     <string name="trip_later_timetable">Timetable, not live</string>
     <!-- A later trip's card: when it leaves and gets there, and how long that takes. -->
     <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
+    <!-- TODO: translate -->
+    <!-- A later trip's card for a route whose arrival the timetable doesn't give (it gets off where the Planner gave no time): when it leaves (%1$s). -->
+    <string name="trip_later_leaves" tools:ignore="MissingTranslation">Leaves %1$s</string>
     <!-- A later trip's route opened: it shows live times for now, not the time picked (%1$s). -->
     <string name="trip_later_live_notice">Times for now, not %1$s</string>
     <!-- A later trip's route tapped that the trip for now doesn't offer, so it can't open live. -->

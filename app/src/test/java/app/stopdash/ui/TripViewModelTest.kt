@@ -3264,6 +3264,31 @@ class TripViewModelTest {
         assertEquals(2, planner.calls)
     }
 
+    // A route cut where it rode on through the destination withholds its arrival because the Planner gave no time
+    // where it now gets off: a fresh plan wouldn't give one either, so it asks for none, however old the plan.
+    @Test
+    fun `an arrival withheld by a cut asks for no new plan`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), warn = { warnings += it }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        now = now.plus(TripViewModel.REPLAN_WITHHELD).plus(Duration.ofMinutes(4))
+        trip.noteWithheld(mapOf("r" to TripTiming.Withheld(0, "tube", "circle", TripTiming.Reason.CUT, 2, null, null, Duration.ZERO)))
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        // Still said why, once.
+        assertEquals(1, warnings.count { it.startsWith("trip arrival withheld: leg 1 (tube circle): cut") })
+        // Beside one withheld for another reason, that one plans again.
+        trip.noteWithheld(mapOf(
+            "r" to TripTiming.Withheld(0, "tube", "circle", TripTiming.Reason.CUT, 2, null, null, Duration.ZERO),
+            "s" to TripTiming.Withheld(1, "bus", "9", TripTiming.Reason.INFREQUENT, 2, Duration.ofMinutes(4), null, Duration.ofMinutes(3)),
+        ))
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+    }
+
     // A return to the app re-locates before the trip refreshes: a withheld arrival seen meanwhile waits
     // for the re-pick rather than plan from the fix being replaced, so the list doesn't change once for
     // the old fix and again for the new one. Once the re-locate lands, the next one plans again.
@@ -3512,6 +3537,19 @@ class TripViewModelTest {
         assertFalse(routeKey(detour) in asPlanned)
         // The page's copies keep the same routes as the trip's: the cut one is left out, the sixth kept.
         assertEquals(asPlanned, TripViewModel.bestOf(routes + cut).map(::routeKey))
+    }
+
+    @Test
+    fun `a route cut where it rode on through the destination is timed past the cap`() {
+        // The cap's worth of routes, and one riding on through C whose Planner's arrival, back at E, comes after them all:
+        // drawn cut where it first gets to C, at a call the Planner gave no time for, it may get there first.
+        val routes = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "C", 5, 10L + i))) }
+        val detour = TripRoute(listOf(leg("green", "A", "F", 2, 30).copy(path = listOf("C", "F")), leg("blue", "F", "E", 32, 40)))
+        val cut = TripRoute(listOf(detour.legs.first().copy(toId = "C", path = listOf("C"))), drawnFrom = detour, untimed = true)
+        assertFalse(routeKey(detour) in TripViewModel.bestOf(routes + detour).map(::routeKey))
+        val kept = TripViewModel.bestOf(routes + cut)
+        assertTrue(cut in kept)
+        assertTrue(routes.all { it in kept })
     }
 
     @Test

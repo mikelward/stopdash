@@ -348,13 +348,14 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    itself (`OnTheWay.arrivingIds`, `endedAtDestination`). An earlier cut of the stored routes, with a
    second copy of the Planner's legs carried beside them (`TripRoute.planned`), lost those legs in
    three places in review: every path making a route had to carry the copy. The ride keeps the
-   Planner's arrival at its old end (*Decisions needing review*): the arrival withheld until the ride
-   is timed at the cut call, as the detour cut below has it, is still to come, with the rest of the
-   detour cut. A later trip's list takes the same `RideEnds` (2026-10-20): `LaterTripViewModel` reads
+   Planner's arrival at its old end (*Decisions needing review*): unlike the detour cut below, whose
+   arrival is withheld (`TripRoute.untimed`), a last ride cut keeps it. A later trip's list takes the
+   same `RideEnds` (2026-10-20): `LaterTripViewModel` reads
    the same model and hubs on io (`awaitDestination`, shared with `TripViewModel.shownRoutes`) and,
    on its compute dispatcher, draws each listing's cards from the routes cut as the trip page draws
    them, each ride's row carrying its `LegEnd`, so its cards name the ride where the trip page does;
-   which routes are listed, and in what order, is judged on the routes as planned.
+   which routes are listed is judged on the time as planned, then the detours on the cut copies, as
+   the page does, a route cut where the Planner gave no time last.
    - **Who asks.** `DirectTrips`, `RideLines`, `RouteStops.forLeg`, `FavoriteJourney` and on the
      way's arrival check (`OnTheWay.endedAtDestination`) ask "first call whose hub is one of the
      destination's" (its matchable hubs, *Where it's resolved*), for a trip's last ride only (on the
@@ -362,10 +363,12 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
      destination, or changes there, ends at its first call there once the rider is on board, or at the
      ride's own end where that's the destination's, the legs after it going; on a step-free trip only
      where the call is checked against today's lifts, never with no table or no level known); and the
-     detour scan (`withoutDetours`, run by `TripViewModel` and `LaterTripViewModel` before any
-     `LegEnd` exists) reads a route's whole path the same way, so a route whose earlier ride or
-     change already reaches the destination's hub ends there, never telling the rider to ride on
-     or change after they've arrived (a regression test covers that route shape, Codex on #1005).
+     page's and later list's detour cut (`RideEnds.cut`'s `detourCutAt`, 2026-10-21, before the
+     detour scan, `withoutDetours`, which then reads the cut copies) reads a route's whole path the
+     same way, so a route whose earlier ride or change already reaches the destination's hub ends
+     there, never telling the rider to ride on or change after they've arrived (a regression test
+     covers that route shape, Codex on #1005). The trip's own fetches still run the detour scan on
+     the routes as planned (`TripViewModel.timedRoutes`, `TODO.md`).
      The call it cuts at is the first in the hub that passes the trip's step-free level, with
      today's lift outages (*Decision*'s step-free rule), so a lift out at the first record it
      reaches moves the cut on to the next passing one, never ending a card where the rider can't

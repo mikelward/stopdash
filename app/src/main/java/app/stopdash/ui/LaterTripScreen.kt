@@ -201,8 +201,15 @@ private fun LaterCard(card: LaterTripViewModel.Card, onClick: () -> Unit) {
             // line of its own below, at the row's end.
             Layout(
                 content = {
+                    val arrives = card.arrives
+                    val minutes = card.minutes
                     Text(
-                        stringResource(R.string.trip_later_times, card.departs, card.arrives, card.minutes),
+                        // A route cut where the Planner gave no time: when it leaves alone.
+                        if (arrives == null || minutes == null) {
+                            stringResource(R.string.trip_later_leaves, card.departs)
+                        } else {
+                            stringResource(R.string.trip_later_times, card.departs, arrives, minutes)
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.testTag("laterTimes"),

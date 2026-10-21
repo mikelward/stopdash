@@ -2569,10 +2569,15 @@ later by the Planner's times: planned to the bus stop, the Planner can ride thro
 Angel and bus back, where the rider would get off the first time. A detour nothing beats stays, as it
 may be the only way the plan found (maintainer, 2026-09-27), and only a route the rider can see beats
 one: a route riding a hidden mode never takes out one they can, and showing the mode again brings
-back what it beats. When the station model's phase 2 ships, a route that reaches the complex and rides on is no longer dropped
-or shown whole: it's kept but cut at its first call anywhere in the destination's hub that meets the
-trip's step-free level with today's lifts, the legs after it dropped, showing no fare (the Planner
-priced the whole detour) and, where the Planner gives no time there, no arrival time until a followed train times it, since the rider gets off there (`dev-docs/station-resolution.md`). Built so far: a last ride the Planner gets off in the hub is shown cut at an earlier call in it, the route itself kept as planned, keeping meanwhile its arrival at the old end, the latest the rider gets there (below, with On the way). The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
+back what it beats. With the station model's hubs known, a route that reaches the complex and rides on is no longer dropped
+or shown whole: the trip page and a later trip's list draw it cut at its first call anywhere in the destination's hub that meets the
+trip's step-free level with today's lifts (a step-free trip only by TfL's table, as below), the legs after it dropped, showing no fare
+unless every ride is a bus (the Planner priced the whole detour), the route itself kept as planned to open, save and start. Cut at a
+change in the hub, it arrives at the Planner's time there; cut at a call the Planner gives no time for, its arrival is unknown, so
+its card lists after the timed routes, says only when it leaves, and is timed past the route cap; On the way, a followed train times
+it, since the rider gets off there (`dev-docs/station-resolution.md`). A last ride the Planner gets off in the hub is shown cut at an
+earlier call in it the same way, keeping meanwhile its arrival at the old end, the latest the rider gets there (below, with On the
+way). The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
 the Planner's timetable are timed, and an opened route besides; routes show as each answer lands. If some stations (or a station's records or bus stop) can't be planned to, the others'
 routes stand and the trip says "Couldn't plan every route", with a retry; only a whole plan is
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and

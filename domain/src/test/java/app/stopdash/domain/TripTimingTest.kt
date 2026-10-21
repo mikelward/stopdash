@@ -68,6 +68,26 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a route cut at a call the Planner gave no time for boards as timed and withholds its arrival`() {
+        val live = mapOf(0 to listOf(train("red", 2)), 1 to listOf(train("blue", 16)))
+        val cut = TripRoute(twoLegs.legs, untimed = true)
+        val estimate = TripTiming.estimate(cut, now, Duration.ZERO, { live[it] })
+        assertEquals(TripTiming.Basis.UNKNOWN, estimate.basis)
+        assertNull(estimate.arrival)
+        assertNull(estimate.duration)
+        // Both rides board as their trains time them; only where the last gets off is unknown.
+        assertEquals(at(2), estimate.legs[0].board)
+        assertEquals(at(12), estimate.legs[0].arrive)
+        assertEquals(at(16), estimate.legs[1].board)
+        assertNull(estimate.legs[1].arrive)
+        assertEquals(TripTiming.Reason.CUT, estimate.withheld?.reason)
+        assertEquals(1, estimate.withheld?.leg)
+        // Ranked below a route it can't be compared with.
+        val timed = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] })
+        assertEquals(listOf(timed, estimate), TripTiming.rank(listOf(estimate, timed)))
+    }
+
+    @Test
     fun `the walk to the first stop grays trains the rider can't reach`() {
         val live = mapOf(0 to listOf(train("red", 2), train("red", 7)), 1 to listOf(train("blue", 21)))
         val estimate = TripTiming.estimate(twoLegs, now, Duration.ofMinutes(4), { live[it] })

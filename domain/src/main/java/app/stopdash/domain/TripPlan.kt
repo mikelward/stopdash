@@ -72,13 +72,16 @@ data class TripLeg(
  *
  * [drawnFrom] is the route as the Planner gave it where this is only a copy drawn from it ([RideEnds.cut]), null
  * otherwise: a drawn copy is that route wherever a route is told apart (opened, saved, ranked, fetched for,
- * started), its legs only how it's drawn.
+ * started), its legs only how it's drawn. [untimed] where that copy's last ride is cut at a call the Planner gave
+ * no time for (a route that rode on through the destination, cut where it first gets there): the arrival its last
+ * leg carries is the Planner's at the old end, not there, so the route's arrival is unknown ([TripTiming.estimate]).
  */
 data class TripRoute(
     val legs: List<TripLeg>,
     val fare: TripFare? = null,
     val towardStop: Boolean = false,
     val drawnFrom: TripRoute? = null,
+    val untimed: Boolean = false,
 ) {
     /** The legs ridden, walks left out: the line pills a route shows. */
     val rides: List<TripLeg> get() = legs.filterNot { it.isWalk }
@@ -354,6 +357,8 @@ suspend fun JourneyPlanner.journeys(fromId: String, to: TripDestination): List<T
  * call under one pole or its `490G…` stop area and an end at the sibling pole are the same stop;
  * an id it doesn't name is its own. A platform neither holds counts as its station's record
  * ([arrivalOf]), so one TfL added after the bundle was built still arrives and compares as its station.
+ * Run on routes drawn cut ([RideEnds.cut]), a detour cut where it first reaches the destination no longer passes
+ * it, so it stays; one cut where the Planner gave no time ([TripRoute.untimed]) beats nothing, its arrival unknown.
  */
 fun withoutDetours(
     routes: List<TripRoute>,
@@ -382,7 +387,9 @@ private fun keptOf(routes: List<TripRoute>, destinations: Set<String>, stopOf: M
         val at = passed.getValue(route)
         val arrival = route.legs.lastOrNull()?.arrival ?: return@filterIndexed true
         at.isEmpty() || routes.indices.none { other ->
-            other != index && routes[other].endTimes().any { (id, time) -> stop(id) in at && sooner(other, index, arrival, time) }
+            // A route with no time where it gets off ([TripRoute.untimed]) can't be shown to get there first.
+            other != index && !routes[other].untimed &&
+                routes[other].endTimes().any { (id, time) -> stop(id) in at && sooner(other, index, arrival, time) }
         }
     }
 }
