@@ -4178,18 +4178,24 @@ Builds on Phase 1's minimal line-status marking.
               trains to one place by one via (or none named) that take different stops, a bus route's
               variants, share a row's destination group; the page follows a place and its via
               (`RouteFocus`), so a chip for the second's way can't hand over to it, and only lists its stops
-              (without claiming no train). Wants the page's focus able to name a path.
+              (without claiming no train). Wants the page's focus able to name a path. The same holds for two
+              trains TfL names no destination for, on platforms of opposite bounds under one TfL direction (a
+              loop): each has a chip of its own, by how far it goes at least (#1045), but both hand the page the
+              same place, so the page follows the sooner and the later's chip hands back to it (Codex on #1045).
         - [ ] **Keep the page open on a way chosen with no train** (Codex on #1038). The page is anchored to the
               row it opened on: once that row's route runs out of trains (late at night, as often as not when a
               trainless chip is chosen), the page closes, the way chosen and all, even on the refresh that brings a
               train to that way before its hand-over. Wants the page anchored to the way chosen instead of the row,
               drawn from the stop's rows as they are (not the last row held, whose age would read as stale).
-- [ ] **Guess where a "Check front of train" train goes, said as a guess** (maintainer, 2026-10-21). TfL
+- [x] **Guess where a "Check front of train" train goes, said as a guess** (maintainer, 2026-10-21). TfL
       names no destination for some trains ("Check Front of Train"), and StopDash says the same of a
       terminus's arrivals where the line runs on to more than one end. Show the route choices it could take, and
       the stretch every one of them shares as a likely "at least as far as": a Hammersmith & City train
       from Edgware Road, say, may always reach Aldgate. Mark it as a guess, never as TfL's destination;
       learn what's common from the route data (and the train's later predictions, where it has them).
+      Done (2026-10-21): its chip says "At least to <stop>?", the farthest stop every route its way runs from here
+      reaches before they part. Still to do: learn it from the train's later predictions where it has them, and
+      show the guess on its list row, not only its page's chip.
 - [ ] **Show a chip per disruption condition, not just the single most-severe one**
       (requested 2026-09-20). Today `mostSevereDisruption` collapses coexisting statuses to
       one label; the maintainer wants to revisit that — show a chip for each condition a line

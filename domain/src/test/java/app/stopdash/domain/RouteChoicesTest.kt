@@ -39,6 +39,25 @@ class RouteChoicesTest {
         destination = "", mode = mode, upcoming = emptyList(), fetchedAt = now,
     )
 
+    // From N, eastbound by E1 and E2, then parting for Ex or Ey; westbound by W1 and W2, then parting for Wx or Wy.
+    private val eastWest = LineSequence(
+        routes = listOf(
+            LineRoute("N ↔ Ex", listOf("N", "E1", "E2", "EX"), direction = "inbound"),
+            LineRoute("N ↔ Ey", listOf("N", "E1", "E2", "EY"), direction = "inbound"),
+            LineRoute("N ↔ Wx", listOf("N", "W1", "W2", "WX"), direction = "outbound"),
+            LineRoute("N ↔ Wy", listOf("N", "W1", "W2", "WY"), direction = "outbound"),
+        ),
+        stopNames = mapOf(
+            "N" to "N", "E1" to "E1", "E2" to "E2", "EX" to "Ex", "EY" to "Ey",
+            "W1" to "W1", "W2" to "W2", "WX" to "Wx", "WY" to "Wy",
+        ),
+        stopPositions = mapOf(
+            "N" to (51.0 to 0.0), "E1" to (51.0 to 0.01), "E2" to (51.0 to 0.02), "EX" to (51.01 to 0.03),
+            "EY" to (50.99 to 0.03), "W1" to (51.0 to -0.01), "W2" to (51.0 to -0.02), "WX" to (51.01 to -0.03),
+            "WY" to (50.99 to -0.03),
+        ),
+    )
+
     private fun label(choice: RouteChoice) = buildString {
         append(choice.destination)
         if (choice.showBranch) append("/").append(choice.branch)
@@ -131,7 +150,49 @@ class RouteChoicesTest {
         val unknown = choices.choices.single { it.destination == "Check Front of Train" }
         assertEquals(emptyList<String>(), unknown.path)
         assertEquals(choices.choices.indexOf(unknown), choices.current)
-        assertEquals("outbound|live|Check Front of Train|", unknown.key)
+        assertEquals("outbound|live|Check Front of Train||$CTN", unknown.key)
+        // How far it goes at least, by its way's routes: all three run on to Camden Town before they part.
+        assertEquals(CTN, unknown.atLeast)
+        // A way's own choices make no guess.
+        assertEquals(listOf<String?>(null), choices.choices.filter { it.path.isNotEmpty() }.map { it.atLeast }.distinct())
+    }
+
+    @Test
+    fun `a train with no destination at a terminus goes at least as far as its routes all run`() {
+        // Morden, northbound: by Bank or by Charing Cross, both through Kennington first.
+        val board = rows(MDN, train("Check Front of Train", null, 60, direction = "inbound"))
+        val north = board.single { it.direction == "inbound" }
+        val unknown = RouteChoices.of(northern, north, board, null).choices.single { it.path.isEmpty() }
+        assertEquals(KNG, unknown.atLeast)
+        // With its way unknown, no guess: it could go either way.
+        val anyWay = rows(MDN, train("Check Front of Train", null, 60, direction = ""))
+        val blank = RouteChoices.of(northern, anyWay.single(), anyWay, null).choices.single { it.path.isEmpty() }
+        assertEquals(null, blank.atLeast)
+    }
+
+    @Test
+    fun `a train with no destination goes at least as far as its platform's way runs, whatever its direction`() {
+        // Where TfL's direction names the other way round (as on a loop), the platform's bound decides, as a train
+        // with a destination is resolved (Codex on #1045). Eastbound from N runs by E1 and E2, then parts.
+        val east = Departure("northern", "Northern", "outbound", "Check Front of Train", "Eastbound - Platform 1", now.plusSeconds(60), "tube", null)
+        val board = rows("N", east)
+        val unknown = RouteChoices.of(eastWest, board.single(), board, null).choices.single { it.path.isEmpty() }
+        assertEquals("E2", unknown.atLeast)
+    }
+
+    @Test
+    fun `trains with no destination on opposite platforms keep their own guesses, whichever the page follows`() {
+        // Neither has a TfL direction, so only their platforms tell their ways apart: each choice's guess is its own
+        // trains', not the soonest's on any platform (Codex on #1045).
+        val east = Departure("northern", "Northern", "", "Check Front of Train", "Eastbound - Platform 1", now.plusSeconds(60), "tube", null)
+        val west = Departure("northern", "Northern", "", "Check Front of Train", "Westbound - Platform 2", now.plusSeconds(120), "tube", null)
+        val board = rows("N", east, west)
+        val westRow = board.single { row -> row.upcoming.any { it.platform == west.platform } }
+        val choices = RouteChoices.of(eastWest, westRow, board, null)
+        val unknown = choices.choices.filter { it.path.isEmpty() }
+        assertEquals(setOf("E2", "W2"), unknown.map { it.atLeast }.toSet())
+        assertEquals(2, unknown.map { it.key }.distinct().size)
+        assertEquals("W2", choices.choices[choices.current!!].atLeast)
     }
 
     @Test
