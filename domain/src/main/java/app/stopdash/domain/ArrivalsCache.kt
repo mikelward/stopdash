@@ -31,6 +31,9 @@ class ArrivalsCache {
         // A suppressed board's answer ([RailBoard.suppressed]): its notices, no trains. Handed to every
         // asker of the one fetch, never kept.
         val suppressed: Boolean = false,
+        // A board refused for the user's key ([RailBoard.keyRejected]): no trains, handed to every asker of
+        // the one fetch, never kept.
+        val keyRejected: Boolean = false,
     )
 
     private val entries = LinkedHashMap<String, Entry>()
@@ -134,9 +137,9 @@ class ArrivalsCache {
             // ([RailBoard.age]), so a proxy's cached board is dated by when National Rail gave it.
             val askedAt = SteadyClock.stamp(now)
             val entry = fetch()?.let {
-                Entry(it.departures, askedAt.minus(it.age), source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed)
+                Entry(it.departures, askedAt.minus(it.age), source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed, keyRejected = it.keyRejected)
             }
-            if (entry != null && !entry.suppressed) put(key, entry.departures, entry.fetchedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages)
+            if (entry != null && !entry.suppressed && !entry.keyRejected) put(key, entry.departures, entry.fetchedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages)
             outcome = Fetch.Done(entry)
             return entry
         } finally {

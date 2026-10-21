@@ -209,6 +209,7 @@ private fun Calendar(planned: TilePlanned) {
 private fun DisruptionRow(line: TileLine.Disruption) {
     val reason = when (line.noTimes) {
         NoTimes.NO_KEY -> stringResource(R.string.watch_no_rail_key)
+        NoTimes.KEY_REJECTED -> stringResource(R.string.watch_rail_key_rejected)
         NoTimes.NO_DATA -> stringResource(R.string.watch_no_data)
         NoTimes.NO_TRAINS, null -> null
     }

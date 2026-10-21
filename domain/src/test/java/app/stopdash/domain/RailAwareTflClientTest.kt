@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,12 +30,13 @@ class RailAwareTflClientTest {
         override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
     }
 
-    private class Board(var key: Boolean = true, var fail: Boolean = false) : RailBoardSource {
+    private class Board(var key: Boolean = true, var fail: Boolean = false, var refused: Boolean = false) : RailBoardSource {
         val asked = mutableListOf<String>()
         override val available get() = key
         override suspend fun departures(crs: String): List<Departure> {
             asked += crs
-            if (fail) throw TflException.Unreachable("HTTP 401", null)
+            if (refused) throw TflException.Unreachable("HTTP 401 (key rejected)", RailKeyRejected(null))
+            if (fail) throw TflException.Unreachable("HTTP 500", null)
             return listOf(Departure("great-example", "Great Example", "", "Far", "Platform 1", Instant.EPOCH, "national-rail"))
         }
     }
@@ -202,7 +204,7 @@ class RailAwareTflClientTest {
         val warnings = mutableListOf<String>()
         val client = RailAwareTflClient(tfl, Board(fail = true), { codes }, warn = { warnings += it })
         assertEquals(listOf("overground-example"), client.arrivals("910GEXAMPLE").map { it.lineId })
-        assertEquals(listOf("national rail board failed for stop 910GEXAMPLE: HTTP 401"), warnings)
+        assertEquals(listOf("national rail board failed for stop 910GEXAMPLE: HTTP 500"), warnings)
     }
 
     @Test
@@ -368,6 +370,75 @@ class RailAwareTflClientTest {
         board.fail = false
         client.arrivals("910GEXAMPLE")
         assertEquals("the board came back", RailFeed.LIVE, client.railFeed("910GEXAMPLE"))
+    }
+
+    @Test
+    fun `a stop whose board National Rail refused the key for says the key is why`() = runTest {
+        val board = Board(refused = true)
+        val client = RailAwareTflClient(tfl, board, { codes })
+        // TfL's half still shows: the refusal is the board's alone.
+        assertTrue(client.arrivals("910GEXAMPLE").isNotEmpty())
+        assertEquals("the key refused", RailFeed.KEY_REJECTED, client.railFeed("910GEXAMPLE"))
+        client.arrivals("910GEXAMPLE")
+        assertEquals("refused again", RailFeed.KEY_REJECTED, client.railFeed("910GEXAMPLE"))
+        // A failure of another kind says nothing of the key: plain "No data".
+        board.refused = false
+        board.fail = true
+        client.arrivals("910GEXAMPLE")
+        assertEquals("failed otherwise", RailFeed.UNAVAILABLE, client.railFeed("910GEXAMPLE"))
+        board.refused = true
+        client.arrivals("910GEXAMPLE")
+        board.refused = false
+        board.fail = false
+        client.arrivals("910GEXAMPLE")
+        assertEquals("a key that works again", RailFeed.LIVE, client.railFeed("910GEXAMPLE"))
+        // A key cleared after it was refused: none to fix, so "No key".
+        board.refused = true
+        client.arrivals("910GEXAMPLE")
+        board.key = false
+        client.arrivals("910GEXAMPLE")
+        assertEquals("the key cleared", RailFeed.NO_KEY, client.railFeed("910GEXAMPLE"))
+    }
+
+    @Test
+    fun `every client sharing the one refused fetch says the key is why`() = runTest {
+        // The screen's client and the widget's share the app's board cache: one asks, the other joins its fetch
+        // (ArrivalsCache.fetchBoardOnce), and both must hear why it failed (Codex on #1069).
+        val asked = CompletableDeferred<Unit>()
+        val answer = CompletableDeferred<Unit>()
+        var requests = 0
+        val board = object : RailBoardSource {
+            override val available = true
+            override suspend fun departures(crs: String): List<Departure> {
+                requests++
+                asked.complete(Unit)
+                answer.await()
+                throw TflException.Unreachable("HTTP 401 (key rejected)", RailKeyRejected(null))
+            }
+        }
+        val boards = ArrivalsCache()
+        val screen = RailAwareTflClient(tfl, board, { codes }, boards = boards)
+        val widget = RailAwareTflClient(tfl, board, { codes }, boards = boards)
+        val first = async { screen.arrivals("910GEXAMPLE") }
+        asked.await()
+        val second = async { widget.arrivals("910GEXAMPLE") }
+        runCurrent()
+        answer.complete(Unit)
+        first.await()
+        second.await()
+        assertEquals("one request for both", 1, requests)
+        assertEquals(RailFeed.KEY_REJECTED, screen.railFeed("910GEXAMPLE"))
+        assertEquals(RailFeed.KEY_REJECTED, widget.railFeed("910GEXAMPLE"))
+        // Never kept: the next ask asks again.
+        screen.arrivals("910GEXAMPLE")
+        assertEquals(2, requests)
+    }
+
+    @Test
+    fun `a trip riding a train from a station whose key was refused can't update`() = runTest {
+        val client = RailAwareTflClient(tfl, Board(refused = true), { codes })
+        val failure = runCatching { client.railRideArrivals("910GEXAMPLE") }.exceptionOrNull()
+        assertTrue(failure is TflException.Unreachable)
     }
 
     @Test

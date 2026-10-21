@@ -1524,6 +1524,7 @@ internal fun widgetNoTimes(row: DepartureRow, current: Boolean): NoTimes? =
 private fun widgetNoTimesText(noTimes: NoTimes): String = LocalContext.current.getString(
     when (noTimes) {
         NoTimes.NO_KEY -> R.string.status_no_rail_key
+        NoTimes.KEY_REJECTED -> R.string.status_rail_key_rejected
         NoTimes.NO_DATA, NoTimes.NO_TRAINS -> R.string.status_no_data
     },
 )

@@ -1269,6 +1269,34 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a National Rail line whose key was refused says so and opens Settings`() {
+        val stop = StopArrivals(
+            "910GEXAMPLE",
+            "Example",
+            departures = emptyList(),
+            fetchedAt = now.minusSeconds(30),
+            lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+            railFeed = RailFeed.KEY_REJECTED,
+        )
+        val statuses = mapOf("great-northern" to LineStatus("great-northern", severity = 6, description = "Severe Delays"))
+        var openedRailKey = false
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(
+                    DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(30), lineStatuses = statuses),
+                    now,
+                    {},
+                    onAddRailKey = { openedRailKey = true },
+                )
+            }
+        }
+        // The key is why, not a missing answer: "No data" sent the rider nowhere.
+        composeRule.onNodeWithText("No data").assertDoesNotExist()
+        composeRule.onNodeWithText("Key rejected").performClick()
+        assertTrue(openedRailKey)
+    }
+
+    @Test
     fun `a National Rail train with no time shows in its place among the times`() {
         fun train(minutes: Long) = Departure(
             "great-northern", "Great Northern", "", "Cambridge", "Platform 4", now.plusSeconds(minutes * 60), "national-rail",

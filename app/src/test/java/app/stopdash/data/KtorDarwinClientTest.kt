@@ -5,6 +5,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RailFeed
+import app.stopdash.domain.RailKeyRejected
 import app.stopdash.domain.RailStationCodes
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
@@ -28,6 +29,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -317,6 +319,33 @@ class KtorDarwinClientTest {
         val keyless = KtorDarwinClient(http, apiKey = { " " }, baseUrl = "https://darwin.example/api/20220120")
         assertEquals(null, runBlocking { keyless.runs("STP", "BTN") })
         assertEquals(2, asked.size)
+    }
+
+    @Test
+    fun `a refusal of the user's key says the key is why, and only for the user's key`() {
+        var status = HttpStatusCode.Unauthorized
+        val engine = MockEngine { respond("", status) }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        fun failure(client: KtorDarwinClient) = runCatching { runBlocking { client.board("WAT") } }.exceptionOrNull()
+        val direct = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example/api/20220120")
+        for (refused in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden)) {
+            status = refused
+            val e = failure(direct)
+            assertTrue("$refused", e is TflException.Unreachable && e.cause is RailKeyRejected)
+            // Never TfL's own refusal, which would blame and offer to clear the TfL key.
+            assertFalse("$refused", e is TflException.KeyRejected)
+        }
+        // Any other refusal is a plain failure.
+        status = HttpStatusCode.NotFound
+        assertFalse(failure(direct)?.cause is RailKeyRejected)
+        // The proxy sends none of the rider's keys: its refusal is its own.
+        status = HttpStatusCode.Unauthorized
+        val proxied = KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" })
+        val e = failure(proxied)
+        assertTrue(e is TflException.Unreachable && e.cause !is RailKeyRejected)
     }
 
     @Test

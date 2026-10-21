@@ -52,6 +52,7 @@ class WidgetNoTimesTest {
     @Test
     fun `a disrupted rail line with no times says why, as the in-app card does`() {
         assertEquals(NoTimes.NO_KEY, statusRow(feed = RailFeed.NO_KEY).noTimes)
+        assertEquals(NoTimes.KEY_REJECTED, statusRow(feed = RailFeed.KEY_REJECTED).noTimes)
         assertEquals(NoTimes.NO_DATA, statusRow(feed = RailFeed.UNAVAILABLE).noTimes)
     }
 

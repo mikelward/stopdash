@@ -440,6 +440,7 @@ internal object TileLayout {
 
     private fun noTimesText(context: Context, noTimes: NoTimes?): String? = when (noTimes) {
         NoTimes.NO_KEY -> context.getString(R.string.watch_no_rail_key)
+        NoTimes.KEY_REJECTED -> context.getString(R.string.watch_rail_key_rejected)
         NoTimes.NO_DATA -> context.getString(R.string.watch_no_data)
         NoTimes.NO_TRAINS, null -> null
     }

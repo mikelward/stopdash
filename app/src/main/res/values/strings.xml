@@ -272,6 +272,10 @@
     <!-- Instead of the dash on a National Rail line when no National Rail key is set, so a key
          would give its times; tapping it opens Settings. -->
     <string name="status_no_rail_key">No key</string>
+    <!-- TODO: translate -->
+    <!-- Instead of the dash on a National Rail line when National Rail refused the key set for it, so
+         that key is why it has no times; tapping it opens Settings at the key. -->
+    <string name="status_rail_key_rejected" tools:ignore="MissingTranslation">Key rejected</string>
     <!-- Long-press menu of a near-me row or header: hides every stop and route of that mode from the
          near-me list (SPEC *Finding stops → Hiding a mode*). The argument is the group's name as it
          reads mid-sentence ("bus", "Underground"); "all … services" says the whole group goes, not
@@ -308,6 +312,9 @@
          hidden modes may be running. The argument lists them ("Bus, Tram"). -->
     <string name="modes_hidden_empty">Nothing else to show with %1$s hidden</string>
     <string name="status_no_rail_key_action">Add a National Rail key</string>
+    <!-- TODO: translate -->
+    <!-- What tapping a National Rail line's "Key rejected" does, said to a screen reader. -->
+    <string name="status_rail_key_rejected_action" tools:ignore="MissingTranslation">Change the National Rail key</string>
     <!-- A timed row's destination line when TfL gives neither destination nor towards but
          did give a direction; used only when even the direction is missing. -->
     <string name="destination_unknown">Unknown destination</string>

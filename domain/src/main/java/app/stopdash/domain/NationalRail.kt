@@ -64,6 +64,8 @@ data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
  * [railMessageText]), the words TfL's status for a National Rail line often leaves out for a link.
  * [suppressed] is a board Darwin has suppressed ([SuppressedRailBoard]): no trains to stand behind, only
  * its [messages], which often say why. It is never kept, and its station's times are a failure.
+ * [keyRejected] is National Rail refusing the user's key ([RailKeyRejected]): no trains, never kept, and
+ * handed to every asker of the one fetch, so each says the key is why ([RailFeed.KEY_REJECTED]).
  * [age] is how old it already was when it arrived (stopdash's proxy serves one from its cache), so it
  * is dated by when National Rail gave it, not when it was asked for (SPEC D4).
  */
@@ -73,6 +75,7 @@ data class RailBoard(
     val messages: List<String> = emptyList(),
     val suppressed: Boolean = false,
     val age: Duration = Duration.ZERO,
+    val keyRejected: Boolean = false,
 )
 
 /**
@@ -82,6 +85,14 @@ data class RailBoard(
  * [TflException] a [RailBoardSource] fails with.
  */
 class SuppressedRailBoard(val messages: List<String>) : IllegalStateException("board suppressed")
+
+/**
+ * National Rail refused the user's own key (a 401 or 403 to a request sent with it): mistyped, not yet
+ * active, or without the board's product. The cause of the [TflException] a [RailBoardSource] fails
+ * with, so its station's lines say the key is the reason ([RailFeed.KEY_REJECTED]) rather than "No
+ * data", and nothing reads it as TfL refusing TfL's key ([TflException.KeyRejected]).
+ */
+class RailKeyRejected(cause: Throwable?) : IllegalStateException("national rail key rejected", cause)
 
 /**
  * A National Rail train its board lists with no time to count down: [canceled], or "Delayed" with no
@@ -95,9 +106,10 @@ data class UntimedTrain(val train: Departure, val canceled: Boolean)
 /**
  * Where a National Rail station's National Rail times stand after its last fetch: the board came
  * back ([LIVE], so a line with no trains truly has none), the user has set no key so none was asked
- * for ([NO_KEY]), or the board was asked for and failed ([UNAVAILABLE]).
+ * for ([NO_KEY]), National Rail refused the key it was asked with ([KEY_REJECTED]), or the board was
+ * asked for and failed otherwise ([UNAVAILABLE]).
  */
-enum class RailFeed { LIVE, NO_KEY, UNAVAILABLE }
+enum class RailFeed { LIVE, NO_KEY, KEY_REJECTED, UNAVAILABLE }
 
 /** What a line with no departures shows where its times would be (SPEC *Departures*). */
 enum class NoTimes {
@@ -106,6 +118,9 @@ enum class NoTimes {
 
     /** A National Rail line with no key set: "No key", a tap away from Settings. */
     NO_KEY,
+
+    /** A National Rail line whose key National Rail refused: "Key rejected", a tap away from Settings. */
+    KEY_REJECTED,
 
     /** No source answered for it (no board, or a failed one): "No data". */
     NO_DATA,
@@ -120,6 +135,7 @@ enum class NoTimes {
             !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) -> NO_TRAINS
             row.railFeed == RailFeed.LIVE -> NO_TRAINS
             row.railFeed == RailFeed.NO_KEY -> NO_KEY
+            row.railFeed == RailFeed.KEY_REJECTED -> KEY_REJECTED
             else -> NO_DATA
         }
     }
@@ -182,6 +198,7 @@ suspend fun TflClient.railRideArrivals(stopId: String): RideArrivals {
         RailFeed.LIVE -> RideArrivals(departures, fetchedAt(stopId))
         RailFeed.UNAVAILABLE -> throw TflException.Unreachable("national rail board unavailable", null)
         RailFeed.NO_KEY -> throw TflException.Unreachable("no national rail key", null)
+        RailFeed.KEY_REJECTED -> throw TflException.Unreachable("national rail key rejected", null)
         null -> throw TflException.Unreachable("no national rail station code", null)
     }
 }
@@ -356,10 +373,11 @@ class RailAwareTflClient(
     private fun showed(stopId: String, board: ArrivalsCache.Entry?) {
         // A suppressed board fails for its trains, but its notices are what explain it (Codex, #938).
         board?.messages?.takeIf { it.isNotEmpty() }?.let { noticesByStop[stopId] = it }
-        val trains = board?.takeUnless { it.suppressed }
+        val trains = board?.takeUnless { it.suppressed || it.keyRejected }
         feeds[stopId] = when {
             trains != null -> RailFeed.LIVE
             !rail.available -> RailFeed.NO_KEY
+            board?.keyRejected == true -> RailFeed.KEY_REJECTED
             else -> RailFeed.UNAVAILABLE
         }
         trains?.let {
@@ -378,10 +396,10 @@ class RailAwareTflClient(
     private suspend fun fetchBoard(crs: String, stopId: String): ArrivalsCache.Entry? = coroutineScope {
         val details = if (callingPoints) async { fetchOne(crs, stopId, DETAILS_KEY, "calling points") { rail.boardWithDetails(crs) } } else null
         val plain = fetchOne(crs, stopId, BOARD_KEY, "board") { rail.board(crs) }
-        // A suppressed one has no calling points to give.
-        val withDetails = details?.await()?.takeUnless { it.suppressed }
+        // A suppressed or refused one has no calling points to give.
+        val withDetails = details?.await()?.takeUnless { it.suppressed || it.keyRejected }
         val calling = withDetails?.departures.orEmpty()
-        if (plain == null || plain.suppressed || withDetails == null || calling.isEmpty()) {
+        if (plain == null || plain.suppressed || plain.keyRejected || withDetails == null || calling.isEmpty()) {
             plain
         } else {
             // As old as its older half: calling points kept from before stand for no fresher a board (Codex, #650).
@@ -399,11 +417,18 @@ class RailAwareTflClient(
                 throw e
             } catch (e: TflException) {
                 warn("national rail $what failed for stop $stopId: ${e.message}")
-                // A suppressed board's notices are its answer, handed to every asker of this one fetch with
-                // it (Codex, #938); it is never kept.
-                (e.cause as? SuppressedRailBoard)?.let { RailBoard(emptyList(), messages = it.messages, suppressed = true) }
+                // A suppressed board's notices, or the key refused, are its answer, handed to every asker of
+                // this one fetch with it (Codex, #938; every client sharing the cache, Codex on #1069); it is
+                // never kept.
+                when (val cause = e.cause) {
+                    is SuppressedRailBoard -> RailBoard(emptyList(), messages = cause.messages, suppressed = true)
+                    is RailKeyRejected -> RailBoard(emptyList(), keyRejected = true)
+                    else -> null
+                }
             }
-        val cache = boards ?: return asked()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()).minus(it.age), untimed = it.untimed, messages = it.messages, suppressed = it.suppressed) }
+        val cache = boards ?: return asked()?.let {
+            ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()).minus(it.age), untimed = it.untimed, messages = it.messages, suppressed = it.suppressed, keyRejected = it.keyRejected)
+        }
         return cache.fetchBoardOnce(key + crs, clock(), BOARD_SOURCE) { asked() }
     }
 

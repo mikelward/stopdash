@@ -4,6 +4,7 @@ import androidx.annotation.WorkerThread
 import app.stopdash.domain.Departure
 import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailBoardSource
+import app.stopdash.domain.RailKeyRejected
 import app.stopdash.domain.RailRuns
 import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TflException
@@ -147,10 +148,14 @@ class KtorDarwinClient(
         } catch (e: CancellationException) {
             throw e
         } catch (e: ClientRequestException) {
-            throw if (e.response.status == HttpStatusCode.TooManyRequests) {
-                TflException.RateLimited(e)
-            } else {
-                TflException.Unreachable("HTTP ${e.response.status.value}", e)
+            val status = e.response.status
+            throw when {
+                status == HttpStatusCode.TooManyRequests -> TflException.RateLimited(e)
+                // The user's own key refused: its stations say so ([RailKeyRejected]). The proxy sends none
+                // of the rider's, so a refusal there is the proxy's, and stays a plain failure.
+                route is Route.Direct && (status == HttpStatusCode.Unauthorized || status == HttpStatusCode.Forbidden) ->
+                    TflException.Unreachable("HTTP ${status.value} (key rejected)", RailKeyRejected(e))
+                else -> TflException.Unreachable("HTTP ${status.value}", e)
             }
         } catch (e: ServerResponseException) {
             val why = if (route is Route.Proxy) proxyReason(e) else null
