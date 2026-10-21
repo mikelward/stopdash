@@ -29,10 +29,10 @@ import kotlinx.coroutines.flow.map
 /**
  * The home screen's disruptions row (maintainer, 2026-10-05): the trip's one-row summary ([TripRow])
  * over the lines the rider watches: every line the home screen shows (maintainer, 2026-10-17: its rows'
- * and its farther cards', [ScreenLines]), their favorites' lines (a journey's wherever it is, a starred
- * row's in the list), the trip's on the way, and every line they chose ([Network], none by default). A
- * tap opens the same lines page as a trip's ([TripLinesPage]), which lists every other rail line too,
- * under *Other* ([RAIL]).
+ * and its farther cards', [ScreenLines]) unless they turned that off (2026-10-21), their favorites' lines
+ * (a journey's wherever it is, a starred row's in the list), the trip's on the way, and every line they
+ * chose ([Network], none by default). A tap opens the same lines page as a trip's ([TripLinesPage]), which
+ * lists every other rail line too, under *Other* ([RAIL]).
  */
 object HomeLines {
     /**
@@ -298,6 +298,9 @@ object HomeLines {
         val lineless: Boolean = false,
     ) {
         companion object {
+            /** None: the rider watches only their own lines (maintainer, 2026-10-21). */
+            val NONE = ScreenLines(emptyList())
+
             /**
              * From the [rows] the list draws, its journey cards' [cardRows] and its [farther] cards: a line with a
              * departure or a status row, and every line a card names while it shows them, collapsed. An opened card
@@ -351,8 +354,8 @@ object HomeLines {
      * empty for the watched list), the [networks] the rider chose to cover (by key) and the check of every line
      * the list doesn't check itself ([always]), and what the rider [dismissed]. A line both lists is judged by
      * the list's own check where it has one. The lines the screen shows ([screen]) are watched, wherever they
-     * are (maintainer, 2026-10-17); with none given, every stop's are. Walks every stop's departures: on a
-     * worker only.
+     * are (maintainer, 2026-10-17), unless the rider turned that off ([watchNearby]); with none given, every
+     * stop's are. Walks every stop's departures: on a worker only.
      */
     @WorkerThread
     internal fun row(
@@ -383,6 +386,9 @@ object HomeLines {
         tripUnread: Boolean = false,
         // The lines the home screen shows ([ScreenLines]), every one watched; null for every stop's in the list.
         screen: ScreenLines? = null,
+        // Whether the lines the screen shows are watched at all (maintainer, 2026-10-21): off, only the rider's
+        // own and the chosen lines are, and what the list couldn't check is the list's banner's to say.
+        watchNearby: Boolean = true,
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -390,7 +396,9 @@ object HomeLines {
         // The lines on the screen, an always-covered one among them: watched wherever they are (maintainer,
         // 2026-10-17), and ranked ahead of the rest within a severity.
         val nearby = HashSet<String>()
-        if (screen != null) {
+        if (!watchNearby) {
+            // None: the rider watches only their own lines and the ones they chose.
+        } else if (screen != null) {
             screen.lines.forEach {
                 refs.putIfAbsent(it.id, it)
                 nearby += it.id
@@ -440,7 +448,7 @@ object HomeLines {
         val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
             journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
             tripLines.forEach { add(it.id) }
-            screen?.farIds?.let { addAll(it) }
+            if (watchNearby) screen?.farIds?.let { addAll(it) }
         }
         // Each line's stop nearest the rider within reach, which its map keeps on the page.
         val nearest = NearestByLine.merged(loaded?.stops.orEmpty(), nearestStops, distances)
@@ -450,7 +458,7 @@ object HomeLines {
         // watched); a stop whose closure check failed, named on the page; and anything else (a departure with
         // no line to check) as the row's "Unknown" alone, never left unsaid. With the screen's lines, only what
         // the screen shows: a hidden mode's line the list couldn't check never makes the card say so (Codex, #930).
-        val listUnknown = loaded != null && loaded.disruptionUnknown && !loaded.checkingDisruptions &&
+        val listUnknown = watchNearby && loaded != null && loaded.disruptionUnknown && !loaded.checkingDisruptions &&
             (screen == null || loaded.stopsDisruptionUnknown.isNotEmpty() || screen.lineless)
         val unknownStops = if (listUnknown) {
             loaded.stops.filter { it.stopId in loaded.stopsDisruptionUnknown }.map { it.stopName }.distinct().joinToString(", ")

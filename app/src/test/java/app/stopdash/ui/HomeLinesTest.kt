@@ -532,6 +532,52 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `with the lines near the rider turned off, only their own and the chosen lines are watched`() {
+        // A near bus stop and a tube station on the screen, and a farther card's Elizabeth line; a starred bus at the
+        // stop, a favorite ride on the Northern far away, the trip's Victoria and a chosen Central (maintainer,
+        // 2026-10-21: a rider may want only their favorite rides watched).
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus", "38" to "bus"), stop("station", "jubilee" to "tube")), now,
+            lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73", "38", "jubilee"),
+        )
+        val distances = mapOf("near" to 50.0, "station" to 200.0)
+        val screen = HomeLines.ScreenLines(
+            listOf(LineRef("73", "73", "bus"), LineRef("38", "38", "bus"), LineRef("jubilee", "Jubilee", "tube"), LineRef("elizabeth", "Elizabeth line", "elizabeth-line")),
+            farIds = setOf("elizabeth"),
+        )
+        val starred = setOf(app.stopdash.domain.StarredRow("near", "38", "outbound"))
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
+        )
+        fun watched(nearby: Boolean, loaded: DeparturesUiState.Loaded) = HomeLines.row(
+            loaded, distances, null, emptySet(), now, networks = setOf("central"), starred = starred,
+            journeyLines = setOf("northern"), journeys = listOf(ride), tripLines = listOf(LineRef("victoria", "Victoria", "tube")),
+            screen = screen, watchNearby = nearby,
+        )
+        // On, the default: every line the screen shows too, the near bus's delays a pill.
+        val on = watched(true, loaded)
+        assertEquals(setOf("central", "73", "38", "jubilee", "elizabeth", "northern", "victoria"), on.watchedIds.toSet())
+        assertEquals(listOf("73"), on.lines.map { it.lineId })
+        // Off: the star's bus, the ride's line, the trip's and the chosen one, the near bus's delays left to the list.
+        val off = watched(false, loaded)
+        assertEquals(setOf("central", "38", "northern", "victoria"), off.watchedIds.toSet())
+        assertTrue(off.lines.isEmpty())
+        // A rail line near the rider goes under Other, as any other the rider doesn't watch does; a bus not at all.
+        assertTrue(off.otherIds.containsAll(listOf("jubilee", "elizabeth")))
+        assertTrue(off.every.none { it.leg.lineId == "73" })
+        // What the list couldn't check is the list's banner's to say once the row doesn't watch it, though a line of
+        // the rider's own that went unchecked still reads unknown on the row.
+        val closure = DeparturesUiState.Loaded(
+            loaded.stops, now, determinedLineIds = setOf("73", "38", "jubilee"), disruptionUnknown = true, stopsDisruptionUnknown = setOf("station"),
+        )
+        assertTrue(watched(true, closure).unknown)
+        assertFalse(watched(false, closure).unknown)
+        val starUnchecked = DeparturesUiState.Loaded(loaded.stops, now, determinedLineIds = setOf("73", "jubilee"), disruptionUnknown = true)
+        assertTrue(row(watched(false, starUnchecked), "38").unknown)
+        assertTrue(watched(false, starUnchecked).unknown)
+    }
+
+    @Test
     fun `the screen's lines are its rows', its journey cards' and its farther cards', each card's line by the nearest card`() {
         fun departureRow(stopId: String, lineId: String, mode: String) = app.stopdash.domain.DepartureRow(
             stopId = stopId, stopName = stopId, lineId = lineId, lineName = lineId.uppercase(), direction = "outbound",

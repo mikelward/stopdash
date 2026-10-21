@@ -651,6 +651,33 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithContentDescription("Unknown:", substring = true).assertExists()
     }
 
+    @Test
+    fun `where the disruptions row watches only the rider's own lines, the list's banner says what couldn't be checked`() {
+        // The lines near the rider turned off (maintainer, 2026-10-21): the row says nothing of the list's lines,
+        // so the list says it couldn't check them itself, as with the row off.
+        val stops = stops(now.minusSeconds(60))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(
+                            stops, now.minusSeconds(60), lineStatuses = statuses(), disruptionUnknown = true,
+                            determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet() - "windrush",
+                        ),
+                        now,
+                        {},
+                        showDisruptionsRow = true,
+                        watchNearbyLines = false,
+                        always = HomeLines.Always(emptyMap(), now.minusSeconds(60), askedFor = emptySet()),
+                        alwaysNetworks = emptySet(),
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertExists()
+        composeRule.onNodeWithContentDescription("Unknown:", substring = true).assertDoesNotExist()
+    }
+
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
     private val places = listOf(
         // Home is set to show its icon alone, Work shows its icon and name (the default), and Gym, with

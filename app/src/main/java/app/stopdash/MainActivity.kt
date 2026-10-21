@@ -225,6 +225,7 @@ import app.stopdash.data.KtorTflClient
 import app.stopdash.data.StopdashProxy
 import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.MaxWalkSetting
+import app.stopdash.data.NearbyLinesSetting
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.RecentSearches
@@ -1444,6 +1445,9 @@ class MainActivity : ComponentActivity() {
                 val summaryNetworks by SummaryNetworksSetting.changes.collectByIdentityWithLifecycle()
                 val summaryNetworksLoaded by SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle()
                 val summaryNetworksWriteFailed by SummaryNetworksSetting.writeFailed.collectAsStateWithLifecycle()
+                val watchNearbyLines by NearbyLinesSetting.changes.collectAsStateWithLifecycle()
+                val watchNearbyLinesLoaded by NearbyLinesSetting.isLoaded.collectAsStateWithLifecycle()
+                val watchNearbyLinesWriteFailed by NearbyLinesSetting.writeFailed.collectAsStateWithLifecycle()
                 val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
                 val walkingSpeedLoaded by WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle()
                 val walkingSpeedWriteFailed by WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2879,6 +2883,11 @@ class MainActivity : ComponentActivity() {
                                     summaryNetworksLoaded = summaryNetworksLoaded,
                                     summaryNetworksWriteFailed = summaryNetworksWriteFailed,
                                     onDismissSummaryNetworksError = SummaryNetworksSetting::writeFailureShown,
+                                    watchNearbyLines = watchNearbyLines,
+                                    onWatchNearbyLinesChange = NearbyLinesSetting::set,
+                                    watchNearbyLinesLoaded = watchNearbyLinesLoaded,
+                                    watchNearbyLinesWriteFailed = watchNearbyLinesWriteFailed,
+                                    onDismissWatchNearbyLinesError = NearbyLinesSetting::writeFailureShown,
                                     walkingSpeed = walkingSpeed,
                                     onWalkingSpeedChange = WalkingSpeedSetting::set,
                                     walkingSpeedLoaded = walkingSpeedLoaded,
@@ -4145,7 +4154,11 @@ class MainActivity : ComponentActivity() {
                     // turned off never flashes up, nor the tube in place of the networks chosen (Codex, #592).
                     showDisruptionsRow = DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle().value &&
+                        NearbyLinesSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         DisruptionsRowSetting.changes.collectAsStateWithLifecycle().value,
+                    // And the lines it shows among them, unless the rider watches only their own (maintainer,
+                    // 2026-10-21); the row waits for the choice with the others, so none flash up first.
+                    watchNearbyLines = NearbyLinesSetting.changes.collectAsStateWithLifecycle().value,
                     always = viewModel.always.collectAsStateWithLifecycle().value,
                     // The lines it shows, each watched: a farther card's are asked about though its stop isn't fetched.
                     onScreenLines = viewModel::screenLines,

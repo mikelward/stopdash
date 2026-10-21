@@ -143,6 +143,16 @@ interface AppSettings {
     suspend fun setShowDisruptionsRow(shown: Boolean) {}
 
     /**
+     * Whether the disruptions row watches the lines the home screen shows, as well as the rider's favorites'
+     * (maintainer, 2026-10-21: a rider may want only their favorite rides); on by default, so it shows
+     * something before anything is set up.
+     */
+    fun watchNearbyLines(): Flow<Boolean> = flowOf(true)
+
+    /** Set [watchNearbyLines]. Suspending, off the main thread; best-effort. */
+    suspend fun setWatchNearbyLines(watch: Boolean) {}
+
+    /**
      * Whether a saved place is recognized by its Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*);
      * on by default.
      */

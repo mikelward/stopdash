@@ -381,6 +381,9 @@ fun MainScreen(
     // The home screen's disruptions row ([HomeLines]), at the very top (maintainer, 2026-10-05): shown
     // when true, with the tube's lines as the list's checks found them ([tube]).
     showDisruptionsRow: Boolean = false,
+    // Whether the row watches the lines the screen shows (maintainer, 2026-10-21); off, only the rider's own
+    // and the chosen lines, the list's own banner saying what it couldn't check.
+    watchNearbyLines: Boolean = true,
     always: HomeLines.Always? = null,
     // Told the lines only the screen's farther cards show as they change ([HomeLines.ScreenLines.farIds]), for the
     // row's check to ask about.
@@ -1059,18 +1062,19 @@ fun MainScreen(
     }.orEmpty()
     // The lines the screen shows, its rows' and its farther cards' ([HomeLines.ScreenLines]), every one
     // watched (maintainer, 2026-10-17): worked out on the list's worker for the disruptions row, and told to
-    // the model as they change, which asks about a card's line its stop isn't fetched for.
+    // the model as they change, which asks about a card's line its stop isn't fetched for. None while the
+    // rider watches only their own lines (maintainer, 2026-10-21).
     val screenLines = if (!showDisruptionsRow || shown == null) {
         null
     } else {
-        rememberWorked(listWork.screenLines, Inputs(shown, fartherShown), keep = { _, _ -> true }) {
-            val lines = HomeLines.ScreenLines.of(shown.rows, shown.cardRows, fartherShown)
+        rememberWorked(listWork.screenLines, Inputs(shown, fartherShown, watchNearbyLines), keep = { _, _ -> true }) {
+            val lines = if (watchNearbyLines) HomeLines.ScreenLines.of(shown.rows, shown.cardRows, fartherShown) else HomeLines.ScreenLines.NONE
             ScreenLinesWorked(shown, lines, Reported.of(lines.farIds, listWork.screenLines.value?.value?.ids))
         }
     }
     // With the row off, none: its check stops asking about them (Codex, #930).
     val noScreenLines = remember { Reported<Set<String>>(emptySet()) }
-    ReportChanges(if (showDisruptionsRow) screenLines?.ids else noScreenLines, listWork, onScreenLines)
+    ReportChanges(if (showDisruptionsRow && watchNearbyLines) screenLines?.ids else noScreenLines, listWork, onScreenLines)
     // The disruptions row, worked out off the main thread, the last one standing while the next is
     // (a moment's old row over a "Checking…" that blinks); "Checking…" until the first is in. Its pills
     // lead with the rider's own lines, so it waits for the starred rows and journeys to be read: ranked
@@ -1084,7 +1088,7 @@ fun MainScreen(
             rememberWorked(
                 homeWork,
                 // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
-                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, tripLines, screenLines),
+                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, tripLines, screenLines, watchNearbyLines),
                 keep = { _, _ -> true },
             ) {
                 // A journey card still checking may yet show another line it rides: the last row (or
@@ -1105,7 +1109,7 @@ fun MainScreen(
                 journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
                 HomeLines.row(
                     loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, lineMeters,
-                    tripLines?.lines.orEmpty(), tripLines?.unread == true, screen = screenLines.lines,
+                    tripLines?.lines.orEmpty(), tripLines?.unread == true, screen = screenLines.lines, watchNearby = watchNearbyLines,
                 )
             } ?: TripRow.CHECKING
         }
@@ -1864,6 +1868,7 @@ fun MainScreen(
                             onUnpauseAlerts = unpauseHere,
                             // The full list only, as the place chips: not a platform, station or searched page.
                             disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
+                            disruptionsRowCoversList = watchNearbyLines,
                             viewActions = viewActions.takeIf { !journeyViewOpen },
                         )
                     }
@@ -2052,6 +2057,8 @@ private fun LoadedContent(
     onUnpauseAlerts: (() -> Unit)? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
+    // Whether that row watches the list's lines, and so says what the list couldn't check in its banner's place.
+    disruptionsRowCoversList: Boolean = true,
     // A platform or station view's buttons ([ViewActions]); null shows none.
     viewActions: ViewActions? = null,
 ) {
@@ -2113,8 +2120,9 @@ private fun LoadedContent(
             // While a cold load is still checking, the stamp says so instead, so a banner doesn't
             // push the list down and back up (SPEC *Freshness → Cold load*).
             // Where the disruptions row shows, it says so itself, as "Unknown" (maintainer, 2026-10-05): a
-            // banner coming and going would move the list under it.
-            if (state.disruptionUnknown && !state.checkingDisruptions && disruptionsRow == null) {
+            // banner coming and going would move the list under it. Not where it watches only the rider's own
+            // lines (maintainer, 2026-10-21), whose "Unknown" says nothing of the rest of the list.
+            if (state.disruptionUnknown && !state.checkingDisruptions && (disruptionsRow == null || !disruptionsRowCoversList)) {
                 Banner(stringResource(R.string.disruptions_unknown))
             }
             // Favorite journeys still show when nothing nearby has departures: their origins can be

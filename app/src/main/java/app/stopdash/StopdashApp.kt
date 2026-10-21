@@ -15,6 +15,7 @@ import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.HubsStore
 import app.stopdash.data.MaxWalkSetting
+import app.stopdash.data.NearbyLinesSetting
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.StepFreeSetting
@@ -354,6 +355,7 @@ open class StopdashApp : Application() {
         HiddenModesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         DistanceUnitsSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         DisruptionsRowSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
+        NearbyLinesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         WifiPlacesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         TrainSpacingSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         RideGroupingSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))

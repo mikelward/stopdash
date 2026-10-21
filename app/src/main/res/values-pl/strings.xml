@@ -447,7 +447,6 @@
     <string name="settings_disruptions_row_off">Wyłączone</string>
     <string name="settings_disruptions_row_description">Pokazuj komunikaty i opóźnienia na ekranie głównym</string>
     <string name="settings_summary_networks_title">Zawsze obserwowane</string>
-    <string name="settings_summary_networks_summary">Linie w pobliżu i Twoje ulubione przejazdy są zawsze obserwowane</string>
     <string name="settings_summary_lines_title">Obserwuj też</string>
     <string name="settings_disruptions_row_write_failed">Nie udało się zapisać. Zmiana zostanie cofnięta po ponownym uruchomieniu StopDash.</string>
     <string name="settings_hidden_title">Ukryte</string>

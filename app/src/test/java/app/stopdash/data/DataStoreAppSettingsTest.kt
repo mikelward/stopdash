@@ -154,6 +154,24 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
+    fun `the summary watches the lines near the rider by default and persists turning that off and on`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertTrue(store.watchNearbyLines().first())
+        store.setWatchNearbyLines(false)
+        assertFalse(store.watchNearbyLines().first())
+        store.setWatchNearbyLines(true)
+        assertTrue(store.watchNearbyLines().first())
+    }
+
+    @Test
+    fun `a settings file from before the nearby lines choice reads it as on`() = runTest {
+        // Written by an older build: no watchNearbyLines key at all.
+        val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
+        assertNull(checkNotNull(older).watchNearbyLines)
+        assertTrue(DataStoreAppSettings(FakeDataStore(older)).watchNearbyLines().first())
+    }
+
+    @Test
     fun `the summary's lines read none by default and persist a choice`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(null))
         assertNull(store.summaryNetworks().first())

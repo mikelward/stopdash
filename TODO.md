@@ -3842,6 +3842,10 @@ Builds on Phase 1's minimal line-status marking.
         Reversed 2026-10-17 (maintainer: at home, the rides to work matter, not everything near work):
         the watched lines are those near the rider, their favorite rides', the trip's on the way and the
         chosen ones.
+  - [x] **A switch for the lines near the rider** (maintainer, 2026-10-21: a rider may want only their
+        favorite rides): "Lines near you" on the Disruptions summary's page, on by default. Off, the row
+        watches only the rider's own lines and the chosen ones, and the list's banner says what it couldn't
+        check. The picker's line now reads "Your favorite rides are always watched".
   - [x] ~~**Include buses near favorite places**~~ (maintainer, 2026-10-07: a setting, off by default):
         moot since the places' lines stopped counting (2026-10-17).
   - [x] ~~**Maybe the closures of the stations near favorite places** too~~ (maintainer, 2026-10-06):
