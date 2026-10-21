@@ -4137,8 +4137,10 @@ Builds on Phase 1's minimal line-status marking.
 - [ ] **Show a ride's far-end closure on its ride page** (Codex on #1036). The journey card shows its far
       end's closure notice (or that it couldn't be checked); the ride page opened from its empty line row
       shows the boarding stop's notice only, and withholds the timetable for either, but doesn't say why.
-- [ ] **Show more of a ride's timetable than the next train** (maintainer, 2026-10-21): the next few, or
-      the morning's first and the gaps after it, on the ride's page, still said as the timetable's.
+- [x] **Show more of a ride's timetable than the next train** (maintainer, 2026-10-21): the next few, or
+      the morning's first and the gaps after it, on the ride's page, still said as the timetable's. Done
+      (2026-10-21): the next three it can vouch for (`StopTimetable.nextDepartures`), "Next trains 05:41 ·
+      05:49 · 05:57 (timetable)".
 - [ ] **Open the near-me list's "?" and dash line rows** (maintainer, 2026-10-21). A quiet "?" row opens
       nothing (Codex, #505: its page would read as a clean line), and its station has no ride to say which
       way. Its page would say why the times are missing and show the scheduled departures for every route

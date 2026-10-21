@@ -6066,9 +6066,9 @@ internal fun RouteDetailScreen(
     // as they are, a Tube train just past its time kept, grayed, as on the list ([Countdown.onBoard]). Otherwise
     // (a trip's rows, built at another time) a train goes at its time, against [now].
     boardRows: Boolean = false,
-    // A favorite ride's next train by its timetable, shown while nothing live says and its line has no
-    // alert, marked as the timetable's ([rememberNextTrain]); null shows none.
-    nextTrain: Instant? = null,
+    // A favorite ride's next few trains by its timetable, shown while nothing live says and its line has no
+    // alert, marked as the timetable's ([rememberTimetabledTrains]); empty shows none.
+    nextTrains: TimetabledTimes = TimetabledTimes.NONE,
     // Moves the page to another route of its line at the stop, chosen from its chips (maintainer, 2026-10-21):
     // the row holding that route's soonest train, among [row] and [siblings], and the route a tap on that row
     // follows. Null offers no chips.
@@ -6473,13 +6473,20 @@ internal fun RouteDetailScreen(
                         .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
                 )
             }
-            if (nextTrain != null && (trainless == null || rideChoices) && departures.isEmpty() && untimed.isEmpty() && !stale && shown.status == null) {
-                // Nothing live yet (a line not open for the morning): when the timetable runs the next one,
-                // said as the timetable's, never as a countdown (maintainer, 2026-10-21).
+            if (nextTrains.times.isNotEmpty() && (trainless == null || rideChoices) && departures.isEmpty() && untimed.isEmpty() && !stale && shown.status == null) {
+                // Nothing live yet (a line not open for the morning): when the timetable runs the next few,
+                // said as the timetable's, never as a countdown (maintainer, 2026-10-21). Their text written on the
+                // worker with them ([TimetabledTimes]).
+                val bus = row.mode.equals("bus", ignoreCase = true)
                 Text(
                     text = stringResource(
-                        if (row.mode.equals("bus", ignoreCase = true)) R.string.route_detail_next_bus_timetabled else R.string.route_detail_next_timetabled,
-                        CLOCK.format(nextTrain.atZone(LONDON)),
+                        when {
+                            nextTrains.times.size == 1 && bus -> R.string.route_detail_next_bus_timetabled
+                            nextTrains.times.size == 1 -> R.string.route_detail_next_timetabled
+                            bus -> R.string.route_detail_next_buses_timetabled
+                            else -> R.string.route_detail_next_trains_timetabled
+                        },
+                        nextTrains.text,
                     ),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),

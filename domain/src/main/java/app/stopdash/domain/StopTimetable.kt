@@ -99,30 +99,48 @@ data class StopTimetable(val schedules: List<DaySchedule>, val readable: Boolean
      * null when nothing leaves within the limit.
      */
     @WorkerThread
-    fun nextDeparture(at: Instant): Instant? {
-        if (!readable) return null
+    fun nextDeparture(at: Instant): Instant? = nextDepartures(at, 1).firstOrNull()
+
+    /**
+     * The first [count] departures at or after [at] and within [NEXT_LIMIT] of it, by this timetable, soonest
+     * first (maintainer, 2026-10-21: a ride's page gives the next few). Only as many as it can say for sure: none
+     * past the opening of a day that's a holiday ([publicHoliday]), has no schedule, or has a journey that
+     * couldn't be read, since that day could run one sooner; none at all with a schedule left unread.
+     */
+    @WorkerThread
+    fun nextDepartures(at: Instant, count: Int): List<Instant> {
+        if (!readable || count <= 0) return emptyList()
         val today = at.atZone(LONDON).toLocalDate()
         val end = at.plus(NEXT_LIMIT)
-        var next: Instant? = null
+        val found = ArrayList<Instant>()
+        // The soonest a day this timetable can't read could run a train from: nothing past it is sure.
+        var unsureFrom: Instant? = null
         for (day in listOf(today.minusDays(1), today, today.plusDays(1))) {
             val midnight = day.atStartOfDay()
             val opens = midnight.atZone(LONDON).toInstant()
             val closes = midnight.plusMinutes(SERVICE_DAY_MINUTES.toLong()).atZone(LONDON).toInstant()
-            // A service day that's over by [at], or starts after the one found or the limit, can't run it sooner.
-            if (closes.isBefore(at) || opens.isAfter(end) || next?.let { opens.isAfter(it) } == true) continue
+            // A service day that's over by [at], or starts after the limit, runs none of them.
+            if (closes.isBefore(at) || opens.isAfter(end)) continue
             val its = schedules.filter { day.dayOfWeek in it.days }
-            if (its.isEmpty() || its.any { !it.complete } || publicHoliday(day)) return null
-            // In autumn's repeated hour a time has two instants, and the timetable doesn't say which: the soonest
-            // not yet gone, so asked in the second 01:10, a 01:30 is still to come (Codex on #1036).
-            val first = its.flatMap { schedule ->
-                schedule.minutes.flatMap { minute ->
+            if (its.isEmpty() || its.any { !it.complete } || publicHoliday(day)) {
+                val from = if (opens.isBefore(at)) at else opens
+                if (unsureFrom == null || from.isBefore(unsureFrom)) unsureFrom = from
+                continue
+            }
+            // In autumn's repeated hour a time has two instants, and the timetable doesn't say which: the first still
+            // to come counts, so asked in the second 01:10, a 01:30 is still to come (Codex on #1036), but once: it's
+            // one train, not two (Codex on #1042).
+            its.forEach { schedule ->
+                schedule.minutes.forEach { minute ->
                     val zoned = midnight.plusMinutes(minute.toLong()).atZone(LONDON)
-                    listOf(zoned.withEarlierOffsetAtOverlap().toInstant(), zoned.withLaterOffsetAtOverlap().toInstant())
+                    val instant = listOf(zoned.withEarlierOffsetAtOverlap().toInstant(), zoned.withLaterOffsetAtOverlap().toInstant())
+                        .firstOrNull { !it.isBefore(at) } ?: return@forEach
+                    if (!instant.isAfter(end)) found += instant
                 }
-            }.filter { !it.isBefore(at) && !it.isAfter(end) }.minOrNull()
-            if (first != null && (next == null || first.isBefore(next))) next = first
+            }
         }
-        return next
+        val sure = unsureFrom
+        return found.distinct().sorted().filter { sure == null || it.isBefore(sure) }.take(count)
     }
 
     /**

@@ -1037,7 +1037,7 @@ while trains run — during a disruption it can lose track of a whole branch —
 as "no trains" when they were only unseen; at night the same empty list is honestly "none", and the
 timetable is what tells the two apart. **The timetable decides only which mark: its times are never
 shown in place of live ones**, since it knows nothing of the disruption that emptied the board
-(maintainer, 2026-10-03); a favorite ride's page gives its next train before the line opens, marked as the
+(maintainer, 2026-10-03); a favorite ride's page gives its next few trains before the line opens, marked as the
 timetable's (*Journeys*, maintainer, 2026-10-21). It is fetched only for a line with no live times, kept for the service
 day. While it is still being fetched, or a failed one is being asked for again, the row shows a small **spinner** (heard as "Loading times"),
 not "?": a "?" during a page load read as an answer when it was only a wait (maintainer,
@@ -1515,7 +1515,8 @@ that tells them apart), none chosen, and the way chosen is listed (Codex on #103
 end under another id of its station is among them, and ways that couldn't be loaded are said, with a retry,
 rather than an "unavailable" with nothing to try (Codex on #1039). Then its
 line's alert if it has one, "View line" for the map, and, while nothing live says and its line has no
-alert, its timetable's next train, "Next train 05:41 (timetable)" — the one place a timetable's time is
+alert, its timetable's next few trains, "Next trains 05:41 · 05:49 · 05:57 (timetable)" (maintainer, 2026-10-21: as
+many as three, the ones the timetable can vouch for; "Next train" for one) — the one place a timetable's time is
 shown, said as the timetable's and never as a countdown. Only a check that failed, or a route that
 couldn't load, is a note under the heading.
 
