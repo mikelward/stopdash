@@ -4177,6 +4177,10 @@ Builds on Phase 1's minimal line-status marking.
       the morning's first and the gaps after it, on the ride's page, still said as the timetable's. Done
       (2026-10-21): the next three it can vouch for (`StopTimetable.nextDepartures`), "Next trains 05:41 ·
       05:49 · 05:57 (timetable)".
+- [x] **Put the direction beside the platform on the route page** (maintainer, 2026-10-21: "From Highgate -
+      Southbound - Platform 2" on one line if it fits; Southbound never more than a row from the platform).
+      Done (2026-10-21): the "From" line names the way between the place and the platform, and the heading
+      over the map or list a screen below is gone, save "Terminates here" for a train ending at the stop.
 - [x] **Open the near-me list's "?" and dash line rows** (maintainer, 2026-10-21). A quiet "?" row opens
       nothing (Codex, #505: its page would read as a clean line), and its station has no ride to say which
       way. Its page would say why the times are missing and show the scheduled departures for every route

@@ -117,6 +117,19 @@ fun boardingQualifier(trainPlatform: String?, rowPlatform: String, letter: Strin
 }
 
 /**
+ * What a route page says its train leaves from, after "From": the [place], the way the train runs
+ * ([direction], "Southbound"), then the [boarding] platform or pole, as TfL names a platform
+ * ("Highgate – Southbound – Platform 2"). One line where it fits; wrapped, the way still reads beside
+ * the platform it names, never a line or more from it (maintainer, 2026-10-21).
+ */
+fun routeFromTitle(place: String, direction: String?, boarding: StopQualifier?): String =
+    groupHeaderTitle(listOfNotNull(place, direction).joinToString(" – "), boarding)
+
+/** [routeFromTitle] as a screen reader hears it, a pause for each dash; null for the bare place. */
+fun routeFromSpoken(place: String, direction: String?, boarding: StopQualifier?): String? =
+    if (direction == null && boarding == null) null else listOfNotNull(place, direction, groupHeaderSpoken(boarding)).joinToString(", ")
+
+/**
  * What joins a place name to its qualifier [label]: " – ", or just a space before a destination,
  * whose arrow already joins them (maintainer, 2026-09-24).
  */

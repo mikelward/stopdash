@@ -6539,10 +6539,16 @@ internal fun RouteDetailScreen(
                 // the row's trains ([routeDetailWork]). A stale row's platform is an old prediction's, so
                 // it's left off, as its stop list is (SPEC D4); a pole's letter is the stop's own.
                 val boarding = workForRow?.boarding?.takeUnless { stale && it is StopQualifier.Platform }
-                // Heard with a pause, not a dash ("From Victoria, Platform 5").
-                val spoken = groupHeaderSpoken(boarding)?.let { stringResource(R.string.route_detail_from, "$place, $it") }
+                // The way the train runs, beside the platform it names (maintainer, 2026-10-21): read off its platform as
+                // TfL names it ("Southbound - Platform 2"), left off a stale row's as its platform is; a bus's off its pole's
+                // compass bearing, the stop's own. Neither known, none rather than a guess. A train ending here heads
+                // nowhere: its map or list says so instead.
+                val direction = (PlatformDirection.of(followed?.platform)?.takeUnless { stale } ?: bearingDirection(row.bearing))
+                    .takeUnless { (stops as? RouteStopsUi.Loaded)?.endsHere == true }
+                // Heard with a pause, not a dash ("From Victoria, Northbound, Platform 5").
+                val spoken = routeFromSpoken(place, direction, boarding)?.let { stringResource(R.string.route_detail_from, it) }
                 Text(
-                    text = stringResource(R.string.route_detail_from, groupHeaderTitle(place, boarding)),
+                    text = stringResource(R.string.route_detail_from, routeFromTitle(place, direction, boarding)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = if (service != null) 4.dp else 0.dp)
@@ -6999,11 +7005,10 @@ internal fun RouteDetailScreen(
                 if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && railLoaded?.endsHere != true) {
                     JourneyTip(onDismissJourneyTip, Modifier.padding(top = 16.dp))
                 }
-                // A train ending here heads nowhere: say so rather than its platform's compass.
-                val heading = if (railLoaded?.endsHere == true) stringResource(R.string.route_terminates_here)
-                else PlatformDirection.of(followed?.platform) ?: bearingDirection(row.bearing)
-                heading?.let {
-                    Text(it, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+                // A train ending here heads nowhere: said above its map. Any other's way is on the "From" line, beside its
+                // platform.
+                if (railLoaded?.endsHere == true) {
+                    Text(stringResource(R.string.route_terminates_here), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
                 }
                 // Held, the map's place stays empty under its heading for the moment it's worked out.
                 if (!mapHeld && mapSection != null && routeMap != null) {
@@ -7042,9 +7047,6 @@ internal fun RouteDetailScreen(
                 railColor = railColorFor(row),
                 onRetry = { routeStopsRetry++ },
                 modifier = Modifier.padding(top = 16.dp),
-                // Rail reads it off the followed train's platform ("Southbound - Platform 2"); a bus
-                // off its pole's compass bearing. Neither known, no heading rather than a guess.
-                direction = PlatformDirection.of(followed?.platform) ?: bearingDirection(row.bearing),
                 // By segment, whatever line or direction it was starred from: the 43 and the 134
                 // between two shared stops are one journey, and so is its way back from the poles
                 // across the road — so any of those pages shows (and toggles) the same star.

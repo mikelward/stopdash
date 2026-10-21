@@ -1043,12 +1043,12 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        // The list is headed by the way the train runs, read off its platform; it opens on the
-        // boarding stop, which a screen reader hears as "Your stop". Above it the page says where the
-        // train leaves from, platform and all, which a ride's card no longer heads (maintainer, 2026-10-14).
-        composeRule.onNodeWithText("Northbound").assertIsDisplayed()
-        composeRule.onNodeWithText("From Victoria – Platform 5").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("From Victoria, Platform 5").assertIsDisplayed()
+        // The page says where the train leaves from, platform and all, which a ride's card no longer heads
+        // (maintainer, 2026-10-14), the way it runs beside the platform rather than over the list a screen
+        // away (maintainer, 2026-10-21). The list opens on the boarding stop, heard as "Your stop".
+        composeRule.onNodeWithText("From Victoria – Northbound – Platform 5").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("From Victoria, Northbound, Platform 5").assertIsDisplayed()
+        composeRule.onNodeWithText("Northbound").assertDoesNotExist()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
             .assertIsDisplayed()
         composeRule.onNodeWithText("Seven Sisters").assertIsDisplayed()
@@ -1080,7 +1080,9 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Terminates here").assertIsDisplayed()
-        composeRule.onNodeWithText("Southbound").assertDoesNotExist()
+        // Nor beside its platform on the "From" line: it heads nowhere.
+        composeRule.onNodeWithText("From Victoria – Platform 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Southbound", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Stop list unavailable").assertDoesNotExist()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertIsDisplayed()
 
@@ -1129,7 +1131,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Terminates here").assertIsDisplayed()
-        composeRule.onNodeWithText("Southbound").assertDoesNotExist()
+        composeRule.onNodeWithText("Southbound", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Long-press a stop to favourite the ride there").assertDoesNotExist()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
         // Only its own station open: the line beyond folded (a run of one is drawn, so the fixture runs on to Euston).
@@ -1221,6 +1223,9 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
         composeRule.waitForIdle()
+        // The way the train runs is on the "From" line beside its platform, not over the map (maintainer, 2026-10-21).
+        composeRule.onNodeWithText("From Victoria – Northbound – Platform 5").assertExists()
+        composeRule.onNodeWithText("Northbound").assertDoesNotExist()
         // Its stop the rider's, the train's stations open with their step-free marks, the line beyond them folded.
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
         composeRule.onNodeWithText("Green Park Step-free to the train", useUnmergedTree = true).assertExists()
@@ -1871,10 +1876,10 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("From Park – Stop K").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("From Park, Stop K").assertIsDisplayed()
-        // Its compass heads the stop list, as before; the sign's "towards" isn't repeated.
-        composeRule.onNodeWithText("Northbound").assertIsDisplayed()
+        // Its compass beside its pole, as a platform's is; the sign's "towards" isn't repeated.
+        composeRule.onNodeWithText("From Park – Northbound – Stop K").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("From Park, Northbound, Stop K").assertIsDisplayed()
+        composeRule.onNodeWithText("Northbound").assertDoesNotExist()
 
         captureSnapshot("route-detail-bus-pole.png")
     }
@@ -2083,6 +2088,7 @@ class RouteDetailScreenScreenshotTest {
         // The platform is an old prediction's too, so the page names the stop alone (Codex, #850).
         composeRule.onNodeWithText("From Victoria").assertIsDisplayed()
         composeRule.onNodeWithText("Platform 5", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Northbound", substring = true).assertDoesNotExist()
     }
 
     @Test

@@ -161,4 +161,17 @@ class HeaderQualifierTest {
         // A letterless pole: the bare place.
         assertNull(boardingQualifier("Platform 1", "", " ", bus = true))
     }
+
+    @Test
+    fun aRoutePagesFromLineSaysTheWayBesideThePlatform() {
+        assertEquals("Highgate – Southbound – Platform 2", routeFromTitle("Highgate", "Southbound", StopQualifier.Platform("2", null)))
+        assertEquals("Highgate, Southbound, Platform 2", routeFromSpoken("Highgate", "Southbound", StopQualifier.Platform("2", null)))
+        assertEquals("Park – Southbound – Stop K", routeFromTitle("Park", "Southbound", StopQualifier.BusStop("k", null)))
+        // Either one alone, or neither: the bare place, heard as written.
+        assertEquals("Highgate – Southbound", routeFromTitle("Highgate", "Southbound", null))
+        assertEquals("Highgate, Southbound", routeFromSpoken("Highgate", "Southbound", null))
+        assertEquals("Highgate – Platform 2", routeFromTitle("Highgate", null, StopQualifier.Platform("2", null)))
+        assertEquals("Highgate", routeFromTitle("Highgate", null, null))
+        assertNull(routeFromSpoken("Highgate", null, null))
+    }
 }

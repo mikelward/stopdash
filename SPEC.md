@@ -1183,21 +1183,24 @@ without the lifts that are out loses its mark until they're back. A station anot
 keeps it. Until TfL first answers, the marks are the bundled table's; after that, TfL's last answer
 stands until it gives another, through a refresh and through one that fails, and a page opened later
 draws its first frame from it: it only ever takes marks off, so holding it errs toward "not
-step-free" rather than putting marks back on lifts TfL never said were working. A screen reader reads the symbol as its words ("Step-free to the train"). The list is headed only by the **direction** the train runs ("Southbound") — read off its
-rail platform, or a bus pole's compass bearing, and left off when neither names one — not by "From" or
-"Stops to": the list opens on the boarding stop and the app bar already names the destination. Above
-the list, under the service's name, the body names where the departure leaves from, with the platform
-its train is at or the bus's pole letter where TfL gives one ("From King's Cross St. Pancras – Platform
-7", "From Park – Stop K"; maintainer, 2026-10-14): a favorite ride's card holds several stops' trains
-under one heading (*Journeys*), so this page is where a rider finds which stop and platform to go to.
+step-free" rather than putting marks back on lifts TfL never said were working. A screen reader reads the symbol as its words ("Step-free to the train"). The list has no heading of
+its own, not "From" or "Stops to": it opens on the boarding stop and the app bar already names the
+destination. Above the list, under the service's name, the body names where the departure leaves from,
+with the platform its train is at or the bus's pole letter where TfL gives one ("From King's Cross St.
+Pancras – Platform 7", "From Park – Stop K"; maintainer, 2026-10-14): a favorite ride's card holds several
+stops' trains under one heading (*Journeys*), so this page is where a rider finds which stop and platform
+to go to. Between the two, the **direction** the train runs ("From Victoria – Northbound – Platform 5") —
+read off its rail platform as TfL names it, or a bus pole's compass bearing, and left off when neither
+names one or the train ends there — beside the platform it names, so wrapped it's still never more than a
+line from it, rather than heading the list a screen below (maintainer, 2026-10-21).
 Where the trains it lists leave from more than one platform, or one listed from another of the
 station's rows has no platform known yet, it names the stop alone: no one platform is theirs, and
 naming the soonest's would send a rider to the wrong one for the rest.
 It shows with or without the list, so a status row, or a list loading, failed or withheld, still says
-which stop the page is about; a stale row names the stop alone, its platform being an old
-prediction's (D4), while a pole's letter, the stop's own, stays. A bus is named only by its pole: TfL's
-platform on a bus prediction is the stop's own numbering, not a platform. Never a direction word or a
-pole's sign there: the list's heading gives the way the train runs, and the title where it goes. The list comes from TfL's Route/Sequence for the line, fetched **when the page opens** — never
+which stop the page is about; a stale row names the stop alone, its platform and the direction read off
+it being an old prediction's (D4), while a pole's letter and bearing, the stop's own, stay. A bus is named only by its pole: TfL's
+platform on a bus prediction is the stop's own numbering, not a platform. Never a pole's sign there:
+the title says where it goes. The list comes from TfL's Route/Sequence for the line, fetched **when the page opens** — never
 on the refresh path — and kept for a day, in memory and in the app's cache directory, so a reopened route needs no fetch, even after the process was killed. The list is matched off the main thread; a train's page reopened in the same process shows the list it last showed in its first frame while the current one is matched, and a list ready within a few frames appears without a flash of "Loading"; until
 it arrives the page says so, a failed fetch says why with a retry, and where TfL's data admits more
 than one path from here (a Northern train with no branch named) the page says the list is
