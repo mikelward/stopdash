@@ -1025,6 +1025,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               the hub's first call like the plan's own routes, where a
                                               Direct row to a stop can arrive by hub; today only the
                                               plan's answers are cut.
+                                        - [ ] The trains through a change (`withThroughRoutes`,
+                                              `plannedThroughWays`) worked out on the compute dispatcher
+                                              with the rest of `ShownRoutes`, not in `TripScreen`'s
+                                              `remember`: they've been built in composition since before
+                                              the cut, and the cut builds them twice (as planned and by
+                                              hub). Moving them needs the page's live state to stop
+                                              running one worker hop behind (four screen tests broke when
+                                              tried: try again planned twice, a journey switch lost its
+                                              routes, a frame stood in, the disruptions row).
                                         - [x] A later trip's list (`LaterTripViewModel`) taking the
                                               same `RideEnds`: the trip page's model and hubs, read on io
                                               (`awaitDestination`), worked out with each listing on its
