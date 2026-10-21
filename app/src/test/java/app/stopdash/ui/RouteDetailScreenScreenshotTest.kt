@@ -164,7 +164,7 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
-    fun aRideWithNothingLive_saysItsTimetablesNextTrain_asTheTimetables() {
+    fun aRideWithNothingLive_saysItsTimetablesNextTrains_asTheTimetables() {
         // A favorite ride's line row with no train, before its line opens for the morning.
         val row = DepartureRow(
             stopId = "940GZZLUVIC",
@@ -190,16 +190,44 @@ class RouteDetailScreenScreenshotTest {
                     onToggleStar = {},
                     onBack = {},
                     routeStops = RouteStopsUi.Loading,
-                    // 05:41 in London (BST).
-                    nextTrain = Instant.parse("2026-09-18T04:41:00Z"),
+                    // 05:41, 05:49 and 05:57 in London (BST): the next few (maintainer, 2026-10-21).
+                    nextTrains = TimetabledTimes.of(listOf("04:41", "04:49", "04:57").map { Instant.parse("2026-09-18T$it:00Z") }),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Next trains 05:41 · 05:49 · 05:57 (timetable)").assertIsDisplayed()
+
+        captureSnapshot("route-detail-ride-next-timetabled.png")
+    }
+
+    @Test
+    fun aRideWithOneTimetabledTrainLeft_saysTheOne() {
+        val row = DepartureRow(
+            stopId = "940GZZLUVIC", stopName = "Victoria", lineId = "victoria", lineName = "Victoria", direction = "",
+            directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = now,
+        )
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = false,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                    // The night's last, with nothing the timetable can vouch for after it.
+                    nextTrains = TimetabledTimes.of(listOf(Instant.parse("2026-09-18T04:41:00Z"))),
                 )
             }
         }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Next train 05:41 (timetable)").assertIsDisplayed()
-
-        captureSnapshot("route-detail-ride-next-timetabled.png")
     }
 
     @Test

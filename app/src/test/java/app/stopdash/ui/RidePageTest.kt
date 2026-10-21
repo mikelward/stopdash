@@ -54,4 +54,14 @@ class RidePageTest {
         assertEquals(null, departureBefore(train, listOf(java.time.LocalDate.of(2026, 10, 20))))
         assertEquals(null, departureBefore(train, listOf(java.time.LocalDate.of(2026, 10, 19))))
     }
+
+    @Test
+    fun `a ride's timetabled trains come with their text, written with them off the page`() {
+        // 05:41, 05:49 and 05:57 BST on Tuesday 2026-10-20: the page reads the text, it doesn't write it.
+        val trains = listOf("04:41", "04:49", "04:57").map { Instant.parse("2026-10-20T$it:00Z") }
+        val times = TimetabledTimes.of(trains)
+        assertEquals(trains, times.times)
+        assertEquals("05:41 · 05:49 · 05:57", times.text)
+        assertEquals(TimetabledTimes.NONE, TimetabledTimes.of(emptyList()))
+    }
 }

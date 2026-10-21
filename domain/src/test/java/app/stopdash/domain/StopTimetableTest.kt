@@ -227,6 +227,11 @@ class StopTimetableTest {
         assertEquals(Instant.parse("2026-10-25T01:30:00Z"), sundays.nextDeparture(Instant.parse("2026-10-25T01:10:00Z")))
         // 00:10 GMT, the first 01:10 (BST): the first 01:30.
         assertEquals(Instant.parse("2026-10-25T00:30:00Z"), sundays.nextDeparture(Instant.parse("2026-10-25T00:10:00Z")))
+        // And the next few count that 01:30 once: it's one train, whichever hour it runs in (Codex on #1042).
+        assertEquals(
+            listOf(Instant.parse("2026-10-25T00:30:00Z"), Instant.parse("2026-10-25T10:00:00Z")),
+            sundays.nextDepartures(Instant.parse("2026-10-25T00:10:00Z"), 3),
+        )
     }
 
     @Test
@@ -238,6 +243,25 @@ class StopTimetableTest {
         assertNull(StopTimetable(listOf(weekdays.copy(complete = false))).nextDeparture(tuesday("04:51:00")))
         // 2026-08-31 is the August bank holiday, a Monday.
         assertNull(timetable.nextDeparture(Instant.parse("2026-08-31T03:51:00Z")))
+    }
+
+    @Test
+    fun `the next few departures are as many as it can vouch for, soonest first`() {
+        // Before the line opens for the morning: its first trains, on into tonight's past midnight.
+        assertEquals(
+            listOf(tuesday("05:40:00"), tuesday("12:00:00"), tuesday("12:00:00").plus(Duration.ofMinutes(12 * 60 + 30))),
+            timetable.nextDepartures(tuesday("04:51:00"), 3),
+        )
+        assertEquals(listOf(tuesday("05:40:00"), tuesday("12:00:00")), timetable.nextDepartures(tuesday("04:51:00"), 2))
+        // Thursday's 24:30, Friday's 00:30, is the last it can say: Friday has no schedule, and might run one sooner
+        // than anything after.
+        val thursdayMorning = tuesday("04:51:00").plus(Duration.ofDays(2))
+        assertEquals(
+            listOf(thursdayMorning.plus(Duration.ofMinutes(49)), thursdayMorning.plus(Duration.ofMinutes(7 * 60 + 9))),
+            timetable.nextDepartures(thursdayMorning, 3),
+        )
+        assertEquals(emptyList<Instant>(), timetable.copy(readable = false).nextDepartures(tuesday("04:51:00"), 3))
+        assertEquals(emptyList<Instant>(), timetable.nextDepartures(tuesday("04:51:00"), 0))
     }
 
     @Test

@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -20,7 +21,7 @@ import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
-/** Rides' timetables ([LegTimetables]), for a favorite ride's next train while nothing live says ([rememberNextTrain]); null gives none. */
+/** Rides' timetables ([LegTimetables]), for a favorite ride's next trains while nothing live says ([rememberTimetabledTrains]); null gives none. */
 val LocalLegTimetables = staticCompositionLocalOf<LegTimetables?> { null }
 
 /**
@@ -58,37 +59,56 @@ internal fun rememberPlacedRide(ride: TripLeg): TripLeg? {
 }
 
 /**
- * [ride]'s next train by its timetable as of [now] ([app.stopdash.domain.StopTimetable.nextDeparture]), worked
- * out again each minute; null while it's fetched, where the timetable can't say, while the ride isn't placed yet
- * ([rememberPlacedRide]), and on or after a day in [plannedFrom] ([departureBefore]). Fetched and read on the worker ([LocalWorker]): one request per ride a
- * day, shared with trips' ([LegTimetables]).
+ * [ride]'s next [count] trains by its timetable as of [now] ([app.stopdash.domain.StopTimetable.nextDepartures]),
+ * worked out again each minute; none while it's fetched, where the timetable can't say, while the ride isn't placed
+ * yet ([rememberPlacedRide]), and none on or after a day in [plannedFrom] ([departureBefore]). Fetched and read on
+ * the worker ([LocalWorker]): one request per ride a day, shared with trips' ([LegTimetables]).
  */
 @Composable
-internal fun rememberNextTrain(ride: TripLeg?, now: Instant, plannedFrom: List<LocalDate> = emptyList()): Instant? {
-    val timetables = LocalLegTimetables.current ?: return null
+internal fun rememberTimetabledTrains(ride: TripLeg?, now: Instant, plannedFrom: List<LocalDate> = emptyList(), count: Int = TIMETABLED_TRAINS): TimetabledTimes {
+    val timetables = LocalLegTimetables.current ?: return TimetabledTimes.NONE
     val worker = LocalWorker.current
     val current by rememberUpdatedState(now)
-    val next by produceState<Instant?>(null, timetables, worker, ride, plannedFrom) {
+    val next by produceState(TimetabledTimes.NONE, timetables, worker, ride, plannedFrom, count) {
         // produceState keeps its last value across new keys: a ride no longer eligible, or another one, starts
         // with none (Codex on #1036).
-        value = null
+        value = TimetabledTimes.NONE
         val key = ride?.let { LegTimetables.Key(it.lineId, it.fromId, it.toId) } ?: return@produceState
         snapshotFlow { current.epochSecond / 60 }.collect {
             val at = current
             value = withContext(worker) {
                 timetables.fetch(listOf(key))
-                timetables.known().timetables[key]?.nextDeparture(at)?.let { departureBefore(it, plannedFrom) }
+                TimetabledTimes.of(
+                    timetables.known().timetables[key]?.nextDepartures(at, count).orEmpty().mapNotNull { departureBefore(it, plannedFrom) },
+                )
             }
         }
     }
-    return next.takeIf { ride != null }
+    return if (ride != null) next else TimetabledTimes.NONE
 }
+
+/**
+ * Trains by a timetable ([times]), with [text], them as a page shows them ("05:41 · 05:49 · 05:57"): written on the
+ * worker with them, so composition only reads it (AGENTS.md *Main thread*, Codex on #1042).
+ */
+internal class TimetabledTimes(val times: List<Instant>, val text: String) {
+    companion object {
+        val NONE = TimetabledTimes(emptyList(), "")
+
+        @WorkerThread
+        fun of(times: List<Instant>): TimetabledTimes =
+            if (times.isEmpty()) NONE else TimetabledTimes(times, times.joinToString(" · ") { CLOCK.format(it.atZone(LONDON)) })
+    }
+}
+
+/** How many of a ride's next trains its page gives by the timetable (maintainer, 2026-10-21: "the next few"). */
+internal const val TIMETABLED_TRAINS = 3
 
 /**
  * A favorite ride's page, from its line's row with no train ([JourneyCard.lineCard]): the route page for the
  * ride ([RouteDetailScreen]), with its stops from where its card boards to its far end, the direction and
  * branch it takes ([rememberLegRouteStops]), its line's alert if it has one, and, while nothing live says,
- * its timetable's next train ([rememberNextTrain]). Drawn against [loaded], the list's fetch, at [now].
+ * its timetable's next few trains ([rememberTimetabledTrains]). Drawn against [loaded], the list's fetch, at [now].
  */
 @Composable
 internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Instant, onBack: () -> Unit, lineOpen: MutableState<Boolean>) {
@@ -110,7 +130,7 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
         // couldn't be checked.
         view.card.closures.isEmpty() && !view.card.destinationUnchecked && !view.destinationDisrupted && view.lineListed
     // Nor a train on or after a day its line's planned work starts, which the timetable knows nothing of (Codex on #1036).
-    val nextTrain = rememberNextTrain(placed?.takeIf { eligible }, now, view.plannedFrom)
+    val nextTrains = rememberTimetabledTrains(placed?.takeIf { eligible }, now, view.plannedFrom)
     RouteDetailScreen(
         lineOpen = lineOpen,
         row = row,
@@ -126,7 +146,7 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
         onBack = onBack,
         loadRouteStops = { retry: Int -> rememberLegRouteStops(view.ride, StepFree.ANY, retry) },
         ride = placed ?: view.ride,
-        nextTrain = nextTrain,
+        nextTrains = nextTrains,
         // Where more than one way joins its ends, the rider chooses the one listed.
         rideChoices = true,
     )

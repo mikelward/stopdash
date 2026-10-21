@@ -51,6 +51,12 @@
     <!-- The same for a bus ride. -->
     <string name="route_detail_next_bus_timetabled" tools:ignore="MissingTranslation">Next bus %1$s (timetable)</string>
     <!-- TODO: translate -->
+    <!-- As route_detail_next_timetabled, for the next few: %1$s is their clock times, e.g. "05:41 · 05:49 · 05:57". -->
+    <string name="route_detail_next_trains_timetabled" tools:ignore="MissingTranslation">Next trains %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- The same for a bus ride. -->
+    <string name="route_detail_next_buses_timetabled" tools:ignore="MissingTranslation">Next buses %1$s (timetable)</string>
+    <!-- TODO: translate -->
     <!-- A route chip atop a route page, for one of two ways to one place that only a stop tells apart:
          %1$s is where it goes, %2$s the first stop it calls at that the other doesn't. -->
     <string name="route_choice_via" tools:ignore="MissingTranslation">%1$s via %2$s</string>
