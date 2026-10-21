@@ -46,6 +46,7 @@ on the route a rider took, whose stations and date are left out.
 | End of morning peak | Wed 2026-10-14, 09:14 – 10:14 | Camden Town, Euston, King's Cross, Tottenham Court Road |
 | End of morning peak | Fri 2026-10-16, 09:17 – 11:14 | 15 below |
 | End of morning peak | Half an hour, date left out | 14 stations along one Northern line route, not all hubs (the ride in *Field reports*) |
+| Evening peak | 20 minutes, date left out | 7 stations along one Northern line route, not all hubs (the evening ride in *Field reports*) |
 
 The 15: King's Cross, Bond Street, Liverpool Street, Stratford, Waterloo, Camden Town,
 Stockwell, Baker Street, Farringdon, Paddington (both tube stations), and the Elizabeth line at
@@ -435,10 +436,26 @@ intervals are kept. The rider's times are to within about 15 s, the last two to 
   train "At Platform" 9–26 s after its doors opened (at the 4 stops a poll caught), and once
   still listed a train as approaching half a minute after it had come.
 
+**The same line the other way, an evening peak.** The rider noted when one train came at the
+first station and when its doors opened at four stops after, against a recording of those
+stations every 15 s, each stop's newest answer kept and the stations, date and time left out,
+as above.
+
+- **TfL's times were closer still.** The train came from 28 s before the last time TfL showed for
+  it to 3 s after, a median 11 s before. With the first ride that's 13 times: 7 trains came after
+  their last time, none more than 30 s after, so the grace covered every one. The 6 that came
+  early were on the board as they arrived; the grace only kept them there, grayed, for up to 30 s
+  past their time.
+- **The feed placed the train late.** TfL first placed it "At Platform" 26–37 s after it came (at
+  the 3 stops a poll caught), and once placed it at a station two minutes after its doors opened
+  there. So the feed can't end the grace early: by the time it says a train has left, the 30 s
+  have usually run.
+
 ## Not yet measured
 
 - A weekend morning.
-- The real arrival behind the 30 s grace: rider-logged times at more stations and lines.
+- The real arrival behind the 30 s grace: rider-logged times on more lines (two Northern line
+  rides so far).
 - The second train of a close pair on the earlier recordings, off-peak, and on lines other than
   the Northern and Victoria.
 - Platforms two lines share (Circle and District at Victoria, say). Spacing treats each line

@@ -2116,9 +2116,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               log that found the feed a minute behind a moving train. The board's rows are built once,
               with the grace, at one instant, and the list, journey cards, "?" rows, platform views and
               a row's route page all read them (maintainer, 2026-10-20). Still open: resize it from more
-              rider-logged rides (the real arrival, not the feed's; one ride so far, in
-              `dev-docs/arrivals-measurements.md` *Field reports*: the latest train came 29 s after
-              its last time, at the grace's edge); whether the widget and watch
+              rider-logged rides (the real arrival, not the feed's; two rides so far, in
+              `dev-docs/arrivals-measurements.md` *Field reports*: of 13 door openings, 7 came after
+              the last time shown, none more than 30 s after, and the feed placed trains at the
+              platform too late to end the grace sooner); whether the widget and watch
               should keep it too once they gray times; test the duplicate signals listed there; and
               measure platforms two lines share, which are spaced per line for now.
         - [ ] **Confirm on a device: a journey card's route page leaves out the just-due train the list's
