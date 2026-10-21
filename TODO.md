@@ -4039,8 +4039,10 @@ Builds on Phase 1's minimal line-status marking.
       `TripViewModel`, `RideLineChecks`, `RouteDisruptionChecks`), so `sameAlert` can be the same
       object alone. The trip page and the home screen's lines page hold their last frame through a
       refresh the same way today (`mayStandIn`, `sameList`), and would gain from it too.
-- [ ] **The route page as its origin, a folded span, the current station and the rest of the route**
-      (maintainer's idea, 2026-10-06: explore, or discard). Pairs with the folding-map item above.
+- [x] **The route page as its origin, a folded span, the current station and the rest of the route**
+      (maintainer's idea, 2026-10-06: explore, or discard). Pairs with the folding-map item above. Done
+      (2026-10-21) as the fold behind the boarding stop: the stretch behind the train folds into one line
+      named by its origins, then the stop and the rest of the route (#1062).
 - [ ] **Rethink long-pressing a stop on the route page** (maintainer, 2026-10-06). It was meant to offer
       starring the route; think the experience through before changing it.
 - [x] **Tapping a stop shows its details or departures** (maintainer, 2026-10-06): explore what a tap on
