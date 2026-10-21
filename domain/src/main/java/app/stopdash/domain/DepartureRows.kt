@@ -1194,6 +1194,39 @@ object DepartureRows {
         return AlertPlacement(behind, weighed, rows.mapTo(HashSet()) { it.stopId }, alerts)
     }
 
+    /**
+     * [rows] with each train whose way on from its stop runs into a stretch TfL says has no service marked
+     * [Departure.suspended], so its time is grayed: TfL's live list can keep timing trains stuck on a part
+     * suspension as if they ran (maintainer, 2026-10-20). Only where the suspension applies, its stretch: a
+     * part suspension or closure under way on the row's line ([LineStatus.closures]) whose sections, on its
+     * line's route in [sequences], every way the train may take runs through from the stop on, its next call
+     * already inside, in the direction TfL shuts it ([PartClosure.coversRide]). So a station on both of a
+     * line's branches grays only the suspended branch's trains, a train the other way none, one leaving the
+     * stretch's far end none, and one still short of the stretch none, as trains run up to it (Codex on
+     * #1059: and so only stops inside a section have routes to load, [linesWithAlertsToPlace]). Unknown is
+     * plain, as TfL times it: no route loaded, no sections given, or ways that don't agree. Before
+     * [withoutDismissed]: a dismissed alert doesn't make a stuck train run.
+     */
+    @WorkerThread
+    fun withSuspendedTrains(rows: List<DepartureRow>, sequences: Map<String, LineSequence?>): List<DepartureRow> =
+        rows.map { row ->
+            val closures = row.status?.closures.orEmpty().filter { it.sections.isNotEmpty() }
+            val sequence = sequences[row.lineId]
+            if (closures.isEmpty() || sequence == null || row.mode.equals(BUS_MODE, ignoreCase = true)) return@map row
+            var marked = false
+            val upcoming = row.upcoming.map { train ->
+                val paths = RouteStops.candidatePaths(
+                    sequence, row.stopId, train.destination, train.branch,
+                    bound = RouteStops.boundOf(train.platform), direction = train.direction,
+                    destinationId = train.destinationId, via = train.via,
+                )
+                // From this stop to its next call: the stretch starts here, not somewhere further on.
+                val stuck = paths.isNotEmpty() && paths.all { path -> closures.any { it.coversRide(path.take(2)) } }
+                if (stuck && !train.suspended) train.copy(suspended = true).also { marked = true } else train
+            }
+            if (marked) row.copy(upcoming = upcoming) else row
+        }
+
     // Whether [row]'s alert lies wholly behind its stop on its line's routes in [sequences]
     // ([RouteDisruption.behind]).
     private fun alertBehind(row: DepartureRow, sequences: Map<String, LineSequence?>): Boolean {
@@ -1207,11 +1240,13 @@ object DepartureRows {
         sequences[row.lineId]?.takeIf { row.hasTrains && row.mode.equals(BUS_MODE, ignoreCase = true) }
 
     /**
-     * The bus lines at [stops] whose alert [withAlertsBehind] might find behind a stop: whose routes to
-     * load. A line is a bus by the mode its rows carry ([resolvedMode]: its predictions', else the stop's
-     * advertised one), and its alerts are read as rows read them at [now] ([LineStatus.asOf]), so planned
-     * work whose day has come counts. An alert the rider [dismissed] flags nothing to unflag, so it
-     * costs no request (Codex, PR #469).
+     * The bus lines at [stops] whose alert [withAlertsBehind] might find behind a stop, and the other lines
+     * with trains at one of them inside a part suspension or closure's sections ([withSuspendedTrains]):
+     * whose routes to load. A line is a bus by the mode its rows carry ([resolvedMode]: its predictions',
+     * else the stop's advertised one), and its alerts are read as rows read them at [now]
+     * ([LineStatus.asOf]), so planned work whose day has come counts. A bus alert the rider [dismissed]
+     * flags nothing to unflag, so it costs no request (Codex, PR #469); a dismissed suspension still
+     * stops its trains.
      */
     @WorkerThread
     fun linesWithAlertsToPlace(
@@ -1221,7 +1256,7 @@ object DepartureRows {
         dismissed: Set<DismissedAlert> = emptySet(),
     ): Set<String> {
         val statuses = LineStatus.asOf(lineStatuses, now)
-        return stops.flatMapTo(LinkedHashSet()) { stop ->
+        val buses = stops.flatMapTo(LinkedHashSet()) { stop ->
             val lineModes = stop.lines.associate { it.id to it.mode }
             stop.departures.groupBy { it.lineId }
                 .filter { (id, services) -> resolvedMode(services, lineModes[id]).equals(BUS_MODE, ignoreCase = true) }
@@ -1231,6 +1266,17 @@ object DepartureRows {
                 it.disrupted && DismissedAlert.ofLineStatus(it) !in dismissed && RouteDisruption.scopable(it)
             }
         }
+        // A section names its stops as TfL's route runs them, so a stop in one has trains it may stop.
+        val suspended = stops.flatMapTo(LinkedHashSet()) { stop ->
+            val lineModes = stop.lines.associate { it.id to it.mode }
+            stop.departures.groupBy { it.lineId }.filter { (id, services) ->
+                !resolvedMode(services, lineModes[id]).equals(BUS_MODE, ignoreCase = true) &&
+                    statuses[id]?.allStatuses.orEmpty().any { status ->
+                        status.closures.any { closure -> closure.sections.any { stop.stopId in it } }
+                    }
+            }.keys
+        }
+        return buses + suspended
     }
 
     // [this] less the planned alerts the user dismissed: each is its own alert, dismissed on its own. One read

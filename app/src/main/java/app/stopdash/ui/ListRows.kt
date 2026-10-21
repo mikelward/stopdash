@@ -362,7 +362,8 @@ internal fun listRowsOf(
     // kept a moment, grayed ([Countdown.onBoard]). Each stop's rows are its own, so a reader of some stops
     // takes theirs from these.
     val built = DepartureRows.across(stops, now, lineStatuses, quietRows = true, grace = true)
-    val board = built.filterNot { it.quiet }
+    // A train headed into a stretch TfL says has no service grayed, wherever its row is shown.
+    val board = DepartureRows.withSuspendedTrains(built.filterNot { it.quiet }, alertSequences)
     val all = DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(board, dismissed), alertSequences)
     // A near-me list shows its nearby stops only: a journey's farther origin, fetched for its card,
     // isn't one of them (SPEC *Journeys*).
@@ -476,8 +477,14 @@ internal fun shownRowsOf(
 }
 
 /** [stops]' board rows: from [board], built already, else built at [now] ([DepartureRows.across] with `grace`). */
-private fun platformRowsOf(stops: List<StopArrivals>, board: List<DepartureRow>?, now: Instant, lineStatuses: Map<String, LineStatus>): List<DepartureRow> {
-    if (board == null) return DepartureRows.across(stops, now, lineStatuses, grace = true)
+private fun platformRowsOf(
+    stops: List<StopArrivals>,
+    board: List<DepartureRow>?,
+    now: Instant,
+    lineStatuses: Map<String, LineStatus>,
+    alertSequences: Map<String, LineSequence?>,
+): List<DepartureRow> {
+    if (board == null) return DepartureRows.withSuspendedTrains(DepartureRows.across(stops, now, lineStatuses, grace = true), alertSequences)
     val ids = stops.mapTo(HashSet()) { it.stopId }
     return board.filter { it.stopId in ids }
 }
@@ -522,7 +529,7 @@ internal fun platformViewOf(
         else stops.filter { it.stopId in ids }
     val stopRows = DepartureRows.pinStarred(
         DepartureRows.withAlertsBehind(
-            DepartureRows.withoutDismissed(HiddenModes.rows(platformRowsOf(platformStops, board, now, lineStatuses), hiddenModes), dismissed),
+            DepartureRows.withoutDismissed(HiddenModes.rows(platformRowsOf(platformStops, board, now, lineStatuses, alertSequences), hiddenModes), dismissed),
             alertSequences,
         ),
         starred,

@@ -2219,11 +2219,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 Edgware and Kennington) slide the same way while they lay over, and up to half
                 came earlier than the grayed time. Decide whether such a train shows its plain
                 time or is grayed with its own wording ("3 min, not yet left"), not "held".
-        - [ ] **Gray the trains on a suspended section** (maintainer, 2026-10-20): during a suspension
+        - [x] **Gray the trains on a suspended section** (maintainer, 2026-10-20): during a suspension
               ("No service between Camden Town and Kennington via Bank northbound only") TfL's live list
               kept timing the stuck trains as if they ran. Gray their times, kept, only where the
               suspension applies: its stretch, its direction and its branch (a station on both
-              Northern line branches grays only the suspended one's trains).
+              Northern line branches grays only the suspended one's trains). Done: on the list's rows,
+              by every way the train may take on its line's route (`DepartureRows.withSuspendedTrains`),
+              read as maybe not running. Needs a device check during a real suspension.
+          - [ ] **The widget and watch gray them too**: they have no routes, so they'd need the app's
+                verdicts handed over, as a bus alert behind a stop's are (`AlertBehind`).
         - [ ] **Trains turned back short are missing on their way back** (seen at King's Cross): two
               Piccadilly trains that ran east to Arnos Grove came back west as Northfields
               trains with no listing in TfL's live list (nor TfL's own app), while the platform display

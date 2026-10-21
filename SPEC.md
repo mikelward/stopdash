@@ -749,6 +749,20 @@ counts on it. Only TfL's own prediction times are compared, so an older cache co
 The widget and watch show these times as usual. Each one marked is noted in the debug log with where
 TfL had it.
 
+**A train headed into a suspended stretch is grayed, its time kept** (maintainer, 2026-10-20). During a
+part suspension ("No service between Camden Town and Kennington via Bank northbound only") TfL's live list
+went on timing the trains stuck in it as if they ran. A train is grayed where the suspension applies: its
+way on from the stop, on the line's route, runs into a stretch TfL says has no service, a part suspension
+or closure, the way round TfL shuts it, by the stations TfL gives the stretch. So a station on both
+Northern line branches grays only the suspended branch's trains, the other direction's run as usual, and a
+train leaving the stretch's far end, or still short of it, isn't grayed, as trains run up to it: only one whose
+next stop from here is inside the stretch. It's read aloud as maybe not
+running, as a doubtful train is. A train whose way can't be told (its branch not named where the ways part,
+or no route to hand) keeps TfL's time, as does a stretch TfL gave no stations for. Dismissing the line's
+alert doesn't ungray its trains. The line's route is read for it through the route cache, as a bus line's is
+for an alert behind a stop: a request or two per line a day, only while such a stretch has trains at a shown
+stop. The widget and watch show these times as usual.
+
 **Bunched tube trains are spaced out** (maintainer, 2026-10-13). TfL
 times each train as if the line ahead were clear, so a queue reads as due within a minute of each
 other (0 · 0 · 1 · 2 · 2 min) when the trains come about two minutes apart. Each train of a line at one

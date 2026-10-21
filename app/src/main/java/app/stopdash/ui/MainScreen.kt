@@ -715,9 +715,10 @@ fun MainScreen(
         derivedStateOf { sequencesFor(lineIds) }
     }
     // The routes of the shown stops' bus lines whose alert may lie wholly behind a stop, so a
-    // diversion a bus from there never reaches doesn't flag it ([DepartureRows.withAlertsBehind]):
-    // one request per such line a day, the route page's own. Until one is in, or where it failed, the
-    // alert stays on, as it was.
+    // diversion a bus from there never reaches doesn't flag it ([DepartureRows.withAlertsBehind]), and
+    // of their other lines with a part suspension or closure through a stop, so the trains headed into
+    // it are grayed ([DepartureRows.withSuspendedTrains]): one request per such line a day, the route
+    // page's own. Until one is in, or where it failed, the alert stays on and the trains plain, as was.
     // Read again each London day, as planned work whose day has come counts ([LineStatus.asOf]).
     val alertDay = now.atZone(AlertStart.ZONE).toLocalDate()
     // Worked out off the main thread; the last lines stand in meanwhile, so their routes don't drop
