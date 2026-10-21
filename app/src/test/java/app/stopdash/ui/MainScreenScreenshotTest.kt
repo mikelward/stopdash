@@ -38,6 +38,8 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -4233,9 +4235,12 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         // The West End train's page: its stops run to West End, open, and the north branch it doesn't take
         // is folded to the end it leads to, as the line page draws it: only the rider's starred North Park
-        // stands out of the fold (the page's "Northern line" heading is the line, not the branch).
-        composeRule.onAllNodesWithText("West End", substring = true).assertCountEquals(2)
-        composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(1)
+        // stands out of the fold (the page's "Northern line" heading is the line, not the branch). Each way on
+        // from King is a chip too, as on any of a journey card's pages (maintainer, 2026-10-21).
+        composeRule.onNodeWithTag("routeChoice-0").assertTextEquals("West End").assertIsSelected()
+        composeRule.onNodeWithTag("routeChoice-1").assertTextEquals("North End")
+        composeRule.onAllNodesWithText("West End", substring = true).assertCountEquals(3)
+        composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(2)
         composeRule.onAllNodesWithText("North Park ★", substring = true).assertCountEquals(1)
     }
 

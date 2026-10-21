@@ -5,22 +5,28 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Departure
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StopArrivals
@@ -129,6 +135,72 @@ class RouteChipsTest {
         settle(scheduler)
         composeRule.onNodeWithText("No live times").assertDoesNotExist()
         composeRule.onNodeWithText("5 min").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_journey_cards_page_offers_every_way_on_its_far_ends_first_and_moves_to_another() {
+        val scheduler = TestCoroutineScheduler()
+        // Highgate to Charing Cross: the card counts the train by Charing Cross. With no platforms, as the routes
+        // here carry no stations' positions to read a platform's bound by.
+        val origin = highgate.copy(
+            departures = (
+                highgate.departures +
+                    Departure("northern", "Northern", "outbound", "Morden", null, now.plusSeconds(420), "tube", "Charing X")
+                ).map { it.copy(platform = null) },
+        )
+        // A stop near enough for the list, so Highgate's trains are the card's alone.
+        val near = StopArrivals(
+            "940GZZLUMRH", "Manor House",
+            listOf(Departure("piccadilly", "Piccadilly", "westbound", "Cockfosters", "Westbound - Platform 2", now.plusSeconds(240), "tube")),
+            fetchedAt = now,
+        )
+        // Both ways when asked for either, as TfL's route for the line places a favorite ride.
+        val northbound = southbound.map { it.copy(stopIds = it.stopIds.reversed(), direction = "inbound") }
+        val lineRoutes = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
+                    when (direction) {
+                        "outbound" -> southbound
+                        "inbound" -> northbound
+                        else -> southbound + northbound
+                    },
+                    names,
+                )
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides lineRoutes) {
+                    MainScreen(
+                        state = DeparturesUiState.Loaded(stops = listOf(near, origin), fetchedAt = now),
+                        now = now,
+                        onRefresh = {},
+                        stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                        journeys = listOf(FavoriteJourney(JourneyEnd(HGT, "Highgate"), JourneyEnd(CHX, "Charing Cross"), "northern")),
+                        rideGrouping = RideGrouping.RIDE,
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+        composeRule.onAllNodesWithText("Morden", substring = true).onFirst().performTouchInput { click() }
+        settle(scheduler)
+        // Every way on from Highgate (maintainer, 2026-10-21): south by Charing Cross first, the card's way and
+        // the one reaching its far end, then by Bank, then north.
+        composeRule.onNodeWithTag("routeChoice-0").assert(hasText("Morden/Charing X")).assertIsSelected()
+        composeRule.onNodeWithTag("routeChoice-1").assert(hasText("Morden/Bank")).assertIsNotSelected()
+        composeRule.onNodeWithTag("routeChoice-2").assert(hasText("High Barnet")).assertIsNotSelected()
+        composeRule.onNodeWithText("7 min").assertIsDisplayed()
+
+        // By Bank, a train the card doesn't count on: the page moves to it.
+        composeRule.onNodeWithTag("routeChoice-1").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
+        composeRule.onNodeWithText("2 min").assertIsDisplayed()
+        // And the chips hold their order.
+        composeRule.onNodeWithTag("routeChoice-0").assert(hasText("Morden/Charing X"))
     }
 
     @Test

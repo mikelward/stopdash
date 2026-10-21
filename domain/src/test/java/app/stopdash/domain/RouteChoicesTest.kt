@@ -104,6 +104,43 @@ class RouteChoicesTest {
     }
 
     @Test
+    fun `on a ride's page the ways reaching its far end come first in their way, by stop or by stop area`() {
+        val board = rows(HGT, train("Morden", "Bank", 120), train("High Barnet", null, 60, direction = "inbound"))
+        val south = board.single { it.direction == "outbound" }
+        // A favorite ride to Battersea (maintainer, 2026-10-21): its way first among the southbound, the line's
+        // order after it, and north still after south.
+        val toBattersea = RouteChoices.of(northern, south, board, null, reaching = setOf(BPS))
+        assertEquals(listOf("Battersea Power Station", "Morden/Bank", "Morden/Charing X", "High Barnet"), toBattersea.choices.map(::label))
+        // The page's own train still picks its choice.
+        assertEquals(1, toBattersea.current)
+        // Its far end by its stop area: Charing Cross's two ways, by Charing Cross to Morden and to Battersea.
+        val areas = northern.copy(stopAreas = mapOf(CHX to "HUBCHX"))
+        val toCharingX = RouteChoices.of(areas, south, board, null, reaching = setOf("HUBCHX"))
+        assertEquals(listOf("Morden/Charing X", "Battersea Power Station", "Morden/Bank", "High Barnet"), toCharingX.choices.map(::label))
+        // None: the line's own order.
+        assertEquals(
+            listOf("Morden/Bank", "Morden/Charing X", "Battersea Power Station", "High Barnet"),
+            RouteChoices.of(northern, south, board, null).choices.map(::label),
+        )
+    }
+
+    @Test
+    fun `a journey card's own row beside the stop's chooses its train's way, not its place's soonest's`() {
+        // Morden by Bank first, then by Charing Cross, neither with a branch, so one group for the place: a card to
+        // Charing Cross keeps only the later, and its page has the card's row beside the stop's (Codex on #1049).
+        val bank = Departure("northern", "Northern", "outbound", "Morden", null, now.plusSeconds(120), "tube", via = "Bank")
+        val charingX = Departure("northern", "Northern", "outbound", "Morden", null, now.plusSeconds(300), "tube", via = "Charing Cross")
+        val stop = rows(HGT, bank, charingX)
+        val south = stop.single { it.direction == "outbound" }
+        val card = south.copy(upcoming = south.upcoming.filter { it.via == "Charing Cross" })
+        val focus = RouteFocus.of(DepartureRows.destinationLines(card, 3).single())
+        val choices = RouteChoices.of(northern, card, stop, focus)
+        assertEquals("Morden/Charing X", label(choices.choices[choices.current!!]))
+        // By Bank is the stop's train, to move the page to.
+        assertSame(south, choices.choices.single { label(it) == "Morden/Bank" }.live?.row)
+    }
+
+    @Test
     fun `a short working is a choice of its own after the line's routes, and a train ending here none`() {
         val board = rows(
             HGT,
