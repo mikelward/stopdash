@@ -7,7 +7,6 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.Staleness
-import app.stopdash.domain.StepFree
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
@@ -73,17 +72,19 @@ internal class RideLineChecks(
      * The lines [ride] of [route] may be taken on now, given the [boards] read at its boarding stop, by
      * stop id: its own pole's, and those of its stop pair's other poles the trip read
      * ([RideLines.polesToRead]), where another line may board. The Planner's first when it's among them
-     * ([RideLines.vouched]), and those that went unchecked. Each ride gets off where the Planner does at
-     * the trip's [stepFree] level ([LegEnd.planned]), as the cards' do, until arriving by hub reads the end.
+     * ([RideLines.vouched]), and those that went unchecked. [ride] gets off at [end], as the cards' rides
+     * do: a last ride arriving by hub anywhere in the destination's hub, so a line reaching another of its
+     * stations is offered ([RideLines.of]); the route's other rides where the Planner does, at [end]'s
+     * step-free level ([LegEnd.planned]).
      */
-    suspend fun running(route: TripRoute, ride: TripLeg, stepFree: StepFree, boards: Map<String, List<Departure>>): RideLinesNow {
+    suspend fun running(route: TripRoute, ride: TripLeg, end: LegEnd, boards: Map<String, List<Departure>>): RideLinesNow {
         val hidden = hidden()
         // The stops the trip read, as the cards' stop pair ([RideLines.of]'s areaPoles): its own and its pair's.
         val areaPoles = if (ride.fromArea.isBlank()) emptyMap() else mapOf(ride.fromArea to boards.keys.toList())
         val unread = HashSet<String>()
         val sequences = RideLines.lineIds(listOf(route), boards, areaPoles, hidden).associateWith { lookUp(it, unread) }
-        val lines = RideLines.of(listOf(route), { LegEnd.planned(it, stepFree) }, boards, areaPoles, sequences, hidden)[ride to LegEnd.planned(ride, stepFree)]
-            ?: RideLines.only(ride)
+        val ends = { shown: TripRoute -> LegEnd.planned(shown, end.stepFree).map { (leg, planned) -> leg to (if (leg == ride) end else planned) } }
+        val lines = RideLines.of(listOf(route), ends, boards, areaPoles, sequences, hidden)[ride to end] ?: RideLines.only(ride)
         // Another line of this ride ([RideLines.candidateIds]) whose route couldn't be read isn't known to
         // run it, so it can't be offered. One asked after for another ride of the plan bears on that
         // ride, not this one (Codex, PR #460).

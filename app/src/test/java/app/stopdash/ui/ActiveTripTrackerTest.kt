@@ -60,6 +60,8 @@ class ActiveTripTrackerTest {
     private var ridesUnchecked: Set<String> = emptySet()
     // The boards each ride lines check was given, by stop.
     private val ridesGiven = mutableListOf<Map<String, List<Departure>>>()
+    // Where each ride the lines were asked for gets off, as it was given ([LegEnd]).
+    private val endsGiven = mutableListOf<Pair<TripLeg, app.stopdash.domain.LegEnd>>()
     // The lines the rider hides.
     private var hiddenLines: Set<String> = emptySet()
 
@@ -246,8 +248,9 @@ class ActiveTripTrackerTest {
             sequences[lineId]
         },
         // As the cards find them: another line only where the departures given list a train of it.
-        rideLines = { _, ride, _, given ->
+        rideLines = { _, ride, end, given ->
             ridesGiven += given
+            endsGiven += ride to end
             RideLinesNow(
                 (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.values.flatten().any { train -> train.lineId == it.lineId } },
                 uncheckedLines = ridesUnchecked,
@@ -439,6 +442,47 @@ class ActiveTripTrackerTest {
         val stepFree = ridingWith(StepFree.FULLY)
         assertEquals(3, stepFree.stopsLeft)
         assertEquals(at(14), stepFree.getOffAt)
+    }
+
+    @Test
+    fun `on the way the last ride takes another line to another station of the destination's hub, and gets off there`() = runTest {
+        // Planned to Hamlet on red; blue, one of its lines as the trip's cards offer them, reaches Praed, another
+        // station of Hamlet's hub, and its train comes first.
+        val toHamlet = ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUHAM"))
+        val toPraed = blueRide.copy(toId = "940GZZLUPRA", toName = "Praed", path = listOf("B", "940GZZLUPRA"))
+        offered["red"] = listOf(toHamlet, toPraed)
+        suspend fun startWith(stepFree: StepFree): ActiveTripTracker {
+            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub)
+            now = t0
+            endsGiven.clear()
+            departures["A"] = listOf(Departure("blue", "Blue", "outbound", "Praed", null, at(6), "tube", vehicleId = "4"), train("3", 8))
+            trains["blue/4"] = listOf(call("A", 6), call("B", 9), call("940GZZLUPRA", 12))
+            trains["3"] = listOf(call("A", 8), call("B", 11), call("940GZZLUHAM", 15))
+            tracker.start(
+                TripRoute(listOf(toHamlet)), "Hamlet", readyAt = now, destinationIds = mapOf("940GZZLUHAM" to "940GZZLUHAM"),
+                destinationStopId = "940GZZLUHAM", destinationLevel = Pick.Level.STATION, stepFree = stepFree,
+            )
+            tracker.refresh()
+            return tracker
+        }
+        val tracker = startWith(StepFree.ANY)
+        // Its lines were asked for getting off anywhere in the hub, either station.
+        val (asked, end) = endsGiven.last()
+        assertEquals(toHamlet, asked)
+        assertEquals(app.stopdash.domain.LegEnd.Level.HUB, end.level)
+        assertTrue("940GZZLUPRA" in end.ids && "940GZZLUHAM" in end.ids)
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertEquals(toPraed, tracker.trip.value?.vehicleLeg)
+        // On board, the ride ends at Praed, where blue gets off.
+        now = at(7)
+        trains["blue/4"] = listOf(call("B", 9), call("940GZZLUPRA", 12))
+        tracker.refresh()
+        assertEquals(at(12), (tracker.progress.value as TripProgress.Riding).getOffAt)
+        assertEquals("940GZZLUPRA", kept?.leg?.toId)
+        tracker.end()
+        // A step-free trip's last ride gets off where the Planner does, so its lines are asked for that alone.
+        startWith(StepFree.FULLY).end()
+        assertEquals(app.stopdash.domain.LegEnd.planned(toHamlet, StepFree.FULLY), endsGiven.last().second)
     }
 
     @Test

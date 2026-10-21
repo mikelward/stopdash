@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LegEnd
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
@@ -88,7 +89,7 @@ class RideLineChecksTest {
 
     // The ride's own stop's board alone, as a ride read at a station is.
     private suspend fun RideLineChecks.running(route: TripRoute, ride: TripLeg, departures: List<Departure>) =
-        running(route, ride, StepFree.ANY, mapOf(ride.fromId to departures))
+        running(route, ride, LegEnd.planned(ride, StepFree.ANY), mapOf(ride.fromId to departures))
 
     @Test
     fun `a line boarding at the other pole of the ride's stop pair is offered from that pole's board`() = runTest {
@@ -100,12 +101,12 @@ class RideLineChecksTest {
         statuses = mapOf("1" to good("1"), "2" to good("2"))
         val two = Departure("2", "2", "outbound", "C", null, at(6), "bus", vehicleId = "b2")
         // Bn's board, read with Bs's: bus 2 is offered, boarding at Bn, its stops checked open there.
-        val found = checks.running(plan, bus, StepFree.ANY, mapOf("Bs" to emptyList(), "Bn" to listOf(two)))
+        val found = checks.running(plan, bus, LegEnd.planned(bus, StepFree.ANY), mapOf("Bs" to emptyList(), "Bn" to listOf(two)))
         assertEquals(listOf("1", "2"), found.lines.map { it.lineId })
         assertEquals("Bn" to "Cn", found.lines[1].let { it.fromId to it.toId })
         assertTrue("Bn" in closureReads)
         // Bs's board alone: bus 2 isn't known there.
-        assertEquals(listOf("1"), checks.running(plan, bus, StepFree.ANY, mapOf("Bs" to emptyList())).lines.map { it.lineId })
+        assertEquals(listOf("1"), checks.running(plan, bus, LegEnd.planned(bus, StepFree.ANY), mapOf("Bs" to emptyList())).lines.map { it.lineId })
     }
 
     // Shared with the other screens (SPEC *Freshness → Shared line status*): lines another screen checked
@@ -141,6 +142,23 @@ class RideLineChecksTest {
         assertEquals(ride, lines.first())
         // Its own boarding and alighting stops are the ones checked open; the Planner's line's aren't asked here.
         assertEquals(setOf("A", "C"), closureReads.toSet())
+    }
+
+    @Test
+    fun `a last ride arriving by hub is offered a line reaching another station of the hub`() = runTest {
+        val checks = checks(StandardTestDispatcher(testScheduler))
+        // Green runs from A by X to D, another station of the destination's hub than the ride's C.
+        sequences["green"] = LineSequence(listOf(LineRoute("A-D", listOf("A", "X", "D"))), mapOf("A" to "A", "X" to "X", "D" to "D"))
+        statuses = mapOf("red" to good("red"), "green" to good("green"))
+        val board = mapOf("A" to listOf(due("red"), due("green")))
+        val hub = LegEnd(StepFree.ANY, LegEnd.Level.HUB, setOf("HUB"), ids = setOf("C", "D"))
+        val found = checks.running(route, ride, hub, board)
+        assertEquals(listOf("red", "green"), found.lines.map { it.lineId })
+        // Getting off at its own first call in the hub, D, which is checked open.
+        assertEquals("D", found.lines.single { it.lineId == "green" }.toId)
+        assertTrue("D" in closureReads)
+        // Getting off where the Planner does, as a step-free trip's last ride or a middle ride does: the ride's own alone.
+        assertEquals(listOf(ride), checks.running(route, ride, LegEnd.planned(ride, StepFree.ANY), board).lines)
     }
 
     @Test

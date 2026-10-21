@@ -304,7 +304,12 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    resolves it through the model (`OnTheWay.arrivingIds`: `LegEnd.of`, then `Hubs.idsOf` for a hub
    end) when a check runs, keeps it only while the planned route is the same, and the train's first
    call in the hub by one TfL id ends the ride, a step-free trip excepted until its lift check
-   lands (`TODO.md`, *Decisions needing review*). The trip page's ride lines and verdicts follow
+   lands (`TODO.md`, *Decisions needing review*). Its ride lines and pair boards read the same end
+   (2026-10-21: `OnTheWay.arrivingEnd`, the hub with its ids, given to `RideLineChecks.running` and
+   `RideLines.polesToRead` by `ActiveTripTracker.endOf`), so another line reaching another station of
+   the hub is one the trip follows, as its cards offer it; once the rider is on board that line's
+   train, the ride ends at the line's own end and the walks on go, the route as planned kept
+   (`OnTheWay.endedAtDestination`). The trip page's ride lines and verdicts follow
    (2026-10-20): `TripViewModel.shownRoutes` works out a `RideEnds` for the screen's placed routes on
    its compute dispatcher (`LegEnd.of`, then `Hubs.idsOf` into the hub end's `LegEnd.ids`), keyed on
    each last ride's raw end, and the screen reads it as it builds the page; `RideLines.runTo` and

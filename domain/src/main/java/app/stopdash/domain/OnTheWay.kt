@@ -895,22 +895,32 @@ object OnTheWay {
     /**
      * Where [trip]'s last ride gets off by arriving at the destination's hub, as [advance] reads it
      * (`arriving`): every TfL id of the hub's stations and stops ([Hubs.idsOf]), each to its station or
-     * stop, where the ride's end is the destination's hubs ([LegEnd.of], resolved through [hubs] now). The
-     * route as planned is read ([ActiveTrip.plannedLegs]), so an end already moved keeps its hub. Empty
-     * (the ride ends at the destination's own stops, as before) for a trip to a place or kept before its
-     * destination was, a last ride the Planner gets off outside the hub, and a step-free trip, or one whose
-     * level isn't known: none of the hub's other calls is checked against its lifts yet, so a step-free
-     * ride still gets off where the Planner, who checked, does (TODO.md, *Decisions needing review*).
-     * Works over the route and the hub's ids: off the main thread.
+     * stop, where the ride's end is the destination's hubs ([arrivingEnd]). Empty where it isn't, when the
+     * ride ends at the destination's own stops, as before. Works over the hub's ids: off the main thread.
      */
     @WorkerThread
-    fun arrivingIds(trip: ActiveTrip, hubs: Hubs): Map<String, String> {
-        if (trip.stepFree != StepFree.ANY || trip.destinationStopId.isBlank()) return emptyMap()
+    fun arrivingIds(trip: ActiveTrip, hubs: Hubs): Map<String, String> = arrivingEnd(trip, hubs)?.let(hubs::idsOf).orEmpty()
+
+    /**
+     * Where [trip]'s last ride gets off where it arrives at the destination's hub: the destination's hubs
+     * ([LegEnd.of], resolved through [hubs] now), with every TfL id of their stations and stops ([LegEnd.ids],
+     * [Hubs.idsOf]), as the trip page's ride lines are given it ([RideEnds.of]). So the ride's other lines on
+     * the way are those its cards offer, one reaching another station of the hub included ([RideLines.of]).
+     * The route as planned is read ([ActiveTrip.plannedLegs]), so an end already moved keeps its hub. Null
+     * (the ride ends at the destination's own stops, as before) for a trip to a place or kept before its
+     * destination was, a last ride the Planner gets off outside the hub, and a step-free trip, or one whose
+     * level isn't known: none of the hub's other calls is checked against its lifts yet, so a step-free ride
+     * still gets off where the Planner, who checked, does (TODO.md, *Decisions needing review*). Works over
+     * the route and the hub's ids: off the main thread.
+     */
+    @WorkerThread
+    fun arrivingEnd(trip: ActiveTrip, hubs: Hubs): LegEnd? {
+        if (trip.stepFree != StepFree.ANY || trip.destinationStopId.isBlank()) return null
         val plannedTo = trip.destinations.mapNotNull { (it as? TripDestination.Stop)?.id }
         val destinationHubs = hubs.destinationHubs(trip.destinationStopId, trip.destinationName, trip.destinationLevel, plannedTo)
-        if (destinationHubs.isEmpty()) return emptyMap()
+        if (destinationHubs.isEmpty()) return null
         val end = LegEnd.of(TripRoute(trip.plannedLegs ?: trip.route.legs), StepFree.ANY, destinationHubs, hubs).lastOrNull()?.second
-        return if (end?.level == LegEnd.Level.HUB) hubs.idsOf(end) else emptyMap()
+        return end?.takeIf { it.level == LegEnd.Level.HUB }?.let { it.copy(ids = hubs.idsOf(it).keys) }
     }
 
     /**
@@ -924,13 +934,19 @@ object OnTheWay {
      * back ([asPlanned]) when that train is let go: another followed, the rider seen left behind, or a
      * step taken (Codex, #982). Null when there's no such stop before the end, the train leaves the
      * ride on its way there, or the ride isn't the last.
+     *
+     * Another of the ride's lines taking it to another station or stop of the destination's hub than the
+     * Planner's ([RideLines.of], a last ride arriving by hub) gets off at its own end, its first call in the
+     * hub: the end moves there too, so the walks planned on from the Planner's go.
      */
     private fun endedAtDestination(trip: ActiveTrip, on: TripLeg, ride: List<VehicleCall>, arriving: Map<String, String>): ActiveTrip? {
         if ((trip.destinationIds.isEmpty() && arriving.isEmpty()) || !lastRide(trip)) return null
         val end = ride.indexOfFirst { arrivesAt(trip, on, it, arriving) }
-        // The end itself, matched by name and known to the destination by another id, moves to that id.
+        val elsewhere = trip.leg?.let { elsewhereInHub(it, on, arriving) } == true
+        // The end itself, matched by name and known to the destination by another id, moves to that id, as
+        // does another line's own end elsewhere in the hub.
         val at = ride.indexOfFirst {
-            destinationIdOf(trip, it, arriving) != null && !callsFrom(it, on) && !atEnd(on, it) &&
+            destinationIdOf(trip, it, arriving) != null && !callsFrom(it, on) && (elsewhere || !atEnd(on, it)) &&
                 (trip.vehicleOffId.isEmpty() || it.stopId != trip.vehicleOffId)
         }
         if (at < 0 || (end in 0 until at)) return null
@@ -1009,6 +1025,15 @@ object OnTheWay {
     // Whether [call] is at another of the destination's stops than [leg]'s moved end.
     private fun elsewhereInDestination(trip: ActiveTrip, leg: TripLeg, call: VehicleCall, arriving: Map<String, String>): Boolean =
         movedEnd(trip, leg, arriving) && destinationIdOf(trip, call, arriving) != null && !atEnd(leg, call)
+
+    // Whether [on], the ride as the line followed runs it, gets off at another station or stop of the destination's
+    // hub ([arriving]) than [leg], the ride as the trip has it: another of the ride's lines reaching the hub elsewhere.
+    // A pole across the road, or another record of the same station, is the same place.
+    private fun elsewhereInHub(leg: TripLeg, on: TripLeg, arriving: Map<String, String>): Boolean {
+        if (on.toId == leg.toId) return false
+        val own = arriving.arrivalOf(leg.toId) ?: return false
+        return arriving.arrivalOf(on.toId)?.let { it != own } == true
+    }
 
     // Whether the leg [trip] is on is its last ride: only walks, if anything, follow it.
     private fun lastRide(trip: ActiveTrip): Boolean = trip.route.legs.drop(trip.legIndex + 1).all { it.isWalk }

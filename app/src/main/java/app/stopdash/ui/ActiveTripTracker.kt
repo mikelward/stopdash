@@ -93,8 +93,10 @@ class ActiveTripTracker(
     // cards offer ([RideLines.running], [RideLineChecks]), each as it runs the ride, the Planner's first
     // when it's among them. The Planner's alone where nothing else is checked. With them, the lines that
     // went unchecked ([RideLinesNow.uncheckedLines]), which each use says where they could have changed
-    // what the trip shows. Each ride gets off where the Planner does at the trip's step-free level.
-    private val rideLines: suspend (TripRoute, TripLeg, StepFree, Map<String, List<Departure>>) -> RideLinesNow = { _, ride, _, _ -> RideLinesNow(listOf(ride)) },
+    // what the trip shows. Each ride gets off where it's given to ([LegEnd], [endOf]): the last ride arriving
+    // by hub anywhere in the destination's hub, so another line reaching another station of it is one of its
+    // lines, as on the trip's cards; every other where the Planner does at the trip's step-free level.
+    private val rideLines: suspend (TripRoute, TripLeg, LegEnd, Map<String, List<Departure>>) -> RideLinesNow = { _, ride, _, _ -> RideLinesNow(listOf(ride)) },
     // The modes and lines the rider hides: a pair's other pole isn't read for a hidden line's sake alone.
     private val hidden: () -> Set<String> = { emptySet() },
     // The bundled station index, for placing a walk's ends the Planner didn't and telling whether
@@ -406,21 +408,39 @@ class ActiveTripTracker(
     // How step-free [trip] was planned to be ([ActiveTrip.stepFree]); an older trip that kept none asks none.
     private fun levelOf(trip: ActiveTrip): StepFree = trip.stepFree ?: StepFree.DEFAULT
 
-    // The ids the last ride arrives at the destination's hub by ([OnTheWay.arrivingIds]), with the route as
-    // planned they were worked out for (by identity: a trip's copies share it, a replan or restore doesn't).
-    // Worked out through the model when a check first needs them, on [compute], and kept only while the
-    // route is the same, so nothing resolved outlives it; with no model, none, and asked for again next check.
+    // Where the last ride gets off by arriving at the destination's hub ([OnTheWay.arrivingEnd]), its end and
+    // the ids it arrives by ([OnTheWay.arrivingIds]), with the route as planned they were worked out for (by
+    // identity: a trip's copies share it, a replan or restore doesn't). Worked out through the model when a
+    // check first needs them, on [compute], and kept only while the route is the same, so nothing resolved
+    // outlives it; with no model, none, and asked for again next check.
+    private class Arriving(val planned: List<TripLeg>, val end: LegEnd?, val ids: Map<String, String>)
+
     @Volatile
-    private var arriving: Pair<List<TripLeg>, Map<String, String>>? = null
+    private var arriving: Arriving? = null
 
     // Where [trip]'s last ride gets off by arriving at the destination's hub ([OnTheWay.advance]'s `arriving`).
-    private suspend fun arrivingOf(trip: ActiveTrip): Map<String, String> {
+    private suspend fun arrivingOf(trip: ActiveTrip): Map<String, String> = arrivalOf(trip)?.ids.orEmpty()
+
+    private suspend fun arrivalOf(trip: ActiveTrip): Arriving? {
         val planned = trip.plannedLegs ?: trip.route.legs
-        arriving?.takeIf { it.first === planned }?.let { return it.second }
-        val model = hubs() ?: return emptyMap()
-        val ids = withContext(compute) { OnTheWay.arrivingIds(trip, model) }
-        arriving = planned to ids
-        return ids
+        arriving?.takeIf { it.planned === planned }?.let { return it }
+        val model = hubs() ?: return null
+        val found = withContext(compute) {
+            val end = OnTheWay.arrivingEnd(trip, model)
+            Arriving(planned, end, end?.let(model::idsOf).orEmpty())
+        }
+        arriving = found
+        return found
+    }
+
+    // Where [ride] of [trip] gets off ([LegEnd]): as the last ride arriving by hub, anywhere in the destination's
+    // hub ([arrivalOf]), as the trip's cards have it; otherwise, and with no model, where the Planner does at the
+    // trip's step-free level ([LegEnd.planned]). Walks the route's few legs.
+    private suspend fun endOf(trip: ActiveTrip, ride: TripLeg): LegEnd {
+        val legs = trip.route.legs
+        val index = legs.indexOf(ride)
+        val last = index >= 0 && legs.subList(index + 1, legs.size).all { it.isWalk }
+        return (if (last) arrivalOf(trip)?.end else null) ?: LegEnd.planned(ride, levelOf(trip))
     }
 
     // [ride]'s boarding stop pair's poles ([stopPoles]) when it boards at a bus stop, read once: the
@@ -447,8 +467,9 @@ class ActiveTripTracker(
     // [NextBoard.partial], said rather than passed off as whole. Throws when the ride's own stop's
     // board can't be read. Asked for at [askedAt], it's as old as its oldest part ([RideArrivals.fetchedAt]):
     // a National Rail board kept from another screen's read is never passed off as read now (Codex, #883).
-    // The ride gets off where the Planner does at the trip's [stepFree] level ([LegEnd.planned]).
-    private suspend fun boardOf(ride: TripLeg, stepFree: StepFree, askedAt: Instant?): NextBoard {
+    // The ride gets off at [end] ([endOf]), so a pole whose line reaches another station of the destination's hub is
+    // read for a last ride arriving there.
+    private suspend fun boardOf(ride: TripLeg, end: LegEnd, askedAt: Instant?): NextBoard {
         val own = arrivalsFor(ride, ride.fromId)
         val departures = own.departures
         var oldest = own.fetchedAt
@@ -457,7 +478,7 @@ class ActiveTripTracker(
         val hidden = hidden()
         val routes = RideLines.pairLineIds(ride, pair, hidden).associateWith { routeOf(it) }
         var partial = false
-        val others = RideLines.polesToRead(ride, LegEnd.planned(ride, stepFree), pair, routes, hidden).mapNotNull { pole ->
+        val others = RideLines.polesToRead(ride, end, pair, routes, hidden).mapNotNull { pole ->
             try {
                 val read = arrivalsFor(ride, pole.id)
                 read.fetchedAt?.let { at -> oldest = oldest?.let { minOf(it, at) } ?: at }
@@ -1260,7 +1281,7 @@ class ActiveTripTracker(
         val (index, ride) = RouteDisruption.changeNear(trip, progress, clock()) ?: return null
         val read = boards[ride]
         val board = if (read != null) read.getOrNull() ?: return null else try {
-            boardOf(ride, levelOf(trip), askedAt = null)
+            boardOf(ride, endOf(trip, ride), askedAt = null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
@@ -1274,7 +1295,7 @@ class ActiveTripTracker(
         // predicted (Codex, PR #451), on the board of the pole it boards at. A line left unchecked with a
         // train listed there may have one taking the ride: unknown, never a signal. One with none listed
         // couldn't add one (Codex, PR #460).
-        val found = rideLines(trip.route, ride, levelOf(trip), board.boards)
+        val found = rideLines(trip.route, ride, endOf(trip, ride), board.boards)
         if (found.uncheckedOn(board.boards.values.flatten())) return null
         val lines = found.lines
         val departures = OnTheWay.listedFor(ride, board.boards, lines)
@@ -2080,12 +2101,12 @@ class ActiveTripTracker(
         // for where they are: a line's route is a request (held a day), not asked for otherwise.
         if (gone.isNotEmpty() || along == null) {
             val listed = board ?: if (along != null) emptyMap() else {
-                val read = linesListed(planned, levelOf(trip))
+                val read = linesListed(planned, endOf(trip, planned))
                 if (read == null || read.partial) linesFailed = true
                 read?.boards.orEmpty()
             }
             val boards = (listed.keys + gone.keys).associateWith { stop -> (listed[stop].orEmpty() + gone[stop].orEmpty()).distinctBy(::seenKey) }
-            val ride = rideLines(trip.route, planned, levelOf(trip), boards)
+            val ride = rideLines(trip.route, planned, endOf(trip, planned), boards)
             // Any line unchecked counts here, listed or not: a line of the plan can be ridden with no train of
             // it on the board, and the rider may be on it.
             if (ride.unchecked) linesFailed = true
@@ -2502,7 +2523,8 @@ class ActiveTripTracker(
         // when they said so, maybe due a moment before ([OnTheWay.boardableFrom]).
         val readyAt = OnTheWay.boardableFrom(trip).let { if (trip.boarded) it else maxOf(it, now) }
         // This refresh's read of the boards ([fetchBoard]); its failure thrown for [step] to report.
-        val read = board?.getOrThrow()?.takeIf { it.ride == leg } ?: boardOf(leg, levelOf(trip), askedAt = null)
+        val end = endOf(trip, leg)
+        val read = board?.getOrThrow()?.takeIf { it.ride == leg } ?: boardOf(leg, end, askedAt = null)
         val boards = read.boards
         // On board by their word, only a train at the platform when they said so can be theirs: one due
         // minutes later isn't, so none is followed rather than that one (the step says it can't find it).
@@ -2510,7 +2532,7 @@ class ActiveTripTracker(
         // between the same two stops (from the other pole of a bus stop pair, too), checked as running
         // from stops checked open and not avoided. Each train is then judged against the ride as its own
         // line runs it, on the board of the pole that line boards at ([OnTheWay.listedFor]).
-        val ride = rideLines(trip.route, leg, levelOf(trip), boards)
+        val ride = rideLines(trip.route, leg, end, boards)
         val lines = withBranchWays(ride.lines, leg)
         val catchable = OnTheWay.candidates(OnTheWay.listedFor(leg, boards, lines), lines, readyAt)
             .filter { !trip.boarded || !it.expectedArrival.isAfter(trip.legStartedAt.plus(OnTheWay.ON_BOARD_GRACE)) }
@@ -2578,9 +2600,9 @@ class ActiveTripTracker(
     // request a fix (and one a pole that may matter), only for one not along the line they're counted
     // on: no more often than the board is read while waiting. Null when the read fails: the Planner's
     // line alone is offered, and the refresh is said to have failed.
-    private suspend fun linesListed(ride: TripLeg, stepFree: StepFree): NextBoard? =
+    private suspend fun linesListed(ride: TripLeg, end: LegEnd): NextBoard? =
         try {
-            boardOf(ride, stepFree, askedAt = null)
+            boardOf(ride, end, askedAt = null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
@@ -2599,7 +2621,7 @@ class ActiveTripTracker(
             refollow()
             return null
         }
-        return boards.getOrPut(ride) { readBoard(ride, levelOf(trip), now) }
+        return boards.getOrPut(ride) { readBoard(ride, endOf(trip, ride), now) }
     }
 
     // [from]'s board this refresh, taken as [to]'s, a ride from the same stop ([OffPlan.take]'s first part).
@@ -2615,10 +2637,10 @@ class ActiveTripTracker(
         if (boardSeenRide == from) boardSeenRide = to
     }
 
-    private suspend fun readBoard(ride: TripLeg, stepFree: StepFree, now: Instant): Result<NextBoard> =
+    private suspend fun readBoard(ride: TripLeg, end: LegEnd, now: Instant): Result<NextBoard> =
         try {
             // Stamped by the steady clock, as every fetch is ([SteadyClock]).
-            Result.success(boardOf(ride, stepFree, SteadyClock.stamp(now)).also { board ->
+            Result.success(boardOf(ride, end, SteadyClock.stamp(now)).also { board ->
                 _nextBoard.value = board
                 refollow()
                 logDoubled(board, now)
