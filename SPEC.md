@@ -1548,8 +1548,10 @@ end under another id of its station is among them, and ways that couldn't be loa
 rather than an "unavailable" with nothing to try (Codex on #1039). Then its
 line's alert if it has one, "View line" for the map, and, while nothing live says and its line has no
 alert, its timetable's next few trains, "Next trains 05:41 · 05:49 · 05:57 (timetable)" (maintainer, 2026-10-21: as
-many as three, the ones the timetable can vouch for; "Next train" for one) — the one place a timetable's time is
-shown, said as the timetable's and never as a countdown. Its card's closure notices, its boarding stops' and
+many as three, the ones the timetable can vouch for; "Next train" for one), said as the timetable's and never as
+a countdown. Its card's row for its line gives the first of them, under the same conditions, in its dash's place: a
+clock time in gray ("05:41"), heard as "Next train 05:41 (timetable)", so a ride whose line isn't open yet says when
+it will be at a glance (maintainer, 2026-10-21). Its card's closure notices, its boarding stops' and
 its far end's, show there as the card shows them, and so does a far end that couldn't be checked, so a timetable
 withheld for one says why (Codex on #1036). Only a check that failed, or a route that couldn't load, is a note
 under the heading.
