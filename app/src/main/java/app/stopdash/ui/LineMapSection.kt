@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -734,6 +735,13 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
         stringResource(R.string.line_map_one_way_up).takeIf { row.oneWayUp },
     ).joinToString(", ")
     val open = openStop?.takeIf { row.stopId.isNotBlank() }?.let { { it(row.stopId, row.name, position) } }
+    val save = longPress?.let { { it(row.stopId, row.name) } }
+    // The latest actions, read by a detector keyed only on whether there's a tap: [open] is built
+    // afresh on every recomposition, and keying the detector on it would restart it and drop a tap or
+    // long press in progress, as [RouteRow] avoids.
+    val currentOpen by rememberUpdatedState(open)
+    val currentSave by rememberUpdatedState(save)
+    val opens = open != null
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
             .then(
@@ -741,12 +749,12 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                     // A tap opens the station; saving the journey is a long press, so a stray tap while
                     // scrolling can't save one, as on the route page's list (maintainer, 2026-10-05).
                     longPress != null -> Modifier
-                        .pointerInput(open, longPress) {
+                        .pointerInput(opens) {
                             detectTapGestures(
-                                onTap = open?.let { o -> { o() } },
+                                onTap = if (opens) ({ _ -> currentOpen?.invoke() }) else null,
                                 onLongPress = {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    longPress(row.stopId, row.name)
+                                    currentSave?.invoke()
                                 },
                             )
                         }

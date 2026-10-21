@@ -34,6 +34,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -514,6 +515,13 @@ private fun StopOnRail(
     val haptics = LocalHapticFeedback.current
     val toggleLabel = stringResource(if (starred) R.string.action_unstar_journey else R.string.action_star_journey)
     val openLabel = stringResource(R.string.action_show_stop)
+    // The latest actions, read by a detector keyed only on which there are: the list builds them
+    // afresh on every recomposition, and keying the detector on them would restart it and drop a tap
+    // or long press in progress, as [RouteRow] avoids.
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnOpen by rememberUpdatedState(onOpen)
+    val opens = onOpen != null
+    val toggles = onClick != null
     val starColor = MaterialTheme.colorScheme.primary
     val alertColor = MaterialTheme.colorScheme.error
     val alertLabel = stringResource(R.string.route_stop_in_alert)
@@ -591,16 +599,18 @@ private fun StopOnRail(
             // stray tap while scrolling the stops can't save one (maintainer, 2026-10-05); TalkBack offers
             // each as its own action.
             .then(
-                if (onClick != null || onOpen != null) {
+                if (opens || toggles) {
                     Modifier
-                        .pointerInput(onClick, onOpen) {
+                        .pointerInput(opens, toggles) {
                             detectTapGestures(
-                                onTap = onOpen?.let { open -> { open() } },
-                                onLongPress = onClick?.let { toggle ->
-                                    {
+                                onTap = if (opens) ({ _ -> currentOnOpen?.invoke() }) else null,
+                                onLongPress = if (toggles) {
+                                    { _ ->
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        toggle()
+                                        currentOnClick?.invoke()
                                     }
+                                } else {
+                                    null
                                 },
                             )
                         }
