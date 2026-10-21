@@ -49,11 +49,11 @@ exercises the whole spine the widget later renders from.
       passed when rerun and in the next full run, on a branch that doesn't touch the network layer. A
       third ask suggests the quiet-connection timer fired twice against the real clock: drive it from an
       injected clock and test dispatcher so the order is fixed, not with retries or a longer timeout.
-- [ ] Fix the flaky `TripViewModelTest."a trip reopened within fifteen minutes reuses its plan"`. It failed
-      once in a full `./gradlew test` run on 2026-10-21 with `UncaughtExceptionsBeforeTest` (an exception
-      reported before the test began, so leaked from an earlier one's coroutines), and passed alone (all 350
-      of the class) and in the next full run, on a branch touching only the route page. The leaked exception's
-      own stack wasn't kept; find the test that ends with work still running against the shared scope.
+- [x] Fix the flaky `TripViewModelTest` leak (`UncaughtExceptionsBeforeTest` in whichever test came next, twice
+      on 2026-10-21). Five tests on a real worker thread stopped it before handing back what the cleared model
+      still sent it: the closure check settles under `NonCancellable`, its hop was rejected and rerun on
+      `Dispatchers.IO`, and resumed onto Main after the test had reset it. They now close a shared `TestWorker`
+      (moved out of `MainViewModelTest`), which takes every hop before the worker stops.
 - [x] Trip page: work out its per-tick values off the main thread too. Each tick's estimates, cards,
       open route, what frames them, and each card's alerts, notices and times are one frame worked out on
       the page's worker (`tripFrame`), drawn against its own state and time.

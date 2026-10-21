@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.R
+import app.stopdash.TestWorker
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Coordinates
@@ -77,7 +78,6 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
@@ -360,8 +360,7 @@ class TripViewModelTest {
     fun `a route's changes on foot are decided off the caller's thread`() = runTest(dispatcher) {
         // AGENTS.md *Main-safe by default*: the index is read and the walks measured on the worker,
         // not the main thread the model's updates run on.
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("worker")
         // Owned by a store so the model's work can be cancelled before the test ends: left running,
         // a worker resuming onto Main after this test reset it broke whichever test ran next.
         val store = ViewModelStore()
@@ -387,20 +386,17 @@ class TripViewModelTest {
             assertTrue(threads.threads().isNotEmpty())
             assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
-            // Cancel the model, let the worker finish what it holds, then drain what it handed back to
-            // Main while this test's Main is still set.
+            // Cancel the model, then hand work back and forth with the worker until none is left, while this
+            // test's Main is still set: the closure check settles after the model is cleared ([TestWorker]).
             store.clear()
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            worker.close(this)
         }
     }
 
     // Codex on #776: the shared line answers are read and summed up on the worker, never the caller's thread.
     @Test
     fun `a trip's line statuses are worked out off the caller's thread`() = runTest(dispatcher) {
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("worker")
         val store = ViewModelStore()
         try {
             val threads = ThreadRecorder()
@@ -428,9 +424,7 @@ class TripViewModelTest {
             assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
             store.clear()
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            worker.close(this)
         }
     }
 
@@ -438,8 +432,7 @@ class TripViewModelTest {
     // the worker, never the caller's thread.
     @Test
     fun `a refresh works out what it checks off the caller's thread`() = runTest(dispatcher) {
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("worker")
         val store = ViewModelStore()
         try {
             val threads = ThreadRecorder()
@@ -481,9 +474,7 @@ class TripViewModelTest {
             assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
             store.clear()
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            worker.close(this)
         }
     }
 
@@ -7336,8 +7327,7 @@ class TripViewModelTest {
     // AGENTS.md *Main thread*; Codex, #870: the stops are picked and the answers read on the worker, never the caller's thread.
     @Test
     fun `the stops towards the destination are found and asked off the caller's thread`() = runTest(dispatcher) {
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("worker")
         val store = ViewModelStore()
         try {
             val threads = ThreadRecorder()
@@ -7377,9 +7367,7 @@ class TripViewModelTest {
             assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
             store.clear()
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            worker.close(this)
         }
     }
 
@@ -7446,8 +7434,7 @@ class TripViewModelTest {
     // trip's state compares routes on the caller's thread.
     @Test
     fun `a first plan's routes are never compared on the caller's thread`() = runTest(dispatcher) {
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("worker")
         val store = ViewModelStore()
         try {
             val threads = ThreadRecorder()
@@ -7479,9 +7466,7 @@ class TripViewModelTest {
             assertFalse(threads.threads().toString(), "Test worker" in threads.threads())
         } finally {
             store.clear()
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            worker.close(this)
         }
     }
 
