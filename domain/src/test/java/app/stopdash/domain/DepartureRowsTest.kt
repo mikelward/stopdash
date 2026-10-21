@@ -867,6 +867,77 @@ class DepartureRowsTest {
         assertEquals(placed, DepartureRows.across(listOf(outbound), now, mapOf("99" to placed)).single().status)
     }
 
+    // A tube line of two branches between two junctions, made-up stops, and a part suspension in TfL's style on
+    // one branch one way, its section in the order that way's route runs it ([PartClosure.sections]).
+    private val branches = LineSequence(
+        listOf(
+            LineRoute("South End - North End via Bank", listOf("s1", "j2", "a1", "a2", "j1", "n1"), "inbound"),
+            LineRoute("South End - North End via Charing Cross", listOf("s1", "j2", "c1", "j1", "n1"), "inbound"),
+            LineRoute("North End - South End via Bank", listOf("n1", "j1", "a2", "a1", "j2", "s1"), "outbound"),
+            LineRoute("North End - South End via Charing Cross", listOf("n1", "j1", "c1", "j2", "s1"), "outbound"),
+        ),
+        mapOf(
+            "s1" to "South End", "j2" to "Junction South", "a1" to "Alpha", "a2" to "Beta",
+            "c1" to "Gamma", "j1" to "Junction North", "n1" to "North End",
+        ),
+    )
+    private val suspensionWords = "Tube Line: No service between Junction South and Junction North via Bank northbound only."
+    private val suspendedNorth = LineStatus(
+        "nl", 3, "Part Suspended", suspensionWords, soleAlert = true,
+        closures = listOf(PartClosure(3, "Part Suspended", suspensionWords, listOf(listOf("j2", "a1", "a2", "j1")))),
+    )
+    private fun branchTrain(direction: String, destination: String, branch: String?, offsetSeconds: Long = 120) =
+        departure("nl", "Tube Line", direction, destination, offsetSeconds, branch = branch)
+    private fun suspendedAt(stopId: String, vararg trains: Departure, status: LineStatus = suspendedNorth, sequence: LineSequence? = branches) =
+        DepartureRows.withSuspendedTrains(
+            DepartureRows.across(listOf(StopArrivals(stopId, "Station", trains.toList(), now)), now, mapOf("nl" to status)),
+            mapOf("nl" to sequence),
+        ).flatMap { it.upcoming }
+
+    @Test
+    fun `a train headed into a suspended stretch is grayed, only on its branch and its way`() {
+        // TfL kept timing trains stuck on a suspension as if they ran (maintainer, 2026-10-20).
+        val viaBank = branchOf("North End via Bank")
+        val viaCharingCross = branchOf("North End via Charing Cross")
+        // At the junction both branches leave: only the suspended branch's train, and one whose branch isn't
+        // known could take either, so it's left as TfL times it.
+        val atJunction = suspendedAt(
+            "j2", branchTrain("inbound", "North End", viaBank, 60), branchTrain("inbound", "North End", viaCharingCross, 120),
+            branchTrain("inbound", "North End", null, 180),
+        )
+        assertEquals(listOf(true, false, false), atJunction.map { it.suspended })
+        assertTrue(atJunction.first().grayed && atJunction.first().mayNotRun)
+        // Inside the stretch, every train that way is stuck; the other way runs.
+        assertEquals(listOf(true), suspendedAt("a1", branchTrain("inbound", "North End", viaBank)).map { it.suspended })
+        assertEquals(listOf(false), suspendedAt("a2", branchTrain("outbound", "South End", viaBank)).map { it.suspended })
+        // Leaving its far end, trains run on; still short of it, they run up to it (Codex on #1059).
+        assertEquals(listOf(false), suspendedAt("j1", branchTrain("inbound", "North End", null)).map { it.suspended })
+        assertEquals(listOf(false), suspendedAt("s1", branchTrain("inbound", "North End", viaBank)).map { it.suspended })
+        // Unknown is plain: no route loaded, or no sections given.
+        assertEquals(listOf(false), suspendedAt("a1", branchTrain("inbound", "North End", viaBank), sequence = null).map { it.suspended })
+        val unplaced = suspendedNorth.copy(closures = suspendedNorth.closures.map { it.copy(sections = emptyList()) })
+        assertEquals(listOf(false), suspendedAt("a1", branchTrain("inbound", "North End", viaBank), status = unplaced).map { it.suspended })
+    }
+
+    @Test
+    fun `a dismissed suspension still grays its trains, and a line with one has its route loaded`() {
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("a1", "Station", listOf(branchTrain("inbound", "North End", branchOf("North End via Bank"))), now)),
+            now, mapOf("nl" to suspendedNorth),
+        )
+        val dismissed = setOf(DismissedAlert.ofLineStatus(suspendedNorth))
+        val shown = DepartureRows.withoutDismissed(DepartureRows.withSuspendedTrains(rows, mapOf("nl" to branches)), dismissed)
+        assertNull(shown.single().status)
+        assertTrue(shown.single().upcoming.single().suspended)
+        val inStretch = StopArrivals("a1", "Station", listOf(branchTrain("inbound", "North End", null)), now)
+        assertEquals(setOf("nl"), DepartureRows.linesWithAlertsToPlace(listOf(inStretch), mapOf("nl" to suspendedNorth), now, dismissed))
+        // Not for a stop outside every section, nor for a bus line, whose alerts are placed by their words.
+        val beyond = StopArrivals("n1", "Station", listOf(branchTrain("outbound", "South End", null)), now)
+        assertEquals(emptySet<String>(), DepartureRows.linesWithAlertsToPlace(listOf(beyond), mapOf("nl" to suspendedNorth), now))
+        val bus = StopArrivals("a1", "Stop", listOf(departure("nl", "Tube Line", "inbound", "North End", 120, mode = "bus")), now)
+        assertEquals(emptySet<String>(), DepartureRows.linesWithAlertsToPlace(listOf(bus), mapOf("nl" to suspendedNorth.copy(fullText = null)), now))
+    }
+
     @Test
     fun `the bus lines whose routes to load are those with an alert that might be placed`() {
         val stops = listOf(busStop("b4"), StopArrivals("t1", "Station", listOf(departure("tube1", "Tube", "inbound", "Far", 60)), now))

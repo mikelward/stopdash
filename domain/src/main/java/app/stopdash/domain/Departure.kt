@@ -71,6 +71,11 @@ import java.time.Instant
  * [pastDue] marks a Tube train a board keeps for a short grace after its time has passed
  * ([Countdown.onBoard]): it often hasn't come yet, so it reads "0", grayed, rather than vanishing the
  * moment it's due. Set only on the rows a board builds, never stored.
+ *
+ * [suspended] marks a train whose way on from here runs into a stretch TfL says has no service, a part
+ * suspension or closure ([DepartureRows.withSuspendedTrains]): TfL's live list can keep timing trains
+ * stuck there as if they ran (maintainer, 2026-10-20), so its time is grayed and read as maybe not
+ * running ([mayNotRun]). Set only on the rows the app builds, with the line's route, never stored.
  */
 data class Departure(
     val lineId: String,
@@ -90,9 +95,13 @@ data class Departure(
     val paired: Boolean = false,
     val held: Boolean = false,
     val pastDue: Boolean = false,
+    val suspended: Boolean = false,
 ) {
-    /** Either of a close pair, or a train on two lines ([paired]); [doubtful] is the later of a pair, or such a train. */
-    val mayNotRun: Boolean get() = doubtful || paired
+    /**
+     * Either of a close pair, a train on two lines ([paired]), or one headed into a stretch with no
+     * service ([suspended]); [doubtful] is the later of a pair, or such a train.
+     */
+    val mayNotRun: Boolean get() = doubtful || paired || suspended
 
     /** Whether the app grays its time: it [mayNotRun], is [held], or is [pastDue]. */
     val grayed: Boolean get() = mayNotRun || held || pastDue
