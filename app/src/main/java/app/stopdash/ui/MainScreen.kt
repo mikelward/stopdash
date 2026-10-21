@@ -1006,11 +1006,11 @@ fun MainScreen(
         listRows?.let { from ->
             // A card checking again holds what it drew last ([heldWhileChecking]), and a route shows
             // once: a ride leaves out what a nearer one shows ([withoutRepeatedRoutes]).
-            val last = listWork.shown.value?.value?.cards
-            val cards = withoutRepeatedRoutes(heldWhileChecking(judgeCards(from), last, journeyViewKey), journeyViewKey, topology, stopDistanceMeters)
+            val lastShown = listWork.shown.value?.value
+            val cards = withoutRepeatedRoutes(heldWhileChecking(judgeCards(from), lastShown?.cards, journeyViewKey), journeyViewKey, topology, stopDistanceMeters)
             // What the journey cards above already show, held ones too: a near-me row they cover isn't repeated.
             val cardRows = cards.flatMap { it.state.drawn?.shownRows.orEmpty() }
-            shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology)
+            shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology, lastShown)
         }
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()

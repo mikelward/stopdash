@@ -4,7 +4,7 @@ import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.EmptyTimes
@@ -14,7 +14,6 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 
 /**
  * The timetable on the page of a TfL line's row with no live times, a "?" or a dash (maintainer, 2026-10-21): each
@@ -31,35 +30,36 @@ internal class QuietTimetable(val ways: List<Way>, val dueSoon: Boolean? = null)
         /**
          * Each of [choices]' ways with its next [count] trains at or after [at] by [timetable], none on or after a day
          * its line's planned work starts ([plannedFrom], [departureBefore]): the timetable knows nothing of that work.
-         * Null [choices] give no ways, only [dueSoon].
+         * Null [choices] give none.
          */
         @WorkerThread
-        fun of(timetable: StopTimetable, choices: RouteChoicesUi?, at: Instant, plannedFrom: List<LocalDate>, count: Int): QuietTimetable =
-            QuietTimetable(
-                choices?.let { ui ->
-                    ui.choices.choices.mapIndexedNotNull { i, choice ->
-                        // A train's own way only (a short working's live one has none to read), and a way from this stop.
-                        if (choice.path.size < 2) return@mapIndexedNotNull null
-                        val times = timetable.along(choice.path).nextDepartures(at, count).mapNotNull { departureBefore(it, plannedFrom) }
-                        times.takeIf { it.isNotEmpty() }?.let { Way(ui.labels[i], choice.key, TimetabledTimes.of(it)) }
-                    }
-                }.orEmpty(),
-                timetable.departsWithin(at, EmptyTimes.WINDOW),
-            )
+        fun waysOf(timetable: StopTimetable, choices: RouteChoicesUi?, at: Instant, plannedFrom: List<LocalDate>, count: Int): List<Way> =
+            choices?.let { ui ->
+                ui.choices.choices.mapIndexedNotNull { i, choice ->
+                    // A train's own way only (a short working's live one has none to read), and a way from this stop.
+                    if (choice.path.size < 2) return@mapIndexedNotNull null
+                    val times = timetable.along(choice.path).nextDepartures(at, count).mapNotNull { departureBefore(it, plannedFrom) }
+                    times.takeIf { it.isNotEmpty() }?.let { Way(ui.labels[i], choice.key, TimetabledTimes.of(it)) }
+                }
+            }.orEmpty()
     }
 }
 
 /**
  * [row]'s ways' next trains by its stop's timetable ([QuietTimetable]), as of [now]'s minute, worked out on the
- * worker ([LocalWorker]) from the timetable already in ([LocalEmptyTimes]) and [choices]; none planned on or after a
+ * worker ([rememberWorked]) from the timetable already in ([LocalEmptyTimes]) and [choices]; none planned on or after a
  * day [lineStatus]'s planned work starts. No ways while [choices] is null (the page can't stand behind the times, or
- * the chips aren't in), only whether one is due. Null while [row] is null, its timetable isn't in (or couldn't be
- * had), or it's worked out.
+ * the chips aren't in), only whether one is due. Null while [row] is null or its timetable isn't in (or couldn't be
+ * had).
+ *
+ * Each part is paired with what it was worked out for, so the page never shows one past it: another stop, line or
+ * timetable retires both in that frame, and the page losing what lets it stand behind the times retires the ways
+ * (Codex on #1044). The last answer stands in only across what changes while the times hold: the minute's tick, the
+ * chips or the line's status worked out again (SPEC *hold still*).
  */
 @Composable
 internal fun rememberQuietTimetable(row: DepartureRow?, choices: RouteChoicesUi?, lineStatus: LineStatus?, now: Instant): QuietTimetable? {
     val state = LocalEmptyTimes.current
-    val worker = LocalWorker.current
     val key = row?.let { EmptyTimes.Key(it.stopId, it.lineId) }
     // Only this stop and line's timetable, so another's landing doesn't recompose the page.
     val lookup by remember(state.lookups, key) {
@@ -67,22 +67,23 @@ internal fun rememberQuietTimetable(row: DepartureRow?, choices: RouteChoicesUi?
     }.collectAsState(null)
     val minute = now.epochSecond / 60
     val timetable = (lookup as? EmptyTimes.Lookup.Found)?.timetable
-    val worked by produceState<QuietTimetable?>(null, timetable, choices, lineStatus, minute, worker) {
-        if (timetable == null) {
-            value = null
-            return@produceState
-        }
-        // The last answer stands while the minute's is worked out, so the times never blink (SPEC *hold still*).
-        value = withContext(worker) {
-            QuietTimetable.of(timetable, choices, now, lineStatus?.planned.orEmpty().map { it.startsOn }, TIMETABLED_TRAINS)
-        }
+    // Whether a train is due, which picks the why: the timetable's own answer, whatever the checks.
+    val dueSlot = remember { mutableStateOf<Worked<Inputs, Boolean?>?>(null) }
+    val dueSoon = rememberWorked(dueSlot, Inputs(key?.stopId, key?.lineId, timetable, minute), keep = ::sameTimetable) {
+        timetable?.departsWithin(now, EmptyTimes.WINDOW)
     }
-    // The last answer stands only while what it was worked out for still does: never past its timetable going, nor
-    // its ways past the page losing what lets it stand behind them ([choices] null), for a frame or a worker's turn
-    // (Codex on #1044).
     val eligible = choices != null
-    val shown = worked?.takeIf { row != null && timetable != null }
-    return remember(shown, eligible) {
-        shown?.let { if (eligible || it.ways.isEmpty()) it else QuietTimetable(emptyList(), it.dueSoon) }
+    val waysSlot = remember { mutableStateOf<Worked<Inputs, List<QuietTimetable.Way>>?>(null) }
+    val ways = rememberWorked(waysSlot, Inputs(key?.stopId, key?.lineId, timetable, eligible, minute, choices, lineStatus), keep = ::sameWays) {
+        timetable?.let { QuietTimetable.waysOf(it, choices, now, lineStatus?.planned.orEmpty().map { work -> work.startsOn }, TIMETABLED_TRAINS) }.orEmpty()
     }
+    val shown = row != null && timetable != null
+    return remember(shown, ways, dueSoon) { if (shown) QuietTimetable(ways.orEmpty(), dueSoon) else null }
 }
+
+// The answer for the same stop, line and timetable stands in while another minute's is worked out.
+private fun sameTimetable(held: Inputs, wanted: Inputs): Boolean = (0..2).all { Inputs.same(held.parts[it], wanted.parts[it]) }
+
+// The ways for the same stop, line and timetable, the page standing behind them both times, stand in while another
+// minute's, or the chips' or the status's worked out again, are.
+private fun sameWays(held: Inputs, wanted: Inputs): Boolean = (0..3).all { Inputs.same(held.parts[it], wanted.parts[it]) }

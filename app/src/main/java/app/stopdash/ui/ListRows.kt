@@ -189,10 +189,12 @@ internal class RideView(
  * [cards]' ride pages by journey key ([RideView]), each row the list's own for the ride's line at its origin with
  * no times ([ListRows.byLine]): its age, its line-wide alert as of now less what the rider dismissed, and its
  * planned work are the list's, so the page reads the line exactly as the list does. With the origin's notice in
- * force at [from]'s time, as the line's rows don't carry it. On the worker.
+ * force at [from]'s time, as the line's rows don't carry it. A ride's planned-work days the same as in [last]'s are
+ * [last]'s, the same list, so a page keyed on them compares them by identity on the main thread (Codex on #1048). On
+ * the worker.
  */
 @WorkerThread
-internal fun rideViews(cards: List<JourneyCard>, from: ListRows): Map<String, RideView> {
+internal fun rideViews(cards: List<JourneyCard>, from: ListRows, last: Map<String, RideView>? = null): Map<String, RideView> {
     val stops = from.source.stops.associateBy { it.stopId }
     val statuses = LineStatus.asOf(from.source.lineStatuses, from.now)
     return cards.associate { card ->
@@ -210,6 +212,7 @@ internal fun rideViews(cards: List<JourneyCard>, from: ListRows): Map<String, Ri
         val live = state !is JourneyCardState.Trains || state.incomplete || state.rows.any { it.hasTrains }
         val destinationDisrupted = card.destinationIds.any { it in from.destinationsDisrupted }
         val planned = statuses[line.lineId]?.planned.orEmpty().map { it.startsOn }
+            .let { days -> last?.get(card.journey.key)?.plannedFrom?.takeIf { it == days } ?: days }
         card.journey.key to RideView(card, row, journeyRide(card.journey, line.stopId), live, destinationDisrupted, listed != null, planned)
     }
 }
@@ -442,6 +445,8 @@ internal fun shownRowsOf(
     cards: List<JourneyCard> = emptyList(),
     journeys: List<FavoriteJourney> = emptyList(),
     topology: RouteTopology = RouteTopology.EMPTY,
+    // The last ones built, whose ride pages' planned-work days are kept where unchanged ([rideViews]).
+    last: ShownRows? = null,
 ): ShownRows {
     val rows = DepartureRows.pinStarred(
         DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown, stopDistanceMeters, topology),
@@ -466,7 +471,7 @@ internal fun shownRowsOf(
         // A card's row opens its route page with the card's own trains, the ones it counts on: no just-due
         // train, which the list's page keeps (maintainer, 2026-10-20).
         RowsByKey.of(journeyRowsShown),
-        rideViews(cards, from),
+        rideViews(cards, from, last?.rides),
     )
 }
 

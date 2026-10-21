@@ -315,9 +315,10 @@ class JourneyCardStateTest {
             dismissed: Set<app.stopdash.domain.DismissedAlert> = emptySet(),
             card: JourneyCard = JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("PARK-L", "PARK-K")),
             destinations: List<StopArrivals> = emptyList(),
+            last: Map<String, RideView>? = null,
         ): RideView {
             val source = DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now, lineStatuses = mapOf("example" to status), determinedLineIds = setOf("example"))
-            return rideViews(listOf(card), listRowsOf(source, now, emptyMap(), dismissed, emptySet(), emptyMap(), destinations)).getValue(ride.key)
+            return rideViews(listOf(card), listRowsOf(source, now, emptyMap(), dismissed, emptySet(), emptyMap(), destinations), last).getValue(ride.key)
         }
         val disrupted = view(origin(), severe)
         // Where the card boards, aged as that stop's arrivals are, with the line's alert as the list has it.
@@ -363,7 +364,14 @@ class JourneyCardStateTest {
         assertEquals(false, view(origin(), severe, card = toClosed).destinationDisrupted)
         // The days its line's planned work starts, and whether the origin names its line at all.
         val later = app.stopdash.domain.PlannedAlert("Part Closure", "Closed from 30 September.", java.time.LocalDate.of(2026, 9, 30), severity = 5)
-        assertEquals(listOf(java.time.LocalDate.of(2026, 9, 30)), view(origin(), app.stopdash.domain.LineStatus("example", 10, "Good Service", planned = listOf(later))).plannedFrom)
+        val withWork = app.stopdash.domain.LineStatus("example", 10, "Good Service", planned = listOf(later))
+        val before = view(origin(), withWork)
+        assertEquals(listOf(java.time.LocalDate.of(2026, 9, 30)), before.plannedFrom)
+        // Built again with the same days, they're the last views' own list, so the page compares them by identity
+        // on the main thread, never walking them (Codex on #1048); other days are a list of their own.
+        org.junit.Assert.assertSame(before.plannedFrom, view(origin(), withWork, last = mapOf(ride.key to before)).plannedFrom)
+        val moved = withWork.copy(planned = listOf(later.copy(startsOn = java.time.LocalDate.of(2026, 10, 1))))
+        assertEquals(listOf(java.time.LocalDate.of(2026, 10, 1)), view(origin(), moved, last = mapOf(ride.key to before)).plannedFrom)
         assertTrue(good.lineListed)
         assertEquals(false, view(origin().copy(lines = emptyList()), severe).lineListed)
         // Once the card has trains, the timetable no longer speaks for it.
