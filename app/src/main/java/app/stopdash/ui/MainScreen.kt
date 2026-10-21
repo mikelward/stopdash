@@ -1269,6 +1269,13 @@ fun MainScreen(
     // open, the trains a card counts on, never gaining the list's just-due one ([ListRows.forCards]), even
     // once its journey is unstarred from the page (maintainer, 2026-10-20; SPEC *hold still*).
     var detailFromCard by rememberSaveable { mutableStateOf(false) }
+    // A page opened from a journey card: the card's far end, by its stops, whose ways its chips put first in their
+    // way ([RouteDetailScreen]'s reaching). Empty for any other page.
+    var detailReaching by rememberSaveable(stateSaver = StopIdsSaver) { mutableStateOf(emptySet<String>()) }
+    // Whether a page opened from a journey card still keeps to the trains the card counts on, its row as the card
+    // draws it: until another way is chosen from its chips, which reads the stop's every train (as the cards judge
+    // them, so still never a just-due one; maintainer, 2026-10-21).
+    var detailCardTrains by rememberSaveable { mutableStateOf(false) }
     // Opens a row's route page, counted as a tap on [tap]'s kind (UsageEvent; opted in only): a
     // row on a journey's change card is a change card, any other a stop row.
     // The favorite journey whose ride page is open, by key: opened from its line's row with no train
@@ -1280,14 +1287,20 @@ fun MainScreen(
         // A new opening, so its line page ("View line") starts closed, as a route page's does (Codex on #1036).
         detailOpened++
     }
-    fun openDetail(tap: UsageEvent.Tap, fromCard: Boolean = false): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
+    fun openDetail(tap: UsageEvent.Tap, fromCard: Boolean = false, reaching: Set<String> = emptySet()): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
         UsageEvents.log(UsageEvent.Tapped(tap))
         detailFromCard = fromCard
+        detailCardTrains = fromCard
+        detailReaching = reaching
         detailKey = row.detailKey()
         detailDestination = focus?.destination
         detailBranch = focus?.branch
         detailWay = row.direction
         detailOpened++
+    }
+    // A journey card's row, with the card's far end ([detailReaching]).
+    val openCardDetail: (DepartureRow, RouteFocus?, Set<String>) -> Unit = { row, focus, reaching ->
+        openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true, reaching = reaching)(row, focus)
     }
     // The key is looked up among the drawn rows (an open platform view's, else the list's), by an index
     // worked out with them ([RowsByKey]), so composition walks no rows (AGENTS.md *Main thread*, Codex, #854).
@@ -1307,8 +1320,9 @@ fun MainScreen(
     // platform's row ([routeAnchor]) stays open over the view it was opened from, which lists only its own.
     val detailFound = detailKey?.let { key ->
         if (detailFromCard) {
-            // Opened from a card: the cards' rows only, so the page never moves to the list's row.
-            (journeyByKey?.get(key) ?: drawnFrom?.cardsByKey?.get(key))
+            // Opened from a card: the cards' rows only, so the page never moves to the list's row. The card's own
+            // until another way is chosen ([detailCardTrains]).
+            (journeyByKey?.takeIf { detailCardTrains }?.get(key) ?: drawnFrom?.cardsByKey?.get(key))
                 ?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
         } else {
             shownByKey?.get(key)?.let { Triple(it, drawnState, drawnNow) }
@@ -1484,18 +1498,17 @@ fun MainScreen(
             // Held with the row while it stands in, so the page's work isn't asked again for the hop.
             siblings = if (detailFound != null) detailSiblings else detailDrawn.siblings,
             // Another route of the line at the stop, from the page's chips: the page moves to it, as if its row
-            // had been tapped. Not from a journey card, whose page keeps to the trains the card counts on.
+            // had been tapped. From a journey card too, every way on from the stop, the ways reaching its far end
+            // first (maintainer, 2026-10-21): the page still reads the cards' rows, so never gains a train just due.
             lineStatus = detailLoaded.lineStatuses[detailRow.lineId],
-            onChooseRoute = if (detailFromCard) {
-                null
-            } else {
-                { chosenRow, chosenFocus ->
-                    detailKey = chosenRow.detailKey()
-                    detailDestination = chosenFocus.destination
-                    detailBranch = chosenFocus.branch
-                    detailWay = chosenRow.direction
-                }
+            onChooseRoute = { chosenRow, chosenFocus ->
+                detailCardTrains = false
+                detailKey = chosenRow.detailKey()
+                detailDestination = chosenFocus.destination
+                detailBranch = chosenFocus.branch
+                detailWay = chosenRow.direction
             },
+            reaching = detailReaching,
         )
         return
     }
@@ -1763,7 +1776,7 @@ fun MainScreen(
                             onToggleStar = onToggleStar,
                             starringAvailable = starringAvailable,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
-                            onOpenCardDetail = openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true),
+                            onOpenCardDetail = openCardDetail,
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
                             onOpenRide = openRide,
                             onAddRailKey = onAddRailKey,
@@ -1823,7 +1836,7 @@ fun MainScreen(
                             pendingTracker = pendingTracker,
                             onOpenFarther = onOpenFarther,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
-                            onOpenCardDetail = openDetail(UsageEvent.Tap.STOP_ROW, fromCard = true),
+                            onOpenCardDetail = openCardDetail,
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
                             onOpenRide = openRide,
                             onAddRailKey = onAddRailKey,
@@ -2028,8 +2041,9 @@ private fun LoadedContent(
     onOpenFarther: (CollapsedPlaces.Place) -> Unit = {},
     // Open the full-screen route detail for a tapped card; the caller holds the open-route state.
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit = { _, _ -> },
-    // The same for a row on a journey card, whose page reads the cards' rows.
-    onOpenCardDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
+    // The same for a row on a journey card, whose page reads the cards' rows, with the card's far end, by its
+    // stops, whose ways the page's chips put first.
+    onOpenCardDetail: (DepartureRow, RouteFocus?, Set<String>) -> Unit = { row, focus, _ -> onOpenDetail(row, focus) },
     // The same for a row on a journey's change card, counted apart (UsageEvent).
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // Opens a journey's ride page, by its key, from its line's row with no train ([JourneyCard.lineCard]);
@@ -2762,8 +2776,8 @@ private fun DepartureList(
     starringAvailable: Boolean,
     stopDistanceMeters: Map<String, Double>,
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
-    // A journey card's row, whose page reads the cards' rows.
-    onOpenCardDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
+    // A journey card's row, whose page reads the cards' rows, with the card's far end.
+    onOpenCardDetail: (DepartureRow, RouteFocus?, Set<String>) -> Unit = { row, focus, _ -> onOpenDetail(row, focus) },
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // A journey's ride page, from its line's row with no train; null leaves that row inert.
     onOpenRide: ((String) -> Unit)? = null,
@@ -3074,6 +3088,8 @@ private fun DepartureList(
                 // The ride's own line with no train ([JourneyCard.lineCard]) opens the ride's page: its stops and
                 // its timetable's next train (maintainer, 2026-10-21).
                 val openRide = onOpenRide?.let { open -> { _: DepartureRow, _: RouteFocus? -> open(card.journey.key) } }
+                // Its trains' pages, with its far end, whose ways their chips put first (maintainer, 2026-10-21).
+                val openTrain = { row: DepartureRow, focus: RouteFocus? -> onOpenCardDetail(row, focus, card.destinationIds) }
                 fun rideStopCard(key: String, stopCard: StopCard, checking: Boolean, atOnce: Boolean = false, noneRes: Int? = null) {
                     item(key = "journey-card|${card.journey.key}|$key") {
                         StopGroupCard(
@@ -3082,7 +3098,7 @@ private fun DepartureList(
                             starred = starred,
                             onToggleStar = onToggleStar,
                             starringAvailable = starringAvailable,
-                            onOpenDetail = if (stopCard === card.lineCard) openRide else onOpenCardDetail,
+                            onOpenDetail = if (stopCard === card.lineCard) openRide else openTrain,
                             onAddRailKey = onAddRailKey,
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
@@ -3843,6 +3859,9 @@ internal fun remeasured(place: PendingPlace, stopDistanceMeters: Map<String, Dou
     val meters = place.stopIds.mapNotNull { stopDistanceMeters[it] }.minOrNull() ?: return place
     return place.copy(place = place.place.copy(meters = meters), distanced = true)
 }
+
+// A set of stop ids kept across a rotation, as a plain list (rememberSaveable's Bundle can't hold any set).
+private val StopIdsSaver = Saver<Set<String>, ArrayList<String>>(save = { ArrayList(it) }, restore = { it.toSet() })
 
 // The item-key prefixes that aren't loaded rows: the loading and farther cards, headings (each sits
 // just above its own rows), and the faraway-journeys label and button. Every other item — a place's
@@ -6084,6 +6103,9 @@ internal fun RouteDetailScreen(
     // the row holding that route's soonest train, among [row] and [siblings], and the route a tap on that row
     // follows. Null offers no chips.
     onChooseRoute: ((DepartureRow, RouteFocus) -> Unit)? = null,
+    // A favorite ride's far end, by its stops and stop area, on a page opened from its card: the chips calling
+    // there come first in their way (maintainer, 2026-10-21). Empty orders them by the line's routes alone.
+    reaching: Set<String> = emptySet(),
     // The line's whole status as the list has it, every way's alerts in it: what a way chosen with no train shows
     // where it runs another way than [row], whose alerts are its own way's ([WayStatus]). Null keeps [row]'s.
     lineStatus: LineStatus? = null,
@@ -6127,7 +6149,7 @@ internal fun RouteDetailScreen(
     // Bumped by the stop list's retry, which asks the chips' routes again too, and a ride's ways.
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
     val routeChoices = when {
-        onChooseRoute != null -> rememberRouteChoices(row, siblings, focus, openedWay, routeStopsRetry)
+        onChooseRoute != null -> rememberRouteChoices(row, siblings, focus, openedWay, routeStopsRetry, reaching)
         rideChoices && ride != null -> rememberRideChoices(ride, routeStopsRetry)
         else -> null
     }

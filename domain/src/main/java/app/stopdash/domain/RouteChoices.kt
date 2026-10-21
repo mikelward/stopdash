@@ -50,9 +50,11 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
          * stop run, among [row] and [rows] (any way, any platform), on the choice whose path the train's is, or
          * one of its own where none is (a short working). Both ways the line runs are offered, [first] (the way
          * the page opened on) first, each in the order TfL lists its routes, so neither a refresh nor a move to
-         * another of them reorders them; ways only a live train names follow, by name. [current] is the choice
-         * the page's train is on: the one [focus] follows ([followedDeparture]), else, on a page with no train,
-         * the only choice where there's one.
+         * another of them reorders them; ways only a live train names follow, by name. Within each, the ways
+         * calling at a stop or stop area in [reaching] after this one come first: a favorite ride's far end, on a
+         * page opened from its card (maintainer, 2026-10-21). [current] is the choice the page's train is on: the
+         * one [focus] follows ([followedDeparture]), else, on a page with no train, the only choice where there's
+         * one.
          */
         @WorkerThread
         fun of(
@@ -62,6 +64,7 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
             focus: RouteFocus?,
             topology: RouteTopology = RouteTopology.EMPTY,
             first: String = row.direction,
+            reaching: Set<String> = emptySet(),
         ): RouteChoices {
             val lineId = row.lineId
             val stopId = row.stopId
@@ -92,6 +95,15 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
             val liveOnly = HashMap<String, Int>()
             // Each choice's soonest train's time, so the live route it keeps is its soonest.
             val soonestAt = HashMap<Int, Instant>()
+            // The choice a train runs on by its own path, where it resolves to one already offered.
+            fun wayOf(train: Departure): Int? {
+                val resolution = RouteStops.resolve(
+                    routes, stopId, train.destination, train.branch, lineId, bus, RouteStops.boundOf(train.platform),
+                    train.direction, train.destinationId, train.via,
+                )
+                val path = (resolution as? RouteStops.Resolution.Found)?.stops?.map { it.id } ?: return null
+                return byPath[path] ?: liveOnly[path.joinToString(",")]
+            }
             for (from in here) {
                 for (group in DepartureRows.destinationLines(from, Int.MAX_VALUE, topology)) {
                     val train = group.times.firstOrNull() ?: group.untimed.firstOrNull()?.train ?: continue
@@ -129,28 +141,36 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
                         val atLeast = if (choices[index].path.isEmpty()) guess else null
                         choices[index] = choices[index].copy(live = LiveRoute(from, RouteFocus.of(group)), atLeast = atLeast)
                     }
-                    if (followed != null && (group.times.any { it === followed } || group.untimed.any { it.train === followed })) current = index
+                    if (followed != null && (group.times.any { it === followed } || group.untimed.any { it.train === followed })) {
+                        // The followed train's own way, not its group's soonest's: a journey card's page has the card's
+                        // row, holding only the trains it counts on, beside the stop's own, whose group for a place may
+                        // start with another way's train (Codex on #1049).
+                        current = if (followed === train) index else wayOf(followed) ?: index
+                    }
                     // Its other trains, each on its own way: one running another way than its soonest has a train at
                     // the stop too, which the page, following a place and its via ([RouteFocus]), can't tell from the
                     // soonest, so that way isn't said to have none (Codex on #1038).
                     for (other in group.times.drop(1) + group.untimed.map { it.train }.filter { it !== train }) {
-                        val its = RouteStops.resolve(
-                            routes, stopId, other.destination, other.branch, lineId, bus, RouteStops.boundOf(other.platform),
-                            other.direction, other.destinationId, other.via,
-                        )
-                        val otherPath = (its as? RouteStops.Resolution.Found)?.stops?.map { it.id } ?: continue
-                        val otherIndex = byPath[otherPath] ?: liveOnly[otherPath.joinToString(",")] ?: continue
+                        val otherIndex = wayOf(other) ?: continue
                         if (otherIndex != index && choices[otherIndex].live == null) {
                             choices[otherIndex] = choices[otherIndex].copy(unfollowedTrain = true)
                         }
                     }
                 }
             }
-            // Both ways, [first] first; within each, the line's routes in TfL's order, then the live trains' own
-            // ways by name.
+            // Both ways, [first] first; within each, those reaching a stop of [reaching], then the line's routes in
+            // TfL's order, then the live trains' own ways by name.
             val own = first
+            val reaches = BooleanArray(choices.size) { i ->
+                reaching.isNotEmpty() &&
+                    choices[i].path.drop(1).any { it in reaching || routes.stopAreas[it]?.let { area -> area in reaching } == true }
+            }
             val order = choices.indices.sortedWith(
-                compareBy<Int>({ if (own.isNotBlank() && choices[it].direction == own) 0 else 1 }, { if (it < fromRoutes) 0 else 1 })
+                compareBy<Int>(
+                    { if (own.isNotBlank() && choices[it].direction == own) 0 else 1 },
+                    { if (reaches[it]) 0 else 1 },
+                    { if (it < fromRoutes) 0 else 1 },
+                )
                     .thenBy { if (it < fromRoutes) "" else choices[it].destination }
                     .thenBy { it },
             )

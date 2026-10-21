@@ -4173,8 +4173,10 @@ Builds on Phase 1's minimal line-status marking.
               per way where its stops go (`RouteChoices.forRide`), none chosen, the one chosen listed.
         - [ ] **National Rail lines**: none yet, as a line's routes are its stopping patterns, a dozen from
               one platform. Chips there would want grouping by where they go first.
-        - [ ] **A journey card's page**: none, as it keeps to the trains the card counts on; chips limited
-              to the ways that reach the journey's end could join them.
+        - [x] **A journey card's page** (maintainer, 2026-10-21: "every way from that stop"): a chip per way on
+              from the stop, as a list row's page, the ways calling at the ride's far end first in their way. The
+              page keeps to the card's trains until another way is chosen. Needs a device check of the room held
+              for them on the card's page.
         - [ ] **Follow a train on its own way where its row groups it with another** (Codex on #1038). Two
               trains to one place by one via (or none named) that take different stops, a bus route's
               variants, share a row's destination group; the page follows a place and its via

@@ -1126,8 +1126,10 @@ a rail line the chips' room is held while they're worked out and kept once they 
 as its chip), so nothing below moves; where the
 line's routes couldn't be loaded, "Couldn't load other routes" and a retry stand in their place, never read as a
 line with no other way on. A journey
-card's page keeps to the card's trains and has none, nor do a trip's pages; nor yet a National Rail line, whose
-routes are its stopping patterns, a dozen from one platform. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
+card's page has them too, every way on from its stop (maintainer, 2026-10-21), the ways calling at the ride's far end
+first in their way and the card's train's chosen; it keeps to the card's trains until another way is chosen, then
+shows the stop's, judged as the cards judge them, so never a train just past its time. A trip's pages have none; nor
+yet a National Rail line, whose routes are its stopping patterns, a dozen from one platform. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
 in for: shown collapsed to its first line, tapped to expand (the same widget the stop-closure card
 uses). A **web link** in an alert — with or without `https://`, as TfL writes them ("visit
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links

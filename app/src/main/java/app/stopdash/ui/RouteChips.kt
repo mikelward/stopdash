@@ -95,9 +95,9 @@ internal class RouteChoicesUi private constructor(
 
         /**
          * [row]'s line's choices at its stop from [sequence] (both ways), with the trains among [rows], [first]'s
-         * way first ([RouteChoices.of]); [via] formats a choice told apart by where it parts ("%1$s via %2$s"), and
-         * [atLeast] a train TfL names no destination for by how far it goes at least, a guess ("At least to %1$s?",
-         * [RouteChoice.atLeast]).
+         * way first and, within it, those calling at a stop of [reaching] ([RouteChoices.of]); [via] formats a choice
+         * told apart by where it parts ("%1$s via %2$s"), and [atLeast] a train TfL names no destination for by how far
+         * it goes at least, a guess ("At least to %1$s?", [RouteChoice.atLeast]).
          */
         @WorkerThread
         fun of(
@@ -109,8 +109,9 @@ internal class RouteChoicesUi private constructor(
             via: String,
             first: String,
             atLeast: String = "%1\$s?",
+            reaching: Set<String> = emptySet(),
         ): RouteChoicesUi {
-            val choices = RouteChoices.of(sequence, row, rows, focus, topology, first)
+            val choices = RouteChoices.of(sequence, row, rows, focus, topology, first, reaching)
             val routes = sequence.eachCallingAt(row.stopId)
             val lists = choices.choices.filter { it.path.isNotEmpty() }.associate { choice ->
                 choice.key to RouteStopsUi.Loaded(
@@ -171,27 +172,36 @@ internal fun holdsRouteChoices(row: DepartureRow): Boolean {
 
 /**
  * The route chips of [row]'s line at its stop ([RouteChoicesUi]), with the trains among [siblings] and the page's
- * [focus], [first]'s way first: from the line's routes both ways ([LocalRouteStops], one day-long request per line), worked out on the
- * worker ([LocalWorker]). Null until the first answer is in; [RouteChoicesUi.NONE] where no routes are wired or
+ * [focus], [first]'s way first and, within it, those calling at a stop of [reaching] (a favorite ride's far end): from
+ * the line's routes both ways ([LocalRouteStops], one day-long request per line), worked out on the worker ([LocalWorker]). Null until the first answer is in; [RouteChoicesUi.NONE] where no routes are wired or
  * TfL has none for the line; one carrying its [RouteChoicesUi.failure] where they couldn't be loaded (said by the
  * repository), asked again on [retry]. A refreshed row's answer replaces the last, which stands meanwhile, so the
  * chips never blink, but unsettled ([RouteChoicesUi.settled]): its trains are the old rows'.
  */
 @Composable
-internal fun rememberRouteChoices(row: DepartureRow, siblings: List<DepartureRow>, focus: RouteFocus?, first: String, retry: Int): RouteChoicesUi? {
+internal fun rememberRouteChoices(
+    row: DepartureRow,
+    siblings: List<DepartureRow>,
+    focus: RouteFocus?,
+    first: String,
+    retry: Int,
+    reaching: Set<String> = emptySet(),
+): RouteChoicesUi? {
     val repository = LocalRouteStops.current
     val worker = LocalWorker.current
     val topology = LocalRouteTopology.current
     val via = stringResource(R.string.route_choice_via)
     val atLeast = stringResource(R.string.route_choice_at_least)
-    val ask = remember(row, focus, topology, ByIdentity(siblings)) { Any() }
+    val ask = remember(row, focus, topology, ByIdentity(siblings), ByIdentity(reaching)) { Any() }
     if (repository == null || row.lineId.isBlank()) return RouteChoicesUi.NONE
     // Another stop or line starts with none; a refreshed row keeps the last answer until its own is in.
     return key(row.stopId, row.lineId, repository) {
         // Each answer with the ask it was worked out for, so one for rows since refreshed is known for what it is.
         val answer by produceState<Pair<Any, RouteChoicesUi>?>(null, ask, worker, via, atLeast, first, retry) {
             value = ask to try {
-                withContext(worker) { RouteChoicesUi.of(repository.load(row.lineId, ""), row, siblings, focus, topology, via, first, atLeast) }
+                withContext(worker) {
+                    RouteChoicesUi.of(repository.load(row.lineId, ""), row, siblings, focus, topology, via, first, atLeast, reaching)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
