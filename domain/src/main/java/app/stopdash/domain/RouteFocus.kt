@@ -11,8 +11,14 @@ import androidx.annotation.WorkerThread
  * the page is open (it loads asynchronously on a cold start), and a stored key would stop matching.
  * Which trains count as this route is worked out when it's used ([followedDeparture]), under the
  * topology in force then.
+ *
+ * [way] names the train's own way ([Departure.wayKey]) where its row groups it with a train to the same
+ * place by the same via that runs another (a bus route's variants, told apart only by their stops; a
+ * loop's trains on platforms of opposite bounds): the page then follows a train run that way, from a route
+ * chip handing over to it (Codex on #1038, #1045). Null follows the place and via alone, as a tap on a row
+ * does.
  */
-data class RouteFocus(val destination: String, val branch: String?) {
+data class RouteFocus(val destination: String, val branch: String?, val way: String? = null) {
     companion object {
         /** The focus for a card's route row: its soonest timed train's, else (every train has no time) its soonest's. */
         fun of(group: DestinationGroup) =
@@ -75,26 +81,38 @@ fun routeAnchor(
     return soonestOnRoute(way, focus, topology)?.second
 }
 
-/** The soonest train on the [focus] route among [rows], timed else by schedule, with the row it's in. */
+/**
+ * The soonest train on the [focus] route among [rows], timed else by schedule, with the row it's in: run
+ * [RouteFocus.way] where the focus names one, else (none of those left) any on the route, so the page
+ * stays on the place its way's train left from.
+ */
 private fun soonestOnRoute(rows: List<DepartureRow>, focus: RouteFocus, topology: RouteTopology): Pair<Departure, DepartureRow>? {
     if (rows.isEmpty()) return null
     val first = rows.first()
     val route = topology.grouping(first.lineId, first.stopId, focus.destination, focus.branch).mergeKey
     fun onRoute(it: Departure) = it.destination == focus.destination &&
         topology.grouping(first.lineId, first.stopId, it.destination, it.branch).mergeKey == route
+    val way = focus.way
+    if (way != null) soonestOf(rows) { onRoute(it) && it.wayKey == way }?.let { return it }
+    return soonestOf(rows, ::onRoute)
+}
+
+/** The soonest train among [rows] that [counts], timed else by schedule, with the row it's in. */
+private inline fun soonestOf(rows: List<DepartureRow>, counts: (Departure) -> Boolean): Pair<Departure, DepartureRow>? {
     var timed: Pair<Departure, DepartureRow>? = null
     for (row in rows) {
-        val train = row.upcoming.firstOrNull(::onRoute) ?: continue
+        val train = row.upcoming.firstOrNull(counts) ?: continue
         if (timed == null || train.expectedArrival < timed.first.expectedArrival) timed = train to row
     }
     if (timed != null) return timed
     var untimed: Pair<Departure, DepartureRow>? = null
     for (row in rows) {
-        val train = row.untimed.firstOrNull { onRoute(it.train) }?.train ?: continue
+        val train = row.untimed.firstOrNull { counts(it.train) }?.train ?: continue
         if (untimed == null || train.expectedArrival < untimed.first.expectedArrival) untimed = train to row
     }
     return untimed
 }
+
 
 /**
  * Every departure on the route the detail follows — the [followedDeparture]'s destination and

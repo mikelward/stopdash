@@ -42,6 +42,33 @@ class FollowedDepartureTest {
     }
 
     @Test
+    fun `a focus on a train's own way follows that way's train, and the place once none is left`() {
+        // Two trains to Morden that TfL names no via for, one round each way a loop runs: one row's one destination.
+        val clockwise = Departure("northern", "Northern", "northbound", "Morden", null, now.plusSeconds(60), "tube", via = "Bank")
+        val anticlockwise = Departure("northern", "Northern", "northbound", "Morden", null, now.plusSeconds(120), "tube", via = "Charing Cross")
+        val both = row(HGT, clockwise, anticlockwise)
+        val way = RouteFocus("Morden", null, anticlockwise.wayKey)
+        // The later one, on its own way, not the place's soonest.
+        assertEquals(now.plusSeconds(120), followedDeparture(both, way, topology)?.expectedArrival)
+        assertEquals(now.plusSeconds(120), focusedDeparture(both, way, topology)?.expectedArrival)
+        // And with no way named, the place's soonest, as a tap on the row follows.
+        assertEquals(now.plusSeconds(60), followedDeparture(both, RouteFocus("Morden", null), topology)?.expectedArrival)
+        // Its way's train gone: the place's train, never nothing while one is left there.
+        val left = row(HGT, clockwise)
+        assertEquals(now.plusSeconds(60), followedDeparture(left, way, topology)?.expectedArrival)
+    }
+
+    @Test
+    fun `a train's way is told by its direction, its platform's bound, its destination id and its via`() {
+        val train = Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now, "tube", destinationId = MDN, via = "Bank")
+        assertEquals(train.wayKey, train.copy(expectedArrival = now.plusSeconds(60), vehicleId = "001").wayKey)
+        assertTrue(train.wayKey != train.copy(direction = "inbound").wayKey)
+        assertTrue(train.wayKey != train.copy(platform = "Northbound - Platform 1").wayKey)
+        assertTrue(train.wayKey != train.copy(destinationId = KNG).wayKey)
+        assertTrue(train.wayKey != train.copy(via = "Charing Cross").wayKey)
+    }
+
+    @Test
     fun `a tapped route follows its own soonest train, not the row's`() {
         val kennington = row(
             KNG,

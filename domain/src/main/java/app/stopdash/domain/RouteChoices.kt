@@ -1,7 +1,6 @@
 package app.stopdash.domain
 
 import androidx.annotation.WorkerThread
-import java.time.Instant
 
 /**
  * One way a line runs on from a stop, as a chip atop its route page offers it (maintainer, 2026-10-21): to
@@ -23,10 +22,6 @@ data class RouteChoice(
     // The stop it calls at that another choice to the same place by the same via doesn't, the first of them:
     // what tells the two apart. Null where its destination (and branch) do.
     val parting: String? = null,
-    // A train at the stop runs it that the page can't follow on its own: one grouped with a train to the same place
-    // by the same via that runs another way (a bus route's variants, told apart only by their stops). It has no
-    // [live] to hand over to, but it isn't a way with no train either (Codex on #1038).
-    val unfollowedTrain: Boolean = false,
     // For a live train TfL names no destination for ("Check Front of Train"), the farthest stop every way it can run
     // from here reaches before they part: how far it goes at least, a guess (maintainer, 2026-10-21).
     val atLeast: String? = null,
@@ -93,8 +88,8 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
             val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<DepartureRow, Boolean>())
             val here = (listOf(row) + rows).filter { it.stopId == stopId && it.lineId == lineId && seen.add(it) }
             val liveOnly = HashMap<String, Int>()
-            // Each choice's soonest train's time, so the live route it keeps is its soonest.
-            val soonestAt = HashMap<Int, Instant>()
+            // Each choice's soonest train, so the live route it keeps is its soonest.
+            val soonest = HashMap<Int, Departure>()
             // The choice a train runs on by its own path, where it resolves to one already offered.
             fun wayOf(train: Departure): Int? {
                 val resolution = RouteStops.resolve(
@@ -135,11 +130,28 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
                         liveOnly[if (path.isNotEmpty()) path.joinToString(",") else unknown] = choices.lastIndex
                         choices.lastIndex
                     }
-                    val held = soonestAt[index]
-                    if (held == null || train.expectedArrival < held) {
-                        soonestAt[index] = train.expectedArrival
+                    // Its other trains on ways of their own: a group can hold trains to one place by one via that take
+                    // different stops (a bus route's variants), which a page following the place and its via can't tell
+                    // apart, so where it does, each way's chip hands the page its own train, followed by its way
+                    // ([RouteFocus.way]), not the group's soonest (Codex on #1038).
+                    val others = ArrayList<Pair<Int, Departure>>()
+                    for (other in group.times.drop(1) + group.untimed.map { it.train }.filter { it !== train }) {
+                        val otherIndex = wayOf(other) ?: continue
+                        if (otherIndex != index) others += otherIndex to other
+                    }
+                    fun focusOn(it: Departure) = if (others.isEmpty()) RouteFocus.of(group) else RouteFocus(group.destination, it.branch, it.wayKey)
+                    val held = soonest[index]
+                    if (held == null || train.expectedArrival < held.expectedArrival) {
+                        soonest[index] = train
                         val atLeast = if (choices[index].path.isEmpty()) guess else null
-                        choices[index] = choices[index].copy(live = LiveRoute(from, RouteFocus.of(group)), atLeast = atLeast)
+                        choices[index] = choices[index].copy(live = LiveRoute(from, focusOn(train)), atLeast = atLeast)
+                    }
+                    for ((otherIndex, other) in others) {
+                        val heldOther = soonest[otherIndex]
+                        if (heldOther == null || other.expectedArrival < heldOther.expectedArrival) {
+                            soonest[otherIndex] = other
+                            choices[otherIndex] = choices[otherIndex].copy(live = LiveRoute(from, focusOn(other)))
+                        }
                     }
                     if (followed != null && (group.times.any { it === followed } || group.untimed.any { it.train === followed })) {
                         // The followed train's own way, not its group's soonest's: a journey card's page has the card's
@@ -147,15 +159,23 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
                         // start with another way's train (Codex on #1049).
                         current = if (followed === train) index else wayOf(followed) ?: index
                     }
-                    // Its other trains, each on its own way: one running another way than its soonest has a train at
-                    // the stop too, which the page, following a place and its via ([RouteFocus]), can't tell from the
-                    // soonest, so that way isn't said to have none (Codex on #1038).
-                    for (other in group.times.drop(1) + group.untimed.map { it.train }.filter { it !== train }) {
-                        val otherIndex = wayOf(other) ?: continue
-                        if (otherIndex != index && choices[otherIndex].live == null) {
-                            choices[otherIndex] = choices[otherIndex].copy(unfollowedTrain = true)
-                        }
-                    }
+                }
+            }
+            // Ways whose trains hand the page the same place from rows of their own (a loop's trains TfL names no
+            // destination for, on platforms of opposite bounds): the page, following the place across the stop's
+            // platforms, would follow the sooner from either chip, so each hands over by its own train's way too
+            // (Codex on #1045).
+            val byPlace = HashMap<RouteFocus, MutableList<Int>>()
+            for (i in choices.indices) {
+                val focus = choices[i].live?.focus?.takeIf { it.way == null } ?: continue
+                byPlace.getOrPut(focus) { ArrayList() } += i
+            }
+            for (same in byPlace.values) {
+                if (same.size < 2) continue
+                for (i in same) {
+                    val live = choices[i].live ?: continue
+                    val train = soonest[i] ?: continue
+                    choices[i] = choices[i].copy(live = live.copy(focus = live.focus.copy(way = train.wayKey)))
                 }
             }
             // Both ways, [first] first; within each, those reaching a stop of [reaching], then the line's routes in

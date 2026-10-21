@@ -4187,14 +4187,11 @@ Builds on Phase 1's minimal line-status marking.
               from the stop, as a list row's page, the ways calling at the ride's far end first in their way. The
               page keeps to the card's trains until another way is chosen. Needs a device check of the room held
               for them on the card's page.
-        - [ ] **Follow a train on its own way where its row groups it with another** (Codex on #1038). Two
-              trains to one place by one via (or none named) that take different stops, a bus route's
-              variants, share a row's destination group; the page follows a place and its via
-              (`RouteFocus`), so a chip for the second's way can't hand over to it, and only lists its stops
-              (without claiming no train). Wants the page's focus able to name a path. The same holds for two
-              trains TfL names no destination for, on platforms of opposite bounds under one TfL direction (a
-              loop): each has a chip of its own, by how far it goes at least (#1045), but both hand the page the
-              same place, so the page follows the sooner and the later's chip hands back to it (Codex on #1045).
+        - [x] **Follow a train on its own way where its row groups it with another** (Codex on #1038, #1045).
+              Done (2026-10-21, on autopilot): a route focus can name a train's own way (`RouteFocus.way`, by
+              `Departure.wayKey`: its direction, platform's bound, TfL destination and via, what its stops are
+              found by), so each way's chip hands the page its own train, followed by that way, and back to the
+              place's soonest once that way has none at the stop. Needs a device check on a bus route's variants.
         - [x] **Keep the page open on a way chosen with no train** (Codex on #1038). Done (2026-10-21): with its
               row gone and no other platform's to move to, the page stays on the way chosen while the stop is in
               the list, its row as last held with its trains gone, as of the stop's latest fetch and alerts
@@ -5141,6 +5138,13 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A route page follows a grouped train by its own way, told by its direction, bound, destination
+  id and via** (autopilot, 2026-10-21; the maintainer said "don't block on me"). Two trains a row groups
+  under one place and via that take different stops now each get a chip that hands the page its own train
+  (`RouteFocus.way`, `Departure.wayKey`). Alternative: name the way by its stops (the choice's path),
+  which needs the line's routes wherever the followed train is picked, composition's fallback included.
+  The way key is what tells their stops apart already (`RouteStops.resolve`), so it can't split a way the
+  chips don't. Reversible: revert the commit; a saved page with a way reopens on it, else on the place.
 - [ ] **A ride card's row keeps its dash rather than show the next timetabled train** (autopilot,
   2026-10-21). *Show the ride's next timetabled train on its card's row, grayed?* is put as a question,
   so it's left unbuilt while the rest of that day's items landed: the ride's page gives its next few
