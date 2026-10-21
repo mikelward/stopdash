@@ -1066,12 +1066,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               too, with no hub. A train through a change to that record keeps
                                               its walk on (`plannedThroughWays`): only arriving by hub drops it.
                                               Not on a step-free trip (see *Decisions needing review*).
-                                        - [ ] On the way's middle rides reading their station end
-                                              (`ActiveTripTracker.endOf`): its ride lines and pair boards
-                                              still end a ride before the last at the Planner's call by its
-                                              raw id, so a line the trip page offers to another record of
-                                              the change's station isn't one of the ride's lines once on the
-                                              way.
+                                        - [x] On the way's rides reading their station end
+                                              (`ActiveTripTracker.endOf`, through `RideEnds.of` with the trip's
+                                              route as planned): its ride lines and pair boards end every ride
+                                              but a last one arriving by hub at the station or bus stop of its
+                                              Planner's call, any record or pole of it, as the trip's cards do,
+                                              so a line they offer to another record of the change's station is
+                                              one of the ride's lines once on the way too, its train getting the
+                                              rider off there. Not on a step-free trip.
                                         - [ ] A step-free trip's first passing call in the hub, against
                                               today's lifts (`StepFreeAccess`, `LiftOutages`), so it
                                               arrives by hub too.
@@ -5240,8 +5242,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   the Planner, who checked access when it planned, does. Alternative: arrive by hub regardless, or
   build the first passing call against `StepFreeAccess` and `LiftOutages` now. The trip page's ride
   lines and verdicts hold to the same (`RideEnds.of`), a ride's station end too (2026-10-21): a
-  station's other record may not be step-free where the Planner's is. Reversible: one condition each in
-  `OnTheWay.arrivingEnd` and `RideEnds.of`.
+  station's other record may not be step-free where the Planner's is, and On the way's station ends
+  with them (`ActiveTripTracker.arrivalOf`). Reversible: one condition each in `OnTheWay.arrivingEnd`,
+  `RideEnds.of` and `ActiveTripTracker.arrivalOf`.
 - [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
   (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path
   at once, so no path is missed; that is too big for one PR, so each family takes its `LegEnd` in
