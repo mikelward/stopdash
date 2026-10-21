@@ -32,16 +32,18 @@ data class TflTimetableResponseDto(val timetable: TflTimetableDto? = null) {
             // A pattern whose id can't be read matches no departure: it's left out, not keyed as null.
             val calls = route.stationIntervals.mapNotNull { interval -> interval.id.trim().toIntOrNull()?.let { it to interval.intervals.map { stop -> stop.stopId } } }.toMap()
             var complete = schedule.knownJourneys != null
-            val minutes = schedule.knownJourneys.orEmpty().mapNotNull { journey ->
+            // Each departure kept with its pattern, so one route's can be told from another's ([StopTimetable.along]).
+            val kept = schedule.knownJourneys.orEmpty().mapNotNull { journey ->
                 // One whose pattern is known not to reach [reaching] is no departure for the rider, so
                 // its time needn't be read: unreadable, it doesn't leave the schedule incomplete.
                 if (reaching != null) {
                     val pattern = calls[journey.intervalId] ?: run { complete = false; return@mapNotNull null }
                     if (reaching !in pattern) return@mapNotNull null
                 }
-                journey.minutes() ?: run { complete = false; null }
+                val minute = journey.minutes() ?: run { complete = false; return@mapNotNull null }
+                minute to calls[journey.intervalId]
             }
-            StopTimetable.DaySchedule(days, minutes, complete = complete)
+            StopTimetable.DaySchedule(days, kept.map { it.first }, complete = complete, calls = kept.map { it.second })
         }
         return StopTimetable(read, readable = read.size == all.size)
     }

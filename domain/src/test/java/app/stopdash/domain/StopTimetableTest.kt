@@ -269,4 +269,34 @@ class StopTimetableTest {
         val sundays = StopTimetable(listOf(StopTimetable.DaySchedule(setOf(SUNDAY), listOf(10 * 60)), weekdays.copy(days = setOf(MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY), minutes = emptyList())))
         assertNull(sundays.nextDeparture(tuesday("12:00:00")))
     }
+
+    @Test
+    fun `along a route, only the trains whose pattern runs it to its end`() {
+        // Highgate, southbound: 12:00 to Morden via Bank, 12:04 via Charing Cross, 12:08 a short working to Kennington.
+        val bank = listOf("ARC", "BNK", "KNG", "MDN")
+        val charing = listOf("ARC", "CHX", "KNG", "MDN")
+        val short = listOf("ARC", "BNK", "KNG")
+        val schedule = StopTimetable.DaySchedule(setOf(TUESDAY), listOf(12 * 60, 12 * 60 + 4, 12 * 60 + 8), calls = listOf(bank, charing, short))
+        val stop = StopTimetable(listOf(schedule))
+        val at = tuesday("11:50:00")
+        assertEquals(listOf(tuesday("12:00:00")), stop.along(listOf("HGT") + bank).nextDepartures(at, 3))
+        assertEquals(listOf(tuesday("12:04:00")), stop.along(listOf("HGT") + charing).nextDepartures(at, 3))
+        // Kennington by Bank: the short working, not the trains running on past it.
+        assertEquals(listOf(tuesday("12:08:00")), stop.along(listOf("HGT") + short).nextDepartures(at, 3))
+        // All three as a whole, as before.
+        assertEquals(3, stop.nextDepartures(at, 3).size)
+    }
+
+    @Test
+    fun `along a route, a train whose pattern isn't known leaves its day unsure`() {
+        val bank = listOf("BNK", "MDN")
+        val schedule = StopTimetable.DaySchedule(setOf(TUESDAY), listOf(12 * 60, 12 * 60 + 4), calls = listOf(bank, null))
+        val along = StopTimetable(listOf(schedule)).along(listOf("HGT") + bank)
+        // The unknown one might have run it: nothing on that day is sure.
+        assertEquals(emptyList<Instant>(), along.nextDepartures(tuesday("11:50:00"), 3))
+        assertEquals(false, along.schedules.single().complete)
+        // And with no patterns at all, nothing is said.
+        val unread = StopTimetable(listOf(schedule.copy(calls = null))).along(listOf("HGT") + bank)
+        assertEquals(emptyList<Instant>(), unread.nextDepartures(tuesday("11:50:00"), 3))
+    }
 }

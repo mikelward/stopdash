@@ -1038,7 +1038,7 @@ as "no trains" when they were only unseen; at night the same empty list is hones
 timetable is what tells the two apart. **The timetable decides only which mark: its times are never
 shown in place of live ones**, since it knows nothing of the disruption that emptied the board
 (maintainer, 2026-10-03); a favorite ride's page gives its next few trains before the line opens, marked as the
-timetable's (*Journeys*, maintainer, 2026-10-21). It is fetched only for a line with no live times, kept for the service
+timetable's (*Journeys*, maintainer, 2026-10-21), and a "?" row's page each way's next few (below). It is fetched only for a line with no live times, kept for the service
 day. While it is still being fetched, or a failed one is being asked for again, the row shows a small **spinner** (heard as "Loading times"),
 not "?": a "?" during a page load read as an answer when it was only a wait (maintainer,
 2026-10-03). A timetable that failed, or can't say, is "?" — StopDash can't be sure. A place card whose
@@ -1060,6 +1060,19 @@ answer. A stop with a notice in force (a closure, a moved stop) gets none: its n
 there, and the row is for a gap nothing explains. Nor does a stop whose notices couldn't be checked,
 which may be closed for all StopDash knows. A line gets one such row, at the nearest stop whose timetable has a train due, so a branch the
 nearest stop doesn't see still shows from the stop that does. The glance surfaces (widget, watch) have no timetable to decide with, and show none.
+A "?" row opens its line's page as any row does (maintainer, 2026-10-21). It opened nothing before, since a page
+with no times and nothing to say why read as a clean line (Codex, #505). Its page now says **"No live times"**
+and why: TfL has none there, though its timetable has trains due. That's the timetable's own answer, not the
+row's "?", which a timetable that failed or can't say gives too: there, just that TfL has no live times there
+(Codex, #1044). While its line's good service and its stop's
+notices are checked, current and clean, it gives each way the line runs from the stop (the route chips' ways:
+Highgate's Northern line by Bank, by Charing Cross, and north) its next three trains by that same timetable,
+under **"Timetable"**, said as the timetable's and never as a countdown. A train counts for a way only where its
+calling pattern runs that way to its end, so one branch's trains are never another's; a way the timetable can't
+say for is left out. The chips then choose a way's stops, as on any route page. A TfL line's dash row, its line
+running here, has the same page: "No live times", then "No trains due here in the next 30 minutes, by the
+timetable", and each way's next trains after the gap; where its timetable can't say, just that TfL has no live
+times there. A line's disruption or a stop's notice says why itself, and gives no timetable.
 
 The list shows the **watched stops'** rows (D1) — stopdash renders the stops the user
 chose ahead of time, not "nearest to me" — ordered **location-free** so the view works

@@ -3277,11 +3277,13 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a "?" row opens no line page, which would read as a clean line`() {
+    fun `a "?" row opens its line page, which says why it has no times`() {
+        // It opened nothing once, as a page with no times and nothing to say why read as a clean line (Codex, #505).
         quietVictoria(mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now)))
         composeRule.onNodeWithContentDescription("Times unknown").performClick()
-        composeRule.onNodeWithText("No disruptions reported").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithText("No live times").assertExists()
+        // No timetable in here, so no claim of trains due by it (Codex, #1044).
+        composeRule.onNodeWithText("TfL has no live times here.").assertExists()
     }
 
     @Test
