@@ -5316,9 +5316,10 @@ internal fun StopGroupCard(
                                     // ([EmptyTimes]): a National Rail board lists every train it runs, and a TfL
                                     // line's timetable says what TfL's live list leaves out. "?" when one might be
                                     // coming. "No data" when no source answered; "No key" (a tap away in
-                                    // Settings) for a National Rail line a key would give times.
+                                    // Settings) for a National Rail line a key would give times, and "Key
+                                    // rejected" (the same tap) for one National Rail refused the key for.
                                     val noTimes = NoTimes.of(row)
-                                    val noKey = noTimes == NoTimes.NO_KEY
+                                    val keyIsWhy = noTimes == NoTimes.NO_KEY || noTimes == NoTimes.KEY_REJECTED
                                     // A quiet row is only in the list once its mark is "?" ([withQuietRows]).
                                     val mark = when {
                                         row.quiet -> EmptyTimes.Mark.UNKNOWN
@@ -5343,18 +5344,19 @@ internal fun StopGroupCard(
                                             when {
                                                 unknown -> R.string.status_times_unknown
                                                 noTimes == NoTimes.NO_TRAINS -> R.string.status_no_departures
-                                                noKey -> R.string.status_no_rail_key
+                                                noTimes == NoTimes.NO_KEY -> R.string.status_no_rail_key
+                                                noTimes == NoTimes.KEY_REJECTED -> R.string.status_rail_key_rejected
                                                 else -> R.string.status_no_data
                                             },
                                         ),
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = if (noKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (keyIsWhy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         modifier = Modifier
                                             .padding(start = 12.dp)
                                             // "No key" stands: no check gives a National Rail line its times without
                                             // a key, and it's a button, which a fade would read as off (Codex, #889).
-                                            .then(checkingFade(cardChecking?.spoken.takeUnless { noKey }))
+                                            .then(checkingFade(cardChecking?.spoken.takeUnless { keyIsWhy }))
                                             .then(
                                                 // The dash alone could be heard as missing data, and "?" as nothing at
                                                 // all; say "No departures" or "Times unknown".
@@ -5365,9 +5367,15 @@ internal fun StopGroupCard(
                                                 },
                                             )
                                             .then(
-                                                if (noKey) {
+                                                if (keyIsWhy) {
                                                     Modifier.clickable(
-                                                        onClickLabel = stringResource(R.string.status_no_rail_key_action),
+                                                        onClickLabel = stringResource(
+                                                            if (noTimes == NoTimes.KEY_REJECTED) {
+                                                                R.string.status_rail_key_rejected_action
+                                                            } else {
+                                                                R.string.status_no_rail_key_action
+                                                            },
+                                                        ),
                                                         role = Role.Button,
                                                         onClick = onAddRailKey,
                                                     )

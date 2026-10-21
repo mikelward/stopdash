@@ -1039,7 +1039,10 @@ Where its countdown would be, the status row says what is known (maintainer, 202
 **dash** only when StopDash is sure no train is coming, **"?"** (heard as "Times unknown") when one
 might be but its source hasn't said when, **"No data"** when no source answered for it (a National
 Rail line whose board failed, or that no board covers), and **"No key"** for a National Rail line at a
-station a key would cover when none is set and the build has no proxy — a tap on it opens Settings at the key. Opened at the key,
+station a key would cover when none is set and the build has no proxy — a tap on it opens Settings at the key.
+**"Key rejected"** takes the same tap where National Rail refused the key that is set (a 401 or 403 to
+it): the key is why there are no times, so "No data" would send the rider nowhere. A refusal the
+proxy gets is the proxy's, never the rider's key, and stays "No data". Opened at the key,
 Settings starts scrolled to the National Rail key's row and flashes it twice, so the eye lands on
 the field to paste into rather than hunting the last row of a long screen.
 

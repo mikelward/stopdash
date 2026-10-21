@@ -1236,6 +1236,7 @@ class DepartureRowsTest {
         )
         assertEquals(NoTimes.NO_TRAINS, NoTimes.of(rail.copy(railFeed = RailFeed.LIVE)))
         assertEquals(NoTimes.NO_KEY, NoTimes.of(rail.copy(railFeed = RailFeed.NO_KEY)))
+        assertEquals(NoTimes.KEY_REJECTED, NoTimes.of(rail.copy(railFeed = RailFeed.KEY_REJECTED)))
         assertEquals(NoTimes.NO_DATA, NoTimes.of(rail.copy(railFeed = RailFeed.UNAVAILABLE)))
         // No board covers it (no station code, or its twin shows the board): no source answered.
         assertEquals(NoTimes.NO_DATA, NoTimes.of(rail))
