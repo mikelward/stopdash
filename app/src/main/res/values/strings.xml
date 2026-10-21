@@ -71,6 +71,18 @@
     <!-- TODO: translate -->
     <!-- In a route page's countdown's place, on a route chosen from its chips with no train at the stop. -->
     <string name="route_detail_no_live_times" tools:ignore="MissingTranslation">No live times</string>
+    <!-- TODO: translate -->
+    <!-- Under "No live times" on a "?" row's route page: why its times are missing. -->
+    <string name="route_detail_quiet_why" tools:ignore="MissingTranslation">TfL has no live times here, though its timetable has trains due.</string>
+    <!-- TODO: translate -->
+    <!-- Under "No live times" on a dash row's route page: its timetable has nothing due in the next half hour. -->
+    <string name="route_detail_none_due_why" tools:ignore="MissingTranslation">No trains due here in the next 30 minutes, by the timetable.</string>
+    <!-- TODO: translate -->
+    <!-- Under "No live times" on the route page of a line TfL gave no times for, its timetable unsure. -->
+    <string name="route_detail_no_times_why" tools:ignore="MissingTranslation">TfL has no live times here.</string>
+    <!-- TODO: translate -->
+    <!-- Heading over each way's next trains by the timetable, on a "?" row's route page. -->
+    <string name="route_detail_timetable_heading" tools:ignore="MissingTranslation">Timetable</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
          bare. %1$s is the line's name, e.g. "Victoria" → "Victoria line". -->
     <string name="route_detail_line_name">%1$s line</string>

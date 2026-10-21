@@ -5178,9 +5178,9 @@ internal fun StopGroupCard(
                                     isStarred = isStarred,
                                     starrable = false,
                                     onToggleStar = onToggleStar,
-                                    // A "?" row opens nothing: its line's page has no times to show and no way yet to say why
-                                    // they're missing, so it would read as a clean line (Codex, PR #505).
-                                    onOpenDetail = onOpenDetail.takeUnless { row.quiet },
+                                    // A "?" row opens too: its page says why its times are missing, and gives each way's
+                                    // next trains by the timetable (maintainer, 2026-10-21).
+                                    onOpenDetail = onOpenDetail,
                                     onHideMode = onHideMode,
                                     onHideFromRide = rideLineHide?.takeIf { it.offers(row.lineId) }?.onHide,
                                 ) {
@@ -6127,6 +6127,17 @@ internal fun RouteDetailScreen(
     // only way on from here (no guess).
     val trainlessIndex = chosenIndex ?: routeChoices?.choices?.current?.takeIf { routeChoices.choices.choices[it].live == null }
     val trainless = trainlessIndex?.let { routeChoices?.choices?.choices?.get(it) }
+    // The page of a TfL line's row with no live times, a "?" or a dash, its line running here (maintainer,
+    // 2026-10-21): why, and its ways' next trains by the stop's timetable, said as the timetable's. The times only
+    // while the line's good service and the stop's notices are checked, current and clean, a dismissed alert still
+    // counting as one: a timetable knows nothing of a disruption (SPEC *Departures*).
+    // A line's disruption or a stop's notice says why itself. Not a ride's page, whose timetable line says it ([nextTrains]).
+    val timesMissing = ride == null && !row.hasTrains && row.lineId.isNotBlank() && !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
+        !row.notRunningHere && row.status == null && row.stopDisruption == null
+    val timetableClean = timesMissing && !stale && !disruptionUnknown && !disruptionChecking && !lineUnknown && !lineChecking &&
+        !row.statusDismissed
+    // Why, from the timetable whatever the checks (it's the row's own mark's); its ways' times only once they're clean.
+    val quietTimetable = rememberQuietTimetable(row.takeIf { timesMissing && !stale }, routeChoices?.takeIf { timetableClean }, lineStatus, now)
     // A train come on the route chosen: the page follows it, as from a tap on its row. Only from chips worked out from
     // the rows as they are now ([RouteChoicesUi.settled]): an old one's train may have gone.
     LaunchedEffect(ByIdentity(chosen?.live), routeChoices?.settled) {
@@ -6428,7 +6439,60 @@ internal fun RouteDetailScreen(
             // only, but across the page's full width so more fit; the ones that don't ellipsize off
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
-            if (trainless != null && !trainless.unfollowedTrain && !stale && routeChoices?.settled == true && !rideChoices) {
+            if (timesMissing && !stale) {
+                // No live times, and why, so a "?" row's page never reads as a clean line (Codex, PR #505). Said of the
+                // row itself, whichever way is chosen: TfL gave it none.
+                Text(
+                    text = stringResource(R.string.route_detail_no_live_times),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
+                )
+                Text(
+                    text = stringResource(
+                        // Said by the timetable itself, not the row's mark: a "?" is a train due or a timetable that
+                        // couldn't say (Codex, #1044).
+                        when (quietTimetable?.dueSoon) {
+                            true -> R.string.route_detail_quiet_why
+                            // The dash's "none coming", by the timetable.
+                            false -> R.string.route_detail_none_due_why
+                            null -> R.string.route_detail_no_times_why
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+                val ways = quietTimetable?.ways.orEmpty()
+                if (ways.isNotEmpty()) {
+                    // Each way's next few trains, by the timetable and said as its, never as a countdown.
+                    Text(
+                        text = stringResource(R.string.route_detail_timetable_heading),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).semantics { heading() },
+                    )
+                    ways.forEach { way ->
+                        key(way.key) {
+                            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = way.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    text = way.trains.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(start = 12.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (trainless != null && !trainless.unfollowedTrain && !stale && routeChoices?.settled == true && !rideChoices) {
                 // A route chosen with no train at the stop: said, in the countdown's place, so a train coming
                 // on it takes the line without moving what's below. Not from an old snapshot, which can't say
                 // there's none now: its stale caveat below says why nothing is; nor from chips not yet worked out

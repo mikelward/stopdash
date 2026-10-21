@@ -31,6 +31,7 @@ import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.EmptyTimes
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
@@ -45,6 +46,8 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopTimetable
+import app.stopdash.domain.TripLeg
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
@@ -163,6 +166,12 @@ class RouteDetailScreenScreenshotTest {
         captureSnapshot("route-detail-many-departures.png")
     }
 
+    // The favorite ride a ride page is for, as RidePage passes it (example far end).
+    private val victoriaRide = TripLeg(
+        mode = "tube", lineId = "victoria", lineName = "Victoria", fromId = "940GZZLUVIC", fromName = "Victoria",
+        toId = "940GZZEXMPL", toName = "Example End", departure = now, arrival = now,
+    )
+
     @Test
     fun aRideWithNothingLive_saysItsTimetablesNextTrains_asTheTimetables() {
         // A favorite ride's line row with no train, before its line opens for the morning.
@@ -192,12 +201,15 @@ class RouteDetailScreenScreenshotTest {
                     routeStops = RouteStopsUi.Loading,
                     // 05:41, 05:49 and 05:57 in London (BST): the next few (maintainer, 2026-10-21).
                     nextTrains = TimetabledTimes.of(listOf("04:41", "04:49", "04:57").map { Instant.parse("2026-09-18T$it:00Z") }),
+                    ride = victoriaRide,
                 )
             }
         }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Next trains 05:41 · 05:49 · 05:57 (timetable)").assertIsDisplayed()
+        // Its timetable line says it: not a list row's "No live times" too.
+        composeRule.onNodeWithText("No live times").assertDoesNotExist()
 
         captureSnapshot("route-detail-ride-next-timetabled.png")
     }
@@ -226,6 +238,7 @@ class RouteDetailScreenScreenshotTest {
                     routeStops = RouteStopsUi.Loading,
                     closures = closures,
                     uncheckedEnd = unchecked,
+                    ride = victoriaRide,
                 )
             }
         }
@@ -266,6 +279,7 @@ class RouteDetailScreenScreenshotTest {
                     routeStops = RouteStopsUi.Loading,
                     // The night's last, with nothing the timetable can vouch for after it.
                     nextTrains = TimetabledTimes.of(listOf(Instant.parse("2026-09-18T04:41:00Z"))),
+                    ride = victoriaRide,
                 )
             }
         }
@@ -2439,6 +2453,68 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
         composeRule.onNodeWithText("Mornington Crescent").assertIsDisplayed()
         captureSnapshot("route-detail-route-chip-no-train.png")
+    }
+
+    @Test
+    fun aQuietRow_saysWhyItsTimesAreMissing_andGivesEachWaysTimetabledTrains() {
+        // The Northern line at Highgate (synthetic routes) with no live times, its timetable due both ways.
+        val names = mapOf(
+            "940GZZLUHBT" to "High Barnet", "940GZZLUHGT" to "Highgate", "940GZZLUCTN" to "Camden Town",
+            "940GZZLUMTC" to "Mornington Crescent", "940GZZLUEUS" to "Euston", "940GZZLUBNK" to "Bank",
+            "940GZZLUCHX" to "Charing Cross", "940GZZLUKNG" to "Kennington", "940GZZLUMDN" to "Morden",
+        )
+        val bank = listOf("940GZZLUCTN", "940GZZLUEUS", "940GZZLUBNK", "940GZZLUKNG", "940GZZLUMDN")
+        val charing = listOf("940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS", "940GZZLUCHX", "940GZZLUKNG", "940GZZLUMDN")
+        val south = listOf(
+            LineRoute("High Barnet &harr; Morden via Bank", listOf("940GZZLUHBT", "940GZZLUHGT") + bank, "outbound"),
+            LineRoute("High Barnet &harr; Morden via Charing Cross", listOf("940GZZLUHBT", "940GZZLUHGT") + charing, "outbound"),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = LineSequence(
+                    if (direction == "outbound") south else south.map { it.copy(stopIds = it.stopIds.asReversed(), direction = "inbound") },
+                    names,
+                )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        // Friday 09:00: the next three each way, by each train's calling pattern.
+        val minutes = listOf(9 * 60 + 3, 9 * 60 + 6, 9 * 60 + 8, 9 * 60 + 11, 9 * 60 + 14, 9 * 60 + 15, 9 * 60 + 19, 9 * 60 + 22, 9 * 60 + 24)
+        val calls = listOf(bank, charing, listOf("940GZZLUHBT"), bank, charing, listOf("940GZZLUHBT"), bank, charing, listOf("940GZZLUHBT"))
+        val timetable = StopTimetable(listOf(StopTimetable.DaySchedule(setOf(java.time.DayOfWeek.FRIDAY), minutes, calls = calls)))
+        val row = DepartureRow(
+            stopId = "940GZZLUHGT", stopName = "Highgate", lineId = "northern", lineName = "Northern",
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now, quiet = true,
+        )
+        val emptyTimes = EmptyTimesState(
+            kotlinx.coroutines.flow.MutableStateFlow(emptyMap()),
+            now,
+            lookups = kotlinx.coroutines.flow.MutableStateFlow(mapOf(EmptyTimes.Key("940GZZLUHGT", "northern") to EmptyTimes.Lookup.Found(timetable))),
+        ) { _, _ -> }
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalEmptyTimes provides emptyTimes) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        siblings = listOf(row),
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("09:03 · 09:11 · 09:19").assertIsDisplayed()
+        composeRule.onNodeWithText("09:08 · 09:15 · 09:24").assertIsDisplayed()
+        captureSnapshot("route-detail-quiet-row.png")
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 2400) {

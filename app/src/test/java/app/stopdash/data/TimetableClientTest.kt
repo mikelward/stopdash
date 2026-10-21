@@ -194,5 +194,17 @@ class TimetableClientTest {
         assertEquals(false, timetable.schedules.single().complete)
     }
 
+    @Test
+    fun `each departure keeps its calling pattern, so one route's trains are told from another's`() {
+        val timetable = json.decodeFromString<TflTimetableResponseDto>(
+            """{"timetable":{"routes":[{"stationIntervals":[{"id":"0","intervals":[{"stopId":"B"},{"stopId":"Z"}]},{"id":"1","intervals":[{"stopId":"C"},{"stopId":"Z"}]}],
+            "schedules":[{"name":"Monday","knownJourneys":[{"hour":"8","minute":"10","intervalId":0},{"hour":"8","minute":"15","intervalId":1},{"hour":"8","minute":"20","intervalId":9}]}]}]}}""",
+        ).toStopTimetable()
+        val schedule = timetable.schedules.single()
+        assertEquals(listOf(490, 495, 500), schedule.minutes)
+        // In the departures' order, one whose pattern isn't sent as unknown.
+        assertEquals(listOf(listOf("B", "Z"), listOf("C", "Z"), null), schedule.calls)
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 }

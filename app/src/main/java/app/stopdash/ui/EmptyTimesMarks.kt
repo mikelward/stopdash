@@ -37,7 +37,8 @@ import kotlinx.coroutines.flow.map
  * entry ([emptyTimesMark]), so a mark landing doesn't hand composition the whole map to compare.
  * [watch] hands a board's recipe to the repository, which works the mark out off the main thread;
  * [watchEach] hands it a recipe for many ([TimetableRepository.watchEach]), by default each [watch]ed
- * in turn. A list's own scans run on [worker].
+ * in turn. A list's own scans run on [worker]. [lookups] is the timetables behind the marks, as far as they're in
+ * ([TimetableRepository.lookups]): a "?" row's page gives each route's next trains from its line's ([QuietTimetable]).
  */
 @Immutable
 class EmptyTimesState(
@@ -45,6 +46,7 @@ class EmptyTimesState(
     val now: Instant,
     val worker: CoroutineContext = EmptyCoroutineContext,
     private val watchMany: ((() -> Map<String, EmptyTimes.Board>) -> Unit)? = null,
+    val lookups: StateFlow<Map<EmptyTimes.Key, EmptyTimes.Lookup>> = MutableStateFlow(emptyMap()),
     val watch: (String, () -> EmptyTimes.Board) -> Unit,
 ) {
     fun watchEach(boards: () -> Map<String, EmptyTimes.Board>) {
@@ -78,7 +80,7 @@ internal fun ProvideEmptyTimes(repository: TimetableRepository, content: @Compos
         }
     }
     val state = remember(now, repository) {
-        EmptyTimesState(repository.marks, now, Dispatchers.Default, repository::watchEach, repository::watch)
+        EmptyTimesState(repository.marks, now, Dispatchers.Default, repository::watchEach, repository.lookups, repository::watch)
     }
     CompositionLocalProvider(LocalEmptyTimes provides state, content = content)
 }

@@ -510,6 +510,138 @@ class RouteChipsTest {
         composeRule.onNodeWithText("via Charing X").assertIsDisplayed()
     }
 
+    // Highgate's Northern line with no live times, its timetable due both ways: a "?" row (SPEC *Departures*).
+    private val quietRow = app.stopdash.domain.DepartureRow(
+        stopId = HGT, stopName = "Highgate", lineId = "northern", lineName = "Northern",
+        direction = "", directionKey = app.stopdash.domain.STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+        upcoming = emptyList(), fetchedAt = now, quiet = true,
+    )
+
+    // 09:05 to Morden via Bank, 09:10 via Charing Cross, 09:15 to High Barnet, by each one's calling pattern.
+    private val quietTimetable = app.stopdash.domain.StopTimetable(
+        listOf(
+            app.stopdash.domain.StopTimetable.DaySchedule(
+                setOf(java.time.DayOfWeek.WEDNESDAY),
+                listOf(9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15),
+                calls = listOf(listOf(CTN, EUS, BNK, KNG, MDN), listOf(CTN, MTC, EUS, CHX, KNG, MDN), listOf(HBT)),
+            ),
+        ),
+    )
+
+    private fun showQuietPage(
+        scheduler: TestCoroutineScheduler,
+        disruptionUnknown: Boolean = false,
+        row: app.stopdash.domain.DepartureRow = quietRow,
+        timetable: app.stopdash.domain.StopTimetable = quietTimetable,
+        lookup: app.stopdash.domain.EmptyTimes.Lookup = app.stopdash.domain.EmptyTimes.Lookup.Found(timetable),
+        unknown: androidx.compose.runtime.State<Boolean>? = null,
+    ) {
+        val lookups = kotlinx.coroutines.flow.MutableStateFlow(mapOf(app.stopdash.domain.EmptyTimes.Key(HGT, "northern") to lookup))
+        val emptyTimes = EmptyTimesState(kotlinx.coroutines.flow.MutableStateFlow(emptyMap()), now, lookups = lookups) { _, _ -> }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(
+                    LocalWorker provides StandardTestDispatcher(scheduler),
+                    LocalRouteStops provides routes,
+                    LocalEmptyTimes provides emptyTimes,
+                ) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = unknown?.value ?: disruptionUnknown,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        siblings = listOf(row),
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+    }
+
+    @Test
+    fun a_quiet_rows_page_says_why_and_gives_each_ways_next_trains_by_the_timetable() {
+        showQuietPage(TestCoroutineScheduler())
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
+        composeRule.onNodeWithText("Timetable").assertIsDisplayed()
+        // Each way its own trains, by its pattern: none of Bank's are Charing Cross's.
+        composeRule.onNodeWithText("09:05").assertIsDisplayed()
+        composeRule.onNodeWithText("09:10").assertIsDisplayed()
+        composeRule.onNodeWithText("09:15").assertIsDisplayed()
+        // The chips still choose a way's stops.
+        composeRule.onNodeWithTag("routeChoice-2").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_quiet_rows_page_whose_stop_couldnt_be_checked_says_why_but_gives_no_timetable() {
+        showQuietPage(TestCoroutineScheduler(), disruptionUnknown = true)
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
+        // A timetable knows nothing of a disruption it couldn't check for.
+        composeRule.onNodeWithText("Timetable").assertDoesNotExist()
+        composeRule.onNodeWithText("09:05").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_quiet_rows_page_drops_its_timetable_at_once_when_its_stop_can_no_longer_be_checked() {
+        val scheduler = TestCoroutineScheduler()
+        val unknown = androidx.compose.runtime.mutableStateOf(false)
+        showQuietPage(scheduler, unknown = unknown)
+        composeRule.onNodeWithText("09:05").assertIsDisplayed()
+        // The stop's check fails: its trains go with the frame, not once the worker has worked the page out again
+        // (Codex on #1044). The why stays, since it's the timetable's own answer.
+        composeRule.runOnIdle { unknown.value = true }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Timetable").assertDoesNotExist()
+        composeRule.onNodeWithText("09:05").assertDoesNotExist()
+        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_quiet_rows_page_whose_timetable_failed_claims_no_trains_due() {
+        // A "?" is a train due or a timetable that couldn't say (Codex, #1044): only the timetable says which.
+        showQuietPage(TestCoroutineScheduler(), lookup = app.stopdash.domain.EmptyTimes.Lookup.Failed)
+        assertNoTrainsClaimed()
+    }
+
+    @Test
+    fun a_quiet_rows_page_whose_timetable_cant_say_for_today_claims_no_trains_due() {
+        showQuietPage(TestCoroutineScheduler(), timetable = app.stopdash.domain.StopTimetable(emptyList()))
+        assertNoTrainsClaimed()
+    }
+
+    private fun assertNoTrainsClaimed() {
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onNodeWithText("TfL has no live times here.").assertIsDisplayed()
+        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertDoesNotExist()
+        composeRule.onNodeWithText("Timetable").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_dash_rows_page_says_none_is_due_and_gives_each_ways_next_trains_by_the_timetable() {
+        // The line's row with no train, its timetable's first train an hour off: the list's dash.
+        val dash = quietRow.copy(quiet = false)
+        val later = app.stopdash.domain.StopTimetable(
+            listOf(
+                app.stopdash.domain.StopTimetable.DaySchedule(
+                    setOf(java.time.DayOfWeek.WEDNESDAY),
+                    listOf(10 * 60, 10 * 60 + 5),
+                    calls = listOf(listOf(CTN, EUS, BNK, KNG, MDN), listOf(HBT)),
+                ),
+            ),
+        )
+        showQuietPage(TestCoroutineScheduler(), row = dash, timetable = later)
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onNodeWithText("No trains due here in the next 30 minutes, by the timetable.").assertIsDisplayed()
+        composeRule.onNodeWithText("10:00").assertIsDisplayed()
+        composeRule.onNodeWithText("10:05").assertIsDisplayed()
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"

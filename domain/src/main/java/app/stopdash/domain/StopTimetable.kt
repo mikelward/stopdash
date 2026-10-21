@@ -29,8 +29,43 @@ data class StopTimetable(val schedules: List<DaySchedule>, val readable: Boolean
     /**
      * The departures of the service days in [days], in minutes after their midnight. [complete] is
      * false when some departure couldn't be read: its days then can't be said to have nothing due.
+     * [calls], where TfL said, is each departure's calling pattern, the stops it calls at after this one, in
+     * [minutes]' order (null for one whose pattern couldn't be read): what [along] tells one route's from another's.
      */
-    data class DaySchedule(val days: Set<DayOfWeek>, val minutes: List<Int>, val complete: Boolean = true)
+    data class DaySchedule(
+        val days: Set<DayOfWeek>,
+        val minutes: List<Int>,
+        val complete: Boolean = true,
+        val calls: List<List<String>?>? = null,
+    )
+
+    /**
+     * This timetable's departures along [path], a route from this stop (its first stop) to its end: those whose
+     * calling pattern ends where [path] does and calls nowhere off it, so a branching line's trains each count for
+     * their own branch (Highgate's for Morden via Bank, not via Charing Cross) and a short working, ending sooner,
+     * for none of the two. A departure whose pattern is unknown might be one of them, so its schedule can't be said
+     * to be whole ([DaySchedule.complete]): [nextDepartures] then says nothing past that day's opening.
+     */
+    @WorkerThread
+    fun along(path: List<String>): StopTimetable {
+        val end = path.lastOrNull()
+        // The stop itself counted on it too, in case a pattern lists where it starts.
+        val on = path.toHashSet()
+        return copy(
+            schedules = schedules.map { schedule ->
+                val calls = schedule.calls
+                if (end == null || calls == null || calls.size != schedule.minutes.size) {
+                    return@map schedule.copy(minutes = emptyList(), complete = false, calls = emptyList())
+                }
+                var complete = schedule.complete
+                val kept = schedule.minutes.indices.filter { i ->
+                    val pattern = calls[i] ?: run { complete = false; return@filter false }
+                    pattern.lastOrNull() == end && pattern.all { it in on }
+                }
+                schedule.copy(minutes = kept.map { schedule.minutes[it] }, complete = complete, calls = kept.map { calls[it] })
+            },
+        )
+    }
 
     /**
      * Whether anything leaves within [window] of [now]: today's service day, yesterday's still
