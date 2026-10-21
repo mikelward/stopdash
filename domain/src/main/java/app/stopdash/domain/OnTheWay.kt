@@ -1145,9 +1145,18 @@ object OnTheWay {
 
     /**
      * [trip] with the ride it awaited done, its rider seen where they get off ([Along.atEnd]): the
-     * next leg starts now, as when a rider on a train is seen at their station ([seen]).
+     * next leg starts now, as when a rider on a train is seen at their station ([seen]). [on] is the
+     * line they were seen get there on: where it's another of the last ride's lines, getting off at
+     * another station or stop of the destination's hub ([arriving]) than the Planner's, they've arrived,
+     * and the walks planned on from the Planner's end go, as a followed train's moved end has them
+     * ([endedAtDestination]).
      */
-    fun rideDone(trip: ActiveTrip, now: Instant): ActiveTrip = nextLeg(trip.copy(dueOffAt = null), now).first
+    fun rideDone(trip: ActiveTrip, now: Instant, on: TripLeg? = null, arriving: Map<String, String> = emptyMap()): ActiveTrip {
+        val leg = trip.leg
+        val elsewhere = leg != null && on != null && !leg.isWalk && lastRide(trip) && elsewhereInHub(leg, on, arriving)
+        val done = if (elsewhere) trip.copy(route = trip.route.copy(legs = trip.route.legs.take(trip.legIndex + 1))) else trip
+        return nextLeg(done.copy(dueOffAt = null), now).first
+    }
 
     /**
      * For the debug log: where a fix of [accuracyMeters] placed a rider on board by where they were

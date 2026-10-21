@@ -164,6 +164,18 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `seen at the end of another line elsewhere in the destination's hub, the rider has arrived`() {
+        // Green gets the rider off at B, another station (T) of the hub of C's station (S): seen there, no walk on from C.
+        val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S"))
+        val hub = mapOf("C" to "S", "B" to "T")
+        val green = TripLeg("tube", "green", "Green", "A", "A", "B", "B", at(5), at(12), path = listOf("X", "B"))
+        assertNull(OnTheWay.rideDone(toStation, at(12), on = green, arriving = hub).leg)
+        // Seen at the end of the ride's own line, or with no hub to arrive at: on to the walk planned from C.
+        assertEquals(walk, OnTheWay.rideDone(toStation, at(12), on = ride, arriving = hub).leg)
+        assertEquals(walk, OnTheWay.rideDone(toStation, at(12), on = green).leg)
+    }
+
+    @Test
     fun `a National Rail call naming its station's records arrives at the hub's other station by none of them`() {
         // B's call names no one TfL id (a CRS's records): it isn't where the ride gets off by the hub, so on to C.
         val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S"))

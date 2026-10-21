@@ -2822,6 +2822,40 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a rider seen where another line gets them off in the destination's hub has arrived, with no walk on`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub)
+        // Planned red to Hamlet, then a walk on; blue, one of the ride's lines, reaches Praed, another station of
+        // Hamlet's hub, nearer.
+        val toHamlet = ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUHAM"))
+        val toPraed = blueRide.copy(toId = "940GZZLUPRA", toName = "Praed", path = listOf("B", "940GZZLUPRA"))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "940GZZLUHAM", "Hamlet", "D", "D", at(15), at(20))
+        sequences["red"] = redLine.copy(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ Hamlet", listOf("A", "B", "940GZZLUHAM"))),
+            stopNames = mapOf("A" to "A", "B" to "B", "940GZZLUHAM" to "Hamlet"),
+            stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "940GZZLUHAM" to (51.53 to -0.12)),
+        )
+        sequences["blue"] = redLine.copy(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ Praed", listOf("A", "B", "940GZZLUPRA"))),
+            stopNames = mapOf("A" to "A", "B" to "B", "940GZZLUPRA" to "Praed"),
+            stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "940GZZLUPRA" to (51.52 to -0.12)),
+        )
+        offered["red"] = listOf(toHamlet, toPraed)
+        departures["A"] = listOf(Departure("blue", "Blue", "outbound", "Praed", null, at(5), "tube", vehicleId = "P"), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("940GZZLUHAM", 14))
+        now = at(6)
+        tracker.start(
+            TripRoute(listOf(toHamlet, walkOn)), "Hamlet", readyAt = now, destinationIds = mapOf("940GZZLUHAM" to "940GZZLUHAM"),
+            destinationStopId = "940GZZLUHAM", destinationLevel = Pick.Level.STATION, stepFree = StepFree.ANY,
+        )
+        tracker.refresh()
+        // They took blue P, gone from A, and are seen at Praed: arrived, not told to walk on from Hamlet.
+        departures["A"] = listOf(train("9", 8))
+        now = at(12)
+        tracker.refresh(fixAt(51.52))
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+    }
+
+    @Test
     fun `seen at a stop, a later train still on its way there isn't theirs`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine

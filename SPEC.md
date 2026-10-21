@@ -2556,8 +2556,8 @@ by a call naming one TfL id, never a National Rail call naming its station's sev
 step-free trip, nor one kept before its level was: the hub's other calls aren't checked against
 today's lifts yet, so it ends where the Planner, who checked, does. Its last ride takes the lines the
 trip's cards offer, one reaching another station of the destination's hub included: a train of it is
-followed, and once the rider is on board the ride ends at that line's first call in the hub, any walk
-planned on from the Planner's end going. The trip screen arrives by hub
+followed, and once the rider is on board, or seen at that line's first call in the hub, the ride ends
+there, any walk planned on from the Planner's end going. The trip screen arrives by hub
 too, as far as which lines and trains take the last ride: another line of the ride's mode reaching
 another station of the destination's hub shows on its card and open route, ending and named at its first call there, a train is judged to get the rider there by
 calling anywhere in the hub, and a train through a change counts as a route of its own where it
