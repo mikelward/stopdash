@@ -5549,6 +5549,8 @@ class MainActivity : ComponentActivity() {
                         arrivalIds = arrivalIds,
                         planTargets = planTargets,
                         arriving = arriving,
+                        // Which of a step-free trip's other calls are step-free, against the lifts out now.
+                        stepFreeAccess = { StepFreeStore.load(appContext) },
                         // Which walks are changes on foot, as a trip started on a route decides them.
                         stations = { StationIndexStore.load(appContext) },
                         // The bus stops towards the destination a plan from here asks via, found on the device.
@@ -5648,6 +5650,9 @@ class MainActivity : ComponentActivity() {
                             planTargets = planTargets,
                             // Where each listed ride gets off, a last ride arriving at the destination's hub, as for the trip for now.
                             arriving = arriving,
+                            // A step-free trip's, against the lifts TfL last said were out.
+                            stepFreeAccess = { StepFreeStore.load(appContext) },
+                            liftsOut = { liftOutages.known },
                             warn = ::logDepartureWarning,
                             // The bus stops towards the destination a plan from here asks via, as for the trip for now.
                             stations = { StationIndexStore.load(appContext) },

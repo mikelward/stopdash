@@ -48,6 +48,7 @@ import app.stopdash.domain.ViaStops
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.mergedRoutes
@@ -163,6 +164,10 @@ class TripViewModel(
     // last ride gets off by arriving at them and every other ride at its station ([shownRoutes]), read on [io] once.
     // Null with no model: each gets off where the Planner does.
     private val arriving: suspend () -> RideEnds.Destination? = { null },
+    // TfL's bundled step-free table, for which of a step-free trip's other calls its rides may get off at, against
+    // the lifts out of service now ([shownRoutes]): read on [io] once a step-free trip first needs it. None by default
+    // (a test), so a step-free trip's rides get off where the Planner does.
+    stepFreeAccess: suspend () -> StepFreeAccess? = { null },
     // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
     // of what they picked ([PlanTargets.viaStops]), each asked of the Planner for every destination and the
     // answers merged, so every route passes one of them. Null for a trip that goes any way. Part of what the
@@ -995,6 +1000,9 @@ class TripViewModel(
     // The model and the destination's hubs each route's last ride may arrive at ([arriving]), read once on [io].
     private val arrivingAt = viewModelScope.async(io) { arriving() }
 
+    // The step-free table with the lifts out now, for a step-free trip's ends ([stepFreeAccess]).
+    private val lifted = LiftedAccess({ withContext(io) { stepFreeAccess() } }, warn)
+
     /**
      * [placed]'s routes as the screen draws them at [stepFree] ([ShownRoutes]): each last ride the Planner gets
      * off in the destination's hubs getting off at its first call anywhere in them, shown cut and named there
@@ -1002,12 +1010,13 @@ class TripViewModel(
      * station or bus stop of the Planner's call, any record or pole of it. Only drawn: this trip's routes stay as the
      * Planner gave them. The screen asks as the routes it shows come in and reads the answer as it builds the page.
      * A route drawn cut is keyed as its route as planned ([routeKey]), so the route open on it is one of this trip's
-     * ([openKeys]).
+     * ([openKeys]). A step-free trip's rides get off at another call only where TfL's step-free table, with the lifts
+     * in [liftsOut] out of service, says their line meets its level there ([LiftedAccess]).
      */
-    internal suspend fun shownRoutes(placed: State, stepFree: StepFree): ShownRoutes {
-        if (placed.routes.isNullOrEmpty()) return ShownRoutes.planned(placed, stepFree)
-        val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return ShownRoutes.planned(placed, stepFree)
-        return withContext(compute) { ShownRoutes.of(placed, stepFree, at) }
+    internal suspend fun shownRoutes(placed: State, stepFree: StepFree, liftsOut: Set<String> = emptySet()): ShownRoutes {
+        if (placed.routes.isNullOrEmpty()) return ShownRoutes.planned(placed, stepFree, liftsOut)
+        val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return ShownRoutes.planned(placed, stepFree, liftsOut)
+        return withContext(compute) { ShownRoutes.of(placed, stepFree, lifted.destination(at, stepFree, liftsOut), liftsOut) }
     }
 
     /**

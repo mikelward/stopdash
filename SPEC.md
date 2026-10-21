@@ -2604,7 +2604,11 @@ from it, the plan kept for reuse and the trip's fetches read the Planner's route
 the end itself (below). A route shown cut is that route wherever it's opened, kept open, ranked or
 started, so two routes the cut shows alike stay two, each opening its own. A second copy kept in step with the shown one went wrong three ways in
 review. A later trip's list shows its rides cut the same way, so its card and the trip page name one
-stop. A step-free trip still ends every ride where the Planner does. Which rides arrive by hub is worked out
+stop. On a step-free trip, the trip page and a later trip's list do the same only where the train's line is
+step-free there at the trip's level, by TfL's step-free data with the lifts TfL says are out now (a later trip's
+list by the lifts last known), worked out again when those change: the Planner's own call stays for its line, which the Planner checked, and a station
+TfL doesn't describe for that line is passed by, never guessed. On the way doesn't check them yet, so a step-free
+trip there still ends each ride where the Planner does. Which rides arrive by hub is worked out
 off the main thread through the station model as the routes come in, the page holding what it last
 showed, or showing nothing yet, meanwhile, so no ride's end moves under the rider. The route
 as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,

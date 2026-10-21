@@ -13,6 +13,7 @@ import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.RideEnds
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripModes
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * A later trip (SPEC *Trips with a change → A later trip*): the Planner's routes for the time the
@@ -70,6 +72,13 @@ class LaterTripViewModel(
     // for where each listed route's last ride gets off by arriving at them and every other ride at its station, read
     // on [io] once. Null with no model: each gets off where the Planner does.
     arriving: suspend () -> RideEnds.Destination? = { null },
+    // As the trip for now's ([TripViewModel.shownRoutes]): TfL's bundled step-free table, read on [io] once a step-free
+    // trip first needs it, and the lifts out of service as TfL last said, read as each listing is made, the cards listed
+    // again when they change (dev-docs/station-resolution.md, *Rechecked when the lifts change*): a lift out now may be
+    // out at the time picked too, so a step-free ride never gets off where it may not be step-free. None by default (a
+    // test), so a step-free trip's rides get off where the Planner does.
+    stepFreeAccess: suspend () -> StepFreeAccess? = { null },
+    private val liftsOut: () -> Set<String> = { emptySet() },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
@@ -168,13 +177,14 @@ class LaterTripViewModel(
     private val requests = Channel<Request>(Channel.CONFLATED)
 
     // Read and written on [compute] only, under [publishing]: the plan's inputs, the latest request handed on
-    // (the same plan, perhaps with other modes hidden or lines avoided), its routes before filtering, and
-    // what's left out of them.
+    // (the same plan, perhaps with other modes hidden or lines avoided), its routes before filtering, what's
+    // left out of them, and the lifts out the cards in hand were listed by ([liftsOut], none at no level).
     private val publishing = Mutex()
     private var planned: Request? = null
     private var latest: Request? = null
     private var raw: List<TripRoute>? = null
     private var excluded: Set<String>? = null
+    private var listedOut: Set<String> = emptySet()
     private var job: Job? = null
 
     // Every id of the destination, each to its stop, for [withoutDetours]: its own stops, [destinationIds], and
@@ -185,6 +195,9 @@ class LaterTripViewModel(
 
     // The model and the destination's hubs each listed route's last ride may arrive at ([arriving]), read once on [io].
     private val arrivingAt = viewModelScope.async(io) { arriving() }
+
+    // The step-free table with the lifts out, for a step-free trip's listed ends ([stepFreeAccess]).
+    private val lifted = LiftedAccess({ withContext(io) { stepFreeAccess() } }, warn)
 
     // Where each plan asks the Planner to plan to ([planTargets]), read once on [io].
     private val targets = viewModelScope.async(io) {
@@ -235,15 +248,23 @@ class LaterTripViewModel(
             val last = planned
             val samePlan = last != null && last.time == request.time && last.walkingSpeed == request.walkingSpeed &&
                 last.maxWalk == request.maxWalk && last.stepFree == request.stepFree && last.tripModes == request.tripModes
-            val changed = leftOut != excluded
+            val out = outFor(request.stepFree)
+            // What's left out, or on a step-free trip the lifts out since the cards were listed: listed again.
+            val changed = leftOut != excluded || out != listedOut
             excluded = leftOut
             latest = request
             if (samePlan) {
-                // The same plan: what it answers is now this request, and with what's left out changed, the routes in
-                // hand are listed again. A plan still running publishes for this request too.
+                // The same plan: what it answers is now this request, and with what's left out or the lifts out changed,
+                // the routes in hand are listed again. A plan still running publishes for this request too.
                 val held = _state.value
                 val routes = raw
-                _state.value = held.copy(request = request, cards = if (changed && routes != null) listed(routes, request, leftOut, destinationStops.await(), destination()) else held.cards)
+                val cards = if (changed && routes != null) {
+                    listedOut = out
+                    listed(routes, request, leftOut, destinationStops.await(), destination(request.stepFree, out))
+                } else {
+                    held.cards
+                }
+                _state.value = held.copy(request = request, cards = cards)
                 false
             } else {
                 planned = request
@@ -290,9 +311,11 @@ class LaterTripViewModel(
                 // The plan's own requests decide whether there's a plan; the stops towards the destination add to it.
                 val routes = mergedRoutes(answered.map { it.routes }.reduce(::mergedRoutes), viaStops.routes)
                 raw = routes
+                val out = outFor(request.stepFree)
+                listedOut = out
                 _state.value = State(
                     request = latest ?: request,
-                    cards = listed(routes, request, excluded.orEmpty(), destinationStops.await(), destination()),
+                    cards = listed(routes, request, excluded.orEmpty(), destinationStops.await(), destination(request.stepFree, out)),
                     incomplete = stationsMissed,
                     routesMissed = routesMissed,
                 )
@@ -300,8 +323,15 @@ class LaterTripViewModel(
         }
     }
 
-    // The station model and hubs the listed rides' ends are worked out through ([arriving]), once read.
-    private suspend fun destination(): RideEnds.Destination? = arrivingAt.awaitDestination(warn, "later trip ride ends")
+    // The lifts out a listing at [stepFree] is made by: as TfL last said on a step-free trip, none at no level, which
+    // checks no lift.
+    private fun outFor(stepFree: StepFree): Set<String> = if (stepFree == StepFree.ANY) emptySet() else liftsOut()
+
+    // The station model and hubs the listed rides' ends are worked out through ([arriving]), once read; at a step-free
+    // [stepFree], with the step-free table and the lifts in [out] out ([LiftedAccess]). On [compute].
+    @WorkerThread
+    private suspend fun destination(stepFree: StepFree, out: Set<String>): RideEnds.Destination? =
+        arrivingAt.awaitDestination(warn, "later trip ride ends")?.let { lifted.destination(it, stepFree, out) }
 
     // On [compute]: the routes keeping to [request]'s time and not riding what's [leftOut], less the detours the
     // rest beat, in order, as cards, each as the trip for now draws it: its last ride arriving by hub cut and named

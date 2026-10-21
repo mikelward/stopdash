@@ -10,7 +10,12 @@ import app.stopdash.domain.LegEnd
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.StationIndex
+import app.stopdash.domain.LiftMap
+import app.stopdash.domain.LiftStop
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeLevel
+import app.stopdash.domain.StepFreePlatform
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
@@ -697,10 +702,10 @@ class LaterTripViewModelTest {
             pathNames = listOf("Aye", "Hill East", "Hill"),
         )
         val planner = Planner(mapOf("940GZZLUHIL" to listOf(TripRoute(listOf(loop)))))
-        fun listed(stepFree: StepFree): LaterTripViewModel.Card {
+        fun listed(stepFree: StepFree, access: StepFreeAccess? = null, out: Set<String> = emptySet()): LaterTripViewModel.Card {
             val later = LaterTripViewModel(
                 planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("940GZZLUHIL")),
-                arriving = { HillModel.toHill }, io = dispatcher, compute = dispatcher,
+                arriving = { HillModel.toHill }, stepFreeAccess = { access }, liftsOut = { out }, io = dispatcher, compute = dispatcher,
             )
             later.show(LaterTripViewModel.Request(leave, stepFree = stepFree))
             advanceUntilIdle()
@@ -712,8 +717,38 @@ class LaterTripViewModelTest {
         assertEquals("940GZZLUHLE", card.route.legs.single().toId)
         // Still arriving by hub, at that call.
         assertTrue("${row.end}", "940GZZLUHLE" in row.end!!.offIds(card.route.legs.single()))
-        // A step-free trip keeps the Planner's call.
+        // A step-free trip with no step-free table to check by keeps the Planner's call.
         assertEquals("940GZZLUHIL", listed(StepFree.STATION).rows.single().toName)
+        // Given TfL's table (made up: Hill East's circle line platforms step-free to the platform, by a lift), it's
+        // cut at Hill East too; with that lift out as TfL last said, it isn't.
+        val access = StepFreeAccess(
+            mapOf("940GZZLUHLE" to mapOf("circle" to listOf(StepFreePlatform(StepFreeLevel.PLATFORM, byLift = LiftStop("HLE", 1))))),
+            mapOf("HLE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        assertEquals("Hill East", listed(StepFree.STATION, access).rows.single().toName)
+        assertEquals("940GZZLUHIL", listed(StepFree.STATION, access, setOf("LIFT1")).rows.single().toName)
+        // The lift goes out after the list was shown: the same request shown again (back from a trip that asked TfL)
+        // lists its cards again by the lifts out now, with no new plan asked for.
+        var out = emptySet<String>()
+        val later = LaterTripViewModel(
+            planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("940GZZLUHIL")),
+            arriving = { HillModel.toHill }, stepFreeAccess = { access }, liftsOut = { out }, io = dispatcher, compute = dispatcher,
+        )
+        val request = LaterTripViewModel.Request(leave, stepFree = StepFree.STATION)
+        later.show(request)
+        advanceUntilIdle()
+        assertEquals("Hill East", later.state.value.cards!!.single().rows.single().toName)
+        val asked = planner.asked.size
+        out = setOf("LIFT1")
+        later.show(request)
+        advanceUntilIdle()
+        assertEquals("940GZZLUHIL", later.state.value.cards!!.single().rows.single().toName)
+        assertEquals(asked, planner.asked.size)
+        // Back in service: at Hill East again.
+        out = emptySet()
+        later.show(request)
+        advanceUntilIdle()
+        assertEquals("Hill East", later.state.value.cards!!.single().rows.single().toName)
     }
 
     @Test
