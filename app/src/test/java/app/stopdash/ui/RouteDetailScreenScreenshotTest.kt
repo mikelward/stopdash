@@ -203,6 +203,50 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aRidesPage_saysItsFarEndsClosure_andAnUncheckedEnd_neverCallingItClean() {
+        val row = DepartureRow(
+            stopId = "940GZZLUVIC", stopName = "Victoria", lineId = "victoria", lineName = "Victoria", direction = "",
+            directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = now,
+        )
+        // Its far end's notice, as its card carries it (example names).
+        val farEnd = row.copy(stopId = "940GZZEXMPL", stopName = "Example End", stopDisruption = "Example End station is closed.")
+        var unchecked by mutableStateOf<String?>(null)
+        var closures by mutableStateOf(listOf(farEnd to "Example End"))
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = false,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                    closures = closures,
+                    uncheckedEnd = unchecked,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Example End").assertIsDisplayed()
+        composeRule.onNodeWithText("No disruptions reported").assertDoesNotExist()
+
+        // None in force, but its far end couldn't be checked: said, and still not called clean.
+        closures = emptyList()
+        unchecked = "Example End"
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't check Example End for closures").assertIsDisplayed()
+        composeRule.onNodeWithText("No disruptions reported").assertDoesNotExist()
+
+        // Both checked clean: clean.
+        unchecked = null
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("No disruptions reported").assertIsDisplayed()
+    }
+
+    @Test
     fun aRideWithOneTimetabledTrainLeft_saysTheOne() {
         val row = DepartureRow(
             stopId = "940GZZLUVIC", stopName = "Victoria", lineId = "victoria", lineName = "Victoria", direction = "",
