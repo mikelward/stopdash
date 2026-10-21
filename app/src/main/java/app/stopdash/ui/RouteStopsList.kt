@@ -361,8 +361,7 @@ internal fun rememberLineStops(lineId: String, wanted: Boolean): List<RouteStop>
 /**
  * The route detail's stop list: every station from the boarding stop to the train's
  * destination on a rail in the line's [railColor] — the boarding stop a blue "you are here" dot, every other stop
- * hollow, the boarding stop and terminus named in bold —
- * headed by the [direction] the train runs when known.
+ * hollow, the boarding stop and terminus named in bold — headed "Terminates here" for a train ending at it.
  */
 @Composable
 internal fun RouteStopsSection(
@@ -370,8 +369,6 @@ internal fun RouteStopsSection(
     railColor: Color,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
-    // The way the train heads ("Southbound"), shown atop the list; null shows no heading.
-    direction: String? = null,
     // Stations (after the boarding stop) with a favorite journey from here; each shows a star.
     starredStopIds: Set<String> = emptySet(),
     // Stations the line's service alert names ([app.stopdash.domain.AlertStops]); each shows a ⚠.
@@ -406,9 +403,10 @@ internal fun RouteStopsSection(
             if (onToggleJourneyTo != null && onDismissJourneyTip != null && !state.endsHere) {
                 JourneyTip(onDismiss = onDismissJourneyTip, modifier = Modifier.padding(bottom = 12.dp))
             }
-            (if (state.endsHere) stringResource(R.string.route_terminates_here) else direction)?.let {
+            // A train ending here heads nowhere: said atop its one station. Any other's way is on the page's "From" line.
+            if (state.endsHere) {
                 Text(
-                    text = it,
+                    text = stringResource(R.string.route_terminates_here),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
