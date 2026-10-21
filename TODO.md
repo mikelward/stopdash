@@ -4213,6 +4213,11 @@ Builds on Phase 1's minimal line-status marking.
       way. Its page would say why the times are missing and show the scheduled departures for every route
       the line runs from the stop (Highgate's Northern line: via Bank, via Charing Cross, each branch),
       said as the timetable's; then the route chips below choose one route's stops.
+- [x] **Fold the stops before the boarding stop on a route page's map** (maintainer, 2026-10-21: "the stops
+      before the current stop should be collapsed in the route map somehow", then "fully collapse and show High
+      Barnet/Mill Hill East (both origins) and tapping could expand one level"). Done: the stretch behind the
+      train folds into one line named by where its trains come from (`LineMap.Behind`), opening a level a tap.
+      Needs a device check.
 - [ ] **Choose the route on the route page** (maintainer, 2026-10-21). A line row with no train (a quiet
       or status row) opens a page that can't list stops, since which direction or branch is a guess.
       Proposed: a row of chips under the title, one per route from the stop ("via Bank", "via Charing
@@ -5187,6 +5192,13 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A route page's fold behind the train opens a level even with an alert on the way ahead**
+  (autopilot, 2026-10-21; Codex's third finding on #1062, the second where that fold meets the alert-aware
+  folding). Opened, the stretch behind folds by its runs, its ends and junctions shown, whatever alert is
+  ahead, rather than as an alert has the rest of the line fold (by its sections, which swapped one line for
+  another). Alternative, which deletes the class: with an alert on the rider, no fold of its own behind the
+  train, the alert's own section fold standing for it, named by where its trains come from and opening every
+  station as the rest of that map does. Reversible: drop the `byAlerts` argument from the opened behind span.
 - [ ] **A route page follows a grouped train by its own way, told by its direction, bound, destination
   id and via** (autopilot, 2026-10-21; the maintainer said "don't block on me"). Two trains a row groups
   under one place and via that take different stops now each get a chip that hands the page its own train

@@ -1297,6 +1297,15 @@ that stop's departures) rather than being lifted, above starred or otherwise (*F
 stop notice rides with its place there too (*Disruptions*). Distance ranking belongs to *finding* stops
 (near-me discovery, *Finding stops*), not to ordering the watched list.
 
+**On a route page's map, the stretch behind the boarding stop folds into one line** (maintainer, 2026-10-21:
+"fully collapse and show High Barnet/Mill Hill East (both origins) and tapping could expand one level"):
+everything the map draws on the far side of where the train is boarded from where it goes, named by the line's
+ends there its trains come from ("High Barnet · Mill Hill East" above Highgate southbound). A tap opens it a
+level, to its ends and junctions with their runs folded, an alert on the way ahead or not, and each run opens
+from there. It never folds over a stop of the rider's own, or an alert, whose first and last stations show as
+anywhere else on the map; and a train going nowhere from the stop (one ending there)
+has none; nor does one with a single station behind it, which shows as that station, a fold taking more room.
+
 **The per-platform card model shipped** — one card per platform/pole, a chip-tagged row per
 route (per *Departures* above); the compass is not shown on the header, since the destinations
 carry the direction a rider reads. A more compact **(service, stop) card that swipes between

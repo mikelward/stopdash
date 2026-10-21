@@ -1324,6 +1324,11 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria", useUnmergedTree = true).assertDoesNotExist()
+        // Behind the train, one line named by where its trains come from, opened a level a tap (maintainer,
+        // 2026-10-21): then its runs, folded as the rest of the line is.
+        composeRule.onNodeWithText("Stockwell to", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Brixton").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithText("Stockwell to", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertExists()

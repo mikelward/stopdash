@@ -917,6 +917,99 @@ class LineMapTest {
     }
 
     @Test
+    fun `a route page folds the stretch behind its train into one line named by where its trains come from`() {
+        // The stops before the current stop collapsed, showing both origins, a tap opening one level
+        // (maintainer, 2026-10-21).
+        val rides = listOf(ids("Highgate", "Archway", "Tufnell Park", "Kentish Town") + charingCross + morden)
+        val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
+        val held = map.folded(emptySet()).labels()
+        assertEquals(listOf("[High Barnet · Mill Hill East]", "Highgate"), held.take(2))
+        assertFalse("Edgware's branch, drawn above, folds with it", "Edgware" in held)
+        // Opened, it folds as the rest of the line does: its ends and junctions, its runs folded.
+        val behind = map.behind!!
+        val opened = map.folded(setOf(behind.key)).labels()
+        assertTrue(opened.containsAll(listOf("Edgware", "High Barnet", "Mill Hill East", "Finchley Central", "Highgate")))
+        assertTrue(opened.indexOf("Highgate") > opened.indexOf("Finchley Central"))
+        // A fold inside it opened, the one a route page keeps open at a time, keeps it open too.
+        val run = map.folded(setOf(behind.key)).first { it is LineMap.Item.Fold && it.first == "Totteridge & Whetstone" }.key
+        assertTrue("Woodside Park" in map.folded(setOf(run)).labels())
+        // The line ahead of the train is as it was.
+        assertEquals(held.drop(2), opened.drop(opened.indexOf("Highgate") + 1))
+    }
+
+    @Test
+    fun `a train running up the map folds what's below it, and a page with no train ahead folds nothing so`() {
+        // North from Highgate: the trains come from Morden and Battersea Power Station.
+        val rides = listOf(ids("Highgate", "East Finchley", "Finchley Central", "West Finchley", "Woodside Park", "Totteridge & Whetstone", "High Barnet"))
+        val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
+        val held = map.folded(emptySet()).labels()
+        assertEquals("Highgate", held[held.size - 2])
+        assertEquals(setOf("Morden", "Battersea Power Station"), (map.folded(emptySet()).last() as LineMap.Item.Fold).ends.toSet())
+        // No train ahead (one ending here), or not a route page: no such fold.
+        assertNull(LineMap.of(northern(), riding = setOf(ids.getValue("Morden")), rides = listOf(ids("Morden")), ridesOpen = true)!!.behind)
+        assertNull(LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides)!!.behind)
+    }
+
+    @Test
+    fun `an alert behind the train shows where it starts and ends, not folded into the line behind`() {
+        val rides = listOf(ids("Highgate", "Archway", "Tufnell Park", "Kentish Town") + charingCross + morden)
+        val stretch = ids("West Finchley", "Woodside Park", "Totteridge & Whetstone")
+        val words = "No service between West Finchley and Totteridge & Whetstone."
+        val status = LineStatus(
+            "northern", 3, "Part Suspended", fullText = words,
+            closures = listOf(PartClosure(3, "Part Suspended", words, listOf(stretch, stretch.asReversed()))),
+        )
+        val map = LineMap.forStatus(northern(), status, riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
+        val held = map.folded(emptySet()).labels()
+        assertTrue(held.containsAll(listOf("West Finchley", "Totteridge & Whetstone", "Highgate")))
+        assertFalse("no one line behind the train", "[High Barnet · Mill Hill East]" in held)
+        // With good service, the same page folds it into one line.
+        val good = LineMap.forStatus(northern(), LineStatus("northern", 10, "Good Service"), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
+        assertEquals("[High Barnet · Mill Hill East]", good.folded(emptySet()).labels().first())
+    }
+
+    @Test
+    fun `a bus's fold behind it names only the ends its buses start from`() {
+        // Its way back starts from a stand of its own (Xray), joining the outbound way at Gamma: Delta is only
+        // where outbound buses end, so no bus boarded at Beta toward Alpha comes from there (Codex on #1062).
+        val map = LineMap.of(spread(listOf("X2", "C2", "B2", "A2")), riding = setOf("B2"), rides = listOf(listOf("B2", "A2")), ridesOpen = true)!!
+        assertEquals(listOf("Xray"), map.behind!!.origins)
+    }
+
+    @Test
+    fun `the fold behind a train opens a level with an alert on the way ahead too`() {
+        // No service between Angel and Bank, on the train's own way south from Highgate by Bank: the line
+        // behind it still opens to its ends and junctions with their runs folded, not to another one line
+        // (Codex on #1062).
+        val rides = listOf(ids("Highgate", "Archway", "Tufnell Park", "Kentish Town") + bank + morden)
+        val stretch = ids("Angel", "Old Street", "Moorgate", "Bank")
+        val words = "No service between Angel and Bank."
+        val status = LineStatus(
+            "northern", 3, "Part Suspended", fullText = words,
+            closures = listOf(PartClosure(3, "Part Suspended", words, listOf(stretch, stretch.asReversed()))),
+        )
+        val map = LineMap.forStatus(northern(), status, riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
+        assertTrue(map.alerted)
+        assertEquals("[High Barnet · Mill Hill East]", map.folded(emptySet()).labels().first())
+        val opened = map.folded(setOf(map.behind!!.key)).labels()
+        assertTrue(opened.containsAll(listOf("Edgware", "High Barnet", "Mill Hill East", "Finchley Central", "Highgate")))
+        assertTrue(opened.indexOf("Highgate") > opened.indexOf("Finchley Central"))
+        // A run inside it opens on its own from there, and the line ahead folds as the alert has it fold.
+        val run = map.folded(setOf(map.behind!!.key)).first { it is LineMap.Item.Fold && it.first == "Totteridge & Whetstone" }.key
+        assertTrue("Woodside Park" in map.folded(setOf(run)).labels())
+        assertEquals(map.folded(emptySet()).labels().drop(1), opened.drop(opened.indexOf("Highgate")))
+    }
+
+    @Test
+    fun `one station behind the train stays a station, not a fold of one`() {
+        // North from South Wimbledon: only Morden is behind it, and a fold would take more room than it.
+        val rides = listOf(ids("South Wimbledon", "Colliers Wood", "Tooting Broadway"))
+        val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
+        assertNull(map.behind)
+        assertEquals(listOf("South Wimbledon", "Morden"), map.folded(emptySet()).labels().takeLast(2))
+    }
+
+    @Test
     fun `a train ending where it's boarded keeps that one station open, the rest folded`() {
         // Morden as the terminus a southbound train ends at: its route page draws it alone, on the path.
         val rides = listOf(ids("Morden"))
