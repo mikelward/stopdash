@@ -2,8 +2,10 @@ package app.stopdash.ui
 
 import androidx.annotation.VisibleForTesting
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Arrival
 import app.stopdash.domain.Pick
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Workers
@@ -108,6 +110,14 @@ class ActiveTripTracker(
     // ([arrivingOf]): waited for while it loads, bounded ([app.stopdash.data.HubsStore.ready]); null where
     // it can't be had, when the ride ends at the destination's own stops, as before.
     private val hubs: suspend () -> Hubs? = { null },
+    // TfL's step-free table ([app.stopdash.data.StepFreeStore]), read once a step-free trip first needs it, and the
+    // lifts out of service now (TfL's lift ids, [app.stopdash.domain.LiftOutageCache.current], asked at most once every
+    // few minutes whichever screen wants them): what a step-free trip's rides' other calls are checked against
+    // ([OnTheWay.arriving], [RideEnds.of]), so a ride gets off at another station of the destination's hub, or another
+    // record of a change's station, only where its line meets the trip's level today. With no table, a step-free
+    // trip's rides get off where the Planner does.
+    private val stepFreeAccess: suspend () -> StepFreeAccess? = { null },
+    private val liftsOut: suspend () -> Set<String> = { emptySet() },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -409,50 +419,75 @@ class ActiveTripTracker(
     // How step-free [trip] was planned to be ([ActiveTrip.stepFree]); an older trip that kept none asks none.
     private fun levelOf(trip: ActiveTrip): StepFree = trip.stepFree ?: StepFree.DEFAULT
 
-    // Where the last ride gets off by arriving at the destination's hub ([OnTheWay.arrivingEnd]), its end and
-    // the ids it arrives by ([OnTheWay.arrivingIds]), and where every other ride gets off, at its station or bus
-    // stop by every id of it ([RideEnds.of], as the trip's cards have it), with the route as planned they were
-    // worked out for (by identity: a trip's copies share it, a replan or restore doesn't). Worked out through
-    // the model when a check first needs them, on [compute], and kept only while the route is the same, so
-    // nothing resolved outlives it; with no model, none, and asked for again next check.
-    private class Arriving(val planned: List<TripLeg>, val end: LegEnd?, val ids: Map<String, String>, val stations: RideEnds)
+    // Where the last ride gets the rider off beyond the end the Planner named ([OnTheWay.arriving]): by arriving at
+    // the destination's hub, and on a step-free trip only where the followed train's line meets the trip's level; and
+    // where every other ride gets off, at its station or bus stop by every id of it ([RideEnds.of], as the trip's
+    // cards have it), a step-free trip's only where each line meets its level. With the route as planned they were
+    // worked out for (by identity: a trip's copies share it, a replan or restore doesn't) and the step-free table
+    // with the lifts out then ([access], by identity: [LiftedAccess] rebuilds it only for other lifts out). Worked
+    // out through the model when a check first needs them, on [compute], and kept only while both are the same, so
+    // nothing resolved outlives them; with no model, none, and asked for again next check.
+    private class Arriving(val planned: List<TripLeg>, val access: StepFreeAccess?, val arrival: Arrival, val stations: RideEnds)
 
     @Volatile
     private var arriving: Arriving? = null
 
-    // Where [trip]'s last ride gets off by arriving at the destination's hub ([OnTheWay.advance]'s `arriving`).
-    private suspend fun arrivingOf(trip: ActiveTrip): Map<String, String> = arrivalOf(trip)?.ids.orEmpty()
+    // TfL's step-free table with the lifts out now, for a step-free trip ([stepFreeAccess], [liftsOut]).
+    private val lifted = LiftedAccess({ withContext(io) { stepFreeAccess() } }, warn)
+
+    // Where [trip]'s last ride gets off beyond the Planner's end ([OnTheWay.advance]'s `arriving`).
+    private suspend fun arrivingOf(trip: ActiveTrip): Arrival = arrivalOf(trip)?.arrival ?: Arrival.NONE
 
     private suspend fun arrivalOf(trip: ActiveTrip): Arriving? {
         val planned = trip.plannedLegs ?: trip.route.legs
-        arriving?.takeIf { it.planned === planned }?.let { return it }
+        val access = accessFor(trip)
+        val previous = arriving
+        previous?.takeIf { it.planned === planned && it.access === access }?.let { return it }
         val model = hubs() ?: return null
         val found = withContext(compute) {
-            val end = OnTheWay.arrivingEnd(trip, model)
-            // Not on a step-free trip, nor one whose level isn't known, as for the hub: a station's other record
-            // may not be step-free where the Planner's is.
-            val stations = if (trip.stepFree == StepFree.ANY) {
-                RideEnds.of(listOf(TripRoute(planned)), StepFree.ANY, RideEnds.Destination(model, emptySet()))
-            } else {
+            val level = trip.stepFree
+            // A trip whose level isn't known, as for the hub, gets off where the Planner does: a station's other
+            // record may not be step-free where the Planner's is.
+            val stations = if (level == null) {
                 RideEnds.planned(levelOf(trip))
+            } else {
+                RideEnds.of(listOf(TripRoute(planned)), level, RideEnds.Destination(model, emptySet(), access))
             }
-            Arriving(planned, end, end?.let(model::idsOf).orEmpty(), stations)
+            Arriving(planned, access, OnTheWay.arriving(trip, model, access), stations)
         }
         arriving = found
         return found
     }
 
+    // The step-free table with the lifts out now ([LiftedAccess]) for a step-free [trip]; null at no level, one not
+    // known, or with no table or lifts to be had, when its rides get off where the Planner does.
+    private suspend fun accessFor(trip: ActiveTrip): StepFreeAccess? {
+        if (trip.stepFree == null || trip.stepFree == StepFree.ANY) return null
+        val out = try {
+            liftsOut()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Lifts not known to be working aren't taken as working: the Planner's ends, as with no table. Its type and
+            // where it was thrown, never its message, which can quote a request's URL (AGENTS.md *Error handling*).
+            val at = e.stackTrace.take(STACK_FRAMES).joinToString("") { " at $it" }
+            warn("on the way: lift outages unreadable (${e.javaClass.simpleName}$at)")
+            return null
+        }
+        return withContext(compute) { lifted.with(out) }
+    }
+
     // Where [ride] of [trip] gets off ([LegEnd]), as the trip's cards have it: as the last ride arriving by hub,
     // anywhere in the destination's hub; otherwise at the station or bus stop of its Planner's call, by every id
-    // of it ([arrivalOf]). A ride the trip has since changed (an end moved), and every ride with no model or on a
-    // step-free trip, where the Planner gets it off at the trip's step-free level ([LegEnd.planned]). Walks the
-    // route's few legs.
+    // of it ([arrivalOf]), on a step-free trip only where each line meets its level today. A ride the trip has since
+    // changed (an end moved), and every ride with no model, or on a step-free trip with no step-free table, where the
+    // Planner gets it off at the trip's step-free level ([LegEnd.planned]). Walks the route's few legs.
     private suspend fun endOf(trip: ActiveTrip, ride: TripLeg): LegEnd {
         val legs = trip.route.legs
         val index = legs.indexOf(ride)
         val last = index >= 0 && legs.subList(index + 1, legs.size).all { it.isWalk }
         val arrival = arrivalOf(trip)
-        return (if (last) arrival?.end else null)
+        return (if (last) arrival?.arrival?.hubEnd else null)
             // By the ride's own raw end, wherever it is in the route.
             ?: arrival?.stations?.ends(TripRoute(listOf(ride)))?.single()?.second
             ?: LegEnd.planned(ride, levelOf(trip))
@@ -1753,7 +1788,10 @@ class ActiveTripTracker(
         // Still seen at the boarding stop, by the fix this refresh took (aged by the reads since): the
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
-        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding, arrivingOf(trip))
+        // With today's lifts: an end moved to a station whose lift has gone out since, mid-ride or while the trip was
+        // kept, is worked out again from the route as planned ([OnTheWay.advance]).
+        val arriving = arrivingOf(trip)
+        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding, arriving)
         if (doubted && next.legIndex != trip.legIndex) {
             // A train that may not be theirs doesn't end their ride while that waits to be confirmed: the step
             // stands as it was this refresh (Codex, #997).
@@ -1853,10 +1891,15 @@ class ActiveTripTracker(
         if (OnTheWay.warningWithdrawn(next, progress)) {
             next = next.copy(warnedLeg = -1, alertLeft = true)
         }
-        // Said again, silently, when the stop's time moves, so the alert's deadline follows it.
-        val saidAt = (_progress.value as? TripProgress.Riding)?.takeIf { next.warnedLeg == next.legIndex }?.getOffAt
+        // Said for a stop the ride no longer gets off at (one the end worked out again with the lifts out moved on
+        // from, say): said again just below for the stop now if that's soon, else taken back, so it never names a
+        // stop the trip has left (Codex, #1070).
+        val said = (_progress.value as? TripProgress.Riding)?.takeIf { next.warnedLeg == next.legIndex }
+        val offMoved = said != null && progress is TripProgress.Riding && progress.leg.toId != said.leg.toId
+        if (offMoved && !(progress as TripProgress.Riding).getOffSoon) next = next.copy(warnedLeg = -1, alertLeft = true)
+        // Said again, silently, when the stop's time moves, so the alert's deadline follows it; and for a stop moved to.
         val moved = progress is TripProgress.Riding && progress.getOffSoon && next.warnedLeg == next.legIndex &&
-            progress.getOffAt != saidAt
+            (progress.getOffAt != said?.getOffAt || offMoved)
         if (progress is TripProgress.Riding && (OnTheWay.shouldWarn(next, progress) || moved) && onGetOffSoon(next, progress)) {
             // There is one alert: this one replaces any still to be taken back.
             next = OnTheWay.warned(next).copy(alertLeft = false)
@@ -2560,7 +2603,7 @@ class ActiveTripTracker(
             val routes = catchable.map { it.lineId }.distinct().associateWith { routeOf(it) }
             catchable.filter { train -> OnTheWay.lineOf(lines, train)?.let { OnTheWay.mayTakeRide(it, listOf(train), routes).isNotEmpty() } == true }
         }.take(PICK_TRIES)
-        val arriving = if (candidates.isEmpty()) emptyMap() else arrivingOf(trip)
+        val arriving = if (candidates.isEmpty()) Arrival.NONE else arrivingOf(trip)
         for (train in candidates) {
             val ways = OnTheWay.waysOf(lines, train)
             if (ways.isEmpty()) continue
@@ -2827,6 +2870,9 @@ class ActiveTripTracker(
 
         // How many of a leg's soonest trains are looked up to find one running where the rider is going.
         const val PICK_TRIES = 3
+
+        // How many frames of an unexpected exception the debug log keeps, where it was thrown.
+        private const val STACK_FRAMES = 3
 
         // Modes that board at a lettered pole in the street ([pairOf]); a station's board splits by platform.
         private val POLE_MODES = setOf("bus", "replacement-bus", "coach", "tram")

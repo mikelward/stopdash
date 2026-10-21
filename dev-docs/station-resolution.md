@@ -90,7 +90,13 @@ Fully):
   the Planner's that can't board and get off at passing calls isn't offered.
 - **Rechecked when the lifts change.** A change to the outage set redoes every judgment, an active
   trip's included: its followed train's endpoint is worked out again from its planned legs, so it
-  can move later as well as earlier (`OnTheWay.endedAtDestination` today only moves one earlier).
+  can move later as well as earlier (built: `OnTheWay.advance` puts a moved end back as planned,
+  with the leg its train was followed on, `OnTheWay.withEndAsPlanned` and
+  `ActiveTrip.plannedVehicleLeg`, wherever the train is still to reach it and today's lifts no longer
+  let the rider off there, however that came about: lifts that changed mid-ride, or a trip read back
+  after the app was gone; and `endedAtDestination` moves it again from the calls ahead. It's a check
+  of the end each step, not a watch for changes, so a trip kept across a restart is checked too,
+  Codex on #1070).
   Only calls still ahead are rechecked: once the rider has boarded, the call they boarded at is
   behind them and keeps its verdict, so a lift failing there never replaces the train they're on
   or offers a replan (Codex on #1005).
@@ -301,10 +307,12 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    itself.
 2. **Arriving by hub, first call.** Replaces the older plan's arrival steps (`station-model.md`
    *Plan*, phases 2 and 3). On the way reads its last ride's end first (2026-10-20): the tracker
-   resolves it through the model (`OnTheWay.arrivingIds`: `LegEnd.of`, then `Hubs.idsOf` for a hub
-   end) when a check runs, keeps it only while the planned route is the same, and the train's first
-   call in the hub by one TfL id ends the ride, a step-free trip excepted until its lift check
-   lands (`TODO.md`, *Decisions needing review*). Its ride lines and pair boards read the same end
+   resolves it through the model (`OnTheWay.arriving`: `RideEnds.of`, then `Hubs.idsOf` for a hub
+   end) when a check runs, keeps it only while the planned route and the lifts out are the same, and
+   the train's first call in the hub by one TfL id ends the ride; on a step-free trip only a call
+   where the train's line meets the trip's level today (`Arrival.getsOffAt`, by the end's
+   `LegEnd.levels`), the destination's own other records with it, the Planner's own call standing for
+   its line. Its ride lines and pair boards read the same end
    (2026-10-21: `OnTheWay.arrivingEnd`, the hub with its ids, given to `RideLineChecks.running` and
    `RideLines.polesToRead` by `ActiveTripTracker.endOf`), so another line reaching another station of
    the hub is one the trip follows, as its cards offer it; once the rider is on board that line's

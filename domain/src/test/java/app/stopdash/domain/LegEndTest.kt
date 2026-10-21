@@ -250,9 +250,27 @@ class LegEndTest {
     }
 
     @Test
-    fun `On the way's last ride arrives by hub only where the trip isn't step-free and the Planner's call is in it`() {
+    fun `On the way's step-free last ride arrives by hub where its line meets the trip's level today`() {
         val last = ride("910GHILL", mode = "national-rail")
-        // Step-free, or a trip kept before its level was: the hub's other calls aren't checked against lifts yet.
+        // Hill's tube station is step-free to the platform on the ride's line; the rail station's other record isn't described.
+        val access = StepFreeAccess(mapOf("940GZZLUHIL" to mapOf("l" to listOf(StepFreePlatform(StepFreeLevel.PLATFORM)))))
+        val arrival = OnTheWay.arriving(toHill(last, StepFree.STATION), hubs, access)
+        assertEquals("1009002:tube", arrival.stations["940GZZLUHIL"])
+        assertEquals(mapOf("940GZZLUHIL" to mapOf("l" to StepFreeLevel.PLATFORM)), arrival.hubEnd?.levels)
+        assertEquals(arrival.hubEnd, OnTheWay.arrivingEnd(toHill(last, StepFree.STATION), hubs, access))
+        assertTrue(arrival.getsOffAt("940GZZLUHIL", last))
+        assertFalse(arrival.getsOffAt("910GHILLLL", last))
+        // The Planner's own call, for its own line, which the Planner checked.
+        assertTrue(arrival.getsOffAt("910GHILL", last))
+        assertFalse(arrival.getsOffAt("910GHILL", last.copy(lineId = "m")))
+        // A trip kept before its level was: no wider, no narrower than before.
+        assertTrue(OnTheWay.arriving(toHill(last, null), hubs, access) === Arrival.NONE)
+    }
+
+    @Test
+    fun `On the way's last ride arrives by hub only where its level is known, checkable and the Planner's call is in it`() {
+        val last = ride("910GHILL", mode = "national-rail")
+        // Step-free with no table to check by, or a trip kept before its level was: where the Planner gets it off.
         assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, StepFree.STATION), hubs))
         assertEquals(emptyMap<String, String>(), OnTheWay.arrivingIds(toHill(last, null), hubs))
         // Nor is it given a hub end: it gets off where the Planner does.

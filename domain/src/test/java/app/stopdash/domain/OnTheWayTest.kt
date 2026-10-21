@@ -121,7 +121,7 @@ class OnTheWayTest {
         // The station picked is C's (S); B is another station (T) of its hub, which the ride's end, resolved
         // through the model, names: the train reaches B first, so the ride ends there.
         val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S"))
-        val hub = mapOf("C" to "S", "B" to "T")
+        val hub = Arrival(mapOf("C" to "S", "B" to "T"))
         val following = OnTheWay.follow(toStation, train("8", 5))
         val (atB, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6), arriving = hub)
         progress as TripProgress.Riding
@@ -141,23 +141,31 @@ class OnTheWayTest {
     fun `another line taking the last ride to another station of the destination's hub gets the rider off there`() {
         // Green reaches B, another station (T) of the hub of C's station (S), as one of the ride's lines.
         val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S"))
-        val hub = mapOf("C" to "S", "B" to "T")
+        val hub = Arrival(mapOf("C" to "S", "B" to "T"))
         val green = TripLeg("tube", "green", "Green", "A", "A", "B", "B", at(5), at(12), path = listOf("X", "B"))
         val train = Departure("green", "Green", "outbound", "B", null, at(5), "tube", vehicleId = "g")
         val onBoard = OnTheWay.follow(toStation, train, green).copy(boarded = true)
         val (atB, progress) = OnTheWay.advance(onBoard, listOf(call("X", 8), call("B", 11)), at(6), arriving = hub)
         assertEquals(at(11), (progress as TripProgress.Riding).getOffAt)
-        // The ride ends at B, the walk planned on from C gone, with the route as planned kept.
+        // The ride ends at B, the walk planned on from C gone, with the route as planned kept, and the leg green was
+        // followed on.
         assertEquals(listOf("B"), atB.route.legs.map { it.toId })
         assertEquals("B", OnTheWay.ridden(atB)?.toId)
         assertEquals(toStation.route.legs, atB.plannedLegs)
+        assertEquals(green, atB.plannedVehicleLeg)
+        // Put back as planned, both come back, still on green's train.
+        val replanned = OnTheWay.withEndAsPlanned(atB)
+        assertEquals(toStation.route, replanned.route)
+        assertEquals(green, replanned.vehicleLeg)
+        assertNull(replanned.plannedVehicleLeg)
+        assertEquals("g", replanned.vehicleId)
         // Gone from B: arrived, with no walk from C.
         assertEquals(TripProgress.Arrived, OnTheWay.advance(atB, listOf(call("Q", 14)), at(12), arriving = hub).second)
         // Another of the ride's lines getting off at another record of C's own station isn't elsewhere: the walk stays.
         val sibling = green.copy(lineId = "purple", lineName = "Purple", toId = "C2", toName = "C", path = listOf("X", "C2"))
         val (riding, _) = OnTheWay.advance(
             OnTheWay.follow(toStation, train.copy(lineId = "purple"), sibling).copy(boarded = true),
-            listOf(call("X", 8), call("C2", 11)), at(6), arriving = hub + ("C2" to "S"),
+            listOf(call("X", 8), call("C2", 11)), at(6), arriving = Arrival(hub.stations + ("C2" to "S")),
         )
         assertEquals(toStation.route, riding.route)
         assertNull(riding.plannedLegs)
@@ -167,12 +175,89 @@ class OnTheWayTest {
     fun `seen at the end of another line elsewhere in the destination's hub, the rider has arrived`() {
         // Green gets the rider off at B, another station (T) of the hub of C's station (S): seen there, no walk on from C.
         val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S"))
-        val hub = mapOf("C" to "S", "B" to "T")
+        val hub = Arrival(mapOf("C" to "S", "B" to "T"))
         val green = TripLeg("tube", "green", "Green", "A", "A", "B", "B", at(5), at(12), path = listOf("X", "B"))
         assertNull(OnTheWay.rideDone(toStation, at(12), on = green, arriving = hub).leg)
         // Seen at the end of the ride's own line, or with no hub to arrive at: on to the walk planned from C.
         assertEquals(walk, OnTheWay.rideDone(toStation, at(12), on = ride, arriving = hub).leg)
         assertEquals(walk, OnTheWay.rideDone(toStation, at(12), on = green).leg)
+    }
+
+    @Test
+    fun `on a step-free trip the last ride gets off in the destination's hub only where its train's line meets the level`() {
+        // B, another station (T) of the hub of C's station (S), is step-free to the platform on red alone; C, the
+        // Planner's own call, isn't described, but the Planner checked it for red.
+        val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S"), stepFree = StepFree.STATION)
+        val stations = mapOf("C" to "S", "B" to "T")
+        val end = LegEnd(StepFree.STATION, LegEnd.Level.HUB, setOf("H"), stations.keys, mapOf("B" to mapOf("red" to StepFreeLevel.PLATFORM)))
+        val hub = Arrival(stations, end, ride)
+        val following = OnTheWay.follow(toStation, train("8", 5))
+        val (atB, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6), arriving = hub)
+        assertEquals(at(9), (progress as TripProgress.Riding).getOffAt)
+        assertEquals(listOf("B"), atB.route.legs.map { it.toId })
+        // B's lift goes out on the way, or while the trip was kept: the end, put back as planned, is worked out again
+        // from the calls still ahead, on to the Planner's C, the walk from there back, the same train still followed.
+        val liftOut = Arrival(stations, end.copy(levels = mapOf("B" to mapOf("red" to StepFreeLevel.NONE))), ride)
+        val (onToPlanned, onAfterAll) = OnTheWay.advance(atB, listOf(call("B", 9), call("C", 14)), at(7), arriving = liftOut)
+        assertEquals(at(14), (onAfterAll as TripProgress.Riding).getOffAt)
+        assertEquals(toStation.route, onToPlanned.route)
+        assertNull(onToPlanned.plannedLegs)
+        assertEquals(atB.vehicleId, onToPlanned.vehicleId)
+        // Put back with C beyond the predictions: when the train was due at B says nothing of C, so with nothing more
+        // predicted after B's time the rider isn't taken to be off at C, never seen due there (Codex, #1070).
+        val (toUnpredicted, _) = OnTheWay.advance(atB, listOf(call("B", 9)), at(7), arriving = liftOut)
+        assertEquals(toStation.route, toUnpredicted.route)
+        assertNull(toUnpredicted.dueOffAt)
+        assertTrue(OnTheWay.advance(toUnpredicted, emptyList(), at(10), arriving = liftOut).second is TripProgress.Lost)
+        // Back in service before the train gets there: off at B again.
+        val (backAtB, _) = OnTheWay.advance(onToPlanned, listOf(call("B", 9), call("C", 14)), at(7), arriving = hub)
+        assertEquals(listOf("B"), backAtB.route.legs.map { it.toId })
+        // Still in service: the end stands.
+        assertEquals(listOf("B"), OnTheWay.advance(atB, listOf(call("B", 9), call("C", 14)), at(7), arriving = hub).first.route.legs.map { it.toId })
+        // Out once the train has passed B: the rider may be off there already, so the end keeps its verdict.
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(atB, listOf(call("C", 14)), at(10), arriving = liftOut).second)
+        // Nothing moved: the trip as it is.
+        assertTrue(OnTheWay.withEndAsPlanned(following) === following)
+        // Fully step-free needs at least a ramp, which B doesn't have: on to the Planner's C.
+        val fully = Arrival(stations, end.copy(stepFree = StepFree.FULLY), ride)
+        val (_, onToC) = OnTheWay.advance(OnTheWay.follow(toStation.copy(stepFree = StepFree.FULLY), train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6), arriving = fully)
+        assertEquals(at(14), (onToC as TripProgress.Riding).getOffAt)
+        // Green, another of the ride's lines to B, passes the Planner's C first, which the Planner never checked for green
+        // and TfL doesn't describe: it doesn't get the rider off there, but at its own end.
+        val green = TripLeg("tube", "green", "Green", "A", "A", "B", "B", at(5), at(12), path = listOf("C", "B"))
+        val onGreen = OnTheWay.follow(toStation, Departure("green", "Green", "outbound", "B", null, at(5), "tube", vehicleId = "g"), green)
+            .copy(boarded = true)
+        val (byGreen, greenProgress) = OnTheWay.advance(onGreen, listOf(call("C", 8), call("B", 11)), at(6), arriving = hub)
+        assertEquals(at(11), (greenProgress as TripProgress.Riding).getOffAt)
+        assertEquals("B", OnTheWay.ridden(byGreen)?.toId)
+        // Seen there, they've arrived: no walk on from C.
+        assertNull(OnTheWay.rideDone(toStation, at(12), on = green, arriving = hub).leg)
+    }
+
+    @Test
+    fun `a step-free arrival gets the rider off by its line's level, and at the Planner's own call for its line`() {
+        val stations = mapOf("C" to "S", "940GB" to "T")
+        val levels = mapOf("940GB" to mapOf("red" to StepFreeLevel.PLATFORM))
+        val end = LegEnd(StepFree.STATION, LegEnd.Level.HUB, setOf("H"), stations.keys, levels)
+        val hub = Arrival(stations, end, ride)
+        assertEquals(end, hub.hubEnd)
+        assertTrue(hub.getsOffAt("940GB", ride))
+        assertTrue(hub.getsOffAt("C", ride))
+        val green = ride.copy(lineId = "green")
+        assertFalse(hub.getsOffAt("940GB", green))
+        assertFalse(hub.getsOffAt("C", green))
+        // A platform the end doesn't hold reads as its station record's.
+        assertTrue(hub.getsOffAt("9400B", ride))
+        // A bus stop is at the street.
+        assertTrue(hub.getsOffAt("490000001A", green.copy(mode = "bus")))
+        // A step-free last ride ending at its station, not by hub: only the trip's own ids, checked the same way.
+        val station = Arrival(emptyMap(), end.copy(level = LegEnd.Level.STOP), ride)
+        assertNull(station.hubEnd)
+        assertFalse(station.getsOffAt("C", green))
+        // At no level, or with nothing to check by, anywhere.
+        assertTrue(Arrival(stations, end.copy(stepFree = StepFree.ANY), ride).getsOffAt("940GB", green))
+        assertTrue(Arrival(stations).getsOffAt("940GB", green))
+        assertTrue(Arrival.NONE.getsOffAt("C", green))
     }
 
     @Test
@@ -182,7 +267,7 @@ class OnTheWayTest {
         val atB = VehicleCall("", "B", null, at(9), setOf("B", "B2"))
         val (riding, progress) = OnTheWay.advance(
             OnTheWay.follow(toStation, train("8", 5)), listOf(atB, call("C", 14)), at(6),
-            arriving = mapOf("C" to "S", "B" to "T", "B2" to "T"),
+            arriving = Arrival(mapOf("C" to "S", "B" to "T", "B2" to "T")),
         )
         assertEquals(at(14), (progress as TripProgress.Riding).getOffAt)
         assertEquals("C", OnTheWay.ridden(riding)?.toId)
