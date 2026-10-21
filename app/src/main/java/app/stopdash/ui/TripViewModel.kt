@@ -160,8 +160,8 @@ class TripViewModel(
     // Null to plan to [destinations] as they are (an interchange's members, a stop, a place, no model).
     private val planTargets: suspend () -> List<String>? = { null },
     // The station model and the destination's matchable hubs ([Hubs.destinationHubs]), for where each route's
-    // last ride gets off by arriving at them ([shownRoutes]), read on [io] once. Null where no ride arrives by hub
-    // (a place, no model): each gets off where the Planner does.
+    // last ride gets off by arriving at them and every other ride at its station ([shownRoutes]), read on [io] once.
+    // Null with no model: each gets off where the Planner does.
     private val arriving: suspend () -> RideEnds.Destination? = { null },
     // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
     // of what they picked ([PlanTargets.viaStops]), each asked of the Planner for every destination and the
@@ -998,10 +998,11 @@ class TripViewModel(
     /**
      * [placed]'s routes as the screen draws them at [stepFree] ([ShownRoutes]): each last ride the Planner gets
      * off in the destination's hubs getting off at its first call anywhere in them, shown cut and named there
-     * ([RideEnds.cut]), worked out through the station model on [compute] once it's in; every other ride where the
-     * Planner gets it off. Only drawn: this trip's routes stay as the Planner gave them. The screen asks as the
-     * routes it shows come in and reads the answer as it builds the page. A route drawn cut is keyed as its route
-     * as planned ([routeKey]), so the route open on it is one of this trip's ([openKeys]).
+     * ([RideEnds.cut]), worked out through the station model on [compute] once it's in; every other ride at the
+     * station or bus stop of the Planner's call, any record or pole of it. Only drawn: this trip's routes stay as the
+     * Planner gave them. The screen asks as the routes it shows come in and reads the answer as it builds the page.
+     * A route drawn cut is keyed as its route as planned ([routeKey]), so the route open on it is one of this trip's
+     * ([openKeys]).
      */
     internal suspend fun shownRoutes(placed: State, stepFree: StepFree): ShownRoutes {
         if (placed.routes.isNullOrEmpty()) return ShownRoutes.planned(placed, stepFree)

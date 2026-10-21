@@ -127,4 +127,26 @@ class TripRideLinesTest {
         val through = withThroughRoutes(state, StepFree.ANY, green, ends = ends::ends).routes.orEmpty().drop(1).single()
         assertEquals("940GZZLUHIL", through.legs.single().toId)
     }
+
+    @Test
+    fun `a train through a change to another record of the last ride's station keeps the walk on`() {
+        // Red A to M, then blue M to B and a walk on to a place; green from A runs on through M to Bl, another
+        // record of B's station, where the last ride gets off at its station ([RideEnds], no hub to arrive at).
+        val toM = toHillRail.copy(toId = "M", toName = "M", path = listOf("M"), arrival = t.plusSeconds(120))
+        val blue = toHillRail.copy(lineId = "blue", lineName = "blue", fromId = "M", fromName = "M", toId = "B", toName = "B", path = listOf("B"),
+            departure = t.plusSeconds(300), arrival = t.plusSeconds(600))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "B", "B", "P", "Place", t.plusSeconds(600), t.plusSeconds(900))
+        val changing = TripRoute(listOf(toM, blue, walkOn))
+        val atStation = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("STATIONB"), ids = setOf("B", "Bl"))
+        val ends = { route: TripRoute -> route.rides.map { it to if (it == blue) atStation else LegEnd.planned(it, StepFree.ANY) } }
+        val green = mapOf("green" to LineSequence(routes = listOf(LineRoute("r", listOf("A", "M", "Bl"))), stopNames = emptyMap()))
+        val state = atA.copy(routes = listOf(changing))
+        // Getting off at the Planner's call alone, green doesn't reach it.
+        assertEquals(listOf(changing), withThroughRoutes(state, StepFree.ANY, green).routes)
+        // At its station, green is a way through to Bl, and the rider, not arriving by hub, still walks on.
+        val through = withThroughRoutes(state, StepFree.ANY, green, ends = ends).routes.orEmpty().drop(1).single()
+        assertEquals(listOf("green", ""), through.legs.map { it.lineId })
+        assertEquals("Bl", through.legs.first().toId)
+        assertEquals(walkOn, through.legs.last())
+    }
 }

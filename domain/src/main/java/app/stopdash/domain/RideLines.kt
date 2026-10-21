@@ -4,9 +4,10 @@ package app.stopdash.domain
  * A ride's lines (SPEC *Trips with a change*): the Planner's own first, then every other line of the
  * same mode whose route runs from the ride's boarding stop to its getting-off stop. "Stop" is strict
  * (maintainer, 2026-09-27): the same stop, a road's two poles counting as one, never an interchange's
- * other stops, so walks and changes stay exactly as the Planner gave them. The one exception is a trip's
- * last ride arriving by hub ([LegEnd.offIds]): there the destination is its hubs, so a line reaching
- * another of their stations gets the rider there too (dev-docs/station-resolution.md, phase 2). Each is shown beside the
+ * other stops, so walks and changes stay exactly as the Planner gave them; a station's other records are
+ * the same stop where the end holds them ([LegEnd.offIds]). The one exception is a trip's last ride
+ * arriving by hub: there the destination is its hubs, so a line reaching another of their stations gets
+ * the rider there too (dev-docs/station-resolution.md, phase 2). Each is shown beside the
  * Planner's line as an equal ([legs]). Only those also calling at the same stops in between ride the
  * same stretch, so only they share the ride's time on board and may time the route ([timed]) — and
  * then only while [checked].
@@ -43,9 +44,10 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
 
     /**
      * A route [through] makes: [route], one ride fewer than [from], whose two rides from leg [at] it
-     * rides as one (its leg [at]).
+     * rides as one (its leg [at]), getting off where the second of them does ([end], as [through]'s
+     * `ends` had it).
      */
-    data class Through(val route: TripRoute, val from: TripRoute, val at: Int)
+    data class Through(val route: TripRoute, val from: TripRoute, val at: Int, val end: LegEnd)
 
     companion object {
         fun only(leg: TripLeg) = RideLines(listOf(leg), listOf(leg))
@@ -180,7 +182,7 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                         )
                         val joined = TripRoute(route.legs.take(index) + joinedRide + route.legs.drop(index + 2))
                         val joinedKey = key(joined)
-                        if (joinedKey !in known) found.putIfAbsent(joinedKey, Through(joined, route, index))
+                        if (joinedKey !in known) found.putIfAbsent(joinedKey, Through(joined, route, index, end))
                     }
                 }
             }
@@ -280,7 +282,7 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
         // exactly one such run. [end] is where [to] gets off ([LegEnd]): every caller supplies one. A last
         // ride arriving by hub ([LegEnd.offIds]) gets off at the run's first call anywhere in the
         // destination's hubs, another station of them included, and is named there; every other at [to]'s
-        // Planner stop.
+        // Planner stop, or at another record or pole of it where the end holds them.
         private fun runTo(
             ride: TripLeg,
             to: TripLeg,
@@ -296,9 +298,9 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             // ride names, failing that on every run another id of its station ([LineSequence.sameStationId]),
             // only failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
             val offIds = end.offIds(to)
-            // A hub end already holds every pole of its stops; the Planner's raw area may be one the model
-            // split, its other poles at a stop outside the hub, so it isn't matched there.
-            val area = to.toArea.takeIf { it.isNotEmpty() && (end.level != LegEnd.Level.HUB || end.ids.isEmpty()) }
+            // An end whose ids were worked out already holds every pole of its stops; the Planner's raw area may
+            // be one the model split, its other poles at another stop, so it isn't matched there.
+            val area = to.toArea.takeIf { it.isNotEmpty() && end.ids.isEmpty() }
             fun runs(station: Boolean) = boarding.flatMap { stop ->
                 val seen = sequence.callingAt(stop)
                 fun alights(id: String) = id in offIds || (area != null && seen.stopAreas[id] == area) ||

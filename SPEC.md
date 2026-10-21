@@ -1875,8 +1875,9 @@ also takes in the lines the Planner didn't name that serve **its own two stops**
 2026-09-27): another line of the same mode whose route runs from the ride's boarding stop to its
 getting-off stop rides beside the Planner's as an equal — on that ride's pill, its trains among the
 ride's times and headway, and a departure row of its own on the open route. "Stop" is strict: the
-same stop, a road's two poles counting as one, never an interchange's other stops, so every walk and
-change stays as the Planner gave it. The one exception is a trip's last ride where the Planner gets
+same stop, a road's two poles counting as one and a station's other records (TfL's other ids for that one
+station, as the station model groups them) as that station, never an interchange's other stations or stops,
+so every walk and change stays as the Planner gave it. The one exception is a trip's last ride where the Planner gets
 off in the destination's interchange: the trip arrives anywhere in it (below), so a line reaching
 another of its stations rides beside the Planner's too, its ride shown ending at its own first call
 there and named there, and a train calling anywhere in the interchange is one that gets the rider

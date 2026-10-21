@@ -298,7 +298,7 @@ class RideLinesTest {
         val arrivals = mapOf("A" to listOf(train("red"), train("blue")))
         val ways = RideLines.throughWays(listOf(changing), planned, arrivals, emptyMap(), sequences)
         assertEquals(1, ways.size)
-        assertEquals(ways, RideLines.throughWays(listOf(changing), byHub, arrivals, emptyMap(), sequences))
+        assertEquals(ways.map { it.route }, RideLines.throughWays(listOf(changing), byHub, arrivals, emptyMap(), sequences).map { it.route })
     }
 
     // Arriving by hub at a destination of B and its sibling station Bh (synthetic ids), the last ride's end as
@@ -325,6 +325,27 @@ class RideLinesTest {
         // A middle ride still gets off at the Planner's stop alone.
         val middle = TripRoute(listOf(ride, leg("blue", "B", "C")))
         assertEquals(listOf("red"), RideLines.of(listOf(middle), arrivingByHub, atA, emptyMap(), green).getValue(ended(ride)).legs.map { it.lineId })
+    }
+
+    // A change station M with another record Mr of it (synthetic ids), a middle ride's end as the trip page reads it
+    // ([RideEnds]): every record of the station, never Mh, another station of its hub.
+    private val atM = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("STATIONM"), ids = setOf("M", "Mr"))
+
+    @Test
+    fun `a line calling at another record of a change's station takes the ride there, never the hub's other stations`() {
+        // Red A → M, then blue M → C. Green from A calls at Mr, another record of M's station; yellow at Mh.
+        val toM = leg("red", "A", "M")
+        val plan = TripRoute(listOf(toM, leg("blue", "M", "C")))
+        val atStation = { route: TripRoute -> route.rides.map { it to if (it == toM) atM else LegEnd.planned(it, StepFree.ANY) } }
+        val arrivals = mapOf("A" to listOf(train("red"), train("green"), train("yellow")))
+        val sequences = mapOf("green" to sequence("A", "Mr", "End"), "yellow" to sequence("A", "Mh", "End"))
+        // Getting off at the Planner's call alone, neither calls there.
+        assertEquals(listOf("red"), RideLines.of(listOf(plan), planned, arrivals, emptyMap(), sequences).getValue(ended(toM)).legs.map { it.lineId })
+        // At its station, green gets the rider off at Mr: an equal that rides the same stretch, so it times the ride.
+        val lines = RideLines.of(listOf(plan), atStation, arrivals, emptyMap(), sequences).getValue(toM to atM)
+        assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
+        assertEquals("Mr", lines.legs[1].toId)
+        assertEquals(listOf("red", "green"), lines.timed.map { it.lineId })
     }
 
     @Test
@@ -356,5 +377,9 @@ class RideLinesTest {
         // Arriving by hub, only the hub's own ids count.
         val byHub = RideLines.of(listOf(plan), arrivingByHub, atA, emptyMap(), green).getValue(inArea to atHub)
         assertEquals(listOf("red"), byHub.legs.map { it.lineId })
+        // So do a stop's, its poles worked out through the model: Bx is another stop's.
+        val atStop = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("STOPB"), ids = setOf("B"))
+        val byStop = RideLines.of(listOf(plan), { route -> route.rides.map { it to atStop } }, atA, emptyMap(), green).getValue(inArea to atStop)
+        assertEquals(listOf("red"), byStop.legs.map { it.lineId })
     }
 }

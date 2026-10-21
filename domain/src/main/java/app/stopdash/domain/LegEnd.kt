@@ -17,12 +17,15 @@ import androidx.annotation.WorkerThread
  * A hub end is read where the last ride gets off by arriving at the destination's hub: by On the way
  * ([OnTheWay.arrivingIds]), and on the trip page by its verdicts and ride lines through [ids] ([RideEnds],
  * [offIds]), the Planner's own ride drawn cut and named at its first call there ([RideEnds.cut], the route
- * itself unchanged), so the stop list and alerts it shows end there too. Every other end still gets off where the
- * Planner's call is until its paths read it (TODO.md, *Arriving by hub at the first call*).
+ * itself unchanged), so the stop list and alerts it shows end there too. A station or bus stop end is read
+ * the same way by the trip page's verdicts and ride lines, so a line calling at another record of a change's
+ * station gets off there. Every other end still gets off where the Planner's call is until its paths read it
+ * (TODO.md, *Arriving by hub at the first call*).
  *
- * [ids] are the TfL ids a hub end gets off at, every one of its hubs' stations and stops ([Hubs.idsOf]),
- * worked out through the model where the end is read ([RideEnds.of]); empty where they weren't, when the
- * ride gets off at its own call.
+ * [ids] are the TfL ids the end gets off at ([Hubs.idsOf]): a hub end's every one of its hubs' stations and
+ * stops, a station end's records and their platforms, a bus stop end's poles and stop areas. Worked out
+ * through the model where the end is read ([RideEnds.of]); empty where they weren't, when the ride gets off
+ * at its own call.
  */
 data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<String>, val ids: Set<String> = emptySet()) {
     /** Which of a call's places [places] names. */
@@ -56,12 +59,12 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
     }
 
     /**
-     * The TfL ids [ride] gets off at, as a departure's calls and a line's route are matched against: a hub
-     * end's [ids], every one of the destination's hubs' stations and stops, the ride's own call among them;
-     * otherwise, and for a hub end whose ids weren't worked out, the ride's own call ([TripLeg.toId]) alone.
+     * The TfL ids [ride] gets off at, as a departure's calls and a line's route are matched against: the end's
+     * [ids] (a hub end's every station and stop of the destination's hubs, a station or bus stop end's every
+     * record or pole of it), the ride's own call among them; for an end whose ids weren't worked out, the
+     * ride's own call ([TripLeg.toId]) alone.
      */
-    fun offIds(ride: TripLeg): Set<String> =
-        if (level == Level.HUB && ids.isNotEmpty()) ids + ride.toId else setOf(ride.toId)
+    fun offIds(ride: TripLeg): Set<String> = if (ids.isNotEmpty()) ids + ride.toId else setOf(ride.toId)
 
     companion object {
         /**

@@ -30,8 +30,10 @@ class RideEndsTest {
         val ends = RideEnds.of(listOf(viaVale), StepFree.ANY, toHill)
         assertTrue(ends.arrivesByHub)
         val (middle, last) = ends.ends(viaVale)
-        // The middle ride gets off where the Planner does.
-        assertEquals(LegEnd.planned(viaVale.legs[0], StepFree.ANY), middle.second)
+        // The middle ride gets off at Vale's station, by every record of it.
+        assertEquals(LegEnd.Level.STOP, middle.second.level)
+        assertEquals(setOf("910GVALE"), middle.second.places)
+        assertTrue("910GVALE" in middle.second.offIds(middle.first))
         // The last at its first call in Hill's hub: its other station and its bus stop too.
         assertEquals(LegEnd.Level.HUB, last.second.level)
         assertEquals(setOf("HUBEXA"), last.second.places)
@@ -43,22 +45,49 @@ class RideEndsTest {
         assertEquals(last.second, ends.ends(retimed).last().second)
     }
 
+    // Getting off at [station], by every TfL id of it.
+    private fun atStation(station: String) = LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf(station)).let { it.copy(ids = hubs.idsOf(it).keys) }
+
     @Test
-    fun `every other ride gets off where the Planner does`() {
-        val planned = LegEnd.planned(viaVale, StepFree.ANY)
-        // A last ride the Planner gets off outside the hub, walking on.
+    fun `every other ride gets off at the station of the Planner's call`() {
+        // A last ride the Planner gets off outside the hub, walking on: at Vale's station.
         val toVale = TripRoute(listOf(ride("910GFROM", "910GVALE"), walk()))
-        assertEquals(LegEnd.planned(toVale, StepFree.ANY), RideEnds.of(listOf(toVale), StepFree.ANY, toHill).ends(toVale))
-        // No model or no hub to arrive at (a trip to a place).
+        val (ride, end) = RideEnds.of(listOf(toVale), StepFree.ANY, toHill).ends(toVale).single()
+        assertEquals(toVale.legs[0], ride)
+        assertEquals(atStation("910GVALE"), end)
+        // A trip to a place, which has no hub: every ride at its station, the last too.
+        val (middle, last) = RideEnds.of(listOf(viaVale), StepFree.ANY, RideEnds.Destination(hubs, emptySet())).ends(viaVale)
+        assertEquals(atStation("910GVALE"), middle.second)
+        assertEquals(atStation("1009001:rail"), last.second)
+        assertFalse("940GZZLUHIL" in last.second.offIds(last.first))
+    }
+
+    @Test
+    fun `with no model, on a step-free trip, or for a route not worked out, a ride gets off where the Planner does`() {
+        val planned = LegEnd.planned(viaVale, StepFree.ANY)
         assertEquals(planned, RideEnds.of(listOf(viaVale), StepFree.ANY, null).ends(viaVale))
-        assertEquals(planned, RideEnds.of(listOf(viaVale), StepFree.ANY, RideEnds.Destination(hubs, emptySet())).ends(viaVale))
-        // A step-free trip: the hub's other calls aren't checked against today's lifts yet.
+        // A step-free trip: a station's and a hub's other calls aren't checked against today's lifts yet.
         val stepFree = RideEnds.of(listOf(viaVale), StepFree.STATION, toHill)
         assertFalse(stepFree.arrivesByHub)
         assertEquals(LegEnd.planned(viaVale, StepFree.STATION), stepFree.ends(viaVale))
         // A route the ends weren't worked out for (one made since, ending at another call) is as named.
         val other = TripRoute(listOf(ride("910GFROM", "940GZZLUHIL", mode = "tube")))
         assertEquals(LegEnd.planned(other, StepFree.ANY), RideEnds.of(listOf(viaVale), StepFree.ANY, toHill).ends(other))
+    }
+
+    @Test
+    fun `a ride changing at a station gets off at any record of it, never at the hub's other stations`() {
+        // To Vale, changing at Hill's rail station, whose hub holds two tube stations too.
+        val toVale = RideEnds.Destination(hubs, setOf("910GVALE"))
+        val viaHill = TripRoute(listOf(ride("910GFROM", "910GHILL"), ride("910GHILL", "910GVALE")))
+        val (middle, _) = RideEnds.of(listOf(viaHill), StepFree.ANY, toVale).ends(viaHill)
+        assertEquals(atStation("1009001:rail"), middle.second)
+        val off = middle.second.offIds(middle.first)
+        assertTrue("$off", "910GHILL" in off && "910GHILLLL" in off)
+        assertFalse("$off", "940GZZLUHIL" in off || "940GZZLUHLE" in off)
+        // A ride the Planner gets off at the station's other record reads the same station.
+        val viaLow = TripRoute(listOf(ride("910GFROM", "910GHILLLL"), ride("910GHILLLL", "910GVALE")))
+        assertEquals(atStation("1009001:rail"), RideEnds.of(listOf(viaHill, viaLow), StepFree.ANY, toVale).ends(viaLow).first().second)
     }
 
     @Test
@@ -71,8 +100,12 @@ class RideEndsTest {
         val toMillLane = toArea(51.5202)
         val ends = RideEnds.of(listOf(toHighRoad, toMillLane), StepFree.ANY, RideEnds.Destination(hubs, setOf("490000005A")))
         assertEquals(LegEnd.Level.HUB, ends.ends(toHighRoad).last().second.level)
-        // Mill Lane's stop is outside the destination's hub, so it gets off where the Planner does.
-        assertEquals(LegEnd.planned(toMillLane, StepFree.ANY), ends.ends(toMillLane))
+        // Mill Lane's stop is outside the destination's hub, so it gets off at that stop: never at High Road's
+        // pole, though the Planner named their one area.
+        val (ride, millLane) = ends.ends(toMillLane).single()
+        assertEquals(LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("490000005B")), millLane.copy(ids = emptySet()))
+        assertTrue("490000005B" in millLane.offIds(ride))
+        assertFalse("490000005A" in millLane.offIds(ride))
     }
 
     // A tube ride to Hill calling at Hill East first, then out of the hub and back (a loop).

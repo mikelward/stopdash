@@ -99,6 +99,21 @@ class DirectTripsTest {
     }
 
     @Test
+    fun `a ride getting off at its station is reached by a train calling at another record of it`() {
+        // Riding from Top to Bottom A, a station whose other record is Bottom B (synthetic ids), then on.
+        val leg = TripLeg("tube", "rail", "rail", "TOP", "Top", "BOTA", "Bottom A", now, now.plusSeconds(300))
+        val planned = leg to LegEnd.planned(leg, StepFree.ANY)
+        val atStation = leg to LegEnd(StepFree.ANY, LegEnd.Level.STOP, setOf("STATIONB"), ids = setOf("BOTA", "BOTB"))
+        val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("SIDE", "BOTB"), complete = true)))
+        // Getting off at the Planner's call alone, a train for Bottom B misses it.
+        assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(departure("Bottom B", 60), planned, DirectTrips.routeAt(rail, planned)))
+        assertEquals(false, DirectTrips.settledByStops(fast, planned))
+        // At its station, Bottom B is that station: reached, by its route or its own calling points.
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(departure("Bottom B", 60), atStation, DirectTrips.routeAt(rail, atStation)))
+        assertEquals(true, DirectTrips.settledByStops(fast, atStation))
+    }
+
+    @Test
     fun `a train its own calling points settle needs no route`() {
         val stopping = departure("Bottom B", 60).copy(callingAt = listOf(CallingPortion(setOf("MID", "SIDE", "BOTB"), complete = true)))
         val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("BOTB"), complete = true)))
