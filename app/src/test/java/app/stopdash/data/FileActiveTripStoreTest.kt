@@ -469,7 +469,7 @@ class FileActiveTripStoreTest {
         assertTrue(file.readText().contains("\"destinationLevel\":\"hub\""))
         assertEquals(Pick.Level.HUB, FileActiveTripStore(file).load()!!.destinationLevel)
         // As version 1 kept it: no level, and no version.
-        file.writeText(file.readText().replace(",\"destinationLevel\":\"hub\"", "").replace("\"version\":4,", ""))
+        file.writeText(file.readText().replace(",\"destinationLevel\":\"hub\"", "").replace("\"version\":5,", ""))
         assertEquals(trip.copy(destinationLevel = null), FileActiveTripStore(file).load())
     }
 
@@ -480,7 +480,7 @@ class FileActiveTripStoreTest {
         assertTrue(file.readText().contains("\"stepFree\":\"STATION\""))
         assertEquals(StepFree.STATION, FileActiveTripStore(file).load()!!.stepFree)
         // As version 3 kept it: no level, which is unknown, never no requirement.
-        file.writeText(file.readText().replace(",\"stepFree\":\"STATION\"", "").replace("\"version\":4,", "\"version\":3,"))
+        file.writeText(file.readText().replace(",\"stepFree\":\"STATION\"", "").replace("\"version\":5,", "\"version\":3,"))
         assertEquals(trip.copy(stepFree = null), FileActiveTripStore(file).load())
         // A name this build doesn't know reads as unknown too, rather than failing the trip.
         FileActiveTripStore(file).save(trip)
@@ -497,9 +497,14 @@ class FileActiveTripStoreTest {
         val moved = trip.copy(plannedLegs = trip.route.legs, route = trip.route.copy(legs = trip.route.legs.take(1)))
         FileActiveTripStore(file).save(moved)
         assertEquals(moved, FileActiveTripStore(file).load())
+        // On another of the ride's lines, the leg its train was followed on too.
+        val onAnother = moved.copy(plannedVehicleLeg = trip.route.legs.first().copy(lineId = "other"))
+        FileActiveTripStore(file).save(onAnother)
+        assertEquals(onAnother, FileActiveTripStore(file).load())
         // Nothing moved: none written, and none read back.
         FileActiveTripStore(file).save(trip)
         assertFalse(file.readText().contains("plannedLegs"))
+        assertFalse(file.readText().contains("plannedVehicleLeg"))
         assertNull(FileActiveTripStore(file).load()!!.plannedLegs)
     }
 
@@ -515,8 +520,8 @@ class FileActiveTripStoreTest {
     fun `a trip says its version, and one kept before versions reads as the first`() {
         val file = File(tmp.root, "active-trip.json")
         FileActiveTripStore(file).save(trip)
-        assertTrue(file.readText().contains("\"version\":4"))
-        file.writeText(file.readText().replace("\"version\":4,", ""))
+        assertTrue(file.readText().contains("\"version\":5"))
+        file.writeText(file.readText().replace("\"version\":5,", ""))
         assertFalse(file.readText().contains("version"))
         assertEquals(trip, FileActiveTripStore(file).load())
     }
@@ -526,7 +531,7 @@ class FileActiveTripStoreTest {
         val file = File(tmp.root, "active-trip.json")
         FileActiveTripStore(file).save(trip)
         // Even with a field this build parses written in a shape it can't read.
-        val newer = file.readText().replace("\"version\":4", "\"version\":5")
+        val newer = file.readText().replace("\"version\":5", "\"version\":6")
             .replace(Regex("\"startedAt\":\"[^\"]*\""), "\"startedAt\":1700000000")
         file.writeText(newer)
         assertNull(FileActiveTripStore(file).load())
@@ -544,7 +549,7 @@ class FileActiveTripStoreTest {
         val kept = file.readText()
         // Even with a field this build parses written in a way it can't read.
         val newer = File(tmp.root, "staged.json").also { FileActiveTripStore(it).save(trip) }.readText()
-            .replace("\"version\":4", "\"version\":5")
+            .replace("\"version\":5", "\"version\":6")
             .replace(Regex("\"startedAt\":\"[^\"]*\""), "\"startedAt\":\"1700000000\"")
         staged.writeText(newer)
         assertNull("not the kept trip it replaces", FileActiveTripStore(file).load())

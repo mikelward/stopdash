@@ -17,3 +17,33 @@ fun platformRecord(platform: String): String? = when {
     platform.startsWith("9400") -> "940G" + platform.removePrefix("9400")
     else -> null
 }
+
+/**
+ * Where a trip's last ride gets the rider off on the way, beyond the end the Planner named: by arriving at the
+ * destination's hub, at any of [stations], every TfL id of the hub's stations and stops, each to its station or
+ * stop ([Hubs.idsOf]), beyond the trip's own arrival ids ([ActiveTrip.destinationIds]); and on a step-free trip at
+ * any of those or of the trip's own only where the followed train's line meets the trip's level there ([end],
+ * [getsOffAt]). [NONE] where the ride gets off at the destination's own stops, unchecked, as before.
+ */
+class Arrival(val stations: Map<String, String>, private val end: LegEnd? = null, private val planned: TripLeg? = null) {
+    /** The ride's end where it arrives by hub ([LegEnd.Level.HUB]), for its other lines ([RideLines.of]); else null. */
+    val hubEnd: LegEnd? get() = end?.takeIf { it.level == LegEnd.Level.HUB }
+
+    /**
+     * Whether a train of [line] gets the rider off at [id], the trip's own or one of [stations]: anywhere, but on a
+     * step-free trip only where [line] meets the trip's level there today ([LegEnd.meets]), or at the Planner's own
+     * call ([planned], the last ride as planned) for its own line, which the Planner checked, as the trip page has
+     * it ([LegEnd.offIds]). A platform the end doesn't hold is read as its station record's ([arrivalOf]).
+     */
+    fun getsOffAt(id: String, line: TripLeg): Boolean {
+        val end = end?.takeIf { it.checksAccess } ?: return true
+        val at = if (id in end.ids) id else platformRecord(id)?.takeIf { it in end.ids } ?: id
+        if (planned != null && at == planned.toId && line.lineId == planned.lineId) return true
+        return end.meets(at, line.lineId, line.mode)
+    }
+
+    companion object {
+        /** Nothing beyond the end the Planner named: the ride gets off at the destination's own stops. */
+        val NONE = Arrival(emptyMap())
+    }
+}

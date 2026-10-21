@@ -2592,9 +2592,14 @@ past the low level to St Pancras's main record counts down to the low level and 
 is the first to arrive by hub: where the Planner's own end for the last ride is in the destination's
 hub, the ride ends at the train's first call anywhere in that hub, another station or bus stop of it
 included (a Circle train reaching one Paddington before the other gets the rider off at the first),
-by a call naming one TfL id, never a National Rail call naming its station's several records. Not on a
-step-free trip, nor one kept before its level was: the hub's other calls aren't checked against
-today's lifts yet, so it ends where the Planner, who checked, does. Its last ride takes the lines the
+by a call naming one TfL id, never a National Rail call naming its station's several records. On a
+step-free trip, only where the train's line is step-free there at the trip's level, by TfL's step-free
+data with the lifts TfL says are out now, as on the trip page; that goes for the destination's own other
+records too, and for a change station's, while the Planner's own call stays for its line. Where the
+lift at the stop it moved to goes out before the train gets there, mid-ride or while the app was
+away, the stop is worked out again: on to the next call that's step-free, or the Planner's own. With no
+step-free data to check by, or on a trip kept before its level was, it ends where the Planner, who
+checked, does. Its last ride takes the lines the
 trip's cards offer, one reaching another station of the destination's hub included: a train of it is
 followed, and once the rider is on board, or seen at that line's first call in the hub, the ride ends
 there, any walk planned on from the Planner's end going. The trip screen arrives by hub
@@ -2616,8 +2621,9 @@ review. A later trip's list shows its rides cut the same way, so its card and th
 stop. On a step-free trip, the trip page and a later trip's list do the same only where the train's line is
 step-free there at the trip's level, by TfL's step-free data with the lifts TfL says are out now (a later trip's
 list by the lifts last known), worked out again when those change: the Planner's own call stays for its line, which the Planner checked, and a station
-TfL doesn't describe for that line is passed by, never guessed. On the way doesn't check them yet, so a step-free
-trip there still ends each ride where the Planner does. Which rides arrive by hub is worked out
+TfL doesn't describe for that line is passed by, never guessed. On the way checks them the same way, by the
+lifts out now, and works an end it has moved out again when those change, later as well as earlier. Which rides
+arrive by hub is worked out
 off the main thread through the station model as the routes come in, the page holding what it last
 showed, or showing nothing yet, meanwhile, so no ride's end moves under the rider. The route
 as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,

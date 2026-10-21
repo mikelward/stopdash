@@ -6476,6 +6476,9 @@ class MainActivity : ComponentActivity() {
                     stations = { StationIndexStore.load(context.applicationContext) },
                     // The station model, for where the last ride arrives at the destination's hub.
                     hubs = HubsStore::ready,
+                    // A step-free trip's other calls, checked against TfL's table with the lifts out now.
+                    stepFreeAccess = { StepFreeStore.load(context.applicationContext) },
+                    liftsOut = { liftOutages.current().ids },
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)

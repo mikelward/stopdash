@@ -1078,7 +1078,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               so a line they offer to another record of the change's station is
                                               one of the ride's lines once on the way too, its train getting the
                                               rider off there. Not on a step-free trip.
-                                        - [ ] A step-free trip's first passing call in the hub, against
+                                        - [x] A step-free trip's first passing call in the hub, against
                                               today's lifts (`StepFreeAccess`, `LiftOutages`), so it
                                               arrives by hub too:
                                             - [x] The ends checked, unread: on a step-free trip given TfL's
@@ -1098,8 +1098,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                                   (`ShownRoutes.liftsOut`); a later trip's list by the lifts
                                                   TfL last said were out, a lift out now taken as out at the
                                                   time picked too, its cards listed again when those change.
-                                            - [ ] On the way's ends (`OnTheWay.arrivingEnd`, and its rides'
-                                                  station ends) checked the same way.
+                                            - [x] On the way's ends checked the same way, by the lifts out
+                                                  now (`ActiveTripTracker`'s `stepFreeAccess` and `liftsOut`,
+                                                  `LiftedAccess`): the last ride arriving by hub
+                                                  (`OnTheWay.arriving`, an `Arrival` getting the rider off at
+                                                  each id only where the followed train's line meets the
+                                                  trip's level), the destination's own other records with it,
+                                                  and every ride's station end (`RideEnds.of`) for its other
+                                                  lines. An end already moved is worked out again from the
+                                                  route as planned wherever today's lifts no longer let the
+                                                  rider off there, mid-ride or on a trip read back
+                                                  (`OnTheWay.advance`, `withEndAsPlanned`, with
+                                                  `ActiveTrip.plannedVehicleLeg`, Codex, #1070).
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
@@ -5291,14 +5301,10 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   destination's stops (#981), so the trip screen and on the way already differ there; this widens
   that move from the station to the hub. Alternative: wait and switch every family in one PR.
   Reversible: one parameter (`OnTheWay.advance`'s `arriving`), empty brings back the station rule.
-- [ ] **A step-free trip doesn't arrive by hub yet** (autopilot, 2026-10-20). No lift check reads a
-  hub's other calls yet, so a step-free trip (or one whose level isn't known) still gets off where
-  the Planner, who checked access when it planned, does. Alternative: arrive by hub regardless, or
-  build the first passing call against `StepFreeAccess` and `LiftOutages` now. The trip page's ride
-  lines and verdicts hold to the same (`RideEnds.of`), a ride's station end too (2026-10-21): a
-  station's other record may not be step-free where the Planner's is, and On the way's station ends
-  with them (`ActiveTripTracker.arrivalOf`). Reversible: one condition each in `OnTheWay.arrivingEnd`,
-  `RideEnds.of` and `ActiveTripTracker.arrivalOf`.
+- [x] **A step-free trip doesn't arrive by hub yet** (autopilot, 2026-10-20). Settled by building
+  the first passing call against `StepFreeAccess` and `LiftOutages` (#1066, #1067 and On the way's
+  PR): a step-free trip arrives by hub, and at a station's other records, only where the train's
+  line meets its level today. A trip whose level isn't known still gets off where the Planner does.
 - [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
   (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path
   at once, so no path is missed; that is too big for one PR, so each family takes its `LegEnd` in

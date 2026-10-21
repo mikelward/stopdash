@@ -189,6 +189,8 @@ class ActiveTripTrackerTest {
         preciseAllowed: () -> Boolean = { true },
         railArrivals: (suspend (String) -> app.stopdash.domain.RideArrivals)? = null,
         hubs: app.stopdash.domain.Hubs? = null,
+        access: app.stopdash.domain.StepFreeAccess? = null,
+        liftsOut: suspend () -> Set<String> = { emptySet() },
         load: () -> ActiveTrip? = { null },
     ) = ActiveTripTracker(
         remembered = remembered,
@@ -264,6 +266,8 @@ class ActiveTripTrackerTest {
             )
         },
         hubs = { hubs },
+        stepFreeAccess = { access },
+        liftsOut = liftsOut,
         stopPoles = { area ->
             poleReads++
             if (polesFail) throw TflException.Offline(null)
@@ -416,8 +420,13 @@ class ActiveTripTrackerTest {
         // Planned to Hamlet, reached through Praed, another station of its hub: the train calls at Praed first.
         val toHamlet = TripRoute(listOf(ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUPRA", "940GZZLUHAM"))))
         val calls = listOf(call("B", 9), call("940GZZLUPRA", 11), call("940GZZLUHAM", 14))
-        suspend fun ridingWith(stepFree: StepFree): TripProgress.Riding {
-            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub)
+        suspend fun ridingWith(
+            stepFree: StepFree?,
+            access: app.stopdash.domain.StepFreeAccess? = null,
+            out: Set<String> = emptySet(),
+            liftsOut: suspend () -> Set<String> = { out },
+        ): TripProgress.Riding {
+            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = access, liftsOut = liftsOut)
             now = t0
             departures["A"] = listOf(train("3", 8))
             trains["3"] = listOf(call("A", 8)) + calls
@@ -431,17 +440,152 @@ class ActiveTripTrackerTest {
             tracker.refresh()
             val riding = tracker.progress.value as TripProgress.Riding
             // The ride's end moved there, as the step names it.
-            assertEquals(if (stepFree == StepFree.ANY) "940GZZLUPRA" else "940GZZLUHAM", kept?.leg?.toId)
+            assertEquals(if (riding.getOffAt == at(11)) "940GZZLUPRA" else "940GZZLUHAM", kept?.leg?.toId)
             tracker.end()
             return riding
         }
         val riding = ridingWith(StepFree.ANY)
         assertEquals(2, riding.stopsLeft)
         assertEquals(at(11), riding.getOffAt)
-        // A step-free trip still gets off where the Planner, who checked its lifts, does.
+        // A step-free trip with no step-free table to check by gets off where the Planner, who checked its lifts, does.
         val stepFree = ridingWith(StepFree.FULLY)
         assertEquals(3, stepFree.stopsLeft)
         assertEquals(at(14), stepFree.getOffAt)
+        // TfL's table has red's Praed platform reached by ramp, through a lift: step-free today, so off at Praed.
+        val praed = app.stopdash.domain.StepFreeAccess(
+            mapOf(
+                "940GZZLUPRA" to mapOf(
+                    "red" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.RAMP, byLift = app.stopdash.domain.LiftStop("PRA", 1))),
+                ),
+            ),
+            mapOf("PRA" to app.stopdash.domain.LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        assertEquals(at(11), ridingWith(StepFree.FULLY, praed).getOffAt)
+        // With that lift out now, on to Hamlet, where the Planner gets off.
+        assertEquals(at(14), ridingWith(StepFree.FULLY, praed, out = setOf("LIFT1")).getOffAt)
+        // A trip kept before its level was gets off where the Planner does, table or none.
+        assertEquals(at(14), ridingWith(null, praed).getOffAt)
+        // Lifts that can't be read aren't taken as working: where the Planner gets off, the failure said by its type
+        // and where it was thrown, never its message.
+        logged.clear()
+        val unreadable = ridingWith(StepFree.FULLY, praed, liftsOut = { throw IllegalStateException("https://example.com/?app_key=EXAMPLE") })
+        assertEquals(at(14), unreadable.getOffAt)
+        val said = logged.first { it.startsWith("on the way: lift outages unreadable") }
+        assertTrue(said, said.contains("IllegalStateException at "))
+        assertFalse(said, said.contains("app_key"))
+        // Moved to Praed, then its lift goes out before the train gets there: the end is worked out again from the
+        // route as planned, on to Hamlet; back in service, off at Praed again.
+        var out = emptySet<String>()
+        val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = praed, liftsOut = { out })
+        now = t0
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8)) + calls
+        tracker.start(
+            toHamlet, "Hamlet", readyAt = now, destinationIds = mapOf("940GZZLUHAM" to "940GZZLUHAM"),
+            destinationStopId = "940GZZLUHAM", destinationLevel = Pick.Level.STATION, stepFree = StepFree.FULLY,
+        )
+        tracker.refresh()
+        now = at(9)
+        trains["3"] = calls
+        tracker.refresh()
+        assertEquals("940GZZLUPRA", kept?.leg?.toId)
+        out = setOf("LIFT1")
+        now = at(10)
+        trains["3"] = calls.drop(1)
+        tracker.refresh()
+        assertEquals(at(14), (tracker.progress.value as TripProgress.Riding).getOffAt)
+        assertEquals("940GZZLUHAM", kept?.leg?.toId)
+        out = emptySet()
+        tracker.refresh()
+        assertEquals(at(11), (tracker.progress.value as TripProgress.Riding).getOffAt)
+        assertEquals("940GZZLUPRA", kept?.leg?.toId)
+        tracker.end()
+    }
+
+    @Test
+    fun `on the way a trip kept with its end moved to a station whose lift has gone out since gets off further on`() = runTest {
+        // Moved to Praed and kept, then the app is gone while Praed's lift goes out: the trip read back works its end
+        // out again from the route as planned on its first refresh, on to Hamlet, rather than send the rider to Praed.
+        val toHamlet = TripRoute(listOf(ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUPRA", "940GZZLUHAM"))))
+        val calls = listOf(call("B", 9), call("940GZZLUPRA", 11), call("940GZZLUHAM", 14))
+        val praed = app.stopdash.domain.StepFreeAccess(
+            mapOf(
+                "940GZZLUPRA" to mapOf(
+                    "red" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.RAMP, byLift = app.stopdash.domain.LiftStop("PRA", 1))),
+                ),
+            ),
+            mapOf("PRA" to app.stopdash.domain.LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val first = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = praed)
+        now = t0
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8)) + calls
+        first.start(
+            toHamlet, "Hamlet", readyAt = now, destinationIds = mapOf("940GZZLUHAM" to "940GZZLUHAM"),
+            destinationStopId = "940GZZLUHAM", destinationLevel = Pick.Level.STATION, stepFree = StepFree.FULLY,
+        )
+        first.refresh()
+        now = at(9)
+        trains["3"] = calls
+        first.refresh()
+        val moved = checkNotNull(kept)
+        assertEquals("940GZZLUPRA", moved.leg?.toId)
+        first.end()
+        val restored = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = praed, liftsOut = { setOf("LIFT1") }, load = { moved })
+        restored.restore()
+        now = at(10)
+        trains["3"] = calls.drop(1)
+        restored.refresh()
+        assertEquals(at(14), (restored.progress.value as TripProgress.Riding).getOffAt)
+        assertEquals("940GZZLUHAM", kept?.leg?.toId)
+        restored.end()
+    }
+
+    @Test
+    fun `on the way a get off soon said for a hub station the lifts out move the end on from is taken back`() = runTest {
+        // Planned to Hamlet, moved to Praed, a stop out: "get off soon" names Praed. Then Praed's lift goes out, the
+        // end moves on to Hamlet, two stops out: the alert naming Praed is taken back, and Hamlet's said in its time.
+        val toHamlet = TripRoute(listOf(ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUPRA", "940GZZLUHAM"))))
+        val calls = listOf(call("B", 9), call("940GZZLUPRA", 11), call("940GZZLUHAM", 14))
+        val praed = app.stopdash.domain.StepFreeAccess(
+            mapOf(
+                "940GZZLUPRA" to mapOf(
+                    "red" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.RAMP, byLift = app.stopdash.domain.LiftStop("PRA", 1))),
+                ),
+            ),
+            mapOf("PRA" to app.stopdash.domain.LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        var out = emptySet<String>()
+        val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = praed, liftsOut = { out })
+        now = t0
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8)) + calls
+        tracker.start(
+            toHamlet, "Hamlet", readyAt = now, destinationIds = mapOf("940GZZLUHAM" to "940GZZLUHAM"),
+            destinationStopId = "940GZZLUHAM", destinationLevel = Pick.Level.STATION, stepFree = StepFree.FULLY,
+        )
+        tracker.refresh()
+        alerts.clear()
+        now = at(9)
+        trains["3"] = calls
+        tracker.refresh()
+        now = at(10)
+        trains["3"] = calls.drop(1)
+        tracker.refresh()
+        assertEquals(listOf("said 940GZZLUPRA"), alerts)
+        out = setOf("LIFT1")
+        tracker.refresh()
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals("940GZZLUHAM", riding.leg.toId)
+        assertFalse(riding.getOffSoon)
+        assertEquals(listOf("said 940GZZLUPRA", "done"), alerts)
+        assertEquals(-1, kept?.warnedLeg)
+        // One stop out from Hamlet: said for Hamlet.
+        now = at(12)
+        trains["3"] = calls.drop(2)
+        tracker.refresh()
+        assertEquals(listOf("said 940GZZLUPRA", "done", "said 940GZZLUHAM"), alerts)
+        tracker.end()
     }
 
     @Test
@@ -451,8 +595,8 @@ class ActiveTripTrackerTest {
         val toHamlet = ride.copy(toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("B", "940GZZLUHAM"))
         val toPraed = blueRide.copy(toId = "940GZZLUPRA", toName = "Praed", path = listOf("B", "940GZZLUPRA"))
         offered["red"] = listOf(toHamlet, toPraed)
-        suspend fun startWith(stepFree: StepFree): ActiveTripTracker {
-            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub)
+        suspend fun startWith(stepFree: StepFree, access: app.stopdash.domain.StepFreeAccess? = null): ActiveTripTracker {
+            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = access)
             now = t0
             endsGiven.clear()
             departures["A"] = listOf(Departure("blue", "Blue", "outbound", "Praed", null, at(6), "tube", vehicleId = "4"), train("3", 8))
@@ -480,9 +624,20 @@ class ActiveTripTrackerTest {
         assertEquals(at(12), (tracker.progress.value as TripProgress.Riding).getOffAt)
         assertEquals("940GZZLUPRA", kept?.leg?.toId)
         tracker.end()
-        // A step-free trip's last ride gets off where the Planner does, so its lines are asked for that alone.
+        // A step-free trip with no step-free table gets off where the Planner does, so its lines are asked for that alone.
         startWith(StepFree.FULLY).end()
         assertEquals(app.stopdash.domain.LegEnd.planned(toHamlet, StepFree.FULLY), endsGiven.last().second)
+        // With TfL's table, anywhere in the hub, each line by how step-free it is at each station today, as the trip's
+        // cards ask: blue is level at Praed.
+        val blueLevel = app.stopdash.domain.StepFreeAccess(
+            mapOf("940GZZLUPRA" to mapOf("blue" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.LEVEL)))),
+        )
+        startWith(StepFree.FULLY, blueLevel).end()
+        val stepFree = endsGiven.last().second
+        assertEquals(app.stopdash.domain.LegEnd.Level.HUB, stepFree.level)
+        assertEquals(StepFree.FULLY, stepFree.stepFree)
+        assertTrue(stepFree.meets("940GZZLUPRA", "blue", "tube"))
+        assertFalse(stepFree.meets("940GZZLUPRA", "red", "tube"))
     }
 
     // Synthetic: a station Mid of two records, its main one (940GZZLUMID) and its low level (940GZZLUMLL), where a
@@ -506,8 +661,8 @@ class ActiveTripTrackerTest {
         // Red to Mid, then blue on from there: red's lines, as the trip's cards find them, get off anywhere in Mid.
         val toMid = ride.copy(toId = "940GZZLUMID", toName = "Mid", path = listOf("B", "940GZZLUMID"))
         val onward = TripLeg("tube", "blue", "Blue", "940GZZLUMID", "Mid", "E", "E", at(20), at(30), path = listOf("E"))
-        suspend fun endWith(stepFree: StepFree?): app.stopdash.domain.LegEnd {
-            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoRecordStation)
+        suspend fun endWith(stepFree: StepFree?, access: app.stopdash.domain.StepFreeAccess? = null): app.stopdash.domain.LegEnd {
+            val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoRecordStation, access = access)
             now = t0
             endsGiven.clear()
             departures["A"] = listOf(train("3", 8))
@@ -520,9 +675,17 @@ class ActiveTripTrackerTest {
         val end = endWith(StepFree.ANY)
         assertEquals(app.stopdash.domain.LegEnd.Level.STOP, end.level)
         assertTrue("${end.ids}", "940GZZLUMID" in end.ids && "940GZZLUMLL" in end.ids)
-        // A step-free trip, or one kept before its level was, gets off where the Planner does.
+        // A step-free trip with no step-free table, or one kept before its level was, gets off where the Planner does.
         assertEquals(app.stopdash.domain.LegEnd.planned(toMid, StepFree.FULLY), endWith(StepFree.FULLY))
-        assertEquals(app.stopdash.domain.LegEnd.planned(toMid, StepFree.ANY), endWith(null))
+        val lowLevel = app.stopdash.domain.StepFreeAccess(
+            mapOf("940GZZLUMLL" to mapOf("red" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.PLATFORM)))),
+        )
+        assertEquals(app.stopdash.domain.LegEnd.planned(toMid, StepFree.ANY), endWith(null, lowLevel))
+        // With TfL's table, at any record of Mid where the line meets the trip's level today: red at the low level.
+        val stepFree = endWith(StepFree.STATION, lowLevel)
+        assertEquals(app.stopdash.domain.LegEnd.Level.STOP, stepFree.level)
+        assertEquals(setOf("940GZZLUMLL"), stepFree.offIds(toMid.copy(lineId = "green"), "red", "tube"))
+        assertEquals(setOf("940GZZLUMLL", "940GZZLUMID"), stepFree.offIds(toMid))
     }
 
     @Test

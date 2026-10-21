@@ -356,6 +356,9 @@ private data class PersistedActiveTrip(
     // How step-free the trip was planned to be ([StepFree.name]), from version 4. Absent from a trip
     // kept before it was, or a name this build doesn't know, read as unknown, which never widens a check.
     val stepFree: String? = null,
+    // The leg the train was followed on as followed while its end is moved, from version 5. Absent with
+    // nothing moved, a train on the Planner's line, or from a trip kept before it was.
+    val plannedVehicleLeg: PersistedTripLeg? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -398,6 +401,7 @@ private data class PersistedActiveTrip(
         offAt = offAt?.let(Instant::parse),
         plannedLegs = plannedLegs?.map { it.toLeg() },
         stepFree = StepFree.entries.firstOrNull { it.name == stepFree },
+        plannedVehicleLeg = plannedVehicleLeg?.toLeg(),
     )
 
     companion object {
@@ -406,9 +410,11 @@ private data class PersistedActiveTrip(
          * keeps the destination's level, which a build before it would drop on its next write; 3 the
          * route as planned while the last ride's end is moved, without which an older build would keep
          * the moved end for good; 4 how step-free the trip was planned to be, which an older build would
-         * drop, widening a step-free trip's checks.
+         * drop, widening a step-free trip's checks; 5 the leg the train was followed on while its end is
+         * moved, without which a step-free trip's end, worked out again when the lifts change, would stay on
+         * the cut leg.
          */
-        const val CURRENT_VERSION = 4
+        const val CURRENT_VERSION = 5
 
         fun of(trip: ActiveTrip) = PersistedActiveTrip(
             version = CURRENT_VERSION,
@@ -451,6 +457,7 @@ private data class PersistedActiveTrip(
             offAt = trip.offAt?.toString(),
             plannedLegs = trip.plannedLegs?.map { PersistedTripLeg.of(it) },
             stepFree = trip.stepFree?.name,
+            plannedVehicleLeg = trip.plannedVehicleLeg?.let { PersistedTripLeg.of(it) },
         )
     }
 }
