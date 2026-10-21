@@ -1107,7 +1107,13 @@ none does; a row still listed falls back as above. **Under the title, a chip per
 stop** (maintainer, 2026-10-21), both ways: each of its routes from the stop through its end, routes calling at
 the same stops from here one chip, and a way its trains take that no route ends at (a short working) its own.
 A chip is named by where it goes, with its via where two go to one place ("Morden/Bank", "Morden/Charing X"),
-else by the first stop that tells them apart. The tapped row's route is chosen. A route with a train at the stop
+else by the first stop that tells them apart. A train TfL names no destination for ("Check Front of Train") has its
+own chip, named by how far it goes at least, a guess and marked as one: "At least to Camden Town?", the farthest
+stop every way it can run from here reaches before they part (maintainer, 2026-10-21). Its ways are found as any
+train's are: its platform's bound first, else its TfL direction, which on a loop can name the other way round (Codex
+on #1045). Such trains guessed to go different distances have a chip each, so a chip's guess holds for every train
+on it, whichever platform's the page follows. TfL's own words stay on
+the page's title; where its way isn't known, or its routes part at once, the chip keeps them. The tapped row's route is chosen. A route with a train at the stop
 moves the page to it, as a tap on its row would; one with none lists its stops from the line's routes, with
 "No live times" in the countdown's place and no star (the star pins a row it isn't), until a train comes on it.
 A way a train at the stop does run, but one the page can't follow apart from another train to the same place by

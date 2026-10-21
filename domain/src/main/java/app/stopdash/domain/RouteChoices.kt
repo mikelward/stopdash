@@ -27,9 +27,13 @@ data class RouteChoice(
     // by the same via that runs another way (a bus route's variants, told apart only by their stops). It has no
     // [live] to hand over to, but it isn't a way with no train either (Codex on #1038).
     val unfollowedTrain: Boolean = false,
+    // For a live train TfL names no destination for ("Check Front of Train"), the farthest stop every way it can run
+    // from here reaches before they part: how far it goes at least, a guess (maintainer, 2026-10-21).
+    val atLeast: String? = null,
 ) {
     /** Which choice this is, for the page to hold across a refresh: its way and stops, else its live route. */
-    val key: String = if (path.isEmpty()) "$direction|live|$destination|${branch.orEmpty()}" else "$direction|${path.joinToString(",")}"
+    val key: String =
+        if (path.isEmpty()) "$direction|live|$destination|${branch.orEmpty()}${atLeast?.let { "|$it" }.orEmpty()}" else "$direction|${path.joinToString(",")}"
 }
 
 /** A choice's soonest train at the stop: the row it's listed in and the route a tap on that row's card follows. */
@@ -99,6 +103,10 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
                     if (resolution == RouteStops.Resolution.EndsHere) continue
                     val path = (resolution as? RouteStops.Resolution.Found)?.stops?.map { it.id }.orEmpty()
                     val way = train.direction.ifBlank { from.direction }
+                    // A train TfL names no destination for is told apart by how far it goes at least, so a choice's
+                    // guess holds for each train on it, whichever platform's the page follows (Codex on #1045).
+                    val guess = if (path.isEmpty()) atLeastOf(routes, stopId, train, way, bus) else null
+                    val unknown = "$way|${train.destination}|${group.branch.orEmpty()}|${guess.orEmpty()}"
                     val index = if (path.isNotEmpty()) {
                         byPath[path] ?: liveOnly[path.joinToString(",")]
                     } else {
@@ -108,17 +116,18 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
                             sameStopName(choice.destination, train.destination) &&
                                 (train.branch == null || choice.branch == null || choice.branch == train.branch) &&
                                 (way.isBlank() || choice.direction.isBlank() || choice.direction == way)
-                        } ?: liveOnly["$way|${train.destination}|${group.branch.orEmpty()}"]
+                        } ?: liveOnly[unknown]
                     } ?: run {
                         // A way the line's routes don't run from here (a short working): a choice of its own.
-                        choices += RouteChoice(train.destination, train.branch, path, way)
-                        liveOnly[if (path.isNotEmpty()) path.joinToString(",") else "$way|${train.destination}|${group.branch.orEmpty()}"] = choices.lastIndex
+                        choices += RouteChoice(train.destination, train.branch, path, way, atLeast = guess)
+                        liveOnly[if (path.isNotEmpty()) path.joinToString(",") else unknown] = choices.lastIndex
                         choices.lastIndex
                     }
                     val held = soonestAt[index]
                     if (held == null || train.expectedArrival < held) {
                         soonestAt[index] = train.expectedArrival
-                        choices[index] = choices[index].copy(live = LiveRoute(from, RouteFocus.of(group)))
+                        val atLeast = if (choices[index].path.isEmpty()) guess else null
+                        choices[index] = choices[index].copy(live = LiveRoute(from, RouteFocus.of(group)), atLeast = atLeast)
                     }
                     if (followed != null && (group.times.any { it === followed } || group.untimed.any { it.train === followed })) current = index
                     // Its other trains, each on its own way: one running another way than its soonest has a train at
@@ -230,6 +239,25 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
                 }
                 choice.copy(showBranch = branched[i], parting = parting)
             }
+        }
+
+        /**
+         * How far [train], one TfL names no destination for ([RouteStops.isUnknownDestination]), goes at least: the
+         * farthest stop every way it can run from [stopId] reaches before they part (a Northern line train at Morden
+         * reaching Kennington by either branch). Its ways are the ones a train is resolved onto
+         * ([RouteStops.candidatePaths]), so its platform's bound wins over its TfL direction, as on a loop (Codex on
+         * #1045). A guess from the route data, never TfL's destination; none where neither its bound nor its [way]
+         * ([RouteChoice.direction]) is known, or its ways part at once.
+         */
+        @WorkerThread
+        private fun atLeastOf(routes: LineSequence, stopId: String, train: Departure, way: String, bus: Boolean): String? {
+            if (!RouteStops.isUnknownDestination(train.destination)) return null
+            val bound = RouteStops.boundOf(train.platform)
+            if (bound == null && way.isBlank()) return null
+            val ways = RouteStops.candidatePaths(routes, stopId, train.destination, train.branch, bus, bound, way, train.destinationId, train.via)
+            if (ways.isEmpty()) return null
+            val shared = ways.reduce { a, b -> a.zip(b).takeWhile { (x, y) -> x == y }.map { it.first } }
+            return shared.takeIf { it.size >= 2 }?.last()
         }
 
         private fun nationalRail(row: DepartureRow): Boolean =

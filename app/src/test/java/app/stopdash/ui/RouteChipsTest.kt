@@ -669,6 +669,63 @@ class RouteChipsTest {
         composeRule.onNodeWithText("10:05").assertIsDisplayed()
     }
 
+    @Test
+    fun a_train_with_no_destination_offers_how_far_it_goes_at_least_as_a_guess() {
+        // TfL names no destination for the next southbound train: both its routes run on to Camden Town first.
+        val unknown = StopArrivals(
+            stopId = HGT,
+            stopName = "Highgate",
+            departures = listOf(Departure("northern", "Northern", "outbound", "Check Front of Train", "Southbound - Platform 2", now.plusSeconds(120), "tube")),
+            fetchedAt = now,
+        )
+        val scheduler = TestCoroutineScheduler()
+        val board = app.stopdash.domain.DepartureRows.across(listOf(unknown), now)
+        val row = board.single { it.direction == "outbound" }
+        // The line's routes with their stations' positions, as TfL gives them: a "Southbound" platform reads by them,
+        // as any train's ways are found (Codex on #1045).
+        val positions = mapOf(
+            HBT to (51.6505 to -0.1943), HGT to (51.5777 to -0.1458), CTN to (51.5392 to -0.1426), MTC to (51.5343 to -0.1387),
+            EUS to (51.5282 to -0.1337), BNK to (51.5133 to -0.0886), CHX to (51.5080 to -0.1247), KNG to (51.4884 to -0.1053),
+            MDN to (51.4022 to -0.1948),
+        )
+        val placed = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
+                    if (direction == "outbound") southbound else southbound.map { it.copy(stopIds = it.stopIds.reversed(), direction = "inbound") },
+                    names,
+                    stopPositions = positions,
+                )
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides placed) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        siblings = board,
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+        // Its own chip, chosen, says the guess, marked as one; TfL's words aren't its destination.
+        composeRule.onNodeWithText("At least to Camden Town?").assertIsDisplayed()
+        composeRule.onNodeWithText("At least to Camden Town?").assertIsSelected()
+        // The ways it could take are chips too.
+        composeRule.onNodeWithText("Morden/Bank").assertIsDisplayed()
+        composeRule.onNodeWithText("Morden/Charing X").assertIsDisplayed()
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"

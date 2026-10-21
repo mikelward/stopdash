@@ -95,7 +95,9 @@ internal class RouteChoicesUi private constructor(
 
         /**
          * [row]'s line's choices at its stop from [sequence] (both ways), with the trains among [rows], [first]'s
-         * way first ([RouteChoices.of]); [via] formats a choice told apart by where it parts ("%1$s via %2$s").
+         * way first ([RouteChoices.of]); [via] formats a choice told apart by where it parts ("%1$s via %2$s"), and
+         * [atLeast] a train TfL names no destination for by how far it goes at least, a guess ("At least to %1$s?",
+         * [RouteChoice.atLeast]).
          */
         @WorkerThread
         fun of(
@@ -106,6 +108,7 @@ internal class RouteChoicesUi private constructor(
             topology: RouteTopology,
             via: String,
             first: String,
+            atLeast: String = "%1\$s?",
         ): RouteChoicesUi {
             val choices = RouteChoices.of(sequence, row, rows, focus, topology, first)
             val routes = sequence.eachCallingAt(row.stopId)
@@ -116,7 +119,7 @@ internal class RouteChoicesUi private constructor(
                     routes,
                 )
             }
-            return RouteChoicesUi(choices, choices.choices.map { labelOf(it, row, via) }, lists)
+            return RouteChoicesUi(choices, choices.choices.map { labelOf(it, row, via, atLeast, sequence) }, lists)
         }
 
         /**
@@ -142,8 +145,10 @@ internal class RouteChoicesUi private constructor(
         }
 
         // "Morden/Bank" where the via tells two ways to one place apart, as a card names the route; "Zulu via
-        // Bravo" where only a stop does.
-        private fun labelOf(choice: RouteChoice, row: DepartureRow, via: String): String {
+        // Bravo" where only a stop does; "At least to Kennington?" for a train TfL names no destination for, a guess
+        // marked as one, never its destination (TfL's own words stay on the page's title).
+        private fun labelOf(choice: RouteChoice, row: DepartureRow, via: String, atLeast: String, sequence: LineSequence): String {
+            choice.atLeast?.let { id -> sequence.stopNames[id]?.ifBlank { null } }?.let { return atLeast.format(it) }
             val place = DepartureLabels.destinationLabel(choice.destination, row.directionKey) ?: choice.destination
             val named = if (choice.showBranch && choice.branch != null) "$place/${choice.branch}" else place
             return choice.parting?.let { via.format(named, it) } ?: named
@@ -178,14 +183,15 @@ internal fun rememberRouteChoices(row: DepartureRow, siblings: List<DepartureRow
     val worker = LocalWorker.current
     val topology = LocalRouteTopology.current
     val via = stringResource(R.string.route_choice_via)
+    val atLeast = stringResource(R.string.route_choice_at_least)
     val ask = remember(row, focus, topology, ByIdentity(siblings)) { Any() }
     if (repository == null || row.lineId.isBlank()) return RouteChoicesUi.NONE
     // Another stop or line starts with none; a refreshed row keeps the last answer until its own is in.
     return key(row.stopId, row.lineId, repository) {
         // Each answer with the ask it was worked out for, so one for rows since refreshed is known for what it is.
-        val answer by produceState<Pair<Any, RouteChoicesUi>?>(null, ask, worker, via, first, retry) {
+        val answer by produceState<Pair<Any, RouteChoicesUi>?>(null, ask, worker, via, atLeast, first, retry) {
             value = ask to try {
-                withContext(worker) { RouteChoicesUi.of(repository.load(row.lineId, ""), row, siblings, focus, topology, via, first) }
+                withContext(worker) { RouteChoicesUi.of(repository.load(row.lineId, ""), row, siblings, focus, topology, via, first, atLeast) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
