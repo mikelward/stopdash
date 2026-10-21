@@ -3909,7 +3909,8 @@ trip from there would take the place of the one under it. Where something else i
 its stations stay inert.
 A stop tapped on a route page's stop list opens the same details over the route page, headed by the
 departure tapped with Go in place of From and To, and without the letter and way of a bus stop the ride gets off at (*Route detail*). Its line pills open the line in Lines…
-only where Lines… would show; elsewhere they're shown, not tapped.
+only where Lines… would show, the details stepping aside for it and coming back on its Back, as they do
+for the saved places' editor their Favorite opens (*Back*); elsewhere they're shown, not tapped.
 A bus stop shows its **letter and the way its buses go** under From and To ("Stop H, towards Oxford
 Circus"), or its compass heading where TfL gives no letter or "towards", as the near-me list heads its
 poles: from its stop area's poles, the area as the line's route data places the stop, both from the
