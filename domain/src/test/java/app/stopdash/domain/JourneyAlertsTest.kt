@@ -766,6 +766,79 @@ class JourneyAlertsTest {
         assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(south), lines, mapOf("tl" to northOnly.copy(byDirection = emptyMap()))))
     }
 
+    // A tube line both ways between two ends, made-up stops, with a part closure in TfL's style at its south
+    // end, each way's section in the order its route runs ([PartClosure.sections]). Made-up words.
+    private val tubeLine = LineSequence(
+        listOf(
+            LineRoute("North - South", listOf("t1", "t2", "t3", "t4", "t5", "t6"), direction = "outbound"),
+            LineRoute("South - North", listOf("t6", "t5", "t4", "t3", "t2", "t1"), direction = "inbound"),
+        ),
+        mapOf("t1" to "North End", "t2" to "Alpha", "t3" to "Beta", "t4" to "Gamma", "t5" to "Delta", "t6" to "South End"),
+    )
+    private val closedWords = "Tube Line: No service between Gamma and South End due to planned engineering work. GOOD SERVICE on the rest of the line."
+    private val southClosure = PartClosure(5, "Part Closure", closedWords, listOf(listOf("t4", "t5", "t6"), listOf("t6", "t5", "t4")))
+    private val closedSouth = LineStatus(
+        "tl", 5, "Part Closure", closedWords, closures = listOf(southClosure), soleAlert = true,
+        underWay = listOf(LineAlert(5, "Part Closure", closedWords)),
+    )
+    private fun tubeRide(from: String, to: String) =
+        FavoriteJourney(JourneyEnd(from, tubeLine.stopNames.getValue(from)), JourneyEnd(to, tubeLine.stopNames.getValue(to)), "tl", "Tube Line", "tube")
+
+    @Test
+    fun `a tube part closure at the far end of the line doesn't alert a ride that never reaches it`() {
+        // A closure both ways at one end alerted a ride at the other (maintainer, 2026-10-20).
+        val routes = mapOf("tl" to tubeLine)
+        val north = tubeRide("t1", "t3")
+        assertTrue(alertsFor(north, closedSouth, routes = routes).isEmpty())
+        assertTrue(alertsFor(north, closedSouth, routes = routes, origins = setOf("t3")).isEmpty())
+        // Nor one that only gets off where it starts: trains run up to it.
+        assertTrue(alertsFor(tubeRide("t1", "t4"), closedSouth, routes = routes).isEmpty())
+        // A ride into its stretch, either way, is alerted.
+        assertEquals(listOf("Part Closure"), alertsFor(tubeRide("t3", "t5"), closedSouth, routes = routes).map { it.description })
+        assertEquals(listOf("Part Closure"), alertsFor(tubeRide("t3", "t5"), closedSouth, routes = routes, origins = setOf("t5")).map { it.description })
+        // Unknown is on: no route read, a ride the route doesn't run, a closure TfL gave no sections for, or
+        // other alerts under way whose words weren't kept.
+        assertEquals(1, alertsFor(north, closedSouth, routes = emptyMap()).size)
+        assertEquals(1, alertsFor(north.copy(to = JourneyEnd("x9", "Elsewhere")), closedSouth, routes = routes).size)
+        assertEquals(1, alertsFor(north, closedSouth.copy(closures = listOf(southClosure.copy(sections = emptyList()))), routes = routes).size)
+        assertEquals(1, alertsFor(north, closedSouth.copy(soleAlert = false, underWay = emptyList()), routes = routes).size)
+        // Another alert under way that isn't a closure spreads along the line, so the ride hears that one.
+        val delays = "Tube Line: Minor delays due to an earlier signal failure."
+        val both = closedSouth.copy(soleAlert = false, underWay = closedSouth.underWay + LineAlert(9, "Minor Delays", delays))
+        assertEquals(listOf("Minor Delays" to delays), alertsFor(north, both, routes = routes).map { it.description to it.fullText })
+        assertEquals(listOf("Part Closure"), alertsFor(tubeRide("t3", "t5"), both, routes = routes).map { it.description })
+    }
+
+    @Test
+    fun `a closure a ride runs through is named for itself behind a milder alert shown`() {
+        // TfL can show minor delays ahead of a part closure it numbers higher; a trip names the closure on
+        // its leg ([RouteDisruption.lineSignal]), and so does a favorite ride's alert.
+        val routes = mapOf("tl" to tubeLine)
+        val delays = "Tube Line: Minor delays due to an earlier signal failure."
+        val partClosed = southClosure.copy(severity = 11, description = "Part Closed")
+        val status = LineStatus(
+            "tl", 9, "Minor Delays", delays, closures = listOf(partClosed),
+            underWay = listOf(LineAlert(9, "Minor Delays", delays), LineAlert(11, "Part Closed", closedWords)),
+        )
+        assertEquals(listOf("Part Closed" to closedWords), alertsFor(tubeRide("t3", "t5"), status, routes = routes).map { it.description to it.fullText })
+        // Off its stretch, the delays shown stand.
+        assertEquals(listOf("Minor Delays"), alertsFor(tubeRide("t1", "t3"), status, routes = routes).map { it.description })
+        // A line not running at all says so, whatever closure the ride runs through.
+        val suspended = status.copy(severity = 2, description = "Suspended", fullText = "Tube Line: Suspended.")
+        assertEquals(listOf("Suspended"), alertsFor(tubeRide("t3", "t5"), suspended, routes = routes).map { it.description })
+    }
+
+    @Test
+    fun `a route is read for a tube or rail line with a closure TfL gave sections for`() {
+        val ride = tubeRide("t1", "t3")
+        val lines = mapOf(ride.key to setOf("tl"))
+        assertEquals(setOf("tl"), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("tl" to closedSouth)))
+        // Not where it gave none, nor for a bus line, whose alerts are placed by their words.
+        val unplaced = closedSouth.copy(closures = listOf(southClosure.copy(sections = emptyList())))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("tl" to unplaced)))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride.copy(mode = "bus")), lines, mapOf("tl" to closedSouth.copy(fullText = null))))
+    }
+
     @Test
     fun `each open way is placed on its own ride before the worst is picked`() {
         // Both ways open, each with an alert TfL scoped to it: the worse, off its ride, mustn't hide the

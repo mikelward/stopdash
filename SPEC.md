@@ -1642,8 +1642,14 @@ kind the route page makes), and an alert whose stretch lies off the ride in ever
 left out. Each line is ridden from the journey's ends and, for a line the widget pins beside it, from the
 pole it boards at to the far-end stops its departures get off at, as the app last found them (maintainer,
 2026-10-15). Unknown is on: a route not read, or a direction none of whose rides it can place, keeps the
-alert. Nor does an alert TfL scopes to one way alert a ride the other way, whatever its words or the line's
-mode: a diversion southbound only says nothing of the way home (maintainer, 2026-10-16), nor a tube
+alert. A **tube or rail part closure alerts only a ride through its stretch**, by the sections TfL gives it,
+as a trip places one on its leg (*On the way*): a closure both ways at the far end of the line says nothing
+of a ride that never reaches it, nor of one that only gets off where it starts, as trains run up to it
+(maintainer, 2026-10-20). So while one is under way with its sections given, the line's route is read the
+same way; a ride through its stretch is told of the closure in its own words, even behind a milder alert TfL
+shows ahead of it, unless the line isn't running at all. Any other alert under way spreads along the line
+and still alerts the ride, and a closure TfL gave no sections for counts as on it. Nor does an alert TfL
+scopes to one way alert a ride the other way, whatever its words or the line's mode: a diversion southbound only says nothing of the way home (maintainer, 2026-10-16), nor a tube
 suspension northbound only of a ride south (maintainer, 2026-10-20), so a line with such an alert has its
 route read too, to tell which way the ride goes. Which way an alert runs is
 looked up once per alert, as the list's is (TfL's detailed status, about 150 KB a line, kept in memory and
