@@ -752,6 +752,55 @@ class LaterTripViewModelTest {
     }
 
     @Test
+    fun `a listed route riding on through the destination is cut where it first gets there, after the timed ones`() = runTest(dispatcher) {
+        // Through Hill East, another station of Hill's hub ([HillModel]), on to Vale and a train back to Hill: the rider
+        // gets off at Hill East, where the Planner gave no time, so its card says when it leaves alone.
+        val through = leg("circle", "A", "910GVALE", 5, 30).copy(
+            path = listOf("940GZZLUAAA", "940GZZLUHLE", "910GVALE"),
+            pathNames = listOf("Aye", "Hill East", "Vale"),
+        )
+        val detour = TripRoute(listOf(through, leg("rail", "910GVALE", "910GHILL", 32, 40)), fare = app.stopdash.domain.TripFare(500))
+        val direct = TripRoute(listOf(leg("red", "A", "910GHILL", 5, 45)))
+        val later = LaterTripViewModel(
+            Planner(mapOf("910GHILL" to listOf(detour, direct))), { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("910GHILL")),
+            arriving = { HillModel.toHill }, io = dispatcher, compute = dispatcher,
+        )
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        val (timed, cut) = later.state.value.cards!!
+        assertEquals(routeKey(direct), timed.routeKey)
+        assertEquals("09:45", timed.arrives)
+        // Kept, not dropped, and opened as the route the Planner gave.
+        assertEquals(routeKey(detour), cut.routeKey)
+        assertEquals("940GZZLUHLE", cut.route.legs.single().toId)
+        assertEquals("Hill East", cut.rows.single().toName)
+        assertEquals("09:05", cut.departs)
+        assertNull(cut.arrives)
+        assertNull(cut.minutes)
+        // No fare: the Planner priced the whole detour.
+        assertNull(cut.route.fare)
+    }
+
+    @Test
+    fun `a listed route cut at a change in the destination is ordered by when it gets there`() = runTest(dispatcher) {
+        // Planned on from a change at Hill East, another station of Hill's hub ([HillModel]), to arrive at 09:40: cut
+        // there, it gets there at 09:10, before the direct route's 09:20.
+        val detour = TripRoute(
+            listOf(leg("red", "A", "940GZZLUHLE", 5, 10), leg("circle", "940GZZLUHLE", "910GVALE", 12, 30), leg("rail", "910GVALE", "910GHILL", 32, 40)),
+        )
+        val direct = TripRoute(listOf(leg("red", "A", "910GHILL", 5, 20)))
+        val later = LaterTripViewModel(
+            Planner(mapOf("910GHILL" to listOf(direct, detour))), { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("910GHILL")),
+            arriving = { HillModel.toHill }, io = dispatcher, compute = dispatcher,
+        )
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        val cards = later.state.value.cards!!
+        assertEquals(listOf(routeKey(detour), routeKey(direct)), cards.map { it.routeKey })
+        assertEquals("09:10", cards.first().arrives)
+    }
+
+    @Test
     fun `a step-free later trip, or one with no model, ends each ride where the Planner does`() = runTest(dispatcher) {
         val route = TripRoute(listOf(leg("red", "A", "910GHILL", 5, 30)))
         val planner = Planner(mapOf("910GHILL" to listOf(route)))

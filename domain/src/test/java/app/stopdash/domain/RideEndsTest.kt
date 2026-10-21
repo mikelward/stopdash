@@ -243,9 +243,69 @@ class RideEndsTest {
         // A call the Planner didn't name: nothing to show where the ride gets off.
         val unnamed = TripRoute(listOf(route.legs[0].copy(pathNames = emptyList())))
         assertEquals(listOf(unnamed), RideEnds.cut(listOf(unnamed), StepFree.ANY, toHill))
-        // A middle ride ending in the hub changes there, as planned.
-        val change = TripRoute(route.legs + ride("940GZZLUHIL", "910GVALE"))
-        assertEquals(listOf(change), RideEnds.cut(listOf(change), StepFree.ANY, toHill))
+    }
+
+    @Test
+    fun `a route riding on through the destination's hub is cut where it first gets there, its arrival unknown`() {
+        // Through Hill East and on to Hill, then a train out to Vale: it gets off at Hill East, where the Planner gave no time.
+        val route = TripRoute(loop().legs + ride("940GZZLUHIL", "910GVALE"), fare = TripFare(290))
+        val cut = RideEnds.cut(listOf(route), StepFree.ANY, toHill).single()
+        val ride = cut.legs.single()
+        assertEquals("940GZZLUHLE", ride.toId)
+        assertEquals("Hill East", ride.toName)
+        assertEquals(listOf("940GZZLUAAA", "940GZZLUHLE"), ride.path)
+        assertTrue(cut.untimed)
+        // The Planner priced the whole detour; the route as planned is never changed.
+        assertEquals(null, cut.fare)
+        assertTrue(cut.drawnFrom === route)
+        assertEquals(TripFare(290), route.fare)
+        // Worked out again for the cut route, it arrives by hub at that call.
+        assertEquals(LegEnd.Level.HUB, RideEnds.of(listOf(cut), StepFree.ANY, toHill).ends(cut).single().second.level)
+    }
+
+    @Test
+    fun `a route changing in the destination's hub and riding on ends at the change, at the Planner's time there`() {
+        // To Hill, changing there for Vale and a train back to Hill's low level: off at Hill, the change.
+        val toHillTube = ride("940GZZLUFRM", "940GZZLUHIL", mode = "tube").copy(path = listOf("940GZZLUAAA", "940GZZLUHIL"), pathNames = listOf("Aye", "Hill"))
+        val route = TripRoute(listOf(toHillTube, walk(), ride("910GHILL", "910GVALE"), ride("910GVALE", "910GHILLLL")))
+        val cut = RideEnds.cut(listOf(route), StepFree.ANY, toHill).single()
+        assertEquals(listOf(toHillTube), cut.legs)
+        assertFalse(cut.untimed)
+        assertTrue(cut.drawnFrom === route)
+        // Walking to the hub and riding out from it: the walk alone.
+        val walkThere = walk().copy(toId = "910GHILL")
+        val onFoot = TripRoute(listOf(walkThere, ride("910GHILL", "910GVALE"), ride("910GVALE", "910GHILLLL")))
+        assertEquals(listOf(walkThere), RideEnds.cut(listOf(onFoot), StepFree.ANY, toHill).single().legs)
+    }
+
+    @Test
+    fun `a step-free route riding through the destination's hub is cut only where its line meets the level`() {
+        val route = TripRoute(loop().legs + ride("940GZZLUHIL", "910GVALE"))
+        // Hill East meets it, by its lift.
+        assertEquals("940GZZLUHLE", RideEnds.cut(listOf(route), StepFree.STATION, toHillBy(hillAccess)).single().legs.single().toId)
+        // With that lift out, and Hill not step-free, the ride changes at Hill as planned: nowhere to get off on the way.
+        assertTrue(RideEnds.cut(listOf(route), StepFree.STATION, toHillBy(hillAccess.withLiftsOut(setOf("LIFT1")))).single() === route)
+        // No table to check by: as planned.
+        assertTrue(RideEnds.cut(listOf(route), StepFree.STATION, toHill).single() === route)
+        // Changing at Hill, whose platforms aren't step-free on its line: the walk on joins platforms, and may never reach
+        // the street, so the route isn't cut at the change either (Codex, #1075).
+        val toHillTube = ride("940GZZLUFRM", "940GZZLUHIL", mode = "tube").copy(path = listOf("940GZZLUAAA", "940GZZLUHIL"), pathNames = listOf("Aye", "Hill"))
+        val changing = TripRoute(listOf(toHillTube, walk(), ride("910GHILL", "910GVALE"), ride("910GVALE", "910GHILLLL")))
+        assertTrue(RideEnds.cut(listOf(changing), StepFree.STATION, toHillBy(hillAccess)).single() === changing)
+    }
+
+    @Test
+    fun `a bus route riding on through the destination's hub keeps its one fare`() {
+        val bus = TripRoute(
+            listOf(
+                ride("490000009Z", "490000009Y", mode = "bus").copy(path = listOf("490000001A", "490000009Y"), pathNames = listOf("Hill Station", "Wye")),
+                ride("490000009Y", "490000001B", mode = "bus"),
+            ),
+            fare = TripFare(175),
+        )
+        val cut = RideEnds.cut(listOf(bus), StepFree.ANY, toHill).single()
+        assertEquals("490000001A", cut.legs.single().toId)
+        assertEquals(TripFare(175), cut.fare)
     }
 
     @Test

@@ -3944,6 +3944,55 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_route_riding_on_through_the_hub_is_cut_where_it_first_gets_there_its_arrival_unknown() {
+        // A made-up tube line from Stratford calls at Canary Wharf's Elizabeth line station and rides on out of the
+        // interchange, then the Jubilee comes back to its own station: drawn ending at the first, where the Planner gave
+        // no time, so the card doesn't give an arrival (the detour cut, dev-docs/station-resolution.md).
+        val testLine = LineSequence(
+            routes = listOf(LineRoute("Stratford ↔ Somewhere", listOf(stratfordTube.first, canaryWharfXr.first, "stop1"))),
+            stopNames = mapOf(stratfordTube.first to "Stratford", canaryWharfXr.first to "Canary Wharf (Elizabeth line)", "stop1" to "Somewhere"),
+        )
+        val withTestLine = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                if (lineId == "testline") testLine else sequences.getValue(lineId)
+        }
+        val route = TripRoute(
+            listOf(
+                viaStratford.legs.first(),
+                leg("tube", "testline", "Test Line", stratfordTube, "stop1" to "Somewhere", 28, 37, 2).copy(
+                    path = listOf(canaryWharfXr.first, "stop1"),
+                    pathNames = listOf("Canary Wharf (Elizabeth line)", "Somewhere"),
+                ),
+                leg("tube", "jubilee", "Jubilee", "stop1" to "Somewhere", canaryWharf, 40, 45, 1),
+            ),
+        )
+        val model = Hubs.of(
+            StationIndex(
+                listOf(
+                    IndexedStation(canaryWharf.first, "Canary Wharf", listOf("tube"), "HUBCAW", 51.5, -0.12, station = "CAW:tube", modelHub = "HUBCAW"),
+                    IndexedStation(canaryWharfXr.first, "Canary Wharf", listOf("elizabeth-line"), "HUBCAW", 51.5, -0.12, station = "CAW:xr", modelHub = "HUBCAW"),
+                    IndexedStation("HUBCAW", "Canary Wharf", listOf("tube", "elizabeth-line")),
+                ),
+                revision = "abc",
+            ),
+            BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
+        )!!
+        val toCanaryWharf = RideEnds.Destination(model, setOf("HUBCAW"))
+        val drawn = RideEnds.cut(listOf(route), StepFree.ANY, toCanaryWharf).single()
+        assertTrue(drawn.untimed)
+        val atStratford = live.getValue(stratfordTube.first)
+        val withTrain = live + (stratfordTube.first to atStratford.copy(departures = listOf(train("testline", "Test Line", "tube", "Somewhere", 30, "Platform 1"))))
+        val state = planned.copy(
+            routes = listOf(route), live = withTrain, closures = checkedOpen(route, drawn),
+            statuses = planned.statuses + ("testline" to LineStatus("testline", LineStatus.GOOD_SERVICE, "Good Service")),
+        )
+        show(state, routeStops = RouteStopsRepository(withTestLine), arriving = toCanaryWharf)
+        composeRule.onAllNodes(hasText("Canary Wharf (Elizabeth line)"), useUnmergedTree = true).onFirst().assertExists()
+        composeRule.onAllNodesWithText("Arrival unknown").onFirst().assertExists()
+        captureSnapshot("trip-routes-cut-through-the-hub.png")
+    }
+
+    @Test
     fun an_open_route_drawn_cut_stays_open_across_a_step_free_change_that_still_plans_it() {
         // Open with its last ride drawn cut; then step-free, which draws no cut, and back: each re-plan still
         // offers the same route as planned, drawn under another key, so it stays open (SPEC *hold still*).
@@ -6622,6 +6671,16 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-later.png")
         composeRule.onNodeWithText("09:05–09:25 · 20 min").performClick()
         assertEquals(routes[0], opened)
+    }
+
+    @Test
+    fun a_later_card_cut_where_the_planner_gave_no_time_says_when_it_leaves_alone() {
+        // A route riding on through the destination, cut where it first gets there: nothing gives its arrival there.
+        val cut = dayOn(viaWhitechapel).copy(untimed = true)
+        showLater(mutableStateOf(later(listOf(cut))))
+        composeRule.onNodeWithTag("laterTimes", useUnmergedTree = true).assertTextEquals("Leaves 09:05")
+        composeRule.onNodeWithText("09:05–09:25 · 20 min").assertDoesNotExist()
+        captureSnapshot("trip-later-untimed.png")
     }
 
     @Test

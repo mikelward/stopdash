@@ -1079,7 +1079,8 @@ class TripViewModel(
      * live trains don't say when the next leaves; the Planner's timetable does, from a fresh plan. So
      * one plan at least [REPLAN_WITHHELD] old is planned again at once (maintainer, 2026-09-27),
      * rather than keep "Arrival unknown" until [PLAN_REUSE] runs out: once per plan, so a withheld
-     * arrival asks at most every [REPLAN_WITHHELD], never in a loop.
+     * arrival asks at most every [REPLAN_WITHHELD], never in a loop. Not for a route cut at a call the Planner gave
+     * no time for ([TripTiming.Reason.CUT]): a fresh plan wouldn't time it either.
      */
     /**
      * Fetches the timetables of [keys] not yet in ([LegTimetables.fetch]), the rides the page timed past
@@ -1111,7 +1112,8 @@ class TripViewModel(
             val same = "${why.leg}:${why.lineId}:${why.reason}"
             if (withheldLogged.put(key, same) != same) warn("trip arrival withheld: ${why.describe()}")
         }
-        withheld.values.firstNotNullOfOrNull { it }?.let(::replanWithheld)
+        // A route cut where the Planner gave no time ([TripTiming.Reason.CUT]) asks for nothing: no plan times that call.
+        withheld.values.firstNotNullOfOrNull { it?.takeIf { why -> why.reason != TripTiming.Reason.CUT } }?.let(::replanWithheld)
     }
 
     // The plan (by when it was made) last planned again for a withheld arrival: once per plan.
@@ -2425,7 +2427,10 @@ class TripViewModel(
          * copies drawn cut at the destination's hub ([app.stopdash.domain.RideEnds.cut]): a cut drops the walk on
          * (an earlier arrival, less walking) and a train's fare (another cheapest), so ranking the copies as drawn
          * would keep other routes than the trip fetches for, and one drawn into the page's few would be timed from
-         * the timetable alone until a refresh fetched it.
+         * the timetable alone until a refresh fetched it. A copy cut where a route rode on through the destination, at a
+         * call the Planner gave no time for ([TripRoute.untimed]), is kept past the cap too: its old end's arrival only
+         * bounds when it gets there, so ranking by it could drop a route that arrives first (the detour cut,
+         * dev-docs/station-resolution.md).
          */
         internal fun bestOf(
             routes: List<TripRoute>,
@@ -2455,8 +2460,9 @@ class TripViewModel(
             val priced = soonest.mapNotNull { route -> planned(route).fare?.let { route to it.pence } }
             val cheapest = priced.minByOrNull { it.second }?.takeIf { (_, least) -> priced.any { it.second > least } }?.first
             val toward = candidates.filter { it.towardStop }.map(::routeKey)
+            val untimed = candidates.filter { it.untimed }.map(::routeKey)
             val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep +
-                listOfNotNull(leastWalking?.let(::routeKey), cheapest?.let(::routeKey)) + toward
+                listOfNotNull(leastWalking?.let(::routeKey), cheapest?.let(::routeKey)) + toward + untimed
             return routes.filter { routeKey(it) in keys }
         }
 

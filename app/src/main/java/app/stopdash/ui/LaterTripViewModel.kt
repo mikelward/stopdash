@@ -125,8 +125,10 @@ class LaterTripViewModel(
         val routeKey: String,
         val listKey: String,
         val departs: String,
-        val arrives: String,
-        val minutes: Int,
+        // When it gets there and the minutes it takes, by the timetable; null for a route cut at a call the Planner gave
+        // no time for ([TripRoute.untimed]), whose arrival nothing gives.
+        val arrives: String?,
+        val minutes: Int?,
         val rows: List<Row>,
     )
 
@@ -333,15 +335,19 @@ class LaterTripViewModel(
     private suspend fun destination(stepFree: StepFree, out: Set<String>): RideEnds.Destination? =
         arrivingAt.awaitDestination(warn, "later trip ride ends")?.let { lifted.destination(it, stepFree, out) }
 
-    // On [compute]: the routes keeping to [request]'s time and not riding what's [leftOut], less the detours the
-    // rest beat, in order, as cards, each as the trip for now draws it: its last ride arriving by hub cut and named
-    // at its first call there ([RideEnds.cut]), and each ride getting off where [RideEnds] has it at [request]'s
-    // step-free level through [destination]. The routes as planned are never changed.
+    // On [compute]: the routes keeping to [request]'s time and not riding what's [leftOut], in order, as cards, each as
+    // the trip for now draws it: its last ride arriving by hub cut and named at its first call there, and a route
+    // riding on through the destination cut where it first gets there ([RideEnds.cut]), each ride getting off where
+    // [RideEnds] has it at [request]'s step-free level through [destination]. Less the detours the rest beat, of those
+    // not cut ([withoutDetours]), in [TripTime.ordered]'s order as drawn; one cut at a call the Planner gave no time for
+    // ([TripRoute.untimed]) is listed after the timed, its arrival unknown. The routes as planned are never changed.
     @WorkerThread
     private fun listed(routes: List<TripRoute>, request: Request, leftOut: Set<String>, stops: Map<String, String>, destination: RideEnds.Destination?): List<Card> {
         val time = request.time
-        val kept = withoutDetours(routes.filter { it.legs.isNotEmpty() && time.keeps(it) && !AvoidedLines.drops(it, leftOut) }, stops.keys, stops)
-        val ordered = RideEnds.cut(TripTime.ordered(kept, time), request.stepFree, destination)
+        val keeping = routes.filter { it.legs.isNotEmpty() && time.keeps(it) && !AvoidedLines.drops(it, leftOut) }
+        val drawn = withoutDetours(RideEnds.cut(TripTime.ordered(keeping, time), request.stepFree, destination), stops.keys, stops)
+        // In order as drawn: a route cut at a change in the destination's hub gets there when it changes there.
+        val ordered = TripTime.ordered(drawn.filterNot { it.untimed }, time) + drawn.filter { it.untimed }
         val ends = RideEnds.of(ordered, request.stepFree, destination)
         // A route the same as another in every leg's times is one card: the list's keys stay unique. Two plans the cut
         // draws alike are two cards, each opening its own plan ([routeKey]).
@@ -416,8 +422,8 @@ class LaterTripViewModel(
                 // but changing onto different trains, are two cards.
                 listKey = route.legs.joinToString(",", prefix = "$key@") { "${it.departure}-${it.arrival}" },
                 departs = clockOf(first.departure),
-                arrives = clockOf(last.arrival),
-                minutes = Duration.between(first.departure, last.arrival).toMinutes().toInt(),
+                arrives = if (route.untimed) null else clockOf(last.arrival),
+                minutes = if (route.untimed) null else Duration.between(first.departure, last.arrival).toMinutes().toInt(),
                 rows = route.legs.map { leg ->
                     Row(
                         walk = leg.isWalk,

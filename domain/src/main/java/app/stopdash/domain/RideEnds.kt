@@ -127,14 +127,23 @@ class RideEnds private constructor(
          * The cut ride keeps the Planner's arrival at the call it no longer reaches, the latest it gets there,
          * since the Planner timed only the whole ride (TODO.md, *Decisions needing review*); a fare is kept only
          * for a bus, every London bus costing the same ([BusFare]), as the Planner priced the ride to its old end.
-         * Work over the routes and their calls: off the main thread.
+         *
+         * A route that reaches the destination's hubs before its last ride gets there, and rides on (through them, or
+         * from a change there), is drawn cut where it first gets there (the detour cut, dev-docs/station-resolution.md):
+         * at its first call in them that the ride's line can get the rider off at, at the trip's level today, the legs
+         * after it gone. Cut at a ride's own end (a change there), it keeps the Planner's arrival there; cut inside a
+         * ride, the Planner gave no time there, so it's [TripRoute.untimed]: its arrival unknown, never the old end's.
+         * Either way its fare goes but for a route of buses alone (one fare, [BusFare]), as the Planner priced the
+         * whole detour. Work over the routes and their calls: off the main thread.
          */
         @WorkerThread
         fun cut(routes: List<TripRoute>, stepFree: StepFree, destination: Destination?): List<TripRoute> {
             if (destination == null || destination.hubs.isEmpty() || !checks(stepFree, destination)) return routes
             val model = destination.model
             val access = destination.access?.takeIf { stepFree != StepFree.ANY }
-            return routes.map { route -> cutAt(route, stepFree, destination.hubs, model, access) ?: route }
+            return routes.map { route ->
+                detourCutAt(route, stepFree, destination.hubs, model, access) ?: cutAt(route, stepFree, destination.hubs, model, access) ?: route
+            }
         }
 
         // Whether a trip at [stepFree] can have its rides' other calls checked: any with no level, a step-free one
@@ -174,6 +183,60 @@ class RideEnds private constructor(
             )
             val last = route.legs.indexOfLast { !it.isWalk }
             return route.copy(legs = route.legs.take(last) + cut, fare = route.fare?.takeIf { ride.isBus }, drawnFrom = route)
+        }
+
+        // [route] cut where it first reaches [destinationHubs] and rides on ([cut], the detour cut), or null where it
+        // reaches them only by its last ride's Planner's call ([cutAt]'s), or not at all: at the first call of a ride's
+        // path in them where the ride's line meets the trip's level today ([access]), naming one TfL id and a name; at a
+        // ride's own end in them (a change there) by the same test; or before a ride boarding there after a walk into them
+        // from outside, never a walk on from a ride that ended in them, which may join platforms without reaching the street
+        // (that ride's own end decides, by the test above).
+        @WorkerThread
+        private fun detourCutAt(route: TripRoute, stepFree: StepFree, destinationHubs: Set<String>, model: Hubs, access: StepFreeAccess?): TripRoute? {
+            val legs = route.legs
+            val lastRide = legs.indexOfLast { !it.isWalk }
+            if (lastRide < 0) return null
+            fun inHubs(call: Resolved) = call.tflId != null && call.hub != null && call.hub in destinationHubs
+            fun meets(id: String, ride: TripLeg) = access == null || LegEnd.meets(stepFree, access.levels(id), ride.lineId, ride.mode)
+            // Its fare only where every ride is a bus, on one fare however many it drops.
+            val fare = route.fare?.takeIf { route.rides.all { it.isBus } }
+            for (index in 0..lastRide) {
+                val ride = legs[index]
+                if (ride.isWalk) continue
+                // Boarding there after a walk to it from outside them: the rider has got there on foot.
+                val walkedFrom = legs.take(index).lastOrNull { !it.isWalk }
+                if (index > 0 && legs[index - 1].isWalk && inHubs(model.resolve(ride.fromId)) &&
+                    (walkedFrom == null || !inHubs(LegEnd.callOf(walkedFrom, model)))
+                ) {
+                    return route.copy(legs = legs.take(index), fare = null, drawnFrom = route)
+                }
+                val own = LegEnd.callOf(ride, model)
+                // The last ride the Planner gets off in them is [cutAt]'s to draw.
+                if (index == lastRide && inHubs(own)) return null
+                for ((at, id) in ride.path.withIndex()) {
+                    val call = model.resolve(id)
+                    if (!inHubs(call) || !meets(id, ride)) continue
+                    // Its own end, another of its records or platforms: the change the Planner timed, the legs after gone.
+                    if (own.station != null && call.station == own.station) return route.copy(legs = legs.take(index + 1), fare = fare, drawnFrom = route)
+                    // One TfL id with a name to get off at, or on to the next call (*The first call must be one TfL id*).
+                    val tflId = call.tflId?.takeIf { call.poles == setOf(it) } ?: continue
+                    val name = ride.pathNames.getOrNull(at)?.takeIf { it.isNotBlank() } ?: continue
+                    val cut = ride.copy(
+                        toId = tflId,
+                        toName = name,
+                        path = ride.path.take(at + 1),
+                        pathNames = ride.pathNames.take(at + 1),
+                        changeAfter = Duration.ZERO,
+                        toArea = "",
+                        toAt = null,
+                        plannedToId = "",
+                    )
+                    return route.copy(legs = legs.take(index) + cut, fare = fare, drawnFrom = route, untimed = true)
+                }
+                // An end the path leaves out.
+                if (inHubs(own) && meets(ride.toId, ride)) return route.copy(legs = legs.take(index + 1), fare = fare, drawnFrom = route)
+            }
+            return null
         }
 
         // A ride's raw end, as [LegEnd.of] resolves it: the same in every copy of the ride a refresh times anew.

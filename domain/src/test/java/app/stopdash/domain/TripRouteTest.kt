@@ -113,6 +113,9 @@ class TripRouteTest {
         assertEquals(listOf(detour, elsewhere), withoutDetours(listOf(detour, elsewhere), destination))
         // Alone, it stays: it may be the only way the plan found.
         assertEquals(listOf(detour), withoutDetours(listOf(detour), destination))
+        // A route cut at a call the Planner gave no time for has no time there to beat it by.
+        val untimed = TripRoute(listOf(ride("red", "A", "C", listOf("B", "C"), 30)), untimed = true)
+        assertEquals(listOf(detour, untimed), withoutDetours(listOf(detour, untimed), destination))
     }
 
     @Test
