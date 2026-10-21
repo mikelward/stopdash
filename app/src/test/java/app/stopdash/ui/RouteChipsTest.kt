@@ -410,6 +410,106 @@ class RouteChipsTest {
         assertEquals(choices.keys.indices.toList(), choices.keys.map { unsettled.indexOf(it) })
     }
 
+    @Test
+    fun a_ride_two_ways_join_the_ends_of_offers_both_and_lists_the_one_chosen() {
+        // A favorite ride from Camden Town to Kennington, by either branch: its page can't say which on its own.
+        val scheduler = TestCoroutineScheduler()
+        val ride = app.stopdash.domain.TripLeg(
+            mode = "tube", lineId = "northern", lineName = "Northern", fromId = CTN, fromName = "Camden Town", toId = KNG,
+            toName = "Kennington", departure = Instant.EPOCH, arrival = Instant.EPOCH,
+        )
+        val row = app.stopdash.domain.DepartureRow(
+            stopId = CTN, stopName = "Camden Town", lineId = "northern", lineName = "Northern", direction = "",
+            directionKey = app.stopdash.domain.STATUS_DIRECTION_KEY, destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = now,
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides routes) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        loadRouteStops = { retry -> rememberLegRouteStops(ride, app.stopdash.domain.StepFree.ANY, retry) },
+                        ride = ride,
+                        rideChoices = true,
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+        // Both ways, neither chosen, and no "unavailable" for want of a choice.
+        composeRule.onNodeWithText("via Bank").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeChoice-1").assertIsNotSelected()
+        composeRule.onNodeWithText("Stop list unavailable").assertDoesNotExist()
+        composeRule.onNodeWithText("Mornington Crescent").assertDoesNotExist()
+
+        composeRule.onNodeWithText("via Charing X").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
+        composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(1)
+        // A ride's page has no live times to miss.
+        composeRule.onNodeWithText("No live times").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_ride_whose_routes_failed_to_load_offers_its_ways_once_retried() {
+        val scheduler = TestCoroutineScheduler()
+        // Offline for the first ask of each way, back for the rest.
+        val asked = java.util.concurrent.atomic.AtomicInteger()
+        val flaky = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    if (asked.incrementAndGet() <= 2) throw app.stopdash.domain.TflException.Offline(null)
+                    return LineSequence(
+                        if (direction == "outbound") southbound else southbound.map { it.copy(stopIds = it.stopIds.reversed(), direction = "inbound") },
+                        names,
+                    )
+                }
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        val ride = app.stopdash.domain.TripLeg(
+            mode = "tube", lineId = "northern", lineName = "Northern", fromId = CTN, fromName = "Camden Town", toId = KNG,
+            toName = "Kennington", departure = Instant.EPOCH, arrival = Instant.EPOCH,
+        )
+        val row = app.stopdash.domain.DepartureRow(
+            stopId = CTN, stopName = "Camden Town", lineId = "northern", lineName = "Northern", direction = "",
+            directionKey = app.stopdash.domain.STATUS_DIRECTION_KEY, destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = now,
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides flaky) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        loadRouteStops = { retry -> rememberLegRouteStops(ride, app.stopdash.domain.StepFree.ANY, retry) },
+                        ride = ride,
+                        rideChoices = true,
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+        composeRule.onNodeWithText("via Bank").assertDoesNotExist()
+        // The stop list's own load came back (as ambiguous) after the ways' failed: the failure is said, with a retry.
+        composeRule.onNodeWithText("Retry").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithText("via Bank").assertIsDisplayed()
+        composeRule.onNodeWithText("via Charing X").assertIsDisplayed()
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"

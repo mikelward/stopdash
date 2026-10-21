@@ -172,6 +172,53 @@ class RouteChoicesTest {
         assertEquals(RouteChoices.NONE, RouteChoices.of(northern, empty(HGT, "thameslink", "national-rail"), emptyList(), null))
     }
 
+    private fun ride(from: String, to: String, mode: String = "tube", lineId: String = "northern") = TripLeg(
+        mode = mode, lineId = lineId, lineName = "Northern", fromId = from, fromName = "", toId = to, toName = "Kennington",
+        departure = now, arrival = now,
+    )
+
+    @Test
+    fun `a ride's ways are each route from where it boards to where it gets off`() {
+        // Camden Town to Kennington: by Bank or by Charing Cross, Battersea's route the same way as the latter.
+        val choices = RouteChoices.forRide(northern, ride(CTN, KNG))
+        assertEquals(listOf("Kennington/Bank", "Kennington/Charing X"), choices.choices.map(::label))
+        assertEquals(listOf(CTN, EUS, BNK, KNG), choices.choices[0].path)
+        assertEquals(listOf(CTN, MTC, EUS, CHX, KNG), choices.choices[1].path)
+        // The ride itself can't say which.
+        assertNull(choices.current)
+        // Past where the branches meet, one way: no choice to make.
+        assertEquals(listOf(listOf(KNG, MDN)), RouteChoices.forRide(northern, ride(KNG, MDN)).choices.map { it.path })
+        // Northbound too, by the way it's ridden.
+        assertEquals(listOf(listOf(KNG, BNK, EUS, CTN), listOf(KNG, CHX, EUS, MTC, CTN)), RouteChoices.forRide(northern, ride(KNG, CTN)).choices.map { it.path })
+    }
+
+    @Test
+    fun `a ride's end found by its station, and none for National Rail`() {
+        // A far end saved under another id of its station: the routes calling at that one.
+        val stations = northern.copy(stationCodes = mapOf(KNG to "KNG", "940GZZLUKNG2" to "KNG"))
+        assertEquals(2, RouteChoices.forRide(stations, ride(CTN, "940GZZLUKNG2")).choices.size)
+        assertEquals(RouteChoices.NONE, RouteChoices.forRide(northern, ride(CTN, KNG, mode = "national-rail")))
+        // Nor for one saved with no mode, on a line known to be National Rail (Codex on #1039); a tube line's still
+        // offers its ways.
+        assertEquals(RouteChoices.NONE, RouteChoices.forRide(northern, ride(CTN, KNG, mode = "", lineId = "c2c")))
+        assertEquals(2, RouteChoices.forRide(northern, ride(CTN, KNG, mode = "")).choices.size)
+    }
+
+    @Test
+    fun `a way calling at a ride's station under another id is offered too, at either end`() {
+        // The Bank branch's route calls at Camden Town and Kennington under other ids of theirs.
+        val siblings = mapOf(CTN to "CTN", "940GZZLUCTN2" to "CTN", KNG to "KNG", "940GZZLUKNG2" to "KNG")
+        val bank = southbound[0].let { route -> route.copy(stopIds = route.stopIds.map { mapOf(CTN to "940GZZLUCTN2", KNG to "940GZZLUKNG2")[it] ?: it }) }
+        val mixed = northern.copy(routes = listOf(bank) + southbound.drop(1), stationCodes = siblings)
+        val choices = RouteChoices.forRide(mixed, ride(CTN, KNG))
+        assertEquals(listOf("Kennington/Bank", "Kennington/Charing X"), choices.choices.map(::label))
+        // Boarding at the ride's own id, and getting off where that way calls.
+        assertEquals(listOf(CTN, EUS, BNK, "940GZZLUKNG2"), choices.choices[0].path)
+        // A list row's page finds the way from its stop's sibling id the same way.
+        val atCamden = RouteChoices.of(mixed, empty(CTN), emptyList(), null)
+        assertTrue(atCamden.choices.any { it.branch == "Bank" && it.path.first() == CTN })
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"

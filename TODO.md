@@ -4157,7 +4157,8 @@ Builds on Phase 1's minimal line-status marking.
               (`RouteChoices`), the tapped route chosen; one with a train moves the page to its row, one
               with none lists its stops with "No live times" (SPEC *Route detail*). Needs a device check of
               the chips' look and the room held for them.
-        - [ ] **A favorite ride's page** where its ends are joined by more than one route (above).
+        - [x] **A favorite ride's page** where its ends are joined by more than one route (2026-10-21): a chip
+              per way where its stops go (`RouteChoices.forRide`), none chosen, the one chosen listed.
         - [ ] **National Rail lines**: none yet, as a line's routes are its stopping patterns, a dozen from
               one platform. Chips there would want grouping by where they go first.
         - [ ] **A journey card's page**: none, as it keeps to the trains the card counts on; chips limited
