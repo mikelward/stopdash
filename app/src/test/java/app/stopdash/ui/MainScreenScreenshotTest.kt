@@ -678,6 +678,41 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithContentDescription("Unknown:", substring = true).assertDoesNotExist()
     }
 
+    @Test
+    fun `where the disruptions row watches only the rider's own lines, a line a stop only declares never brings the banner`() {
+        // Every line the list draws checked, but a stop also declares one TfL gives no status for, with no train
+        // on the list (a Eurostar at St Pancras): the screen shows nothing unchecked, so no banner (maintainer,
+        // 2026-10-21: it stayed up for good once the lines near the rider were turned off).
+        val drawn = stops(now.minusSeconds(60))
+        val determined = drawn.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet()
+        val declaring = drawn.map { if (it.stopId == "940GZZLUWPL") it.copy(lines = it.lines + LineRef("eurostar", "Eurostar", "international-rail")) else it }
+        var watchNearby by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(
+                            declaring, now.minusSeconds(60), lineStatuses = statuses(), disruptionUnknown = true,
+                            determinedLineIds = determined,
+                        ),
+                        now,
+                        {},
+                        showDisruptionsRow = true,
+                        watchNearbyLines = watchNearby,
+                        always = HomeLines.Always(emptyMap(), now.minusSeconds(60), askedFor = emptySet()),
+                        alwaysNetworks = emptySet(),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()
+        // Nor with the lines near the rider watched, the row covering the list as before.
+        watchNearby = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()
+    }
+
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
     private val places = listOf(
         // Home is set to show its icon alone, Work shows its icon and name (the default), and Gym, with

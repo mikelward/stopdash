@@ -66,7 +66,13 @@ internal class JourneySegments(val segments: Map<String, JourneySegment?>, val u
  * The lines the home screen shows ([lines]), worked out from the rows [from] holds, and those only its farther cards
  * show, as told to the model ([ids], the last report's while unchanged).
  */
-internal class ScreenLinesWorked(val from: Any, val lines: HomeLines.ScreenLines, val ids: Reported<Set<String>>)
+internal class ScreenLinesWorked(
+    val from: Any,
+    val lines: HomeLines.ScreenLines,
+    val ids: Reported<Set<String>>,
+    // Whether what they show was left unchecked ([HomeLines.ScreenLines.uncheckedIn]), for the list's banner.
+    val unchecked: Boolean = false,
+)
 
 internal class Reported<T>(val value: T) {
     companion object {
