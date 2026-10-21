@@ -297,10 +297,21 @@ object HomeLines {
         // Whether a drawn row has no line to check: the row's "Unknown" says so, not for a hidden row's.
         val lineless: Boolean = false,
     ) {
-        companion object {
-            /** None: the rider watches only their own lines (maintainer, 2026-10-21). */
-            val NONE = ScreenLines(emptyList())
+        /**
+         * Whether [loaded] left something these lines show unchecked, as [row]'s "Unknown" says it while it
+         * watches them: a drawn line with no verdict, a stop whose closure check failed, a row with no line.
+         * Never a line a stop only declares or a hidden mode's, which nothing on the screen shows (Codex,
+         * #930): the list's banner goes by this while the row watches only the rider's own lines
+         * (maintainer, 2026-10-21; a declared Eurostar TfL gives no status for kept it up for good).
+         */
+        @WorkerThread
+        fun uncheckedIn(loaded: DeparturesUiState.Loaded): Boolean =
+            loaded.disruptionUnknown && !loaded.checkingDisruptions &&
+                (loaded.stopsDisruptionUnknown.isNotEmpty() || lineless ||
+                    lines.any { it.id !in farIds && it.id !in loaded.determinedLineIds })
 
+
+        companion object {
             /**
              * From the [rows] the list draws, its journey cards' [cardRows] and its [farther] cards: a line with a
              * departure or a status row, and every line a card names while it shows them, collapsed. An opened card
@@ -312,7 +323,13 @@ object HomeLines {
                 val lines = LinkedHashMap<String, LineRef>()
                 var lineless = false
                 for (row in rows + cardRows) {
-                    if (row.lineId.isNotBlank()) lines.putIfAbsent(row.lineId, LineRef(row.lineId, row.lineName, row.mode)) else lineless = true
+                    // A stop's own notice (a closure, a lift) is no departure: it has no line to check, nor
+                    // needs one, so it never counts as a row with no line (maintainer, 2026-10-21).
+                    if (row.lineId.isNotBlank()) {
+                        lines.putIfAbsent(row.lineId, LineRef(row.lineId, row.lineName, row.mode))
+                    } else if (row.stopDisruption == null) {
+                        lineless = true
+                    }
                 }
                 val listed = lines.keys.toSet()
                 val drawnStops = (rows + cardRows).mapTo(HashSet()) { it.stopId }

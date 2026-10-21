@@ -578,6 +578,27 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `what the screen shows is unchecked only for a drawn line, a stop's closure check or a row with no line`() {
+        // The list's flag is up for a line the stop only declares, TfL giving it no status (a Eurostar at a big
+        // station, maintainer, 2026-10-21): nothing on the screen shows it, so nothing it shows is unchecked.
+        val stops = listOf(stop("near", "73" to "bus"))
+        val shown = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus")))
+        val declared = DeparturesUiState.Loaded(stops, now, determinedLineIds = setOf("73"), disruptionUnknown = true)
+        assertFalse(shown.uncheckedIn(declared))
+        // A drawn line with no verdict is.
+        assertTrue(shown.uncheckedIn(DeparturesUiState.Loaded(stops, now, determinedLineIds = emptySet(), disruptionUnknown = true)))
+        // A farther card's line isn't the list's to check: the row's own check asks about it.
+        val far = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus"), LineRef("elizabeth", "Elizabeth line", "elizabeth-line")), farIds = setOf("elizabeth"))
+        assertFalse(far.uncheckedIn(declared))
+        // A stop whose closure check failed is, as is a drawn row with no line.
+        assertTrue(shown.uncheckedIn(DeparturesUiState.Loaded(stops, now, determinedLineIds = setOf("73"), disruptionUnknown = true, stopsDisruptionUnknown = setOf("near"))))
+        assertTrue(HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus")), lineless = true).uncheckedIn(declared))
+        // Never with the list's flag down, nor while its first checks are still out.
+        assertFalse(shown.uncheckedIn(DeparturesUiState.Loaded(stops, now, determinedLineIds = emptySet())))
+        assertFalse(shown.uncheckedIn(DeparturesUiState.Loaded(stops, now, determinedLineIds = emptySet(), disruptionUnknown = true, statusPending = true)))
+    }
+
+    @Test
     fun `the screen's lines are its rows', its journey cards' and its farther cards', each card's line by the nearest card`() {
         fun departureRow(stopId: String, lineId: String, mode: String) = app.stopdash.domain.DepartureRow(
             stopId = stopId, stopName = stopId, lineId = lineId, lineName = lineId.uppercase(), direction = "outbound",
@@ -594,6 +615,10 @@ class HomeLinesTest {
         assertEquals(listOf("73", "northern", "victoria", "dlr"), screen.lines.map { it.id })
         assertFalse(screen.lineless)
         assertTrue(HomeLines.ScreenLines.of(listOf(departureRow("a", "", "bus")), emptyList(), emptyList()).lineless)
+        // A stop's own notice has no line and needs none: never a row with no line, which the list's flag never
+        // counts either (maintainer, 2026-10-21: a station's lift or toilets notice kept the banner up).
+        val notice = departureRow("a", "", "").copy(stopDisruption = "Lift out of service")
+        assertFalse(HomeLines.ScreenLines.of(listOf(notice, departureRow("a", "73", "bus")), emptyList(), emptyList()).lineless)
         // Only the cards' own are asked about beside the list's: the rows' lines are the list's to check.
         assertEquals(setOf("victoria", "dlr"), screen.farIds)
         // An opened card shows its departures as rows, not its lines (Codex, #930): only the rows' lines count.

@@ -3545,8 +3545,12 @@ you** switch ("Watch the lines your home screen shows") decides whether the line
 too (maintainer, 2026-10-21: a rider may want only their favorite rides): on by default, so the row shows something
 before anything is set up. Off, the row watches only the rider's own lines (their favorite rides', their starred
 rows', the trip on the way's) and the ones they chose; a nearby rail line goes under *Other* like any other, a nearby
-bus isn't on the page, and the list's own "Couldn't check for disruptions" banner comes back for what the list
-couldn't check, as with the row off, since the row's "Unknown" no longer speaks for the list. A
+bus isn't on the page, and the list's own "Couldn't check for disruptions" banner comes back, since the row's
+"Unknown" no longer speaks for the list: for what the screen shows that couldn't be checked, as the row would have
+said it (a drawn line with no verdict, a stop whose closure check failed, a departure with no line), never for a
+line a stop only declares, which nothing on the screen shows, nor for a stop's own notice (a lift, the toilets),
+which has no line to check (maintainer, 2026-10-21: a Eurostar at St Pancras, which TfL gives no status for, kept it
+up for good beside such a notice). A
 line chosen with no current check reads "Checking…" while it's asked about, at once
 on the choice (or on turning the row on), not at the next refresh: one line-status request at most,
 current verdicts reused (maintainer, 2026-10-05); never a verdict it can't stand behind; one chosen again before any refresh since may show the
