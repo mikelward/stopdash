@@ -5408,13 +5408,14 @@ class MainActivity : ComponentActivity() {
         // (planned to the id picked) for a bus stop, an interchange, still planned member by member, or a place.
         var planTargets: suspend () -> List<String>? = { null }
         // The model and the destination's matchable hubs, for where each route's last ride arrives by hub on the
-        // trip page and a later trip's list, read off the main thread by the trip's models. None for a place,
-        // which has no hub.
+        // trip page and a later trip's list, and the station each other ride gets off at, read off the main thread
+        // by the trip's models. A place has no hub, so its rides only get off at their stations.
         var arriving: suspend () -> RideEnds.Destination? = { null }
         if (favorite != null) {
             destinations = listOf(favorite)
             destKey = "place:${favorite.coordinate.latitude},${favorite.coordinate.longitude}"
             destinationIds = emptyMap()
+            arriving = { withContext(Workers.compute) { HubsStore.ready()?.let { model -> RideEnds.Destination(model, emptySet()) } } }
         } else {
             val toStopId = checkNotNull(toId) { "a To… trip has a destination once past the picker" }
             val (toStopIds, ids) = if (!toStopId.startsWith(HUB_PREFIX)) {

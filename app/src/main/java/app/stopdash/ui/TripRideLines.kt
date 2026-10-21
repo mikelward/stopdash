@@ -190,8 +190,9 @@ internal fun plannedThroughWays(
         val asPlannedWay = byWay[wayOf(way)]
         when {
             asPlannedWay != null && asPlannedWay.route == way.route -> asPlannedWay
-            // A ride before the last: getting off by hub only ever moves a last ride.
-            legs.drop(way.at + 1).any { !it.isWalk } -> asPlannedWay ?: way
+            // A ride before the last, or one getting off at another record of its station rather than by hub: only
+            // arriving by hub moves the end on, so the train as planned, where there is one, is the train shown.
+            legs.drop(way.at + 1).any { !it.isWalk } || way.end.level != LegEnd.Level.HUB -> asPlannedWay ?: way
             // Arriving by hub: nothing after it is ridden from where it's drawn getting off.
             else -> way.copy(route = TripRoute(legs.take(way.at + 1), drawnFrom = asPlannedWay?.route))
         }

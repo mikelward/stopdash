@@ -1056,10 +1056,22 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               arrived there, the walk planned on from the Planner's end gone
                                               (`OnTheWay.rideDone`'s `on`), as a followed train's moved end
                                               has it (`endedAtDestination`).
-                                        - [ ] Middle rides reading their station end (`LegEnd.of`'s
-                                              `Level.STOP`): a substitute line calling at another record
-                                              of the change's station; today they end at the Planner's
-                                              call by its raw id.
+                                        - [x] Middle rides reading their station end (`LegEnd.of`'s
+                                              `Level.STOP`) on the trip page and a later trip's list: every
+                                              other ride's station or bus stop, with every record or pole of
+                                              it (`RideEnds.of`, `Hubs.idsOf`, read through `LegEnd.offIds`),
+                                              so a line calling at another record of the change's station is
+                                              one of the ride's lines and a train calling there reaches it,
+                                              never the hub's other stations; a trip to a place gets the model
+                                              too, with no hub. A train through a change to that record keeps
+                                              its walk on (`plannedThroughWays`): only arriving by hub drops it.
+                                              Not on a step-free trip (see *Decisions needing review*).
+                                        - [ ] On the way's middle rides reading their station end
+                                              (`ActiveTripTracker.endOf`): its ride lines and pair boards
+                                              still end a ride before the last at the Planner's call by its
+                                              raw id, so a line the trip page offers to another record of
+                                              the change's station isn't one of the ride's lines once on the
+                                              way.
                                         - [ ] A step-free trip's first passing call in the hub, against
                                               today's lifts (`StepFreeAccess`, `LiftOutages`), so it
                                               arrives by hub too.
@@ -5234,7 +5246,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   hub's other calls yet, so a step-free trip (or one whose level isn't known) still gets off where
   the Planner, who checked access when it planned, does. Alternative: arrive by hub regardless, or
   build the first passing call against `StepFreeAccess` and `LiftOutages` now. The trip page's ride
-  lines and verdicts hold to the same (`RideEnds.of`). Reversible: one condition each in
+  lines and verdicts hold to the same (`RideEnds.of`), a ride's station end too (2026-10-21): a
+  station's other record may not be step-free where the Planner's is. Reversible: one condition each in
   `OnTheWay.arrivingEnd` and `RideEnds.of`.
 - [ ] **The ride ends go in at the bottom one family at a time, unread, the stop list first**
   (autopilot, 2026-10-20). The design puts the `(TripLeg, LegEnd)` pair under every ride-end path

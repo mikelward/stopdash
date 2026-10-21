@@ -7,19 +7,22 @@ import java.time.Duration
  * Where each ride of a trip's routes gets off ([LegEnd]), as the trip page and a later trip's list read it
  * (TODO.md, *Arriving by hub at the first call*): a last ride whose Planner's call is in the destination's
  * hubs gets off at its first call anywhere in them ([hub], with every TfL id of their stations and stops),
- * and every other ride where the Planner gets it off ([LegEnd.planned]).
+ * and every other ride at the station or bus stop of the Planner's call ([stops], with every TfL id of it:
+ * a station's records, a bus stop's poles), so a line calling at another record of a change's station gets
+ * the rider there too, never at the hub's other stations. A ride ending at a stop area the model split, with
+ * no pole or point to place it by, gets off where the Planner gets it off ([LegEnd.planned]).
  *
- * Which rides arrive by hub is worked out through the station model on a worker ([of]: [LegEnd.of], then
- * [Hubs.idsOf]) for the routes a plan brings, each by its last ride's raw end ([TripLeg.toId],
- * [TripLeg.toArea], [TripLeg.plannedToId], [TripLeg.toAt]); reading it ([ends]) only looks that end up, so it can be read
- * as a page is built. A route made since (a train through a change, its ride already cut at its first
- * call in the hub by [RideLines.through]) gets off where it's named to, as does every ride of a trip with
- * no model or no hub to arrive at.
+ * Which rides arrive by hub, and each other ride's station or stop, is worked out through the station model
+ * on a worker ([of]: [LegEnd.of], then [Hubs.idsOf]) for the routes a plan brings, each by its ride's raw end
+ * ([TripLeg.toId], [TripLeg.toArea], [TripLeg.plannedToId], [TripLeg.toAt]); reading it ([ends]) only looks
+ * that end up, so it can be read as a page is built. A route made since (a train through a change, its ride
+ * already cut at its first call in the hub by [RideLines.through]) gets off where it's named to, as does every
+ * ride of a trip with no model.
  *
  * The Planner's own last ride arriving by hub is shown cut at its first call in the hubs ([cut]): a copy for the
  * page to draw, worked out from the route as planned, which is kept, started and asked for as the Planner gave it.
  *
- * Not on a step-free trip: none of the hub's other calls is checked against today's lifts yet, so a
+ * Not on a step-free trip: none of a station's or hub's other calls is checked against today's lifts yet, so a
  * step-free ride still gets off where the Planner, who checked, does (TODO.md, *Decisions needing review*).
  */
 class RideEnds private constructor(
@@ -29,12 +32,15 @@ class RideEnds private constructor(
     private val hub: LegEnd?,
     // The last rides' raw ends ([keyOf]) the model placed in the destination's hubs.
     private val arriving: Set<List<Any?>>,
+    // Every other ride's station or bus stop end, with its ids, by its raw end ([keyOf]).
+    private val stops: Map<List<Any?>, LegEnd>,
 ) {
     /** [route]'s rides, each with where it gets off, in order; walks are left out, as they get off nowhere. */
     fun ends(route: TripRoute): List<Pair<TripLeg, LegEnd>> {
         val rides = route.rides
         return rides.mapIndexed { index, ride ->
-            val end = hub?.takeIf { index == rides.lastIndex && keyOf(ride) in arriving } ?: LegEnd.planned(ride, stepFree)
+            val key = keyOf(ride)
+            val end = hub?.takeIf { index == rides.lastIndex && key in arriving } ?: stops[key] ?: LegEnd.planned(ride, stepFree)
             ride to end
         }
     }
@@ -44,35 +50,50 @@ class RideEnds private constructor(
 
     // Equal by what they decide, so a plan worked out again to the same ends changes nothing that reads them.
     override fun equals(other: Any?): Boolean =
-        other is RideEnds && other.stepFree == stepFree && other.hub == hub && other.arriving == arriving
+        other is RideEnds && other.stepFree == stepFree && other.hub == hub && other.arriving == arriving && other.stops == stops
 
-    override fun hashCode(): Int = (stepFree.hashCode() * 31 + hub.hashCode()) * 31 + arriving.hashCode()
+    override fun hashCode(): Int = ((stepFree.hashCode() * 31 + hub.hashCode()) * 31 + arriving.hashCode()) * 31 + stops.hashCode()
 
-    /** The station model and the destination's matchable hubs ([Hubs.destinationHubs]) a trip's ends are resolved through. */
+    /**
+     * The station model and the destination's matchable hubs ([Hubs.destinationHubs]) a trip's ends are resolved
+     * through: none for a trip to a place, which has no hub, whose rides still get off at their stations ([of]).
+     */
     class Destination(val model: Hubs, val hubs: Set<String>)
 
     companion object {
         /** Every ride getting off where the Planner gets it off at [stepFree] ([LegEnd.planned]). */
-        fun planned(stepFree: StepFree): RideEnds = RideEnds(stepFree, null, emptySet())
+        fun planned(stepFree: StepFree): RideEnds = RideEnds(stepFree, null, emptySet(), emptyMap())
 
         /**
          * Where [routes]' rides get off at [stepFree], arriving at [destination]'s hubs where the model
-         * places a route's last ride's Planner's call in one of them ([LegEnd.of]); [planned] with no
-         * destination, no hub to arrive at, or a step-free trip. Work over the routes and the hubs' ids:
-         * off the main thread.
+         * places a route's last ride's Planner's call in one of them ([LegEnd.of]), and every other ride at
+         * the station or bus stop the model places its Planner's call at; [planned] with no destination or on
+         * a step-free trip. Work over the routes and their ends' ids: off the main thread.
          */
         @WorkerThread
         fun of(routes: Collection<TripRoute>, stepFree: StepFree, destination: Destination?): RideEnds {
-            if (destination == null || destination.hubs.isEmpty() || stepFree != StepFree.ANY) return planned(stepFree)
+            if (destination == null || stepFree != StepFree.ANY) return planned(stepFree)
+            val model = destination.model
             val arriving = HashSet<List<Any?>>()
+            val stops = HashMap<List<Any?>, LegEnd>()
+            // Each end's ids once: many routes change at one station.
+            val withIds = HashMap<LegEnd, LegEnd>()
             var hub: LegEnd? = null
             for (route in routes) {
-                val (ride, end) = LegEnd.of(route, stepFree, destination.hubs, destination.model).lastOrNull() ?: continue
-                if (end.level != LegEnd.Level.HUB) continue
-                arriving += keyOf(ride)
-                if (hub == null) hub = end.copy(ids = destination.model.idsOf(end).keys)
+                val ends = LegEnd.of(route, stepFree, destination.hubs, model)
+                for ((index, pair) in ends.withIndex()) {
+                    val (ride, end) = pair
+                    when {
+                        end.level == LegEnd.Level.HUB && index == ends.lastIndex -> {
+                            arriving += keyOf(ride)
+                            if (hub == null) hub = end.copy(ids = model.idsOf(end).keys)
+                        }
+                        end.level == LegEnd.Level.STOP ->
+                            stops[keyOf(ride)] = withIds.getOrPut(end) { end.copy(ids = model.idsOf(end).keys) }
+                    }
+                }
             }
-            return if (hub == null) planned(stepFree) else RideEnds(stepFree, hub, arriving)
+            return if (hub == null && stops.isEmpty()) planned(stepFree) else RideEnds(stepFree, hub, arriving, stops)
         }
 
         /**

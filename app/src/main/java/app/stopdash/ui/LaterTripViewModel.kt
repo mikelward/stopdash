@@ -67,8 +67,8 @@ class LaterTripViewModel(
     // model, read on [io]; null to plan to [destinations] as they are.
     planTargets: suspend () -> List<String>? = { null },
     // As the trip for now's ([TripViewModel.shownRoutes]): the station model and the destination's matchable hubs,
-    // for where each listed route's last ride gets off by arriving at them, read on [io] once. Null where no ride
-    // arrives by hub (a place, no model): each gets off where the Planner does.
+    // for where each listed route's last ride gets off by arriving at them and every other ride at its station, read
+    // on [io] once. Null with no model: each gets off where the Planner does.
     arriving: suspend () -> RideEnds.Destination? = { null },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,

@@ -161,7 +161,8 @@ object DirectTrips {
      * Whether [departure] gets [ride] off where it ends ([settledByStops]) by its own calling points; null
      * when they don't settle it. A ride is judged by where it gets off ([LegEnd]), so a trip's verdicts
      * are keyed on the pair, never on the leg alone (dev-docs/station-resolution.md, phase 2): a last ride
-     * arriving by hub ([LegEnd.offIds]) is reached by a train calling anywhere in the destination's hubs.
+     * arriving by hub ([LegEnd.offIds]) is reached by a train calling anywhere in the destination's hubs, and
+     * every other ride by one calling at any record of its station where its end holds them.
      */
     @WorkerThread
     fun settledByStops(departure: Departure, ride: Pair<TripLeg, LegEnd>): Boolean? =
@@ -242,7 +243,8 @@ object DirectTrips {
         judge(departure, ride.first.fromId, route, endIds(ride))
 
     // Where [ride] gets off, as ids a departure's calls and route are matched against ([LegEnd.offIds]): a
-    // last ride arriving by hub anywhere in the destination's hubs, every other ride at its own call.
+    // last ride arriving by hub anywhere in the destination's hubs, every other ride at its own call, or any
+    // record or pole of its station or stop where its end holds them.
     private fun endIds(ride: Pair<TripLeg, LegEnd>): Set<String> = ride.second.offIds(ride.first)
 
     /**
