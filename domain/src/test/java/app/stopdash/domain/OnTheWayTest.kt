@@ -396,11 +396,76 @@ class OnTheWayTest {
     }
 
     @Test
-    fun `before the last ride a call at one of the destination's ids is only a stop on the way`() {
-        // The first ride passes B, another id of the destination, on its way to the change at C.
-        val changing = trip.copy(destinationIds = mapOf("E" to "S", "B" to "S"))
-        val (_, progress) = OnTheWay.advance(OnTheWay.follow(changing, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+    fun `a ride before the last gets the rider off where it first reaches the destination`() {
+        // The first ride passes B, another id of the destination, on its way to the change at C and a ride back:
+        // the rider gets off at B, the change and the ride after it gone, the route as planned kept.
+        val changing = trip.copy(destinationIds = mapOf("E" to "S", "B" to "S"), stepFree = StepFree.ANY)
+        val following = OnTheWay.follow(changing, train("8", 5))
+        val (atB, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6))
+        assertEquals(at(9), (progress as TripProgress.Riding).getOffAt)
+        assertEquals(listOf("B"), atB.route.legs.map { it.toId })
+        assertEquals("C", atB.leg?.plannedToId)
+        assertEquals(changing.route.legs, atB.plannedLegs)
+        // Gone from B with C still ahead: arrived, nothing left to change to.
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(atB, listOf(call("C", 14)), at(10)).second)
+        // Kept before its level was, or step-free with nothing to check by: the Planner routed it on, on to the change.
+        for (unchecked in listOf(changing.copy(stepFree = null), changing.copy(stepFree = StepFree.STATION))) {
+            val (_, onToC) = OnTheWay.advance(OnTheWay.follow(unchecked, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+            assertEquals(at(14), (onToC as TripProgress.Riding).getOffAt)
+        }
+    }
+
+    @Test
+    fun `a ride before the last gets the rider off in the destination's hub only where its line meets a step-free trip's level`() {
+        // B, another station (T) of the destination's hub, is step-free to the platform on red; the trip to E rides on
+        // past it to change at C.
+        val changing = trip.copy(destinationIds = mapOf("E" to "S"), stepFree = StepFree.STATION)
+        val stations = mapOf("E" to "S", "B" to "T")
+        val end = LegEnd(StepFree.STATION, LegEnd.Level.HUB, setOf("H"), stations.keys, mapOf("B" to mapOf("red" to StepFreeLevel.PLATFORM)))
+        val following = OnTheWay.follow(changing, train("8", 5))
+        val (atB, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6), arriving = Arrival(stations, end, second))
+        assertEquals(at(9), (progress as TripProgress.Riding).getOffAt)
+        assertEquals(listOf("B"), atB.route.legs.map { it.toId })
+        // With B's lift out, on to the change at C.
+        val liftOut = Arrival(stations, end.copy(levels = mapOf("B" to mapOf("red" to StepFreeLevel.NONE))), second)
+        val (_, onToC) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6), arriving = liftOut)
+        assertEquals(at(14), (onToC as TripProgress.Riding).getOffAt)
+    }
+
+    @Test
+    fun `a ride before the last ending at one of the destination's stops ends the trip there`() {
+        // The change at C is at another record of the destination's station: once on board, the walk and the ride
+        // after it go, as the rider has arrived.
+        val changing = trip.copy(destinationIds = mapOf("E" to "S", "C" to "S"), stepFree = StepFree.ANY)
+        val (ending, progress) = OnTheWay.advance(OnTheWay.follow(changing, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
         assertEquals(at(14), (progress as TripProgress.Riding).getOffAt)
+        assertEquals(listOf(ride), ending.route.legs)
+        assertEquals(changing.route.legs, ending.plannedLegs)
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(ending, emptyList(), at(16)).second)
+        // Not yet on board: the train may be missed or let go, so the route stands as planned.
+        val (waiting, _) = OnTheWay.advance(OnTheWay.follow(changing, train("8", 5)), listOf(call("A", 5), call("B", 9), call("C", 14)), at(3))
+        assertEquals(changing.route, waiting.route)
+        // On a step-free trip, only where red meets its level at C today: a change the Planner checked may be step-free
+        // between platforms alone, so with C out the walk and the ride after it stay.
+        val stepFree = changing.copy(stepFree = StepFree.STATION)
+        val stations = mapOf("E" to "S", "C" to "S")
+        val end = LegEnd(StepFree.STATION, LegEnd.Level.HUB, setOf("H"), stations.keys, mapOf("C" to mapOf("red" to StepFreeLevel.PLATFORM)))
+        val calls = listOf(call("B", 9), call("C", 14))
+        val atLevel = Arrival(stations, end, second)
+        val (level, _) = OnTheWay.advance(OnTheWay.follow(stepFree, train("8", 5)), calls, at(6), arriving = atLevel)
+        assertEquals(listOf(ride), level.route.legs)
+        val notLevel = Arrival(stations, end.copy(levels = mapOf("C" to mapOf("red" to StepFreeLevel.NONE))), second)
+        val (changingAtC, _) = OnTheWay.advance(OnTheWay.follow(stepFree, train("8", 5)), calls, at(6), arriving = notLevel)
+        assertEquals(stepFree.route, changingAtC.route)
+        // Ended at C, then C's lift goes out with C still ahead: the change and the ride after it come back, and go
+        // again once it's back. Gone from C already, the rider is off there.
+        val (liftOut, outProgress) = OnTheWay.advance(level, listOf(call("C", 14)), at(10), arriving = notLevel)
+        assertEquals(stepFree.route, liftOut.route)
+        assertNull(liftOut.plannedLegs)
+        assertEquals(at(14), (outProgress as TripProgress.Riding).getOffAt)
+        val (back, _) = OnTheWay.advance(liftOut, listOf(call("C", 14)), at(11), arriving = atLevel)
+        assertEquals(listOf(ride), back.route.legs)
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(back, emptyList(), at(16), arriving = notLevel).second)
     }
 
     @Test

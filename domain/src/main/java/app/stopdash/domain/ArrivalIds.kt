@@ -23,11 +23,15 @@ fun platformRecord(platform: String): String? = when {
  * destination's hub, at any of [stations], every TfL id of the hub's stations and stops, each to its station or
  * stop ([Hubs.idsOf]), beyond the trip's own arrival ids ([ActiveTrip.destinationIds]); and on a step-free trip at
  * any of those or of the trip's own only where the followed train's line meets the trip's level there ([end],
- * [getsOffAt]). [NONE] where the ride gets off at the destination's own stops, unchecked, as before.
+ * [getsOffAt]). [NONE] where the ride gets off at the destination's own stops, unchecked, as before. A ride before
+ * the last reads it too, where the route rides through the destination ([checksAccess], `OnTheWay.endedAtDestination`).
  */
 class Arrival(val stations: Map<String, String>, private val end: LegEnd? = null, private val planned: TripLeg? = null) {
     /** The ride's end where it arrives by hub ([LegEnd.Level.HUB]), for its other lines ([RideLines.of]); else null. */
     val hubEnd: LegEnd? get() = end?.takeIf { it.level == LegEnd.Level.HUB }
+
+    /** Whether each call is checked against TfL's step-free table ([getsOffAt]), as on a step-free trip given one. */
+    val checksAccess: Boolean get() = end?.checksAccess == true
 
     /**
      * Whether a train of [line] gets the rider off at [id], the trip's own or one of [stations]: anywhere, but on a
