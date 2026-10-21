@@ -114,6 +114,42 @@ class DirectTripsTest {
     }
 
     @Test
+    fun `on a step-free trip a train reaches the hub only at a call its line meets the trip's level at`() {
+        // Riding from Top to Bottom A, the destination a hub of Bottom A and Side (synthetic ids, made-up access).
+        val leg = TripLeg("tube", "rail", "rail", "TOP", "Top", "BOTA", "Bottom A", now, now.plusSeconds(300))
+        fun byHub(side: StepFreeLevel) = leg to LegEnd(
+            StepFree.STATION, LegEnd.Level.HUB, setOf("HUBQ"), ids = setOf("BOTA", "SIDE"),
+            levels = mapOf("SIDE" to mapOf("rail" to side)),
+        )
+        val toBottomB = departure("Bottom B", 60)
+        val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("SIDE", "BOTB"), complete = true)))
+        // Side's platforms step-free: a train for Bottom B gets the rider off there.
+        val stepFree = byHub(StepFreeLevel.PLATFORM)
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(toBottomB, stepFree, DirectTrips.routeAt(rail, stepFree)))
+        // Its calling points name Side's station, never which of its ids: no "yes" from them.
+        assertEquals(null, DirectTrips.settledByStops(fast, stepFree))
+        // Not step-free there: it misses, by its route and its calling points.
+        val stairs = byHub(StepFreeLevel.NONE)
+        assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(toBottomB, stairs, DirectTrips.routeAt(rail, stairs)))
+        assertEquals(false, DirectTrips.settledByStops(fast, stairs))
+        // The Planner's own call, which it checked, still reaches by its station, whatever the table says.
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(departure("Bottom A", 60), stairs, DirectTrips.routeAt(rail, stairs)))
+        val stopping = departure("Bottom A", 60).copy(callingAt = listOf(CallingPortion(setOf("MID", "BOTA"), complete = true)))
+        assertEquals(true, DirectTrips.settledByStops(stopping, stairs))
+        // Another line's train there wasn't checked by the Planner, and the table doesn't describe it: no.
+        val other = departure("Bottom A", 60, lineId = "other")
+        assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(other, stairs, DirectTrips.routeAt(rail, stairs)))
+        // A train whose ways part at Mid can't be told one way, but each reaches somewhere the rider can get off:
+        // the Planner's call by one, step-free Side by the other. Judged together, it reaches.
+        val forking = departure("", 60)
+        assertTrue(DirectTrips.judge(forking, "TOP", rail, setOf("BOTA")) is DirectTrips.Verdict.Unknown)
+        assertTrue(DirectTrips.judge(forking, "TOP", rail, setOf("SIDE"), byStation = false) is DirectTrips.Verdict.Unknown)
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(forking, stepFree, DirectTrips.routeAt(rail, stepFree)))
+        // With Side not step-free, only one of its ways gets the rider off: it can't be told.
+        assertTrue(DirectTrips.judge(forking, stairs, DirectTrips.routeAt(rail, stairs)) is DirectTrips.Verdict.Unknown)
+    }
+
+    @Test
     fun `a train its own calling points settle needs no route`() {
         val stopping = departure("Bottom B", 60).copy(callingAt = listOf(CallingPortion(setOf("MID", "SIDE", "BOTB"), complete = true)))
         val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("BOTB"), complete = true)))

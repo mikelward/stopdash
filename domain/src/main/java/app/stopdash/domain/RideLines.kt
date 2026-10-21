@@ -282,7 +282,9 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
         // exactly one such run. [end] is where [to] gets off ([LegEnd]): every caller supplies one. A last
         // ride arriving by hub ([LegEnd.offIds]) gets off at the run's first call anywhere in the
         // destination's hubs, another station of them included, and is named there; every other at [to]'s
-        // Planner stop, or at another record or pole of it where the end holds them.
+        // Planner stop, or at another record or pole of it where the end holds them. On a step-free trip, only at
+        // those [lineId] meets the trip's level at today ([LegEnd.offIds]), and at [to]'s own call by its station
+        // only on [to]'s own line, the one the Planner checked there.
         private fun runTo(
             ride: TripLeg,
             to: TripLeg,
@@ -297,14 +299,15 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             // it gets off keeps the id the route calls at, the one its arrival is predicted at: the id the
             // ride names, failing that on every run another id of its station ([LineSequence.sameStationId]),
             // only failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
-            val offIds = end.offIds(to)
+            val offIds = end.offIds(to, lineId, to.mode)
+            val byStation = !end.checksAccess || lineId == to.lineId
             // An end whose ids were worked out already holds every pole of its stops; the Planner's raw area may
             // be one the model split, its other poles at another stop, so it isn't matched there.
             val area = to.toArea.takeIf { it.isNotEmpty() && end.ids.isEmpty() }
             fun runs(station: Boolean) = boarding.flatMap { stop ->
                 val seen = sequence.callingAt(stop)
                 fun alights(id: String) = id in offIds || (area != null && seen.stopAreas[id] == area) ||
-                    (station && seen.sameStationId(id, to.toId))
+                    (station && byStation && seen.sameStationId(id, to.toId))
                 seen.routes.flatMap { route ->
                     val ids = route.stopIds
                     ids.indices.filter { ids[it] == stop }.mapNotNull { i ->

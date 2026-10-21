@@ -1076,7 +1076,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                               rider off there. Not on a step-free trip.
                                         - [ ] A step-free trip's first passing call in the hub, against
                                               today's lifts (`StepFreeAccess`, `LiftOutages`), so it
-                                              arrives by hub too.
+                                              arrives by hub too:
+                                            - [x] The ends checked, unread: on a step-free trip given TfL's
+                                                  table with today's lifts (`RideEnds.Destination.access`),
+                                                  each end carries how step-free each line is at each of its
+                                                  ids (`LegEnd.levels`), and a train gets the rider off only
+                                                  where its line meets the trip's level (`LegEnd.meets`,
+                                                  `offIds` by line), or at the Planner's own call for its own
+                                                  line: `RideEnds.of` and `cut`, `RideLines.runTo`,
+                                                  `DirectTrips.judge` and `settledByStops` (a calling point
+                                                  saying only "no" for the other calls). No caller passes a
+                                                  table yet.
+                                            - [ ] The trip page and a later trip's list passing the table
+                                                  with today's lifts, worked out again as they change.
+                                            - [ ] On the way's ends (`OnTheWay.arrivingEnd`, and its rides'
+                                                  station ends) checked the same way.
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.

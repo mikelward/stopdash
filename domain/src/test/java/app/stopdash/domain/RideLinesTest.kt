@@ -363,6 +363,28 @@ class RideLinesTest {
     }
 
     @Test
+    fun `on a step-free trip a line takes a last ride arriving by hub only where it meets the trip's level`() {
+        // Made-up access: green's platforms at Bh step-free to the platform, yellow's not.
+        val green = LegEnd(
+            StepFree.STATION, LegEnd.Level.HUB, setOf("HUBB"), ids = setOf("B", "Bh"),
+            levels = mapOf("Bh" to mapOf("green" to StepFreeLevel.PLATFORM, "yellow" to StepFreeLevel.NONE)),
+        )
+        val ends = { route: TripRoute -> route.rides.map { it to green } }
+        val arrivals = mapOf("A" to listOf(train("red"), train("green"), train("yellow")))
+        val sequences = mapOf("green" to sequence("A", "Bh", "End"), "yellow" to sequence("A", "Bh", "End"))
+        val lines = RideLines.of(listOf(route), ends, arrivals, emptyMap(), sequences).getValue(ride to green)
+        assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
+        assertEquals("Bh", lines.legs[1].toId)
+        // Fully step-free, Bh's platform isn't enough for green either: only the Planner's own line, which it checked.
+        val fully = green.copy(stepFree = StepFree.FULLY)
+        val only = RideLines.of(listOf(route), { r: TripRoute -> r.rides.map { it to fully } }, arrivals, emptyMap(), sequences).getValue(ride to fully)
+        assertEquals(listOf("red"), only.legs.map { it.lineId })
+        // Nor does another line get off at the Planner's own call by the table's silence: the Planner checked it for red only.
+        val toB = mapOf("green" to sequence("A", "B", "End"))
+        assertEquals(listOf("red"), RideLines.of(listOf(route), ends, arrivals, emptyMap(), toB).getValue(ride to green).legs.map { it.lineId })
+    }
+
+    @Test
     fun `arriving by hub, a pole of the Planner's area outside the hub isn't reached`() {
         // The Planner gets red off at B in area BG, which the model split: Bx, its other pole, is a stop
         // outside the destination's hub.

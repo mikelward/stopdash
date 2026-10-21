@@ -26,8 +26,19 @@ import androidx.annotation.WorkerThread
  * stops, a station end's records and their platforms, a bus stop end's poles and stop areas. Worked out
  * through the model where the end is read ([RideEnds.of]); empty where they weren't, when the ride gets off
  * at its own call.
+ *
+ * On a step-free trip, [levels] are how step-free each line TfL describes at each of [ids] is today, with the
+ * lifts out of service then ([StepFreeAccess.levels], after [StepFreeAccess.withLiftsOut]), by id and line: a
+ * ride gets off at one of [ids] only where its line meets the trip's level there ([meets]), as a direct trip
+ * to a place does (SPEC *Step-free*). An id or line it doesn't hold is unknown, never got off at.
  */
-data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<String>, val ids: Set<String> = emptySet()) {
+data class LegEnd(
+    val stepFree: StepFree,
+    val level: Level,
+    val places: Set<String>,
+    val ids: Set<String> = emptySet(),
+    val levels: Map<String, Map<String, StepFreeLevel>> = emptyMap(),
+) {
     /** Which of a call's places [places] names. */
     enum class Level {
         /** A station, or a bus stop (both directions of its road): [Resolved.station]. */
@@ -59,14 +70,47 @@ data class LegEnd(val stepFree: StepFree, val level: Level, val places: Set<Stri
     }
 
     /**
-     * The TfL ids [ride] gets off at, as a departure's calls and a line's route are matched against: the end's
-     * [ids] (a hub end's every station and stop of the destination's hubs, a station or bus stop end's every
-     * record or pole of it), the ride's own call among them; for an end whose ids weren't worked out, the
-     * ride's own call ([TripLeg.toId]) alone.
+     * The TfL ids [ride] gets off at by a train of [lineId] ([mode]), as a departure's calls and a line's route are
+     * matched against: the end's [ids] (a hub end's every station and stop of the destination's hubs, a station or
+     * bus stop end's every record or pole of it), the ride's own call among them; for an end whose ids weren't
+     * worked out, the ride's own call ([TripLeg.toId]) alone. On a step-free trip ([checksAccess]), only those
+     * where [lineId] meets the trip's level today ([meets]), and the ride's own call for its own line, which the
+     * Planner checked when it planned it, whatever TfL's table says.
      */
-    fun offIds(ride: TripLeg): Set<String> = if (ids.isNotEmpty()) ids + ride.toId else setOf(ride.toId)
+    fun offIds(ride: TripLeg, lineId: String = ride.lineId, mode: String = ride.mode): Set<String> {
+        if (ids.isEmpty()) return setOf(ride.toId)
+        if (!checksAccess) return ids + ride.toId
+        val met = ids.filterTo(LinkedHashSet()) { meets(it, lineId, mode) }
+        if (lineId == ride.lineId || meets(ride.toId, lineId, mode)) met += ride.toId
+        return met
+    }
+
+    /**
+     * Whether the ride's other calls ([ids]) are each checked against the trip's step-free level ([meets]): on a
+     * step-free trip whose ids were worked out. Every call then counts by its own TfL id, which TfL gives its own
+     * access, never by its station's other records (Codex, #886).
+     */
+    val checksAccess: Boolean get() = stepFree != StepFree.ANY && ids.isNotEmpty()
+
+    /**
+     * Whether a train of [lineId] ([mode]) gets the rider off at [id] at the trip's [stepFree] level: anywhere with no
+     * level, or at a stop at the street (a bus stop, [StepFreeAccess.atStreet]); else only where [levels] says that
+     * line's platforms there meet it, a National Rail train's by the station's National Rail platforms where its own
+     * operator's aren't described ([StepFreeAccess.levelFor]). An id or line [levels] doesn't hold is unknown: no.
+     */
+    fun meets(id: String, lineId: String, mode: String): Boolean = meets(stepFree, levels[id], lineId, mode)
 
     companion object {
+        /** [meets] for a call whose lines' levels are [levels] ([StepFreeAccess.levels]; null where it describes none). */
+        internal fun meets(stepFree: StepFree, levels: Map<String, StepFreeLevel>?, lineId: String, mode: String): Boolean {
+            val needed = stepFree.needs ?: return true
+            if (StepFreeAccess.atStreet(mode)) return true
+            val level = levels?.get(lineId)
+                ?: levels?.get(StepFreeAccess.NATIONAL_RAIL)?.takeIf { mode.equals(StepFreeAccess.NATIONAL_RAIL, ignoreCase = true) }
+                ?: return false
+            return level >= needed
+        }
+
         /**
          * Getting off where [call] is: its station or bus stop, or its own poles where the model
          * places it at none (a split area with no pole or point), so it still ends there and never at
