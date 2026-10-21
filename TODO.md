@@ -135,6 +135,12 @@ exercises the whole spine the widget later renders from.
       name). Each is a fixed handful of measurements, not a pass over a list, so they stay as they are
       (maintainer, 2026-10-15) until one design moves them all: measure on a worker at the width the row
       reports, without a first frame that swaps one form for another (SPEC *hold still*).
+- [ ] **The partial-refresh warning's words worked out with the state** (Codex on #1069): the near-me
+      list's "couldn't be refreshed" warning reads its stops' names (`partialStops.values.map { it.name
+      }.distinct()`) and their one reason (`Loaded.partialReason`, a getter over the same map) as it
+      composes, a pass over the failed stops each time it shows. Work both out where the `Loaded` state is
+      built, on the worker, and have the banner only read them. (#1069 reads the reason once, and only
+      while the warning shows, so it adds no pass of its own.)
 - [x] **The trip's other flows taken in by identity**: `MainActivity` collects the tracker's
       `nextBoard`, `routeDisruptions` and `stationNotes` with `collectByIdentityWithLifecycle`, as it does
       `lineChecks` (Codex, #627): the `StateFlow` has already compared each value where it was written, so a
