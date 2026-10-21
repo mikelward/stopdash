@@ -7,8 +7,11 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -4204,6 +4207,7 @@ internal fun StopGroupHeader(
     val currentOnClick by rememberUpdatedState(onClick)
     val tappable = onClick != null
     val moreLabel = stringResource(R.string.more_actions)
+    val presses = remember { MutableInteractionSource() }
     Box {
     Row(
         modifier = Modifier
@@ -4215,8 +4219,10 @@ internal fun StopGroupHeader(
                     // A tap opens the platform, a long press the "Hide ‹mode›" menu — the same
                     // gesture handling as a route row, with both actions announced.
                     Modifier
+                        .indication(presses, LocalIndication.current)
                         .pointerInput(tappable) {
                             detectTapGestures(
+                                onPress = { if (tappable) showPress(it, presses) },
                                 onTap = { currentOnClick?.invoke() },
                                 onLongPress = { hideMenuOpen = true },
                             )
@@ -5583,6 +5589,7 @@ internal fun RouteRow(
         else -> null
     }
     val starColor = LocalStarredBorderColor.current
+    val presses = remember { MutableInteractionSource() }
     Box {
     Row(
         modifier = Modifier
@@ -5591,8 +5598,10 @@ internal fun RouteRow(
                 // A row with no tap and no long press takes no gesture at all: a detector with
                 // nothing to do still consumes the touch.
                 if (opens || onLongPress != null) {
-                    Modifier.pointerInput(starrable, menu, longPressesInstead, opens) {
+                    Modifier.indication(presses, LocalIndication.current).pointerInput(starrable, menu, longPressesInstead, opens) {
                         detectTapGestures(
+                            // Only a row a tap does something on shows a press, as a clickable one would.
+                            onPress = { if (opens) showPress(it, presses) },
                             onTap = if (opens) ({ _ -> open() }) else null,
                             onLongPress = onLongPress,
                         )

@@ -10,7 +10,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -522,6 +525,7 @@ private fun StopOnRail(
     val currentOnOpen by rememberUpdatedState(onOpen)
     val opens = onOpen != null
     val toggles = onClick != null
+    val presses = remember { MutableInteractionSource() }
     val starColor = MaterialTheme.colorScheme.primary
     val alertColor = MaterialTheme.colorScheme.error
     val alertLabel = stringResource(R.string.route_stop_in_alert)
@@ -601,8 +605,10 @@ private fun StopOnRail(
             .then(
                 if (opens || toggles) {
                     Modifier
+                        .indication(presses, LocalIndication.current)
                         .pointerInput(opens, toggles) {
                             detectTapGestures(
+                                onPress = { if (opens) showPress(it, presses) },
                                 onTap = if (opens) ({ _ -> currentOnOpen?.invoke() }) else null,
                                 onLongPress = if (toggles) {
                                     { _ ->
