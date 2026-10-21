@@ -1110,6 +1110,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                                   rider off there, mid-ride or on a trip read back
                                                   (`OnTheWay.advance`, `withEndAsPlanned`, with
                                                   `ActiveTrip.plannedVehicleLeg`, Codex, #1070).
+                                - [ ] A step-free ride left with no call it can get off at today says so
+                                      and offers a replan (dev-docs/station-resolution.md, *Getting off*:
+                                      "else none does, and the ride says so"). On the way, a train followed
+                                      on another of the ride's lines whose own end in the hub loses its
+                                      step-free access after the rider boards still gets them off there,
+                                      since putting the end back as planned can't move it: the line goes
+                                      no further toward the trip (Codex, #1070). So does the Planner's own
+                                      call, which stays for its line, if its lift goes out.
                                 - [ ] The detour cut, offering every equally good ride.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
