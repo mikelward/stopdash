@@ -59,6 +59,13 @@ exercises the whole spine the widget later renders from.
       what the page showed in its place (its list or not, and which of its waits), so the next failure says.
       Since 2026-10-22 it runs with its effects queued (`@RealWorker`): an effect resuming on its real worker
       may have been the cause, as it was for a sibling test that threw `CalledFromWrongThreadException`.
+      It wasn't: it failed again with `@RealWorker`, once in a local full `./gradlew test` (not in 3 more runs
+      of its class, or 3 alone), and this time named it: `[no row: list 0, waits [Checking trips…], Checking
+      for disruptions, Disruptions: Jubilee]`. So the page showed its "Checking trips…" placeholder
+      (`RoutesChecking`) for a frame as the worker caught up: either the frame in hand stopped standing in
+      before the next was in (`mayStandIn`, `heldWhile` and the `takeIf` after it, in `TripScreen`), or the
+      list's `revealedState` went false. Either is a hold-still bug in the app, unless an input only the test
+      moves is the cause. The test's clock is fixed (`now`), so the frame's 15 s hold isn't it.
 - [x] Fix the flaky `QuietConnectionsTest."a trip's plan waiting on a connection that went quiet is asked
       once more, with a rate token, and answers"` (once on 2026-10-20: the plan asked three times, not
       twice). Not a timer but the app: a request canceled for its quiet connection failed before the close,
