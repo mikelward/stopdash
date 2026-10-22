@@ -5368,6 +5368,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       is only ever added, and a refresh drops it once TfL shows the alert ended); conflicts would
       want a time on each entry (`dismissedAt`). Anything through a server is a privacy and Play
       Data Safety decision: the stops someone watches say where they live and travel.
+      Export and import were rejected as not useful (maintainer, 2026-10-22); syncing through the
+      rider's own Google Drive (its hidden app folder, no server) is explored in
+      `dev-docs/drive-sync.md`, with its open questions.
 
 - [ ] (Later, open call) **Other cities beyond London** (recorded 2026-09-19 at the
       maintainer's request). StopDash is TfL-specific today: the data layer talks only to
