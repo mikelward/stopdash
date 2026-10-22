@@ -610,7 +610,7 @@ class ActiveTripTrackerTest {
             toPraed, "Praed", readyAt = now, destinationIds = mapOf("940GZZLUPRA" to "940GZZLUPRA"),
             destinationStopId = "940GZZLUPRA", destinationLevel = Pick.Level.STATION, stepFree = StepFree.FULLY,
         )
-        val key = "stepfree/0/940GZZLUPRA"
+        val key = "stepfree/940GZZLUPRA"
         tracker.refresh()
         assertTrue("$disruptionAlerts", disruptionAlerts.none { key in it })
         out = setOf("LIFT1")

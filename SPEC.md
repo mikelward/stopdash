@@ -3207,10 +3207,12 @@ as it was.
   the screen while it's still known, and no card outlasts its evidence, as the alert doesn't. It fires on **high** signals (a coming line closed, suspended or not
   running, as a trip's ranking counts it; a part suspension or part closure **TfL places on the leg's
   own stretch**; a stop still to reach that a notice in force says is closed or moved; and, on a
-  step-free trip, a coming ride that a **lift out** today leaves with **no step-free way off**, where
-  one was with every lift working: none of the calls it reaches where it gets off meets the trip's
-  level, its own call included, "Not step-free at Bank: a lift is out", the trip ahead planned again
-  from its card as for a closed stop) and **medium**
+  step-free trip, a coming ride that a **lift out** today leaves with **no step-free way on or off**,
+  where one was with every lift working: its boarding call fails the trip's level, until the rider is
+  aboard, or none of the calls it reaches where it gets off does, its own call included, "Not
+  step-free at Bank: a lift is out", one warning a station, so a change's way off and on are said and kept
+  going past once, the trip ahead planned again from its card as for a closed stop)
+  and **medium**
   ones (severe delays; a part suspension or part closure placed elsewhere on the line, or not placed
   yet; and **no train predicted at a change** the rider is **five minutes** or less from boarding at,
   "Jubilee: none soon at Bond Street"), and **the trip taking a branch by itself** because none of the

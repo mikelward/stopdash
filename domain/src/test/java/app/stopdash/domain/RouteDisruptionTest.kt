@@ -82,7 +82,7 @@ class RouteDisruptionTest {
         val found = RouteDisruption.notStepFree(trip, waiting, ends, access, out)
         assertEquals(listOf(Signal.NotStepFree(0, "C", "C")), found)
         assertEquals(Tier.HIGH, found.single().tier)
-        assertEquals("stepfree/0/C", found.single().key)
+        assertEquals("stepfree/C", found.single().key)
         // Shown as a card of its own.
         assertEquals(found, RouteDisruption.cards(found))
         // With the lift back, or every lift working, nothing.
@@ -92,6 +92,52 @@ class RouteDisruptionTest {
         // Arrived, or a ride the ends don't name: nothing.
         assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip, TripProgress.Arrived, ends, access, out))
         assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip, waiting, ends - 0, access, out))
+    }
+
+    @Test
+    fun `a coming ride a lift out leaves with no step-free way on is said until the rider's aboard`() {
+        // D's blue platform, where the second ride boards, is reached by ramp through one lift.
+        val access = StepFreeAccess(
+            mapOf("D" to mapOf("blue" to listOf(StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("DEE", 1))))),
+            mapOf("DEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT2" to setOf(0, 1)))),
+        )
+        val out = access.withLiftsOut(setOf("LIFT2"))
+        val stepFree = trip.copy(stepFree = StepFree.FULLY)
+        assertEquals(listOf(Signal.NotStepFree(2, "D", "D")), RouteDisruption.notStepFree(stepFree, waiting, emptyMap(), access, out))
+        // Waiting for it at D, not yet aboard: still said.
+        val atD = stepFree.copy(legIndex = 2)
+        assertEquals(listOf(Signal.NotStepFree(2, "D", "D")), RouteDisruption.notStepFree(atD, TripProgress.Waiting(second, at(22)), emptyMap(), access, out))
+        // Aboard: behind them.
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(atD.copy(boarded = true), TripProgress.Waiting(second, at(22)), emptyMap(), access, out))
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(atD, TripProgress.Riding(second, "E", 1, at(30), getOffSoon = false), emptyMap(), access, out))
+        // At no level, or with every lift working: nothing.
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip, waiting, emptyMap(), access, out))
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(stepFree, waiting, emptyMap(), access, access))
+    }
+
+    @Test
+    fun `a change a lift out leaves with no step-free way off or on is said once, by getting off`() {
+        // A change at C, with both lines' platforms there reached through the one lift: the second ride
+        // boards by C's platform, the first gets off at its station.
+        val platform = StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("CEE", 1))
+        val access = StepFreeAccess(
+            mapOf("940GZZC" to mapOf("red" to listOf(platform), "blue" to listOf(platform))),
+            mapOf("CEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val out = access.withLiftsOut(setOf("LIFT1"))
+        val first = ride.copy(toId = "940GZZC", toName = "C", path = listOf("B", "940GZZC"))
+        val then = second.copy(fromId = "9400ZZC", fromName = "C")
+        val change = ActiveTrip(TripRoute(listOf(first, then)), "E", startedAt = t0, stepFree = StepFree.FULLY)
+        val ends = mapOf(0 to LegEnd(StepFree.FULLY, LegEnd.Level.STOP, setOf("940GZZC"), ids = setOf("940GZZC")))
+        val offFirst = RouteDisruption.notStepFree(change, waiting, ends, access, out)
+        assertEquals(listOf(Signal.NotStepFree(0, "940GZZC", "C")), offFirst)
+        // Off the first ride and waiting for the second, boarding there is the same warning, so one kept going
+        // past stays dismissed (Codex, #1082).
+        val atC = RouteDisruption.notStepFree(change.copy(legIndex = 1), TripProgress.Waiting(then, at(22)), ends, access, out)
+        assertEquals(listOf(Signal.NotStepFree(1, "9400ZZC", "C")), atC)
+        assertEquals(offFirst.single().dismissKey, atC.single().dismissKey)
+        // With the first ride's way off not judged, boarding the second is said.
+        assertEquals(listOf(Signal.NotStepFree(1, "9400ZZC", "C")), RouteDisruption.notStepFree(change, waiting, emptyMap(), access, out))
     }
 
     @Test

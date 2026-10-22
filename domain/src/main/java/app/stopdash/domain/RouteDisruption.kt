@@ -146,10 +146,13 @@ object RouteDisruption {
         }
 
         /**
-         * On a step-free trip, the ride [legIndex] can no longer get the rider off at the trip's level: a lift out today
-         * leaves none of the calls it reaches where it gets off step-free, its own call [stopId] (named [stopName])
-         * included ([StepFreeExits.lost]). As blocking as a closed stop for a rider who needs it, so said as one is,
-         * never a call sent to that fails (dev-docs/station-resolution.md, *Getting off*).
+         * On a step-free trip, the ride [legIndex] can no longer be taken at the trip's level at [stopId] (named
+         * [stopName]): a lift out today leaves its boarding call there not step-free ([StepFreeExits.boardingLost]), or
+         * none of the calls it reaches where it gets off, its own call [stopId] included ([StepFreeExits.lost]). As
+         * blocking as a closed stop for a rider who needs it, so said as one is, never a call sent to that fails
+         * (dev-docs/station-resolution.md, *Getting off*). Keyed by its station ([platformRecord]), not its ride: a
+         * change's way off and way on are one warning, and stay one as the rider moves on to the next ride, so Keep
+         * going once covers both (Codex, #1082).
          */
         data class NotStepFree(
             override val legIndex: Int,
@@ -157,7 +160,7 @@ object RouteDisruption {
             val stopName: String,
         ) : Signal {
             override val tier: Tier get() = Tier.HIGH
-            override val key: String get() = "stepfree/$legIndex/$stopId"
+            override val key: String get() = "stepfree/${platformRecord(stopId) ?: stopId}"
         }
     }
 
@@ -286,10 +289,11 @@ object RouteDisruption {
     }
 
     /**
-     * Each coming ride of a step-free [trip] left with no way off at its level by the lifts out today
-     * ([Signal.NotStepFree], [StepFreeExits.lost]), as the rider takes it ([rideAt]), getting off where [ends] has it (by
-     * leg index; a ride it doesn't name says nothing): one whose calls there meet the level with every lift working
-     * ([base]) and none with the lifts out now ([today]). None once arrived.
+     * Each coming ride of a step-free [trip] that the lifts out today leave with no way on or off at its level
+     * ([Signal.NotStepFree]), as the rider takes it ([rideAt]): its boarding call, at the trip's level, where they haven't
+     * boarded it yet ([StepFreeExits.boardingLost]); and where it gets off as [ends] has it (by leg index; a ride it
+     * doesn't name says nothing of getting off, [StepFreeExits.lost]). Each judged as meeting the level with every lift
+     * working ([base]) and not with the lifts out now ([today]). None once arrived.
      */
     @WorkerThread
     fun notStepFree(
@@ -300,11 +304,18 @@ object RouteDisruption {
         today: StepFreeAccess,
     ): List<Signal.NotStepFree> {
         if (progress == TripProgress.Arrived) return emptyList()
-        return comingRides(trip).mapNotNull { (i, leg) ->
+        val level = trip.stepFree ?: StepFree.ANY
+        // On board the ride they're on, by the trip's word or the progress's, as [comingStops] reads it: its boarding
+        // is behind them.
+        val boarded = progress is TripProgress.Riding || trip.boarded || trip.onBoardSeen
+        // A change with no way off or on is one warning ([Signal.NotStepFree.key]), said by getting off, as it comes first.
+        return comingRides(trip).flatMap { (i, leg) ->
             val ride = rideAt(trip, i, leg)
-            val end = ends[i] ?: return@mapNotNull null
-            Signal.NotStepFree(i, ride.toId, ride.toName).takeIf { StepFreeExits.lost(ride, end, base, today) }
-        }
+            val on = Signal.NotStepFree(i, ride.fromId, ride.fromName)
+                .takeIf { !(i == trip.legIndex && boarded) && StepFreeExits.boardingLost(ride, level, base, today) }
+            val off = ends[i]?.let { end -> Signal.NotStepFree(i, ride.toId, ride.toName).takeIf { StepFreeExits.lost(ride, end, base, today) } }
+            listOfNotNull(on, off)
+        }.distinctBy { it.key }
     }
 
     /** [signals] worst first, then in route order, as they're said. */
