@@ -105,7 +105,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 rows = listOf(
                     rowModel(row("victoria", "Victoria", "Brixton", 120)),
                     rowModel(branchingRow()),
@@ -205,7 +205,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 rows = listOf(
                     rowModel(row("victoria", "Victoria", "Brixton", 120)),
                     rowModel(branchingRow()),
@@ -220,7 +220,7 @@ class WidgetScreenshotTest {
         hasData = true,
         stale = false,
         uncertain = false,
-        stamp = "Updated just now",
+        stamp = "09:00",
         rows = listOf(
             rowModel(row("windrush", "Windrush", "Highbury & Islington", 120, mode = "overground")),
             rowModel(row("central", "Central", "Ealing Broadway", 180)),
@@ -248,7 +248,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 // Three lines, inside the default widget's four: the suspension, then a countdown
                 // and its status, as the budget would choose them.
                 rows = listOf(WidgetRowModel(suspended, emptyList()), rowModel(delayed)),
@@ -267,7 +267,7 @@ class WidgetScreenshotTest {
             hasData = true,
             stale = false,
             uncertain = false,
-            stamp = "Updated just now",
+            stamp = "09:00",
             rows = listOf(rowModel(planned), rowModel(delayed)),
         )
         capture("widget-planned.png", model)
@@ -290,7 +290,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 rows = listOf(WidgetRowModel(rail, emptyList(), noTimes = NoTimes.NO_KEY), rowModel(row("victoria", "Victoria", "Brixton", 120))),
             ),
             fontScale = 1.3f,
@@ -313,7 +313,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 rows = listOf(
                     WidgetRowModel(rail, emptyList(), noTimes = NoTimes.NO_KEY, statusStacked = true),
                     rowModel(row("victoria", "Victoria", "Brixton", 120)).copy(stackedLines = listOf(true)),
@@ -332,7 +332,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = true,
                 uncertain = true,
-                stamp = "Updated 12 min ago",
+                stamp = "08:48",
                 rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120, fetchedAt = now.minusSeconds(900)))),
             ),
         )
@@ -365,7 +365,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 rows = listOf(
                     rowModel(row("victoria", "Victoria", "Brixton", 120))
                         .copy(header = WidgetHeader("Oxford Circus – Platform 3", "Oxford Circus, Platform 3")),
@@ -384,7 +384,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = true,
-                stamp = "Updated just now",
+                stamp = "09:00",
                 rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120))),
             ),
         )
@@ -394,7 +394,7 @@ class WidgetScreenshotTest {
     fun `fresh snapshot with nothing due says so`() {
         capture(
             "widget-no-departures.png",
-            WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = emptyList()),
+            WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = emptyList()),
         )
     }
 
@@ -408,7 +408,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated 14 min ago",
+                stamp = "08:46",
                 // The minimum height's rows (widgetRowsHeight) fit one line.
                 rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120))),
             ),
@@ -448,7 +448,7 @@ class WidgetScreenshotTest {
             hasData = true,
             stale = false,
             uncertain = false,
-            stamp = "Updated just now",
+            stamp = "09:00",
             rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120))),
         )
         fun sizes(textScale: Float): Map<String, Float> =
@@ -457,7 +457,7 @@ class WidgetScreenshotTest {
         val base = sizes(1f)
         val larger = sizes(1.5f)
         // The parse found the texts this compares: the title, the stamp, the line's code and countdown.
-        assertTrue(base.keys.containsAll(listOf("StopDash", "Updated just now", "VIC")))
+        assertTrue(base.keys.containsAll(listOf("StopDash", "Updated 09:00", "VIC")))
         assertEquals(base.keys, larger.keys)
         // Every text but the pill's grows by the factor; the pill's code grows with it to the pill's cap.
         base.forEach { (text, size) ->
@@ -600,7 +600,7 @@ class WidgetScreenshotTest {
                 hasData = true,
                 stale = false,
                 uncertain = false,
-                stamp = "Updated 14 min ago",
+                stamp = "08:46",
                 rows = listOf(
                     rowModel(row("victoria", "Victoria", "Brixton", 120))
                         .copy(stackedLines = listOf(widgetRowStacked(listOf("2 min"), false, 180.dp, 1.3f))),
@@ -775,7 +775,7 @@ class WidgetScreenshotTest {
             rowModel(row("line$i", "Line $i", destination, 60L * (i + 1)))
                 .let { if (i % 3 == 0) it.copy(header = WidgetHeader("Stop $i", "Stop $i")) else it }
         }
-        val model = WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = rows)
+        val model = WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = rows)
         RuntimeEnvironment.setQualifiers("+notnight")
         RuntimeEnvironment.setFontScale(1f)
         val drawn = texts(inflate(ApplicationProvider.getApplicationContext(), model, DpSize(380.dp, 900.dp)))
@@ -791,7 +791,7 @@ class WidgetScreenshotTest {
             rowModel(row("line$i", "Line $i", destination, 60L * (i + 1)))
                 .let { if (i % 3 == 0) it.copy(header = WidgetHeader("Stop $i", "Stop $i")) else it }
         }
-        val model = WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = rows, columnBreak = 3)
+        val model = WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = rows, columnBreak = 3)
         RuntimeEnvironment.setQualifiers("+notnight")
         RuntimeEnvironment.setFontScale(1f)
         val drawn = texts(inflate(ApplicationProvider.getApplicationContext(), model, DpSize(760.dp, 400.dp)))

@@ -71,6 +71,7 @@ class WidgetContentTest {
 
     @Test
     fun `no data renders the open-app prompt`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()), now)
         }
@@ -79,6 +80,7 @@ class WidgetContentTest {
 
     @Test
     fun `no data without a location grant asks for one`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()),
@@ -92,9 +94,10 @@ class WidgetContentTest {
 
     @Test
     fun `a snapshot with no rows renders the no-departures message`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
-                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = emptyList()),
+                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = emptyList()),
                 now,
             )
         }
@@ -102,10 +105,27 @@ class WidgetContentTest {
     }
 
     @Test
-    fun `a stale empty snapshot says the data may be out of date`() = runGlanceAppWidgetUnitTest {
+    @Config(qualifiers = "fr")
+    fun `the widget says its words in the app's language`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
-                WidgetModel(hasData = true, stale = true, uncertain = true, stamp = "Updated 12 min ago", rows = emptyList()),
+                WidgetModel(hasData = true, stale = true, uncertain = false, stamp = "08:48", rows = emptyList()),
+                now,
+            )
+        }
+        // The app's own translations, not the English the widget once spelled out.
+        onNode(hasTextEqualTo("Appuyez pour actualiser")).assertExists()
+        onNode(hasTextEqualTo("Aucun départ à venir")).assertExists()
+        onAllNodes(hasText("Tap to refresh")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a stale empty snapshot says the data may be out of date`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
+        provideComposable {
+            WidgetContent(
+                WidgetModel(hasData = true, stale = true, uncertain = true, stamp = "08:48", rows = emptyList()),
                 now,
             )
         }
@@ -114,19 +134,20 @@ class WidgetContentTest {
 
     @Test
     fun `a fresh row renders its destination and stamp`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = false,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(30)))),
                 ),
                 now,
             )
         }
         onNode(hasText("Brixton")).assertExists()
-        onNode(hasText("Updated just now")).assertExists()
+        onNode(hasTextEqualTo("Updated 09:00")).assertExists()
     }
 
     @Test
@@ -142,7 +163,7 @@ class WidgetContentTest {
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = false,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = listOf(rowModel(planned), rowModel(disrupted)),
                 ),
                 now,
@@ -155,12 +176,13 @@ class WidgetContentTest {
 
     @Test
     fun `the compact layout swaps the title row for a short warning`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = true,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(30)))),
                     compact = true,
                 ),
@@ -175,12 +197,13 @@ class WidgetContentTest {
 
     @Test
     fun `a stacked row keeps the line code, the destination and the countdown`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = false,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(30))).copy(stackedLines = listOf(true))),
                 ),
                 now,
@@ -193,12 +216,13 @@ class WidgetContentTest {
 
     @Test
     fun `a widget too small for one departure asks to be made taller`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = false,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = emptyList(),
                     compact = true,
                     tooSmall = true,
@@ -212,12 +236,13 @@ class WidgetContentTest {
 
     @Test
     fun `a stop header renders above its rows`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = false,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = listOf(
                         rowModel(row("victoria", 120, now.minusSeconds(30)))
                             .copy(header = WidgetHeader("Example Stop – Platform 1", "Example Stop, Platform 1, Southbound")),
@@ -230,17 +255,19 @@ class WidgetContentTest {
     }
 
     @Test
-    fun `a narrow widget drops the stamp's Updated prefix`() = runGlanceAppWidgetUnitTest {
+    fun `a narrow widget shows the stamp's time alone`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         setAppWidgetSize(DpSize(180.dp, 110.dp))
-        provideComposable { WidgetContent(stampOnly("Updated 14 min ago"), now) }
-        onNode(hasTextEqualTo("14 min ago")).assertExists()
+        provideComposable { WidgetContent(stampOnly("08:46"), now) }
+        onNode(hasTextEqualTo("08:46")).assertExists()
     }
 
     @Test
     fun `a wide widget keeps the full stamp`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         setAppWidgetSize(DpSize(WIDGET_COMPACT_WIDTH, 110.dp))
-        provideComposable { WidgetContent(stampOnly("Updated 14 min ago"), now) }
-        onNode(hasTextEqualTo("Updated 14 min ago")).assertExists()
+        provideComposable { WidgetContent(stampOnly("08:46"), now) }
+        onNode(hasTextEqualTo("Updated 08:46")).assertExists()
     }
 
     private fun stampOnly(stamp: String) = WidgetModel(
@@ -252,6 +279,7 @@ class WidgetContentTest {
 
     @Test
     fun `a partial snapshot with rows flags the header as uncertain`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         // Fresh overall (recent stamp) but uncertain — one stop carried arrivalsFresh=false and
         // is under the age threshold, so its row still shows a live countdown. The header must
         // say so rather than a clean "just now" that masks the unrefreshed stop.
@@ -260,7 +288,7 @@ class WidgetContentTest {
                 WidgetModel(
                     hasData = true,
                     stale = false, uncertain = true,
-                    stamp = "Updated just now",
+                    stamp = "09:00",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(30)))),
                 ),
                 now,
@@ -271,6 +299,7 @@ class WidgetContentTest {
 
     @Test
     fun `a branching row renders each destination on its own line`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         // Same line and direction, two destinations — the widget keeps each on its own line
         // (parity with the in-app card), so a divergent train is shown, not dropped (SPEC D8).
         val branching = DepartureRow(
@@ -290,7 +319,7 @@ class WidgetContentTest {
         )
         provideComposable {
             WidgetContent(
-                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = listOf(rowModel(branching))),
+                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = listOf(rowModel(branching))),
                 now,
             )
         }
@@ -302,6 +331,7 @@ class WidgetContentTest {
 
     @Test
     fun `a named Overground line's hollow pill still shows its code, and TalkBack its name`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         val windrush = DepartureRow(
             stopId = "910GEXAMPLE",
             stopName = "Example Station",
@@ -318,7 +348,7 @@ class WidgetContentTest {
         )
         provideComposable {
             WidgetContent(
-                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = listOf(rowModel(windrush))),
+                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = listOf(rowModel(windrush))),
                 now,
             )
         }
@@ -328,6 +358,7 @@ class WidgetContentTest {
 
     @Test
     fun `a via-branch row shows the abbreviated branch beside the destination`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         // A branching-line service shows its via-trunk in the board's short form (Cross → X),
         // so the rider can tell two same-terminus trains apart in the compact row.
         val viaRow = DepartureRow(
@@ -346,7 +377,7 @@ class WidgetContentTest {
         )
         provideComposable {
             WidgetContent(
-                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = listOf(rowModel(viaRow))),
+                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "09:00", rows = listOf(rowModel(viaRow))),
                 now,
             )
         }
@@ -356,12 +387,13 @@ class WidgetContentTest {
 
     @Test
     fun `a stale row shows its train's predicted time as a guess, not a countdown`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = true, uncertain = true,
-                    stamp = "Updated 12 min ago",
+                    stamp = "08:48",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
                 ),
                 now,
@@ -375,12 +407,13 @@ class WidgetContentTest {
 
     @Test
     fun `the header refreshes and the departures open the app`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(
                 WidgetModel(
                     hasData = true,
                     stale = true, uncertain = true,
-                    stamp = "Updated 12 min ago",
+                    stamp = "08:48",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
                 ),
                 now,
@@ -397,6 +430,7 @@ class WidgetContentTest {
 
     @Test
     fun `with no data nothing refreshes, and the widget opens the app`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
         provideComposable {
             WidgetContent(WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()), now)
         }
@@ -412,7 +446,7 @@ class WidgetContentTest {
                 WidgetModel(
                     hasData = true,
                     stale = true, uncertain = true,
-                    stamp = "Updated 12 min ago",
+                    stamp = "08:48",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
                     tap = WidgetTapNote.REFRESHING,
                 ),
@@ -431,7 +465,7 @@ class WidgetContentTest {
                 WidgetModel(
                     hasData = true,
                     stale = true, uncertain = true,
-                    stamp = "Updated 12 min ago",
+                    stamp = "08:48",
                     rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
                     tap = WidgetTapNote.UNREACHABLE,
                 ),

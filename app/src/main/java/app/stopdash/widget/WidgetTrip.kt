@@ -10,6 +10,7 @@ import java.io.File
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -212,6 +213,7 @@ internal data class WidgetTripModel(
     val detail: String,
     val trains: List<WidgetTripTrain>,
     val note: String,
+    // When it was last updated ([widgetStamp]): a clock time, "13:00", headed "Updated" where there's room.
     val stamp: String,
     // Not updated for [WIDGET_TRIP_STALE_AFTER]: the trains read as guesses ("21:14?"), and it says so.
     val stale: Boolean,
@@ -237,8 +239,10 @@ internal suspend fun widgetTripModelOn(
     kept: KeptWidgetTrip?,
     now: Instant,
     worker: CoroutineDispatcher = Dispatchers.Default,
+    // The language the stamp's weekday is said in ([widgetStamp]): the app's.
+    locale: Locale = Locale.UK,
 ): WidgetTripModel? = withContext(worker) {
-    kept?.let { widgetTripModel(it.trip, now, SteadyClock.age(it.steadyAt, now)) }
+    kept?.let { widgetTripModel(it.trip, now, SteadyClock.age(it.steadyAt, now), locale) }
 }
 
 /**
@@ -253,6 +257,7 @@ internal fun widgetTripModel(
     trip: WatchTrip?,
     now: Instant,
     age: Duration = trip?.let { Duration.between(Instant.ofEpochMilli(it.sentAt), now) } ?: Duration.ZERO,
+    locale: Locale = Locale.UK,
 ): WidgetTripModel? {
     if (trip == null) return null
     // Its time as the wall clock reads it now, for the stamp and the redraws, which go by the wall clock.
@@ -294,7 +299,7 @@ internal fun widgetTripModel(
         detail = trip.detail,
         trains = trains,
         note = trip.departuresNote,
-        stamp = widgetStamp(sentAt, now),
+        stamp = widgetStamp(sentAt, now, locale),
         stale = stale,
         redrawAt = redrawAt,
     )
