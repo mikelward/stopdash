@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * One end of a [PendingJourney]: a station picked in the favorite-journey picker, or one of the rider's
  * favorite places (Home, Work, their own), kept by its id so the place itself stays the one source of
@@ -52,4 +54,26 @@ object PendingJourneys {
     /** Drops [journey] by key; a second Remove landing after the first is a no-op. Off the main thread. */
     fun remove(saved: List<PendingJourney>, journey: PendingJourney): List<PendingJourney> =
         saved.filterNot { it.key == journey.key }
+
+    /**
+     * [saved] as the list shows it: each place end under its place's name now ([nameOf] the place in
+     * [places] with its id), so renaming Home or Work renames its journeys too (Codex on #740). A place
+     * deleted since, one whose name reads blank, or [places] not read (null) keeps the name the end was
+     * saved with. Keys are by id, so an end shown renamed is still removed as the one saved.
+     */
+    @WorkerThread
+    fun named(saved: List<PendingJourney>, places: List<FavoritePlace>?, nameOf: (FavoritePlace) -> String): List<PendingJourney> {
+        if (places.isNullOrEmpty() || saved.none { it.from is PendingEnd.Place || it.to is PendingEnd.Place }) return saved
+        val byId = places.associateBy { it.id }
+        fun PendingEnd.named(): PendingEnd {
+            if (this !is PendingEnd.Place) return this
+            val now = byId[placeId]?.let(nameOf)?.takeIf { it.isNotBlank() } ?: return this
+            return if (now == name) this else copy(name = now)
+        }
+        return saved.map { journey ->
+            val from = journey.from.named()
+            val to = journey.to.named()
+            if (from === journey.from && to === journey.to) journey else PendingJourney(from, to)
+        }
+    }
 }

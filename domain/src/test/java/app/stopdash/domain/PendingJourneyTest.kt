@@ -27,4 +27,24 @@ class PendingJourneyTest {
         assertEquals(emptyList<PendingJourney>(), PendingJourneys.remove(once, PendingJourney(waterloo, home)))
         assertEquals(emptyList<PendingJourney>(), PendingJourneys.remove(emptyList(), PendingJourney(home, waterloo)))
     }
+
+    private fun place(id: String, label: String) = FavoritePlace(id, FavoriteKind.HOME, label, Coordinates(51.5, -0.12))
+
+    @Test
+    fun `a place end shows under its place's name now, and is still removed as the one saved`() {
+        val saved = listOf(PendingJourney(home, waterloo))
+        val shown = PendingJourneys.named(saved, listOf(place("h", "Flat")), FavoritePlace::label)
+        assertEquals(listOf("Flat"), shown.map { it.from.name })
+        assertEquals("Waterloo", shown.single().to.name)
+        assertEquals(saved.single().key, shown.single().key)
+        assertEquals(emptyList<PendingJourney>(), PendingJourneys.remove(saved, shown.single()))
+    }
+
+    @Test
+    fun `a place deleted, named blank or not read keeps the name it was saved with`() {
+        val saved = listOf(PendingJourney(home, waterloo))
+        assertEquals(saved, PendingJourneys.named(saved, listOf(place("w", "Work")), FavoritePlace::label))
+        assertEquals(saved, PendingJourneys.named(saved, listOf(place("h", " ")), FavoritePlace::label))
+        assertEquals(saved, PendingJourneys.named(saved, null, FavoritePlace::label))
+    }
 }

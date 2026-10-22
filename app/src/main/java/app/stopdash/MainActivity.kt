@@ -68,6 +68,7 @@ import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PendingJourneys
 import app.stopdash.domain.Pick
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StepFree
@@ -2320,7 +2321,10 @@ class MainActivity : ComponentActivity() {
                                 // two stores and shown together, so a row never grows its summary after it appears
                                 // (Codex on #700). The previous pair stays up while the next is worked out.
                                 // And whether to ask for location all the time, with them, so its card never pushes the rows down.
-                                val journeysShown by produceState<FavoriteJourneysList?>(null, read, alertSchedules, locationAllTime, locationDeclined) {
+                                // Keyed by the places' holder, compared by identity, so a new list isn't walked on the
+                                // main thread to tell it from the last (AGENTS.md *Main thread*).
+                                val placesNow = savedPlacesState
+                                val journeysShown by produceState<FavoriteJourneysList?>(null, read, alertSchedules, locationAllTime, locationDeclined, placesNow) {
                                     val loaded = read ?: return@produceState
                                     val alerts = alertSchedules ?: return@produceState
                                     val allTime = locationAllTime ?: return@produceState
@@ -2337,8 +2341,11 @@ class MainActivity : ComponentActivity() {
                                         // A scan over the journeys, worked out off the main thread too.
                                         anyAlertsOn = anyJourneyAlertsOn(summaries),
                                         askLocation = !allTime && !locationDeclined && !schedules.isNullOrEmpty(),
-                                        // Carried with the journeys, so the two lists are shown together.
-                                        pending = loaded.pending.orEmpty(),
+                                        // Carried with the journeys, so the two lists are shown together; a place end
+                                        // under its place's name now, so a renamed Home is shown renamed.
+                                        pending = withContext(Workers.compute) {
+                                            PendingJourneys.named(loaded.pending.orEmpty(), placesNow.places, ::favoriteRouteName)
+                                        },
                                     )
                                 }
                                 // Asks for location all the time: the while-using grant first where it's missing, since
@@ -8020,8 +8027,12 @@ internal object StopJourneyWrites {
  * for the process, not the Alerts screen: the write runs on the app's scope so a change followed at
  * once by Back still lands, and its failure has to reach whichever screen is up when it ends.
  */
-/** The favorite journeys list as shown: the journeys, each one's alert summary, and whether to ask for location. */
-internal data class FavoriteJourneysList(
+/**
+ * The favorite journeys list as shown: the journeys, each one's alert summary, and whether to ask for location.
+ * Compared by identity, not a data class: its producer publishes a new one on each answer, and a structural
+ * comparison would walk the journeys, summaries and grayed list on the main thread to tell it from the last.
+ */
+internal class FavoriteJourneysList(
     val journeys: List<FavoriteJourney>?,
     val summaries: Map<String, List<AlertLine>>,
     val askLocation: Boolean,
