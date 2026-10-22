@@ -1,0 +1,140 @@
+{
+ "journeys": [
+  {
+   "legs": [
+    {
+     "departureTime": "2026-10-22T18:50:00",
+     "arrivalTime": "2026-10-22T18:56:00",
+     "departurePoint": {
+      "individualStopId": "490000077H",
+      "commonName": "Euston Station",
+      "lat": 51.526508512317,
+      "lon": -0.132894482901
+     },
+     "arrivalPoint": {
+      "individualStopId": "490005084Z",
+      "commonName": "Goodge Street Station",
+      "lat": 51.520594742282,
+      "lon": -0.134231855804
+     },
+     "routeOptions": [
+      {
+       "lineIdentifier": {
+        "id": "390",
+        "name": "390"
+       },
+       "directions": [
+        "Victoria Bus Station"
+       ]
+      }
+     ],
+     "mode": {
+      "id": "bus"
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "name": "Euston Square Station"
+       },
+       {
+        "id": "490G00020147",
+        "name": "University Coll Hosp / Warren St Stn"
+       },
+       {
+        "id": "490G000343",
+        "name": "Capper Street"
+       },
+       {
+        "name": "Goodge Street Station"
+       }
+      ]
+     },
+     "interChangeDuration": "2",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "departureTime": "2026-10-22T18:58:00",
+     "arrivalTime": "2026-10-22T19:23:00",
+     "departurePoint": {
+      "individualStopId": "490005084Z",
+      "commonName": "Goodge Street Station",
+      "lat": 51.520594742282,
+      "lon": -0.134231855804
+     },
+     "arrivalPoint": {
+      "individualStopId": "490000248S",
+      "commonName": "Victoria Station",
+      "lat": 51.496001859911004,
+      "lon": -0.142266677604
+     },
+     "routeOptions": [
+      {
+       "lineIdentifier": {
+        "id": "24",
+        "name": "24"
+       },
+       "directions": [
+        "Grosvenor Road"
+       ]
+      }
+     ],
+     "mode": {
+      "id": "bus"
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "490G000346",
+        "name": "Stephen Street"
+       },
+       {
+        "name": "Tottenham Court Road Station"
+       },
+       {
+        "id": "490G00004695",
+        "name": "Cambridge Circus"
+       },
+       {
+        "name": "Leicester Square Station"
+       },
+       {
+        "id": "490G00016161",
+        "name": "St Martin's Place"
+       },
+       {
+        "id": "490G000804",
+        "name": "Northumberland Avenue / Trafalgar Square"
+       },
+       {
+        "id": "490G000832",
+        "name": "Whitehall / Trafalgar Square"
+       },
+       {
+        "id": "490G00008376",
+        "name": "Horse Guards Parade"
+       },
+       {
+        "id": "490G00020361",
+        "name": "Westminster Stn  / Parliament Square"
+       },
+       {
+        "name": "St James's Park Station"
+       },
+       {
+        "id": "490G000394",
+        "name": "Westminster City Hall"
+       },
+       {
+        "id": "490G000830",
+        "name": "Westminster Cathedral / Victoria Stn"
+       },
+       {
+        "name": "Victoria Station"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

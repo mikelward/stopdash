@@ -10,7 +10,8 @@ import java.time.Instant
  * and changes are its, the live times are StopDash's own ([TripTiming]).
  *
  * [path] is the stop ids the leg calls at after boarding, through [toId], and [pathNames] their names
- * (cleaned; empty when not known), as TfL can name a station by another id; [changeAfter] is the time
+ * (cleaned; empty when not known), as TfL can name a station by another id; an id is blank for a bus stop
+ * the Planner names but gives none (one named for a station, "Victoria Station"); [changeAfter] is the time
  * the Planner allows to change to the next leg; [headings] is the terminus the Planner's service
  * runs to ("Stanmore"), as its front and a station card show it, for when no live train does.
  *

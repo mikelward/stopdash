@@ -129,6 +129,9 @@ data class TflJourneyLegDto(
         if (!walk && (fromId == null || toId == null)) return null
         val change = interChangeDuration?.trim()?.toLongOrNull()
             ?.takeIf { interChangePosition.equals("AFTER", ignoreCase = true) }
+        // A bus stop named for a station ("Victoria Station") comes with its name but no id: kept by its name, its id
+        // blank, so a ride's stops are all there to list and count; the last is where the ride gets off, by its end's id.
+        val rideStops = path.stopPoints.filter { it.id.isNotBlank() || (!walk && it.name.isNotBlank()) }
         return TripLeg(
             mode = modeId,
             lineId = line?.id.orEmpty(),
@@ -140,8 +143,8 @@ data class TflJourneyLegDto(
             toName = pointName(arrivalPoint.commonName),
             departure = departure,
             arrival = arrival,
-            path = path.stopPoints.filter { it.id.isNotBlank() }.map { it.id },
-            pathNames = path.stopPoints.filter { it.id.isNotBlank() }.map { pointName(it.name) },
+            path = rideStops.mapIndexed { i, stop -> stop.id.ifBlank { if (i == rideStops.lastIndex) toId.orEmpty() else "" } },
+            pathNames = rideStops.map { pointName(it.name) },
             changeAfter = Duration.ofMinutes(change ?: 0),
             headings = routeOptions.firstOrNull()?.directions.orEmpty()
                 .map { signedName(it) }.filter { it.isNotBlank() }.distinct(),

@@ -458,9 +458,10 @@ object OnTheWay {
      * Whether [leg]'s planned stops can be matched to a train's live calls: the Planner names a bus
      * leg's stops by their stop area ("490G…", a road's poles together), which the live calls (by
      * pole) never name, and TfL gives no way to tell which area a pole is in. Such a leg is checked
-     * on its ends alone; a leg with no plan of its stops is too.
+     * on its ends alone; a leg with no plan of its stops is too, and one with a stop the Planner gives
+     * no id for ([TripLeg.path]), which no call can be matched to.
      */
-    fun checkable(leg: TripLeg): Boolean = leg.path.isNotEmpty() && leg.path.none { it.startsWith(STOP_AREA_PREFIX) }
+    fun checkable(leg: TripLeg): Boolean = leg.path.isNotEmpty() && leg.path.none { it.isBlank() || it.startsWith(STOP_AREA_PREFIX) }
 
     // Each of [sequence]'s routes alone, under [ride]'s own ids where the Planner names a station by a
     // sibling of the one the route calls at ([LineSequence.callingAt]), as [ridePositions] places it:
