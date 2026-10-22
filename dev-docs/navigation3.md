@@ -1,14 +1,15 @@
 # Moving the app's pages onto Navigation 3
 
 **Status: under way, on Navigation 3** (maintainer, 2026-10-22: "ship option 1 and write the plan", then
-Navigation 3 over Navigation Compose 2.x). Step 1 is done (*Step 1: what the spike found*). Predictive
-back shipped as "shrink only": every page follows the back gesture over a scrim, and only windows over a
-page show the page under them (SPEC *Back*). Drawing the real page under every page is the payoff this
-plan works toward. The other gain is a navigation model that can't skip pages.
+Navigation 3 over Navigation Compose 2.x). Steps 1 to 3 are done (*Step 1: what the spike found*, *Step 2:
+what changed*, *Step 3: what changed*): the screens over the near-me view are a back stack, and the back
+gesture draws the real page under them. Predictive back first shipped as "shrink only", every page following
+the gesture over a scrim, and pages inside a screen still do (SPEC *Back*). Drawing the real page under every
+page is the payoff this plan works toward. The other gain is a navigation model that can't skip pages.
 
 ## Why
 
-The app has no back stack. `MainActivity` keeps one flag per screen (`licensesOpen`, `settingsOpen`,
+Before step 3 the app had no back stack. `MainActivity` keeps one flag per screen (`licensesOpen`, `settingsOpen`,
 `onTheWayOpen`, `favoritePlacesOpen`, `favoriteJourneysOpen`, `linesPresence`, `stationSearchOpen`,
 `openStationId`, …). Rules then work out what shows:
 - `topOverlay` picks the overlay on top, by a fixed priority, not by what was opened last;
@@ -132,27 +133,18 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
    during a gesture. Visible behavior is unchanged: today the page is never composed but on top.
 
    Done: *Step 2: what changed*.
-3. **The overlays become a back stack.** Keys: `NearMe(generation)` at the root, and `Settings`,
-   `Licenses`, `OnTheWay`, `FavoritePlaces`, `FavoriteJourneys`, `Lines`, `StationSearch` and
-   `Station(id)` above it.
-   - `NavDisplay` replaces `NearbyArea`'s switch, `KeptPages`, `topOverlay` and `openOverlayPages`. The
-     flags become questions about the stack ("is `Licenses` on it?").
-   - Done after an arrived trip, and a shared place, reset the stack to `[NearMe(generation + 1)]`.
-     The new generation is a new key, so it opens afresh, as the generation bump does today.
-   - Licenses opened over the trip on the way is on top because it was opened last, not by priority.
-     Each `topOverlay` rule is checked against the open order it stands in for.
-   - This is the step that gives overlays the real page underneath during the gesture. Their option 1
-     handlers go.
-   - The trip from here becomes an entry of its own above `NearMe`, so Lines… opened over it sits
-     above it on the stack and `LinesPresence.UNDER_TRIP` goes (maintainer, 2026-10-22).
-   - `NavDisplay` provides `LocalPageOnTop` per entry: true for the top entry, false for the one a
-     gesture reveals.
-   - Pages open and close with a short slide and fade, about 250 ms to open and 200 ms to close, and the
-     back swipe drives the close (maintainer, 2026-10-22). Both durations are a starting point, tuned on
-     a device.
-   - During a gesture the top page drops to STARTED too, so a swipe let go of pauses and resumes it.
-     `ReportScreen` counts each resume, so a canceled swipe would count the page twice; it needs the
-     on-top gate or a check that the page didn't change.
+3. **The overlays become a back stack.** Keys: `NearMe(generation)` at the root, and `Licenses`,
+   `Settings`, `OnTheWay`, `FavoritePlaces`, `FavoriteJourneys`, `Lines` and `Stations` above it, in the
+   order they were opened.
+
+   Done: *Step 3: what changed*.
+   - The trip from here becoming a page of its own moved to step 3b, below.
+3b. **The trip from here becomes its own page** above `NearMe`, so Lines… under it sits under it on the
+   stack and `LinesPresence.UNDER_TRIP` goes (maintainer, 2026-10-22: in step 3, which this follows).
+   - Split from step 3 for the near-me list under it: drawn there during a swipe, the list would build its
+     departures model again, which the trip's opening drops so that it stops fetching (`listStores`), and
+     fetch for a glimpse. It needs to keep the model paused under the trip, or draw what it last showed,
+     first.
 4. **A route stop's windows become dialog entries.** The details and the Departures opened from them
    become `DialogSceneStrategy` entries. Anything pushed after them covers them by stack order, so
    `routeStopCovered` goes.
@@ -162,15 +154,16 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
      Each is checked against what the window does today, which is pause nothing.
 5. **The station flow stacks.** Search, `Station(id)`, then the station's trip. A station opened from a
    route stop's details now goes on top of the station under it instead of replacing it, which is
-   `TODO.md`'s "takes the place of the station under it".
+   `TODO.md`'s "takes the place of the station under it". `KeptPages`, which keeps the flow's pages apart
+   inside its one page until then, goes.
 6. **In-screen views become entries, a family per PR.** The near-me page's platform, station and
    journey views and its route and ride pages; the trip's open route and later list; Settings'
    Disruptions page; the favorite rides' alerts and picker. Each family gets the real page underneath
    and loses its option 1 handler. Editors and inline pickers (a saved place's editor, the trip's
    To… and Via pickers) can stay in-entry, following the gesture over a scrim as today.
-7. **Cleanup.** Retire `KeptPages`, `NearbyArea`'s body switch, `topOverlay`, `routeStopCovered`,
-   `openOverlayPages`, `RideReturn`'s bookkeeping where the stack now holds it, and `PredictiveBack`
-   where nothing uses it. SPEC *Back* then says what the stack does.
+7. **Cleanup.** Retire `routeStopCovered`, the flags the stack now answers for (`Pages.flag`,
+   `Pages.kept`), `RideReturn`'s bookkeeping where the stack now holds it, and `PredictiveBack` where
+   nothing uses it. SPEC *Back* then says what the stack does.
 
 **Size:** about 6–10 PRs. Step 3 is the largest: `MainActivity`'s content is about 8,000 lines, and
 many of its 94 `rememberSaveable`s are navigation state. The plan runs step by step, each merged before
@@ -244,13 +237,50 @@ checks and Settings' permission reads. Steps 3 and 4 each note where RESUMED alo
 `PageOnTopTest` holds each helper, `ConsumeForegroundReturn`, `ReportChanges` and a window both ways: off
 while the page isn't on top, and run once it is.
 
+## Step 3: what changed
+
+The screens over the near-me view are pages of a back stack (`Pages.kt`), drawn by a `NavDisplay` in
+`NearbyArea`, which replaces its switch; `topOverlay`, `overlayPage` and `openOverlayPages` went with it.
+`KeptPages` stays only inside the station flow (below).
+
+- **What's open is asked of the stack.** The flags the screens open and close by (`licensesOpen`,
+  `settingsOpen`, …) read and write it (`Pages.flag`), so every way in and out of each screen works as it
+  did: set, a screen shows over whatever is on top; cleared, it closes. What shows is what was opened last.
+  `PagesTest` checks each of `topOverlay`'s rankings against the order the rider opens the screens in. The
+  one it didn't reproduce on its own is a screen opened again from under another (the trip on the way's
+  screen, reopened to say an End failed): set again, a screen comes up from under the pages opened since.
+- **The station flow is one page** (`Stations`) until step 5 stacks it: open while its search or a station
+  is (`Pages.kept`), with its own Backs and their option 1 shrink as before. Inside it, `KeptPages` keeps
+  the search and each station's pages apart, as it did across the whole flow, so the search is as it was
+  left under a station opened from it (Codex on #1136).
+- **Lines… is on the stack only while it shows.** Under the trip from here, it steps off, and the near-me
+  page that draws the trip is on top. Its line, stop and scroll were already kept above the pages, so it
+  comes back as it was, on top again, when the trip closes. Until step 3b.
+- **The near-me generation is its key's.** A bump replaces `NearMe`, dropping what it kept, and leaves the
+  pages over it: an arrived trip's Done from its notification over Settings lands on the list afresh under
+  Settings, as before.
+- **Back from a screen is the stack's.** Each screen's own Back at its root (`RootBack`) hands its close to
+  the stack, whose gesture draws the page under it: Licenses, Settings, the trip on the way, the saved
+  places (their editor aside), the favorite rides' list and Lines…'s search. A page inside a screen (a
+  line's page, Settings' Disruptions page, the editor) keeps a Back of its own, made later, so it goes first
+  and still shrinks over a scrim, until step 6.
+- **Pages open in 250 ms and close in 200 ms,** sliding an eighth of their width as they fade; the back
+  swipe drives the close.
+- **The line and station searches take focus only on top** (Codex on #1136): drawn under a swipe from
+  Settings or Licenses opened over one, a search raised the keyboard over the screen being swiped.
+- **`ReportScreen` counts a visit by the app leaving the front, not the page pausing.** A page drops to
+  STARTED while a swipe is under way, so a swipe let go of paused and resumed it, and counted it twice.
+
+`NearbyAreaTest` drives the host: each page kept for Back as it was left, a closed page forgotten, a new
+generation, the page under a swipe drawn but not on top, a swipe let go of, an inner page's Back first, a
+page under a swipe not taking Back from the one over it, and the open transition's timing.
+`ForegroundReturnTest` and `ReportScreenTest` follow.
+
 ## Decided (maintainer, 2026-10-22)
 
-Both apply from step 3.
-
-- **The trip from here becomes its own entry in step 3.** Lines… can sit hidden under the trip today
-  (`LinesPresence.UNDER_TRIP`), which a stack can't express while the trip is part of the near-me
-  entry.
+- **The trip from here becomes its own entry,** in step 3b, which follows step 3 for the list under it.
+  Lines… can sit hidden under the trip today (`LinesPresence.UNDER_TRIP`), which a stack can't express
+  while the trip is part of the near-me entry.
 - **Pages open and close with a short animation**, not Navigation 3's default 700 ms fade and not at
-  once as today: about 250 ms to open and 200 ms to close, a slide and fade, with the back swipe
-  driving the close. The durations get tuned on a device.
+  once as before: about 250 ms to open and 200 ms to close, a slide and fade, with the back swipe
+  driving the close. Shipped in step 3; the durations get tuned on a device.

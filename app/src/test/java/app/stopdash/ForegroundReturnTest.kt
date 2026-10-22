@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.navigation3.runtime.NavBackStack
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -19,10 +20,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The foreground-return relocate wiring across the Settings/Licenses overlay switch (SPEC *Finding
+ * The foreground-return relocate wiring across a page opened over the near-me view (SPEC *Finding
  * stops* / D6). Drives the real production host [NearbyArea] with the real [ForegroundReturnLatcher]
  * in its `aboveOverlay` slot and [ConsumeForegroundReturn] in its `body`, through a fake lifecycle.
- * Toggling `overlayOpen` is what removes the consumer (the departures view) from composition while
+ * Opening Settings is what removes the consumer (the departures view) from composition while
  * keeping the observer composed — the exact topology the fix depends on. A return that lands while
  * the overlay is open must still re-locate once it closes; moving the observer into `body` (the
  * pre-fix bug) would leave it out of composition during the return, so the post-close assertion
@@ -45,15 +46,16 @@ class ForegroundReturnTest {
     fun `a return while an overlay is open relocates once the overlay closes`() {
         val owner = FakeOwner()
         var pending by mutableStateOf(false)
-        var overlayOpen by mutableStateOf(false)
+        val pages = Pages(NavBackStack(Page.NearMe(0)))
+        var overlayOpen by pages.flag(Page.Settings)
         val ready = true
         var relocates = 0
 
         composeRule.setContent {
             CompositionLocalProvider(LocalLifecycleOwner provides owner) {
                 NearbyArea(
-                    overlayOpen = overlayOpen,
-                    // Above the overlay switch — stays composed while an overlay is open.
+                    pages = pages,
+                    // Above the back stack — stays composed while a page is open over the near-me view.
                     aboveOverlay = {
                         ForegroundReturnLatcher(
                             isReady = { ready },
@@ -62,7 +64,7 @@ class ForegroundReturnTest {
                         )
                     },
                     overlayContent = {},
-                    // The departures view — out of composition while an overlay is open.
+                    // The departures view — out of composition while a page is open over it.
                     body = {
                         ConsumeForegroundReturn(
                             pending = pending,

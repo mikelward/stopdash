@@ -13,17 +13,9 @@ class LinesPresenceTest {
         // Hidden under the trip, but still open: its line, stop and scroll are kept.
         assertFalse(underTrip.shown)
         assertTrue(underTrip.isOpen)
-        assertEquals(
-            TopOverlay.STATIONS,
-            topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false, lines = underTrip.shown),
-        )
-        // The trip's Back: Lines… shows again, over the near-me list, at the stop.
+        // The trip's Back: Lines… shows again, over the near-me list, at the stop ([PagesTest]).
         val back = underTrip.tripClosed()
         assertTrue(back.shown)
-        assertEquals(
-            TopOverlay.LINES,
-            topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false, lines = back.shown),
-        )
     }
 
     @Test

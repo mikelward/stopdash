@@ -210,7 +210,7 @@ internal fun OnTheWayScreen(
     lineDismissal: LineAlertDismissal? = null,
 ) {
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    RootBack(back, onBack = onBack)
     // A train tapped on the board: its route's page over this one, every train on it to come, as a row on the
     // main screen opens (maintainer, 2026-10-14), its line's page a "View line" away. Kept by the row's identity
     // ([detailKey]) and the route tapped on its card, so a rotation keeps it open, and found again in each board

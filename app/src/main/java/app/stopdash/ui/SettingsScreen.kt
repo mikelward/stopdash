@@ -263,7 +263,7 @@ fun SettingsScreen(
     // when Settings is opened for it (the lines page's menu), so Back from it goes up to Settings.
     var disruptionsOpen by rememberSaveable(startOnDisruptions) { mutableStateOf(startOnDisruptions) }
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    RootBack(back, onBack = onBack)
     Box(modifier = Modifier.fillMaxSize().followsBack(back)) {
     // Off the screen while the page is open, so neither TalkBack nor a keyboard reaches the covered
     // controls (Codex, #592); its state (the scroll, a key being typed) kept for its return.
