@@ -5,18 +5,25 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Formats how long ago data was fetched, for the "updated N ago" stamp every
- * surface carries (SPEC *Freshness*). Pure and clock-free — the caller supplies
- * the age — so it is JVM-testable without Android.
+ * How long ago data was fetched, for the age stamp a surface carries (SPEC *Freshness*): "Just now",
+ * "2 min ago". Pure and clock-free — the caller supplies the age — so it is JVM-testable without
+ * Android. It says which bucket the age falls in and how many whole units; the words are the app's
+ * string resources, so they follow the app's language.
  *
- * This is the freshness *stamp*, not the staleness *policy* (the single
- * threshold past which numbers are withheld); that policy lands with the
- * departures view in Phase 1.
+ * This is the freshness *stamp*, not the staleness *policy* ([Staleness]), the single threshold past
+ * which numbers are withheld.
  */
 object RelativeTime {
-    fun formatAge(age: Duration): String = when {
-        age < 60.seconds -> "just now"
-        age < 60.minutes -> "${age.inWholeMinutes} min ago"
-        else -> "${age.inWholeHours} h ago"
+    fun of(age: Duration): RelativeAge = when {
+        age < 60.seconds -> RelativeAge.JustNow
+        age < 60.minutes -> RelativeAge.MinutesAgo(age.inWholeMinutes)
+        else -> RelativeAge.HoursAgo(age.inWholeHours)
     }
+}
+
+/** An age as [RelativeTime.of] buckets it: under a minute, whole minutes, or whole hours. */
+sealed interface RelativeAge {
+    data object JustNow : RelativeAge
+    data class MinutesAgo(val minutes: Long) : RelativeAge
+    data class HoursAgo(val hours: Long) : RelativeAge
 }
