@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.data.RouteTopologyStore
+import app.stopdash.ui.headerWords
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +77,7 @@ class WatchHomeActivity : ComponentActivity() {
                                 this@WatchHomeActivity,
                                 (received as? WatchReceived.Received)?.envelope?.routePatterns().orEmpty(),
                             )
-                            WatchAppFrames.tick(received, topology, Instant::now, { r -> store.current() ?: r.envelope }, countdownWords(this@WatchHomeActivity.resources)) { f -> frame.value = f }
+                            WatchAppFrames.tick(received, topology, Instant::now, { r -> store.current() ?: r.envelope }, countdownWords(this@WatchHomeActivity.resources), headerWords(this@WatchHomeActivity.resources)) { f -> frame.value = f }
                         }
                     } finally {
                         frame.value = null

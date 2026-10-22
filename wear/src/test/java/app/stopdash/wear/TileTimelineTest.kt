@@ -14,6 +14,7 @@ import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
+import app.stopdash.ui.HeaderWords
 import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -226,6 +227,19 @@ class TileTimelineTest {
         assertEquals(listOf("1 | 3 Min."), rows(TileTimeline.entries(env, fetched, words = german).at(fetched)).map { it.countdown })
         // The default is the English the tile has always written.
         assertEquals(listOf("1 · 3 min"), rows(TileTimeline.frame(env, fetched)).map { it.countdown })
+    }
+
+    @Test
+    fun `a stop header is written in the watch's words, on the tile, through its schedule and in the app`() {
+        val env = envelope(stop("940GA", listOf(departure(60).copy(platform = "Southbound - Platform 1"))))
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap())
+        fun headers(frame: TileFrame?) = (frame as TileFrame.Rows).lines.filterIsInstance<TileLine.Header>().map { it.text to it.spoken }
+        val expected = listOf("Stop 940GA – Gleis 1" to "Stop 940GA, Gleis 1, Southbound")
+        assertEquals(expected, headers(TileTimeline.frame(env, fetched, headers = german)))
+        assertEquals(expected, headers(TileTimeline.entries(env, fetched, headers = german).at(fetched)))
+        assertEquals(expected, headers(WatchAppFrames.at(WatchReceived.Received(env, receivedAt = fetched), fetched, headers = german)))
+        // The default is the English the tile has always written.
+        assertEquals(listOf("Stop 940GA – Platform 1" to "Stop 940GA, Platform 1, Southbound"), headers(TileTimeline.frame(env, fetched)))
     }
 
     @Test

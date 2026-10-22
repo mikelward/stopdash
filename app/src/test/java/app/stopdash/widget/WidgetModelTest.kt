@@ -18,6 +18,8 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.ui.GroupHeader
+import app.stopdash.ui.HeaderWords
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.lineAlertFingerprint
 import java.time.DayOfWeek
 import java.time.Instant
@@ -661,6 +663,22 @@ class WidgetModelTest {
         val header = widgetModel(snapshot, now).rows.first().header
         assertEquals("Example Stop – Platform 1", header?.text)
         assertEquals("the spoken label keeps the direction", "Example Stop, Platform 1, Southbound", header?.spoken)
+    }
+
+    @Test
+    fun `a platform header is in the app's words, at every size`() = kotlinx.coroutines.test.runTest {
+        fun onPlatform(lineId: String, offset: Long) = departure(lineId, offset).copy(platform = "Southbound - Platform 1")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490000001A", listOf(onPlatform("victoria", 120)), now)),
+            fetchedAt = now,
+        )
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap())
+        val header = widgetModel(snapshot, now, headerWords = german).rows.first().header
+        assertEquals("Example Stop – Gleis 1", header?.text)
+        assertEquals("Example Stop, Gleis 1, Southbound", header?.spoken)
+        // Through the models for each size the launcher reports, as the widget draws them.
+        val models = widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(DpSize(250.dp, 200.dp)), headerWords = german)
+        assertEquals("Example Stop – Gleis 1", models.all.first().rows.first().header?.text)
     }
 
     @Test

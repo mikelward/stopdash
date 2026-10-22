@@ -53,6 +53,35 @@ class BudgetedRowsTest {
 
     // A group running on into the next band is named once; two groups that share a title but are
     // different stops (same name and towards, another bearing) keep a header each (Codex on #760).
+    // A header's platform and pole are in the words the surface passes (its language), seen and heard.
+    @Test
+    fun `a header's qualifier is in the surface's words`() {
+        val a = row("victoria", "Brixton")
+        val b = row("jubilee", "Stratford")
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap())
+        fun headers(words: HeaderWords) = BudgetedRows.select(listOf(a, b), budget = 4, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = { rows ->
+            listOf(
+                app.stopdash.domain.StopGroup("Example Stop", "k1", showHeader = true, rows = listOf(a), qualifier = app.stopdash.domain.StopQualifier.Platform("2", "Northbound")),
+                app.stopdash.domain.StopGroup("Example Stop", "k2", showHeader = true, rows = listOf(b), qualifier = app.stopdash.domain.StopQualifier.BusStop("D", "Example Cross")),
+            ).map { g -> g.copy(rows = g.rows.filter { it in rows }) }.filter { it.rows.isNotEmpty() }
+        }, words = words).map { it.header?.text to it.header?.spoken }
+        assertEquals(
+            listOf(
+                "Example Stop – Gleis 2" to "Example Stop, Gleis 2, Northbound",
+                "Example Stop – Haltestelle D" to "Example Stop, Haltestelle D, Richtung Example Cross",
+            ),
+            headers(german),
+        )
+        // The default is the English every surface has always written.
+        assertEquals(
+            listOf(
+                "Example Stop – Platform 2" to "Example Stop, Platform 2, Northbound",
+                "Example Stop – Stop D" to "Example Stop, Stop D, towards Example Cross",
+            ),
+            headers(HeaderWords.ENGLISH),
+        )
+    }
+
     @Test
     fun `a header repeats only for a different group, not a continuation`() {
         val a = row("victoria", "Brixton")
