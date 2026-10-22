@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -199,7 +200,7 @@ internal fun TripModeChips(
             FilterChip(
                 selected = enabled && rides,
                 onClick = { if (!modes.isLast(group)) onChange(modes.with(group, !rides)) },
-                label = { Text(groupName(group), maxLines = 1) },
+                label = { Text(groupName(group, LocalResources.current), maxLines = 1) },
                 enabled = enabled,
                 modifier = Modifier.testTag("tripMode-${group.key}"),
             )

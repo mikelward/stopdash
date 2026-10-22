@@ -82,6 +82,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -1673,8 +1674,8 @@ fun MainScreen(
                                     DropdownMenuItem(
                                         text = {
                                             Column {
-                                                Text(groupName(group))
-                                                groupSubtitle(group)?.let { subtitle ->
+                                                Text(groupName(group, LocalResources.current))
+                                                groupSubtitle(group, LocalResources.current)?.let { subtitle ->
                                                     Text(
                                                         subtitle,
                                                         style = MaterialTheme.typography.bodySmall,
@@ -2184,7 +2185,7 @@ private fun LoadedContent(
                 ActionBanner(
                     text = stringResource(
                         R.string.modes_hidden,
-                        hiddenGroupsLabel(bannerModes),
+                        hiddenGroupsLabel(bannerModes, LocalResources.current),
                     ),
                     actionLabel = stringResource(R.string.modes_show_all),
                     onAction = onShowAllModes,
@@ -2285,7 +2286,7 @@ private fun LoadedContent(
                             text = when {
                                 hiddenModes.isNotEmpty() -> stringResource(
                                     R.string.modes_hidden_empty,
-                                    hiddenGroupsLabel(hiddenModes),
+                                    hiddenGroupsLabel(hiddenModes, LocalResources.current),
                                 )
                                 emptyStateUncertain -> stringResource(R.string.departures_stale_empty)
                                 else -> stringResource(R.string.departures_empty)
@@ -2376,7 +2377,7 @@ private fun LoadedContent(
                             if (hiddenModes.isNotEmpty()) {
                                 stringResource(
                                     R.string.modes_hidden_empty,
-                                    hiddenGroupsLabel(hiddenModes),
+                                    hiddenGroupsLabel(hiddenModes, LocalResources.current),
                                 )
                             } else {
                                 stringResource(
@@ -4398,7 +4399,7 @@ internal fun HideModeMenu(
         // hiding it hides the whole group, as the overflow menu's checkbox does.
         modes.map(ModeGroups::of).distinctBy { it.key }.forEach { group ->
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.hide_mode, groupNameInSentence(group))) },
+                text = { Text(stringResource(R.string.hide_mode, groupNameInSentence(group, LocalResources.current))) },
                 onClick = {
                     onDismiss()
                     onHideMode(group.modes.first())

@@ -366,6 +366,33 @@
          reads mid-sentence ("bus", "Underground"); "all … services" says the whole group goes, not
          just this row (maintainer, 2026-09-25). -->
     <string name="hide_mode">Hide all %1$s services</string>
+    <!-- TODO: translate -->
+    <!-- The mode groups' names, in the near-me list's overflow menu, Settings and the trip's mode
+         chips: "Underground" holds the Tube, the DLR and the Elizabeth line. -->
+    <string name="mode_group_tube" tools:ignore="MissingTranslation">Underground</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_overground" tools:ignore="MissingTranslation">Overground</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_rail" tools:ignore="MissingTranslation">National Rail</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_bus" tools:ignore="MissingTranslation">Bus</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_tram" tools:ignore="MissingTranslation">Tram</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_boat" tools:ignore="MissingTranslation">Boat</string>
+    <!-- TODO: translate -->
+    <!-- The common-noun groups as they read mid-sentence, as hide_mode's argument ("Hide all bus
+         services"). The Underground, the Overground and National Rail, being names, use their names. -->
+    <string name="mode_group_bus_in_sentence" tools:ignore="MissingTranslation">bus</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_tram_in_sentence" tools:ignore="MissingTranslation">tram</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_boat_in_sentence" tools:ignore="MissingTranslation">boat</string>
+    <!-- TODO: translate -->
+    <!-- Under a group's name in the overflow menu: what it holds that its name doesn't say. -->
+    <string name="mode_group_tube_subtitle" tools:ignore="MissingTranslation">Tube, DLR, Elizabeth</string>
+    <!-- TODO: translate -->
+    <string name="mode_group_rail_subtitle" tools:ignore="MissingTranslation">Thameslink, Southern, …</string>
     <!-- The same menu's item hiding just this line everywhere, beside hiding its whole mode
          (maintainer, 2026-09-27). The argument names the line as it reads alone ("Northern line",
          "134"). -->
@@ -387,6 +414,12 @@
     <!-- One-line banner over the near-me list while modes are hidden; the argument lists them
          ("Bus, Tram"). Its action shows them all again. -->
     <string name="modes_hidden">%1$s hidden</string>
+    <!-- TODO: translate -->
+    <!-- In that list, more than one hidden line by their count ("Bus, 2 lines"); one is named. -->
+    <plurals name="hidden_lines_count" tools:ignore="MissingTranslation">
+        <item quantity="one">%d line</item>
+        <item quantity="other">%d lines</item>
+    </plurals>
     <string name="modes_show_all">Show all</string>
     <!-- The action on the snackbar just after a long press hid something ("Bus hidden"): shows
          that one item again. -->

@@ -174,7 +174,7 @@ class ModeMenuTest {
     fun `the hide item names every group mid-sentence, keeping the Tube and DLR capitalized`() {
         assertEquals(
             listOf("Underground", "Overground", "National Rail", "bus", "tram", "boat"),
-            ModeGroups.ALL.map { groupNameInSentence(it) },
+            ModeGroups.ALL.map { groupNameInSentence(it, composeRule.activity.resources) },
         )
     }
 }

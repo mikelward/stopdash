@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -830,7 +831,7 @@ private fun HiddenRow(items: List<ModeGroups.Group>, onShow: (ModeGroups.Group) 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         for (item in items) {
-            val name = hiddenItemName(item)
+            val name = hiddenItemName(item, LocalResources.current)
             val showDescription = stringResource(R.string.settings_hidden_show_description, name)
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -1318,7 +1319,7 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
         // worked out (Codex, #642).
         HomeLines.PICKER.forEachIndexed { g, (group, lines) ->
             Text(
-                groupName(group),
+                groupName(group, LocalResources.current),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp),

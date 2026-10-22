@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import android.content.res.Resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -827,62 +828,61 @@ internal fun Message(text: String) {
 
 
 /** A hiding group's display name ("tube" → "Underground"), else its mode's name. */
-internal fun groupName(group: ModeGroups.Group): String = GROUP_NAMES[group.key] ?: modeName(group.key)
+internal fun groupName(group: ModeGroups.Group, resources: Resources): String =
+    GROUP_NAMES[group.key]?.let { resources.getString(it) } ?: modeName(group.key)
 
 /**
  * What a hidden item is called where it's named alone (the Undo snackbar, Settings' Hidden list): a
  * hidden line by its own label ("Northern line"), a group by [groupName].
  */
-internal fun hiddenItemName(group: ModeGroups.Group): String =
-    if (HiddenModes.isLineKey(group.key)) HiddenModes.hiddenLineLabels(setOf(group.key)).single() else groupName(group)
+internal fun hiddenItemName(group: ModeGroups.Group, resources: Resources): String =
+    if (HiddenModes.isLineKey(group.key)) HiddenModes.hiddenLineLabels(setOf(group.key)).single() else groupName(group, resources)
 
 /**
  * A group's name as it reads mid-sentence ("Hide all bus services"): the common nouns lowercase,
  * the Underground, the Overground and National Rail, being names, as they are.
  */
-internal fun groupNameInSentence(group: ModeGroups.Group): String =
-    GROUP_NAMES_IN_SENTENCE[group.key] ?: groupName(group)
+internal fun groupNameInSentence(group: ModeGroups.Group, resources: Resources): String =
+    GROUP_NAMES_IN_SENTENCE[group.key]?.let { resources.getString(it) } ?: groupName(group, resources)
 
 private val GROUP_NAMES_IN_SENTENCE = mapOf(
-    "tube" to "Underground",
-    "overground" to "Overground",
-    "rail" to "National Rail",
-    "bus" to "bus",
-    "tram" to "tram",
-    "boat" to "boat",
+    "bus" to R.string.mode_group_bus_in_sentence,
+    "tram" to R.string.mode_group_tram_in_sentence,
+    "boat" to R.string.mode_group_boat_in_sentence,
 )
 
 /** The hidden groups' names, in menu order ("Train, Bus"), for the banner and empty states. */
-internal fun hiddenGroupsLabel(hidden: Set<String>): String {
+internal fun hiddenGroupsLabel(hidden: Set<String>, resources: Resources): String {
     // Hidden lines follow the groups: one by its name ("Northern line"), more by their count, so the
     // banner stays one line however many are hidden.
     val lines = HiddenModes.hiddenLineLabels(hidden)
     val linesPart = when (lines.size) {
         0 -> emptyList()
         1 -> lines
-        else -> listOf("${lines.size} lines")
+        else -> listOf(resources.getQuantityString(R.plurals.hidden_lines_count, lines.size, lines.size))
     }
-    return (ModeGroups.hiddenGroups(hidden).map { groupName(it) } + linesPart).joinToString(", ")
+    return (ModeGroups.hiddenGroups(hidden).map { groupName(it, resources) } + linesPart).joinToString(", ")
 }
 
 /**
  * What a group holds that its name doesn't say, under it in the list's menu (maintainer,
  * 2026-10-08), kept short; null for a group whose name says it all.
  */
-internal fun groupSubtitle(group: ModeGroups.Group): String? = GROUP_SUBTITLES[group.key]
+internal fun groupSubtitle(group: ModeGroups.Group, resources: Resources): String? =
+    GROUP_SUBTITLES[group.key]?.let { resources.getString(it) }
 
 private val GROUP_SUBTITLES = mapOf(
-    "tube" to "Tube, DLR, Elizabeth",
-    "rail" to "Thameslink, Southern, …",
+    "tube" to R.string.mode_group_tube_subtitle,
+    "rail" to R.string.mode_group_rail_subtitle,
 )
 
 private val GROUP_NAMES = mapOf(
-    "tube" to "Underground",
-    "overground" to "Overground",
-    "rail" to "National Rail",
-    "bus" to "Bus",
-    "tram" to "Tram",
-    "boat" to "Boat",
+    "tube" to R.string.mode_group_tube,
+    "overground" to R.string.mode_group_overground,
+    "rail" to R.string.mode_group_rail,
+    "bus" to R.string.mode_group_bus,
+    "tram" to R.string.mode_group_tram,
+    "boat" to R.string.mode_group_boat,
 )
 
 /** A mode's display name ("national-rail" → "National Rail"), or its id tidied for one we don't know. */
