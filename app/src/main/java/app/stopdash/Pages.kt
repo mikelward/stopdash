@@ -13,9 +13,16 @@ import kotlin.reflect.KProperty
  */
 @Serializable
 internal sealed interface Page : NavKey {
-    /** The near-me list, the location gate or the trip from here: a new [generation] opens it afresh. */
+    /** The near-me list or the location gate: a new [generation] opens it afresh. */
     @Serializable
     data class NearMe(val generation: Int) : Page
+
+    /**
+     * The trip from here (To… from the near-me list), over the page it was opened from: the list, or Lines… for a
+     * stop's To. Of the near-me view's [generation], so a new one opens it afresh too.
+     */
+    @Serializable
+    data class HereTrip(val generation: Int) : Page
 
     @Serializable
     data object Licenses : Page
@@ -57,6 +64,12 @@ internal class Pages(val stack: NavBackStack<Page>) {
 
     fun isOpen(page: Page): Boolean = page in stack
 
+    /** Whether [page] is open under [over]: Lines… a stop's To opened the trip from here over. */
+    fun isUnder(page: Page, over: Page): Boolean {
+        val at = stack.indexOf(page)
+        return at >= 0 && at < stack.indexOf(over)
+    }
+
     /** [page] open over whatever is on top, or left where it is if it's open already. */
     fun open(page: Page) {
         require(page !is Page.NearMe) { "the near-me view is always open" }
@@ -80,10 +93,21 @@ internal class Pages(val stack: NavBackStack<Page>) {
     /** The near-me view's generation ([Page.NearMe]). */
     var generation: Int
         get() = (stack.first() as Page.NearMe).generation
-        // A new key, so the near-me view opens afresh, its kept pages dropped; what's over it stays.
+        // A new key, so the near-me view opens afresh, its kept pages dropped, the trip from here's with it;
+        // what's over them stays.
         set(value) {
             stack[0] = Page.NearMe(value)
+            val trip = stack.indexOfFirst { it is Page.HereTrip }
+            if (trip >= 0) stack[trip] = Page.HereTrip(value)
         }
+
+    /** The trip from here's page, of this generation. */
+    val hereTrip: Page.HereTrip get() = Page.HereTrip(generation)
+
+    /** Whether the trip from here is open: set, it shows ([show]); cleared, it closes. */
+    var tripOpen: Boolean
+        get() = hereTrip in stack
+        set(value) = if (value) show(hereTrip) else close(hereTrip)
 
     /**
      * A screen's open flag, read from and written to the stack: set, the screen shows ([show]), as opening it
@@ -101,8 +125,7 @@ internal class Pages(val stack: NavBackStack<Page>) {
 
     /**
      * A value kept in [state] whose page is open while [open] holds for it and any other the page's flags
-     * keep ([others]): the station flow, open while its search or a station is ([Page.Stations]), or Lines…,
-     * open on the stack only while it shows ([LinesPresence.shown]).
+     * keep ([others]): the station flow, open while its search or a station is ([Page.Stations]).
      */
     fun <T> kept(page: Page, state: MutableState<T>, others: () -> Boolean = { false }, open: (T) -> Boolean): Kept<T> =
         Kept(this, page, state, others, open)

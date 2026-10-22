@@ -174,9 +174,12 @@ fun StationSearchScreen(
     // Where a row carrying no position is (a bundled station), for its menu: the view model's
     // [StationSearchViewModel.positionOf]. Null uses only the row's own.
     positionOf: (suspend (SearchEntry) -> Coordinates?)? = null,
+    // Back closes the page this search is the root of (the trip from here's To…, nothing picked yet): the back swipe
+    // draws the page under it ([RootBack]), not this one shrinking.
+    rootBack: Boolean = false,
 ) {
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    if (rootBack) RootBack(back, onBack = onBack) else PredictiveBack(back, onBack = onBack)
     val rowActions = SearchRowActions(onShowOnMap, onAskRemoveRecent, onAddPlace, onRemovePlace)
     // The row whose menu is up. Not kept across a rotation, which closes it.
     var menuFor by remember { mutableStateOf<SearchEntry?>(null) }
@@ -924,9 +927,11 @@ fun StationPlaceholderScreen(
     // A look at a stop's departures: Back to the stop, in To…'s place, as the page this stands in for
     // shows it (MainScreen's stationBrowse), so it's there from the first frame (Codex on #736).
     onBrowseBack: (() -> Unit)? = null,
+    // Back closes the page this stands in for the root of ([StationSearchScreen]'s [rootBack]).
+    rootBack: Boolean = false,
 ) {
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    if (rootBack) RootBack(back, onBack = onBack) else PredictiveBack(back, onBack = onBack)
     Scaffold(
         modifier = Modifier.followsBack(back),
         topBar = {
