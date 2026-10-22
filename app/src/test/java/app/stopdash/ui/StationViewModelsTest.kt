@@ -101,6 +101,22 @@ class StationViewModelsTest {
         assertTrue(vm.state.value.favoritePlacesFailed)
     }
 
+    @Test
+    fun `stations read with a store unreadable say so until a read that works`() = runTest {
+        var unreadable = true
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher, loadYours = { YourStops(unreadable = unreadable) })
+        advanceUntilIdle()
+        assertTrue(vm.state.value.yoursFailed)
+        // Kept across a clear, so reopening still says it until the next read.
+        vm.clear()
+        assertTrue(vm.state.value.yoursFailed)
+        // Retry: the stores read this time.
+        unreadable = false
+        vm.refreshYours()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.yoursFailed)
+    }
+
     // A bundled place index from synthetic lines (AGENTS *Privacy*).
     private fun placeIndex(vararg lines: String): PlaceIndex = PlaceIndex.read(
         java.io.BufferedReader(java.io.StringReader((listOf("# stopdash place index v1\ttest") + lines).joinToString("\n"))),

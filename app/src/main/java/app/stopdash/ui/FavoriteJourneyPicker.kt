@@ -48,6 +48,8 @@ fun FavoriteJourneyPicker(
             // The journey keeps the place's id, so the place stays the one source of where it is.
             onPickPlace = { place, name -> onPickFrom(PendingEnd.Place(place.id, name)) },
             onRetryPlaces = onRetryPlaces,
+            // The same reread brings back the stations as the places.
+            onRetryYours = onRetryPlaces,
             onAskRemoveRecent = onAskRemoveRecent,
             onCancelRemoveRecent = onCancelRemoveRecent,
             onRemoveRecent = onRemoveRecent,
@@ -63,6 +65,8 @@ fun FavoriteJourneyPicker(
             hint = stringResource(R.string.station_search_hint),
             onPickPlace = { place, name -> onPickTo(from, PendingEnd.Place(place.id, name)) },
             onRetryPlaces = onRetryPlaces,
+            // The same reread brings back the stations as the places.
+            onRetryYours = onRetryPlaces,
             fromStation = from.name,
             onChangeFrom = onChangeFrom,
             fromPlace = if (from is PendingEnd.Place) PlaceArt.PLAIN else null,

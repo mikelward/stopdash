@@ -640,6 +640,53 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun station_search_says_when_your_stations_couldnt_be_read() {
+        // A store behind Recent and Starred couldn't be read: said with a Retry, with what was read
+        // still listed below, rather than a shorter list passed off as all of them.
+        var retried = false
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        yoursFailed = true,
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onRetryYours = { retried = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't load your stations").assertIsDisplayed()
+        composeRule.onNodeWithText("Oxford Circus").assertIsDisplayed()
+        composeRule.onNodeWithText("Retry").performClick()
+        assertTrue(retried)
+    }
+
+    @Test
+    fun station_search_says_when_your_stations_couldnt_be_read_with_none_listed() {
+        // Nothing read at all: the notice alone, not the "type a station" prompt as if there were none.
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(yoursFailed = true, yoursRead = true),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onRetryYours = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't load your stations").assertIsDisplayed()
+    }
+
+    @Test
     fun station_search_to_place_results() {
         // A To… search blends geocoded places under the stops, each tagged Place/Postcode on the right;
         // tapping one routes to its coordinate. An interchange (public TfL data) plus synthetic place and

@@ -163,6 +163,9 @@ class StationSearchViewModel(
         // can't read): the picker shows an honest, retryable notice instead of silently implying there
         // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
         val favoritePlacesFailed: Boolean = false,
+        // A store behind the user's own stops couldn't be read ([YourStops.unreadable]): the starting list
+        // and the location-free home say so with a retry, rather than look emptier than they are.
+        val yoursFailed: Boolean = false,
         val yoursRead: Boolean = false,
         // A read of the user's own stops and places is under way ([refreshYours] and every write's
         // reread): what is listed may be about to change, as a place just saved, so a row's menu offers
@@ -278,6 +281,7 @@ class StationSearchViewModel(
                 recentStations = it.recentStations,
                 favoritePlaces = it.favoritePlaces,
                 favoritePlacesFailed = it.favoritePlacesFailed,
+                yoursFailed = it.yoursFailed,
                 yoursRead = it.yoursRead,
                 yourAreas = it.yourAreas,
                 // Said until the next long press, not until the search closes (Codex, #745).
@@ -544,6 +548,7 @@ class StationSearchViewModel(
                             recentStations = if (shown === read) recentStations else shown.homeRecent(),
                             favoritePlaces = places.orEmpty(),
                             favoritePlacesFailed = places == null,
+                            yoursFailed = read.unreadable,
                             yoursRead = true,
                             yoursReading = false,
                         )

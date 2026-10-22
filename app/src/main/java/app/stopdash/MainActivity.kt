@@ -3319,6 +3319,8 @@ class MainActivity : ComponentActivity() {
                                             starredStations = gateYours?.homeStarred.orEmpty(),
                                             recentStations = gateYours?.recentStations.orEmpty(),
                                             stationAreas = gateYours?.yourAreas.orEmpty(),
+                                            stationsFailed = gateYours?.yoursFailed == true,
+                                            onRetryStations = gateSearch?.let { it::refreshYours },
                                             // Its page opens straight over the gate, and Back returns to it.
                                             onOpenStation = { match ->
                                                 gateSearch?.onOpened(match)
@@ -4496,6 +4498,7 @@ class MainActivity : ComponentActivity() {
         StationSearchScreen(
             state = state,
             onQueryChange = viaSearch::onQueryChange,
+            onRetryYours = viaSearch::refreshYours,
             onAskRemoveRecent = viaSearch::askRemoveRecent,
             onCancelRemoveRecent = viaSearch::cancelRemoveRecent,
             onRemoveRecent = viaSearch::onRemoveRecent,
@@ -4699,6 +4702,7 @@ class MainActivity : ComponentActivity() {
             StationSearchScreen(
                 state = state,
                 onQueryChange = search::onQueryChange,
+                onRetryYours = search::refreshYours,
                 onAskRemoveRecent = search::askRemoveRecent,
                 onCancelRemoveRecent = search::cancelRemoveRecent,
                 onRemoveRecent = search::onRemoveRecent,
@@ -5402,6 +5406,7 @@ class MainActivity : ComponentActivity() {
                 StationSearchScreen(
                     state = state,
                     onQueryChange = search::onQueryChange,
+                    onRetryYours = search::refreshYours,
                     onAskRemoveRecent = search::askRemoveRecent,
                     onCancelRemoveRecent = search::cancelRemoveRecent,
                     onRemoveRecent = search::onRemoveRecent,
@@ -7726,20 +7731,23 @@ private suspend fun rememberStarredPlace(context: Context, row: DepartureRow) = 
  * favorite journeys' ends; the places holding a starred row; that search's own recent picks
  * ([recents]: *From…*'s opens or *To…*'s destinations); and every place the
  * app has lately shown (the widget's snapshot and the nearby-lookup cache), so they match with no
- * TfL search. A source that can't be read is logged by kind alone and left out. Call off the main
- * thread.
+ * TfL search. A source that can't be read is logged by kind alone and left out, and the lists say
+ * so ([YourStops.unreadable]) rather than look emptier than they are. Call off the main thread.
  */
 private suspend fun loadYourStops(context: Context, recents: FileRecentStationsStore): YourStops {
-    val journeys = readOrEmpty("favorite journeys") {
-        DataStoreFavoriteJourneysStore.from(context, warn = ::logStarWarning).journeys().first().orEmpty()
+    // Null for a journeys file that couldn't be read, a newer build's included: the stations it holds are missing.
+    val journeys = readOrNull("favorite journeys") {
+        DataStoreFavoriteJourneysStore.from(context, warn = ::logStarWarning).journeys().first()
     }
-    val shown = readOrEmpty("snapshot") {
+    val shown = readOrNull("snapshot") {
         DataStoreSnapshotStore.from(context, warn = ::logWidgetSnapshotWarning).load()?.stops.orEmpty()
             .map { it.stopId to stopPlace(it.stopId, it.stopName, it.clusterId, it.lines.map { line -> line.mode }) }
     }
+    // A starred set that couldn't be read (null below) leaves its stops out too.
+    var starredUnreadable = false
     val nearby = nearbyStopsCache(context).recentStops()
         .map { it.id to stopPlace(it.id, it.name, it.clusterId, it.lines.map { line -> line.mode }) }
-    val known = nearby + shown
+    val known = nearby + shown.orEmpty()
     val placeOf = known.toMap()
     // A starred stop's place: as lately shown, else as recorded when it was starred. What's shown is
     // recorded too (a star from before places were recorded), and unstarred stops are forgotten —
@@ -7753,6 +7761,7 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
             logDepartureWarning("find a station: starred rows unreadable (${e::class.simpleName})")
             null
         }
+        starredUnreadable = starredStopIds == null
         val places = starredPlacesStore(context)
         val recorded = places.load()
         val resolved = starredStopIds.orEmpty().mapNotNull { id -> (placeOf[id] ?: recorded[id])?.let { id to it } }
@@ -7765,7 +7774,7 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
     // read before the model arrived would stay apart until it was opened again.
     val asRow = HubsStore.readyStopRows()
     return YourStops.of(
-        journeys = journeys.map { it.copy(from = it.from.withArea(), to = it.to.withArea()) },
+        journeys = journeys.orEmpty().map { it.copy(from = it.from.withArea(), to = it.to.withArea()) },
         // Each by the pole it was starred at, so a stop area the bundle split lists the stop starred.
         starred = starred.map { (stopId, place) -> YourStops.rowAt(place, stopId, asRow) }.distinctBy { it.key },
         recent = recents.loadPicks(),
@@ -7773,6 +7782,7 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
         unnamedStarred = unnamed,
         // Each bus stop at its model stop's own pole, so a ride's end and a star at one stop are one row.
         asRow = asRow,
+        unreadable = journeys == null || shown == null || starredUnreadable,
     )
 }
 
@@ -7924,12 +7934,12 @@ private suspend fun favoriteLineIds(context: Context): Set<String> {
     return journeys.mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) }
 }
 
-private inline fun <T> readOrEmpty(what: String, read: () -> List<T>): List<T> =
+private inline fun <T> readOrNull(what: String, read: () -> T?): T? =
     try {
         read()
     } catch (e: IOException) {
         logDepartureWarning("find a station: $what unreadable (${e::class.simpleName})")
-        emptyList()
+        null
     }
 
 /**
