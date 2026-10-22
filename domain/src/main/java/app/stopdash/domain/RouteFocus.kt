@@ -63,8 +63,8 @@ fun focusedDeparture(row: DepartureRow, focus: RouteFocus, topology: RouteTopolo
  * Where the [focus] route of [lineId] at [stopId], the way [direction] runs, still leaves from once the row
  * its page was opened on is gone (its platform's last train left, or the train moved platform): the row among
  * [rows] holding the route's soonest train, timed else by schedule, on any platform the same way
- * ([otherPlatforms]'s rule). Null once no platform at the stop has one, so the page closes then (maintainer,
- * 2026-10-15).
+ * ([otherPlatforms]'s rule), else the one row TfL gave no way for this time (or a way, where the page's had none).
+ * Null once no row at the stop has one: the page then stays on its way with no train (maintainer, 2026-10-22).
  */
 @WorkerThread
 fun routeAnchor(
@@ -75,10 +75,15 @@ fun routeAnchor(
     focus: RouteFocus,
     topology: RouteTopology = RouteTopology.EMPTY,
 ): DepartureRow? {
-    val way = rows.filter {
-        it.stopId == stopId && it.lineId == lineId && it.direction == direction && (direction.isNotBlank() || nationalRail(it))
-    }
-    return soonestOnRoute(way, focus, topology)?.second
+    val line = rows.filter { it.stopId == stopId && it.lineId == lineId }
+    val way = line.filter { it.direction == direction && (direction.isNotBlank() || nationalRail(it)) }
+    soonestOnRoute(way, focus, topology)?.let { return it.second }
+    // TfL can name a train's way on one fetch and leave it out on the next, which keys its row afresh: a row whose way
+    // it left blank where the page's was named, or named where the page's was left blank, still holds the route's
+    // train to the same place, so the page moves to it (maintainer, 2026-10-22: a refresh closed the page). Only one
+    // such row, though: on a loop both ways' trains go to the same place, and which is the page's would be a guess.
+    val unnamed = line.filter { it.direction.isBlank() != direction.isBlank() && soonestOnRoute(listOf(it), focus, topology) != null }
+    return unnamed.singleOrNull()
 }
 
 /**

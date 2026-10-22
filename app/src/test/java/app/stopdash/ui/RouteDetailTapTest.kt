@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import java.time.Instant
@@ -163,15 +164,12 @@ class RouteDetailTapTest {
     }
 
     @Test
-    fun `the detail closes for good when its row leaves the list`() {
-        // The open route's last departure passes (or the stop is pruned), so its row leaves the
-        // list. The page must close AND stay closed — a later refresh reproducing the same
-        // stop/line/direction identity must not silently reopen it (the saved key is cleared).
-        val present = loaded()
-        val gone = DeparturesUiState.Loaded(
-            stops = listOf(stop.copy(departures = emptyList())),
-            fetchedAt = now,
-        )
+    fun `the detail stays open when its row leaves the list, and follows it back`() {
+        // The open route's last departure passes, or TfL leaves it out of a fetch: a refresh never closes a page the
+        // rider opened (maintainer, 2026-10-22). It stays on its route with no live times until a train comes.
+        val served = stop.copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))
+        val present = DeparturesUiState.Loaded(stops = listOf(served), fetchedAt = now)
+        val gone = DeparturesUiState.Loaded(stops = listOf(served.copy(departures = emptyList())), fetchedAt = now)
         var current by mutableStateOf<DeparturesUiState>(present)
         composeRule.setContent {
             StopDashTheme {
@@ -182,15 +180,83 @@ class RouteDetailTapTest {
         composeRule.onNodeWithText("Brixton").performTouchInput { click() }
         composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
 
-        // The row leaves the list.
+        // The row leaves the list: the page stays, on its route with no train (no star: it pins a row that isn't
+        // there), not the list.
         composeRule.runOnUiThread { current = gone }
         composeRule.waitForIdle()
+        composeRule.onNodeWithText("Victoria line").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+        composeRule.onNodeWithText("2 min").assertDoesNotExist()
 
-        // The same identity returns on a later refresh — the page stays closed.
+        // A train comes again on a later refresh: the page shows it, as from a tap on its row.
         composeRule.runOnUiThread { current = present }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the detail stays open while a new set of stops loads afresh`() {
+        // A fix that picks a different set of nearby stops gives the list a model of its own, which starts with
+        // nothing loaded: the page waited for nothing and closed, on most refreshes (maintainer, 2026-10-22).
+        var current by mutableStateOf<DeparturesUiState>(loaded())
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(state = current, now = now, onRefresh = {})
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performTouchInput { click() }
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+
+        composeRule.runOnUiThread { current = DeparturesUiState.Loading }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+
+        // The new set's stops come in one by one: the page's own isn't judged gone while it's still loading.
+        composeRule.runOnUiThread {
+            current = DeparturesUiState.Loaded(
+                stops = emptyList(),
+                fetchedAt = now,
+                pendingStops = listOf(StopRef(stop.stopId, stop.stopName)),
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithText("Status may be out of date").assertDoesNotExist()
+
+        composeRule.runOnUiThread { current = loaded() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the detail holds as out of date once its stop has left the list, and is live again when it's back`() {
+        // The rider moved on, so the stop is no longer fetched: the page stays as it was, saying it may be out of
+        // date, rather than closing or claiming its times are current.
+        val elsewhere = StopArrivals(
+            stopId = "940GZZLUEUS",
+            stopName = "Euston",
+            departures = listOf(Departure("victoria", "Victoria", "northbound", "Walthamstow Central", null, now.plusSeconds(180), "tube")),
+            fetchedAt = now,
+        )
+        var current by mutableStateOf<DeparturesUiState>(loaded())
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(state = current, now = now, onRefresh = {})
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performTouchInput { click() }
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+
+        composeRule.runOnUiThread { current = DeparturesUiState.Loaded(stops = listOf(elsewhere), fetchedAt = now) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
+        composeRule.onNodeWithText("Status may be out of date").assertIsDisplayed()
+        composeRule.onNodeWithText("Walthamstow Central").assertDoesNotExist()
+
+        composeRule.runOnUiThread { current = loaded() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Status may be out of date").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
     }
 
     @Test

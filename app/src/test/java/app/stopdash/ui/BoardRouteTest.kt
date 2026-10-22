@@ -48,7 +48,7 @@ class BoardRouteTest {
         ).withGroups(now)
         val found = boardRouteOf(moved, key, null, emptySet(), RouteFocus("Stanmore", null), "outbound")
         assertEquals("Westbound - Platform 14", found.row?.upcoming?.single()?.platform)
-        // Without the route tapped, or once no platform has it, none: the page closes.
+        // Without the route tapped, or once no platform has it, no row to move to.
         assertNull(boardRouteOf(moved, key, null, emptySet()).row)
         assertNull(boardRouteOf(moved, key, null, emptySet(), RouteFocus("Wembley Park", null), "outbound").row)
     }
@@ -57,6 +57,41 @@ class BoardRouteTest {
     fun `a row the board no longer lists is none`() {
         val other = NextTrains(jubilee, listOf(train("Stratford", 5, direction = "inbound"))).withGroups(now)
         assertNull(boardRouteOf(other, key, null, emptySet()).row)
+    }
+
+    @Test
+    fun `a route with no train left stands on the row last drawn, as of this board`() {
+        // A refresh never closes the page (maintainer, 2026-10-22): the row it was drawn with stands for the route,
+        // its trains gone, its alert the line's now and its age this board's.
+        val drawn = boardRouteOf(board, key, null, emptySet()).row!!
+        val read = at(1)
+        val other = NextTrains(jubilee, listOf(train("Stratford", 5, direction = "inbound")), fetchedAt = read).withGroups(now)
+        val delays = LineStatus("jubilee", 9, "Minor Delays")
+        val standing = boardRouteOf(other, key, delays, emptySet(), drawn = drawn)
+        assertTrue(standing.gone)
+        val row = standing.row!!
+        assertEquals(drawn.detailKey(), row.detailKey())
+        assertTrue(row.upcoming.isEmpty() && row.untimed.isEmpty())
+        assertEquals(read, row.fetchedAt)
+        assertEquals("Minor Delays", row.status?.description)
+        // Its dismissal marked as of now: dismissed, it says so; the dismissal gone, the alert is back.
+        val dismissed = boardRouteOf(other, key, delays, setOf(DismissedAlert.ofLineStatus(delays)), drawn = drawn).row!!
+        assertNull(dismissed.status)
+        assertTrue(dismissed.statusDismissed)
+        val again = boardRouteOf(other, key, delays, emptySet(), drawn = dismissed).row!!
+        assertEquals("Minor Delays", again.status?.description)
+        assertFalse(again.statusDismissed)
+        // A train on it again: its row, not the one standing.
+        val back = boardRouteOf(board, key, null, emptySet(), drawn = drawn)
+        assertFalse(back.gone)
+        assertEquals(3, back.row!!.upcoming.size)
+    }
+
+    @Test
+    fun `a board still loading has no row yet, rather than one with no train`() {
+        val drawn = boardRouteOf(board, key, null, emptySet()).row!!
+        val loading = NextTrains(jubilee, emptyList(), pending = true)
+        assertNull(boardRouteOf(loading, key, null, emptySet(), drawn = drawn).row)
     }
 
     @Test

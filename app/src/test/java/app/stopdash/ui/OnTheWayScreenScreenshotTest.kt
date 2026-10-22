@@ -1002,9 +1002,56 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
-    fun a_trains_route_page_closes_once_the_board_no_longer_lists_it() {
-        // Its last train gone from the board, the page closes, as the main screen's does when its row leaves the
-        // list, and stays closed should a later board list it again.
+    fun a_held_trains_route_page_closes_after_a_rotation_rather_than_stay_blank() {
+        // Held as last drawn once the board is another stop's: a rotation keeps the page but not the row it was drawn
+        // with, and the board can't give it one, so it closes rather than stay a blank page (Codex on #1105).
+        val next = jubilee.copy(fromId = "940GZZLUCYF", fromName = "Canary Wharf", toId = "940GZZLUNGW", toName = "North Greenwich", departure = at(35), arrival = at(38))
+        var board by mutableStateOf(stanmoreBoard(21))
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {}, nextTrains = board)
+            }
+        }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        awaitRoutePage()
+        board = NextTrains(next, listOf(jubileeTrain("Stanmore", 36)), readyAt = at(35)).withGroups(now)
+        val outOfDate = hasText(string(app.stopdash.R.string.route_detail_status_stale)) and onRoutePage
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(outOfDate).fetchSemanticsNodes().isNotEmpty() }
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("onTheWayRoutePage").fetchSemanticsNodes().isEmpty() }
+        composeRule.onNodeWithTag("onTheWayRoutePending").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_trains_route_page_leaves_a_train_out_at_its_time_on_the_worker() {
+        // A train's time come, the page leaves it out, worked out on the screen's worker each tick, never in composition
+        // (AGENTS.md *Main thread: read and dispatch only*; Codex on #1105): held, the last tick's answer stands.
+        val worker = HeldWorker()
+        var clock by mutableStateOf(now)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, clock, {}, {}, nextTrains = stanmoreBoard(1, 4))
+                }
+            }
+        }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        awaitRoutePage()
+        composeRule.onNode(hasText("1 · 4 min") and onRoutePage).assertExists()
+        worker.hold()
+        clock = now.plusSeconds(90)
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText("0 · 2 min") and onRoutePage).assertExists()
+        worker.release()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("2 min") and onRoutePage).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(hasText("0 · 2 min") and onRoutePage).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_trains_route_page_stays_open_once_the_board_no_longer_lists_it() {
+        // Its last train gone from the board, the page stays on its route with no train, never back to the trip: only
+        // the rider closes it (maintainer, 2026-10-22). A train on it again, the page shows it.
         var board by mutableStateOf(stanmoreBoard(21, 24))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -1013,16 +1060,50 @@ class OnTheWayScreenScreenshotTest {
         }
         composeRule.onNodeWithText("Stanmore").performClick()
         awaitRoutePage()
-        // A refresh still listing it keeps it up.
+        composeRule.onNode(hasText("21 · 24 min") and onRoutePage).assertExists()
+        // A refresh still listing it keeps it up, on its trains now.
         board = stanmoreBoard(24)
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("onTheWayRoutePage").assertExists()
-        // Only a train the other way listed: another route, so this one's gone.
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("24 min") and onRoutePage).fetchSemanticsNodes().isNotEmpty() }
+        // Only a train the other way listed: another route, so this one has none, and the page stays on it.
         board = NextTrains(jubilee, listOf(Departure("jubilee", "Jubilee", "inbound", "Stratford", null, at(27), "tube")), readyAt = at(24)).withGroups(now)
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("onTheWayRoutePage").fetchSemanticsNodes().isEmpty() }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("24 min") and onRoutePage).fetchSemanticsNodes().isEmpty() }
+        composeRule.onNodeWithTag("onTheWayRoutePage").assertExists()
+        composeRule.onNodeWithTag("onTheWayRoutePending").assertDoesNotExist()
+        composeRule.onNode(hasText("27 min") and onRoutePage).assertDoesNotExist()
+        composeRule.onNode(hasText(string(app.stopdash.R.string.route_detail_status_stale)) and onRoutePage).assertDoesNotExist()
+        // Still the route's page, not its line's: where it goes, with no live times (Codex on #1105).
+        composeRule.onNode(hasText("Stanmore") and onRoutePage).assertExists()
+        composeRule.onNode(hasText(string(app.stopdash.R.string.route_detail_no_live_times)) and onRoutePage).assertExists()
         board = stanmoreBoard(30)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("30 min") and onRoutePage).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun a_trains_route_page_holds_as_out_of_date_once_the_board_is_another_stops() {
+        // The rider boarded, so the board is the next ride's, from another stop, or there's none: the page stays as it
+        // was last drawn, its times out of date (D4), rather than close or look for its stop on a board that isn't its.
+        val next = jubilee.copy(fromId = "940GZZLUCYF", fromName = "Canary Wharf", toId = "940GZZLUNGW", toName = "North Greenwich", departure = at(35), arrival = at(38))
+        var board by mutableStateOf<NextTrains?>(stanmoreBoard(21))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {}, nextTrains = board)
+            }
+        }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        awaitRoutePage()
+        val outOfDate = hasText(string(app.stopdash.R.string.route_detail_status_stale)) and onRoutePage
+        composeRule.onNode(outOfDate).assertDoesNotExist()
+        // The ride changed but boards from the same stop (a branch taken): the same board, still live.
+        board = NextTrains(jubilee.copy(toId = "940GZZLUNGW", toName = "North Greenwich", arrival = at(35)), listOf(jubileeTrain("Stanmore", 23)), readyAt = at(24)).withGroups(now)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("23 min") and onRoutePage).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(outOfDate).assertDoesNotExist()
+        board = NextTrains(next, listOf(jubileeTrain("Stanmore", 36)), readyAt = at(35)).withGroups(now)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(outOfDate).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("onTheWayRoutePending").assertDoesNotExist()
+        composeRule.onNode(hasText("36 min") and onRoutePage).assertDoesNotExist()
+        board = null
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("onTheWayRoutePage").assertDoesNotExist()
+        composeRule.onNode(outOfDate).assertExists()
     }
 
     @Test

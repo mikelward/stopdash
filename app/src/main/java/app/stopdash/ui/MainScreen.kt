@@ -1345,12 +1345,16 @@ fun MainScreen(
         }
     }
     // The way chosen on the page's chips with no train ([RouteDetailScreen]'s chosenWay), held with its opening; and
-    // whether the page stays on it, its row gone with no other platform's to move to: then it's drawn from the row
+    // whether the page stays on its way, its row gone with no other platform's to move to, whether or not a way was
+    // chosen: a refresh never closes a page the rider opened (maintainer, 2026-10-22). It's then drawn from the row
     // last held, its trains gone, as of the stop's own row for its line as the list has it now ([standingOnWay]), not
     // as of the row's own fetch, whose age would read as stale (Codex on #1038); from that row itself where none is
     // held (a rotation since). A train come on the way moves the page to its row, as the chips do.
     val detailChosenWay = rememberSaveable(detailOpened) { mutableStateOf<String?>(null) }
     var detailOnWay by rememberSaveable(detailOpened) { mutableStateOf(false) }
+    // Its stop gone from the list too (the rider moved on, so it's no longer fetched): the page holds as it was last
+    // drawn, its times held back as out of date (D4), until the rider leaves it or the stop is back.
+    var detailHeld by rememberSaveable(detailOpened) { mutableStateOf(false) }
     // Only while the page is open: Back clears its key, and the page closes with it (Codex on #1051).
     val onWayLine = if (detailKey != null && detailFound == null && detailOnWay) detailLineKey?.let { drawnFrom?.byLine?.get(it) } else null
     // Every loaded stop's rows, where the row came from the list's own snapshot: the route's trains on its
@@ -1369,19 +1373,25 @@ fun MainScreen(
     }
     val heldRow = detailDrawn.hit?.first
     val onWayRow = remember(heldRow, onWayLine) { onWayLine?.let { line -> heldRow?.standingOnWay(line) ?: line } }
-    val detailHit = detailFound ?: onWayRow?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) } ?: detailDrawn.hit?.takeIf { detailKey != null }
+    // Drawn from what it was last drawn from (its row looked for, its stop gone or loading afresh): against the time
+    // now, so its trains go at their times and its age grows, as any page's do.
+    val detailFromHeld = detailFound == null && onWayRow == null
+    val detailHit = detailFound ?: onWayRow?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
+        ?: detailDrawn.hit?.takeIf { detailKey != null }?.let { Triple(it.first, it.second, now) }
     val detailRow = detailHit?.first
-    // When the open route's row leaves the list — its last departure passed on the 10s clock, or it
-    // was pruned — clear the saved key so the vanished page stays closed rather than silently
-    // reopening if a later refresh reproduced that same stop/line/direction identity (Codex). A live
-    // refresh keeps the same identity, so this fires only on a genuine disappearance.
-    // Not while the rows are still being worked out (a return to the list, a rotation): the row isn't
-    // gone, just not in yet.
-    val rowsKnown = !listPending && !platformPending
+    // When the open route's row leaves the list (its last departure passed on the 10s clock, TfL dropped it for a
+    // fetch, or its stop is no longer fetched), the page stays open: on its way with no train while its stop is in
+    // the list, else as it was last drawn ([detailHeld]). Only Back closes it. It closes by itself only with nothing
+    // to draw (its row gone since a rotation, its stop too), clearing the saved key so a later refresh bringing the
+    // row back never reopens a page the rider was no longer shown (Codex).
+    // Not judged while the rows are still being worked out (a return to the list, a rotation), nor while there's no
+    // list yet (a new set of nearby stops loads afresh, with a model of its own): the row isn't gone, just not in yet.
+    // Judging it against the new set's empty list closed the page on most refreshes (maintainer, 2026-10-22).
+    val rowsKnown = loaded != null && !listPending && !platformPending
     // The page is the route's, not the platform's (maintainer, 2026-10-15): its row gone while another
     // platform at the stop still has the route (the platform's last train left, or the train moved
     // platform), the page moves to that platform's row ([routeAnchor], looked for on the worker) rather
-    // than closing. It closes once no platform has one.
+    // than closing. Once no platform has one, it stays on its way with no train.
     val anchorWorker = LocalWorker.current
     val anchorTopology = LocalRouteTopology.current
     // Among every loaded stop's rows, which the page is found in from a platform or station view too: the view
@@ -1390,16 +1400,21 @@ fun MainScreen(
     // topology since replaced never closes a page that the new ones still have (Codex, #854).
     LaunchedEffect(detailKey, detailFound == null, rowsKnown, drawnFrom, ByIdentity(anchorTopology), detailDestination, detailBranch, detailTrainWay, detailWay) {
         val key = detailKey
-        if (key != null && detailFound == null && rowsKnown) {
+        // Nor while its own stop is still loading (a cold load comes in stop by stop).
+        val stopLoading = key != null && drawnFrom?.loadingStopIds?.contains(key.substringBefore('|')) == true
+        if (key != null && detailFound == null && rowsKnown && !stopLoading) {
             val moved = detailDestination?.let { destination ->
                 movedRouteRow(loadedRows, key, detailWay, RouteFocus(destination, detailBranch, detailTrainWay), anchorTopology, anchorWorker)
             }
-            // A way chosen with no train keeps the page open on it while the stop's row for its line is in.
-            val onWay = moved == null && detailChosenWay.value != null && detailLineKey?.let { drawnFrom?.byLine?.get(it) } != null
+            // The page stays open on its way while the stop's row for its line is in, else as last drawn.
+            val onWay = moved == null && detailLineKey?.let { drawnFrom?.byLine?.get(it) } != null
+            val held = moved == null && !onWay && detailDrawn.hit != null
             detailOnWay = onWay
-            detailKey = moved?.detailKey() ?: key.takeIf { onWay }
+            detailHeld = held
+            detailKey = moved?.detailKey() ?: key.takeIf { onWay || held }
         } else if (detailFound != null) {
             detailOnWay = false
+            detailHeld = false
         }
     }
     // Surface a failed star write as a snackbar (SPEC principle 2: a tap that didn't take isn't
@@ -1464,20 +1479,34 @@ fun MainScreen(
     val routeTimetableOpen = rememberSaveable(detailOpened) { mutableStateOf(false) }
     // For the usage stats: the route's page, its line's page over it, or what's beneath. A page still
     // open while its rows are worked out again (a rotation, a return to the list) is still that page.
-    // A journey's ride page, while its card is shown: gone with the card (unstarred, or the list moved on).
+    // A journey's ride page, from its card while the card is shown.
     val rideView = rideKey?.let { shown?.rides?.get(it) }
     val rideLoaded = drawnFrom?.source
+    // Its card gone (the list moved on, or a new set of nearby stops loads afresh), the page holds as it was last drawn,
+    // out of date once the list without it is in: a refresh never closes a page the rider opened (maintainer,
+    // 2026-10-22). Kept with the page's opening, so another page never starts from this one's.
+    val rideDrawn = remember(detailOpened) { RideDrawn() }
+    SideEffect {
+        if (rideView != null && rideLoaded != null) {
+            rideDrawn.view = rideView
+            rideDrawn.loaded = rideLoaded
+        }
+    }
+    val rideShown = rideView ?: rideDrawn.view?.takeIf { rideKey != null }
+    val rideShownLoaded = if (rideView != null) rideLoaded else rideDrawn.loaded
+    val rideHeld = rideView == null && rideShown != null && rowsKnown
     // The same pages for their cards' rows, each one's next train by its timetable ([rememberRideCardTime]), drawn
     // against the same fetch. By identity: both are the list's, made again with it.
     val rideTimes = remember(ByIdentity(shown?.rides), ByIdentity(rideLoaded)) {
         shown?.rides?.let { rides -> rideLoaded?.let { RideTimes(rides, it) } }
     }
-    // Closed once its card is gone from rows worked out, so it never reopens on a card shown again later.
-    LaunchedEffect(rideKey, rideView == null, rowsKnown, shown == null) {
-        if (rideKey != null && rideView == null && rowsKnown && shown != null) rideKey = null
+    // Closed by itself only with nothing to draw (its card gone since a rotation), so it never reopens on a card shown
+    // again later.
+    LaunchedEffect(rideKey, rideShown == null, rowsKnown, shown == null) {
+        if (rideKey != null && rideShown == null && rowsKnown && shown != null) rideKey = null
     }
     val routeOpen = (detailLoaded != null && detailRow != null) || (detailKey != null && !rowsKnown) ||
-        (rideView != null && rideLoaded != null)
+        (rideShown != null && rideShownLoaded != null)
     ReportScreen(
         when {
             !routeOpen -> usageScreen
@@ -1486,16 +1515,17 @@ fun MainScreen(
             else -> UsageEvent.Screen.ROUTE
         },
     )
-    if (rideView != null && rideLoaded != null) {
-        RidePage(rideView, rideLoaded, now, onBack = { rideKey = null }, lineOpen = routeLineOpen, timetableOpen = routeTimetableOpen)
+    if (rideShown != null && rideShownLoaded != null) {
+        RidePage(rideShown, rideShownLoaded, now, onBack = { rideKey = null }, lineOpen = routeLineOpen, timetableOpen = routeTimetableOpen, held = rideHeld)
         return
     }
     if (detailLoaded != null && detailRow != null) {
         RouteDetailScreen(
             lineOpen = routeLineOpen,
             timetableOpen = routeTimetableOpen,
-            // The list's own rows, drawn against the time they were built for ([detailNow]).
-            boardRows = true,
+            // The list's own rows, drawn against the time they were built for ([detailNow]); rows held from an
+            // earlier build are no board's now.
+            boardRows = !detailFromHeld,
             row = detailRow,
             isStarred = StarredRow.of(detailRow) in starred,
             // Same rule as the list card: only a timed row with starring available is pinnable.
@@ -1514,8 +1544,9 @@ fun MainScreen(
             lineUnknown = detailLoaded.lineDoubtedFor(detailRow, detailNow),
             lineChecking = detailLoaded.checkingLineFor(detailRow),
             // This row's own age (the same per-row rule the card uses to withhold countdowns): a
-            // stale snapshot's disruption status isn't presented as current (SPEC D4).
-            stale = Staleness.isStale(detailRow.fetchedAt, detailNow),
+            // stale snapshot's disruption status isn't presented as current (SPEC D4). Held with its stop
+            // no longer fetched, it can't stand behind anything it shows.
+            stale = detailHeld || Staleness.isStale(detailRow.fetchedAt, detailNow),
             now = detailNow,
             onToggleStar = { onToggleStar(detailRow) },
             onBack = { detailKey = null },
@@ -6024,6 +6055,12 @@ private class DetailDrawn {
     var siblings: List<DepartureRow> = emptyList()
 }
 
+/** What an open ride's page ([RidePage]) was last drawn from, standing in once its card is gone. */
+private class RideDrawn {
+    var view: RideView? = null
+    var loaded: DeparturesUiState.Loaded? = null
+}
+
 /**
  * [row]'s line on a page of its own ([OneLinePage]), as a route page's "View line" opens it (maintainer,
  * 2026-10-06), its row worked out by [routeLineRow].
@@ -6304,7 +6341,13 @@ internal fun RouteDetailScreen(
         else -> null
     }
     var chosenKey by chosenWay
-    val chosenIndex = routeChoices?.indexOf(chosenKey)
+    // The route the page was on, by its chip's key, while its chips could tell it from its train: what the page stays on
+    // once its row is gone with no way chosen, its trains gone with it, so the chips can no longer say which it was, and
+    // a stop with several ways on would leave the page on none (Codex on #1105).
+    var lastOnKey by rememberSaveable(row.stopId, row.lineId) { mutableStateOf<String?>(null) }
+    val onKey = routeChoices?.takeIf { it.settled && !rowGone }?.let { ui -> ui.choices.current?.let(ui.keys::getOrNull) }
+    SideEffect { if (onKey != null) lastOnKey = onKey }
+    val chosenIndex = routeChoices?.indexOf(chosenKey ?: lastOnKey?.takeIf { rowGone })
     val chosen = chosenIndex?.let { routeChoices.choices.choices[it] }
     // The route the page lists with no train to follow: the one chosen, else, with no train of its own, the
     // only way on from here (no guess).
@@ -6361,6 +6404,13 @@ internal fun RouteDetailScreen(
     val dismissPlanned = onDismissPlanned?.takeIf { otherWay == null }
     if (lineShown) RouteLinePage(shown, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineShown = false })
     val followed = if (trainless != null) null else pageFollowed(row, focus, topology, routeWork, routeAsk, siblings.isNotEmpty())
+    // The train the page last followed while its row had one: what names its route once the row is gone, its trains
+    // gone with it ([rowGone]), where no chip holds the route (a board train's page has none, or they're still worked
+    // out), so the page keeps the route's place and stops rather than become its line's (Codex on #1105). Its times
+    // are never shown. Not across a rotation: the main screen's chips hold the route then.
+    val lastFollowed = remember(row.stopId, row.lineId) { arrayOfNulls<Departure>(1) }
+    SideEffect { if (followed != null && !rowGone) lastFollowed[0] = followed }
+    val goneFollowed = lastFollowed[0]?.takeIf { rowGone && trainless == null && followed == null }
     // A stale row's soonest prediction may not be the next train any more, so its stop list is
     // withheld rather than shown as current (SPEC D4); it returns as soon as a refresh lands.
     val listed = when {
@@ -6372,7 +6422,7 @@ internal fun RouteDetailScreen(
         stale && row.hasTrains && row.lineId.isNotBlank() -> RouteStopsUi.Stale
         routeStops != null -> routeStops
         loadRouteStops != null -> loadRouteStops(routeStopsRetry)
-        else -> rememberRouteStops(row, followed, routeStopsRetry)
+        else -> rememberRouteStops(row, followed ?: goneFollowed, routeStopsRetry)
     }
     // A ride's ways that couldn't be loaded, where its list can't say which way it takes: the failure, with the
     // list's retry, which asks for its ways again, rather than "unavailable" with nothing to try (Codex on #1039).
@@ -6436,16 +6486,38 @@ internal fun RouteDetailScreen(
     val alertStretchIds = alertMarks.stretch
     val alertPlaces = alertMarks.places
     // None of the row's trains for a route chosen with none of its own.
-    val workForRow = routeWork?.takeIf { it.first === routeAsk && trainless == null }?.second
-    // A board's rows built at [now] already left out what had gone, as the list did ([boardRows]): no walk here.
-    val departures = workForRow?.departures.orEmpty().let { trains -> if (boardRows) trains else trains.filterNot { Countdown.hasDeparted(it, now) } }
-    // The route's trains its board lists with no time, among its countdowns in their place; a
-    // canceled one gone at its time, as a timed one is ([Countdown.stillShown]).
-    val untimed = workForRow?.untimed.orEmpty().let { trains -> if (boardRows) trains else trains.filter { Countdown.stillShown(it, now) } }
+    val rowWork = routeWork?.takeIf { it.first === routeAsk && trainless == null }?.second
+    // Its trains past their time left out against [now], a canceled one with no time gone at its time as a timed one
+    // is ([Countdown.stillShown]), on the worker each tick (AGENTS.md *Main thread: read and dispatch only*; Codex on
+    // #1105): the last tick's answer for the same trains stands in meanwhile, and until the first is in the countdown
+    // holds its line, blank, as it does for the trains themselves. A board's rows built at [now] already left out what
+    // had gone, as the list did ([boardRows]): theirs aren't walked again.
+    val goneFrom = rowWork?.takeIf { !boardRows }
+    val goneSlot = remember { mutableStateOf<Worked<Inputs, RouteDetailWork?>?>(null) }
+    val stillToGo = rememberWorked(
+        goneSlot,
+        Inputs(goneFrom, now.takeIf { goneFrom != null }),
+        keep = { held, wanted -> held.parts[0] != null && held.parts[0] === wanted.parts[0] },
+    ) {
+        goneFrom?.let { work ->
+            work.copy(
+                departures = work.departures.filterNot { Countdown.hasDeparted(it, now) },
+                untimed = work.untimed.filter { Countdown.stillShown(it, now) },
+            )
+        }
+    }
+    val workForRow = if (boardRows) rowWork else stillToGo
+    val departures = workForRow?.departures.orEmpty()
+    // The route's trains its board lists with no time, among its countdowns in their place.
+    val untimed = workForRow?.untimed.orEmpty()
     // A route chosen with no train is named as its chip names it.
     val trainlessLabel = trainlessIndex?.let { routeChoices?.labels?.getOrNull(it) }
     // A ride's way keeps its page's title: the chip says which way.
-    val destinations = if (trainless != null && !rideChoices) listOfNotNull(trainlessLabel) else routeWork?.second?.destinations.orEmpty()
+    val destinations = when {
+        trainless != null && !rideChoices -> listOfNotNull(trainlessLabel)
+        goneFollowed != null -> listOfNotNull(DepartureLabels.destinationLabel(goneFollowed.destination, row.directionKey))
+        else -> routeWork?.second?.destinations.orEmpty()
+    }
     // The followed train's branch as the card labels it ("Hainault/Newbury Park"), so the title names
     // the same route the tapped row did; null where the card shows no branch (it makes no difference
     // from this stop, or the row has none).
@@ -6737,7 +6809,7 @@ internal fun RouteDetailScreen(
                         }
                     }
                 }
-            } else if (trainless != null && !stale && routeChoices?.settled == true && !rideChoices) {
+            } else if (trainless != null && !stale && routeChoices?.settled == true && !rideChoices || goneFollowed != null && !stale) {
                 // A route chosen with no train at the stop: said, in the countdown's place, so a train coming
                 // on it takes the line without moving what's below. Not from an old snapshot, which can't say
                 // there's none now: its stale caveat below says why nothing is; nor from chips not yet worked out
