@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -173,7 +172,8 @@ fun StationSearchScreen(
     // [StationSearchViewModel.positionOf]. Null uses only the row's own.
     positionOf: (suspend (SearchEntry) -> Coordinates?)? = null,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     val rowActions = SearchRowActions(onShowOnMap, onAskRemoveRecent, onAddPlace, onRemovePlace)
     // The row whose menu is up. Not kept across a rotation, which closes it.
     var menuFor by remember { mutableStateOf<SearchEntry?>(null) }
@@ -262,6 +262,7 @@ fun StationSearchScreen(
         }
     } else null
     Scaffold(
+        modifier = Modifier.followsBack(back),
         topBar = {
             if (onChangeFrom != null) {
                 TripEndsBar(
@@ -906,8 +907,10 @@ fun StationPlaceholderScreen(
     // shows it (MainScreen's stationBrowse), so it's there from the first frame (Codex on #736).
     onBrowseBack: (() -> Unit)? = null,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     Scaffold(
+        modifier = Modifier.followsBack(back),
         topBar = {
             TopAppBar(
                 navigationIcon = {

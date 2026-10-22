@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -262,8 +261,9 @@ fun SettingsScreen(
     // The disruptions summary's own page, over this one; its Back returns here. Open from the start
     // when Settings is opened for it (the lines page's menu), so Back from it goes up to Settings.
     var disruptionsOpen by rememberSaveable(startOnDisruptions) { mutableStateOf(startOnDisruptions) }
-    BackHandler(onBack = onBack)
-    Box(modifier = Modifier.fillMaxSize()) {
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
+    Box(modifier = Modifier.fillMaxSize().followsBack(back)) {
     // Off the screen while the page is open, so neither TalkBack nor a keyboard reaches the covered
     // controls (Codex, #592); its state (the scroll, a key being typed) kept for its return.
     val saved = rememberSaveableStateHolder()
@@ -1148,8 +1148,9 @@ internal fun DisruptionsSummaryPage(
     ridesWriteFailed: Boolean = false,
     onDismissRidesError: () -> Unit = {},
 ) {
-    BackHandler(onBack = onBack)
-    Surface(modifier = Modifier.fillMaxSize().testTag("disruptionsSummaryPage")) {
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
+    Surface(modifier = Modifier.fillMaxSize().followsBack(back).testTag("disruptionsSummaryPage")) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             // Title with a Back button at the end, as Settings' own.
             Row(

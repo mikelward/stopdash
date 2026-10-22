@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -407,8 +406,9 @@ fun FavoriteJourneysScreen(
     alertsPaused: Boolean? = null,
     onPauseAlerts: ((Boolean) -> Unit)? = null,
 ) {
-    BackHandler(onBack = onBack)
-    Surface(modifier = Modifier.fillMaxSize()) {
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
+    Surface(modifier = Modifier.fillMaxSize().followsBack(back)) {
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(

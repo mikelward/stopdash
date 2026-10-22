@@ -3,7 +3,6 @@
 package app.stopdash.ui
 
 import android.util.LruCache
-import androidx.activity.compose.BackHandler
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -1199,7 +1198,9 @@ fun MainScreen(
     val shownRidePlaceMeters = if (platformRows != null) emptyMap() else shown?.ridePlaceMeters.orEmpty()
     // And how far the stop each ride boards from is, for its heading.
     val shownRideMeters = if (platformRows != null) emptyMap() else shown?.rideMeters.orEmpty()
-    BackHandler(enabled = platformRows != null) { closeView() }
+    // One page as the back gesture sees it: whichever of these takes it, the list follows the swipe.
+    val listBack = rememberBackFollow()
+    PredictiveBack(listBack, enabled = platformRows != null) { closeView() }
     // The view's buttons (SPEC D8): its whole station from a platform, and its nearest stop on the map,
     // each only where it has one.
     val viewActions = platformView?.takeIf { platformRows != null && !platformGone }?.let { view ->
@@ -1226,7 +1227,7 @@ fun MainScreen(
     val drawnState = (if (platformRows != null) platformView?.source else null) ?: drawnLoaded
     // A searched station's page closes back to the search; a drill-down inside it steps out first
     // (this one is off while a drill-down is open, so the handler above takes that back).
-    BackHandler(enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
+    PredictiveBack(listBack, enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
 
     // The favorite journey whose own view is open (its key), from a tap on its heading, or null. It
     // resolves against the current cards each recomposition, so it follows a swap and its trains stay
@@ -1243,7 +1244,7 @@ fun MainScreen(
     // list, and Back still leaves it (Codex). A read that failed isn't pending, so the view closes
     // rather than spin forever (Codex).
     val journeyViewOpen = journeyViewKey != null && (journeyViewCard != null || journeysLoading || !cardsCurrent)
-    BackHandler(enabled = journeyViewOpen) { journeyViewKey = null }
+    PredictiveBack(listBack, enabled = journeyViewOpen) { journeyViewKey = null }
     // A platform, station or journey view scrolls on its own, from the top when first opened. Each
     // open view keeps its own place — across a route page opened from it, a rotation, and a platform
     // opened from a station and backed out of (the station's place is still there) (Codex) — until
@@ -1549,7 +1550,7 @@ fun MainScreen(
         return
     }
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().followsBack(listBack),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -1579,7 +1580,7 @@ fun MainScreen(
                 },
                 navigationIcon = {
                     // A drilled-into platform view is a destination of its own: back returns to the
-                    // full list (the system back does too — see the BackHandler above).
+                    // full list (the system back does too — see the PredictiveBack above).
                     if (journeyViewOpen) {
                         IconButton(onClick = { journeyViewKey = null }) {
                             Icon(
@@ -6119,7 +6120,7 @@ internal fun lineRow(
  * A full screen rather than a dialog (maintainer, 2026-09-22): it will grow the maps/nav hand-off
  * and other per-route actions (`TODO.md`), which a dialog would cap. Mirrors the app's other full
  * screens ([LicensesScreen], [SettingsScreen]) — a composable with an [onBack], switched in by the
- * host's screen state; [BackHandler] routes the system back to [onBack] too, and it inherits the
+ * host's screen state; [PredictiveBack] routes the system back to [onBack] too, and it inherits the
  * theme's scaled density from the host, so no per-window font host is needed here.
  *
  * Pure: renders only [row] and reports the two actions. The star shows only when [starrable] (a
@@ -6225,7 +6226,8 @@ internal fun RouteDetailScreen(
     // A far end whose closure check failed, so it may be closed: said, by its name. Null where it was checked.
     uncheckedEnd: String? = null,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
     // 2026-10-06).
     var lineShown by lineOpen
@@ -6409,7 +6411,7 @@ internal fun RouteDetailScreen(
         null
     }
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().followsBack(back),
         topBar = {
             TopAppBar(
                 navigationIcon = {

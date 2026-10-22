@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,12 +92,13 @@ fun JourneyAlertsScreen(
     // Where the time dialog's starting window is worked out (AGENTS.md *Main thread*).
     compute: CoroutineDispatcher = Workers.compute,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     val journey = state.journey
     // The window being edited: its direction key and the window as it was ("" for a new one), by
     // value rather than position, so an edit lands on the window tapped whatever changed meanwhile.
     var editing by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize().followsBack(back)) {
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(

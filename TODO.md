@@ -3927,8 +3927,13 @@ Builds on Phase 1's minimal line-status marking.
           it**: From there closes the details and replaces the open station, so Back skips both the
           details and the first station. Needs a stack of stations under the flow; going back
           reloads the first one, as the flow's models are kept for one station at a time.
-    - [ ] **Predictive back** (maintainer, 2026-10-21: "use the standard android back peeking"):
-          the system's back preview, peeking at the page underneath during the gesture.
+    - [x] **Predictive back** (maintainer, 2026-10-21: "use the standard android back peeking"):
+          every page follows the back gesture over a scrim, and the system's back-to-home peek shows on
+          Android 14 and 15 too (maintainer, 2026-10-22: "shrink only", SPEC *Back*).
+      - [ ] **The real page under every page during the gesture**: today only windows over a page show
+            it. Drawing it for full pages needs a back stack of real entries rather than the overlays'
+            flags, with the near-me page's location fix, return refresh and other effects held off while
+            it's only a glimpse. Planned as the move to Navigation 3.
   - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their
         favorite journeys' lines covered wherever their stop is, starred rows' while in the list.
   - [x] **Pick individual lines** (maintainer, 2026-10-06): a chip per line, grouped under Tube,

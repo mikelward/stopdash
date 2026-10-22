@@ -57,6 +57,7 @@
         android:name=".StopdashApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="${launcherIcon}"
         android:label="${appLabel}"

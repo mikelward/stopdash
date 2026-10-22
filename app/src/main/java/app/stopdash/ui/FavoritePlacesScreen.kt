@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,8 +93,9 @@ fun FavoritePlacesScreen(
     onDismissWriteError: () -> Unit = {},
 ) {
     // Back closes the editor first, then the screen — so it unwinds a step at a time.
-    BackHandler(onBack = { if (state.editor != null) onCancelEditor() else onBack() })
-    Surface(modifier = Modifier.fillMaxSize()) {
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = { if (state.editor != null) onCancelEditor() else onBack() })
+    Surface(modifier = Modifier.fillMaxSize().followsBack(back)) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             val editor = state.editor
             Row(
