@@ -95,7 +95,10 @@ Fully):
   table with every lift working says nothing, the Planner having checked its call, so a call the table
   doesn't describe never raises it. The rider's own call stays where the Planner put it meanwhile. A
   ride's boarding call is judged the same way (`StepFreeExits.boardingLost`), by its station record,
-  until the rider is aboard that ride. Not yet on the trip page.
+  until the rider is aboard that ride. The trip page's list too (2026-10-22): each route as drawn is
+  judged by its rides' ends (`StepFreeExits.along`, in `ShownRoutes.of`, against the table with every
+  lift working and with today's lifts out), a route with one ranked as a closed stop ranks it and the
+  ride's ⚠ on its card saying so. Not yet the open route, nor a later trip's list.
 - **Rechecked when the lifts change.** A change to the outage set redoes every judgment, an active
   trip's included: its followed train's endpoint is worked out again from its planned legs, so it
   can move later as well as earlier (built: `OnTheWay.advance` puts a moved end back as planned,

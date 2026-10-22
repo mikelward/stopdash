@@ -2,7 +2,10 @@ package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.RideEnds
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeExits
 import app.stopdash.domain.TripRoute
 
 /**
@@ -36,7 +39,32 @@ internal class ShownRoutes private constructor(
     val ends: RideEnds,
     /** Not worked out for [of] yet: [state] is [of] itself, standing in. */
     val pending: Boolean = false,
+    /**
+     * On a step-free trip, where each of [state]'s routes, by key ([routeKey]), has lost its way on or off a ride to the
+     * lifts out ([liftsOut]) though it has one with every lift working ([StepFreeExits.along]): ranked below every route
+     * that can be ridden, as a closed stop ranks one, and said on its card. Only routes with one are here; a route made
+     * since, a train through a change, is judged the same way ([notStepFreeOf]).
+     */
+    val notStepFree: Map<String, List<RouteDisruption.Signal.NotStepFree>> = emptyMap(),
+    // How a route is judged for [notStepFree], getting off where [ends] has it; null where a lift out takes nothing
+    // (no level, every lift working, no table).
+    private val judge: ((TripRoute) -> List<RouteDisruption.Signal.NotStepFree>)? = null,
+    // The keys of the routes [notStepFree] judged: [state]'s.
+    private val judged: Set<String> = emptySet(),
 ) {
+    /**
+     * [notStepFree] for [routes]: those of [state] as judged already, and any made since (a train through a change,
+     * [withThroughRoutes], keyed apart from the route it's made from) judged as they were, so every route the page
+     * ranks and draws is ([StepFreeExits.along]). Work over the routes: off the main thread.
+     */
+    @WorkerThread
+    fun notStepFreeOf(routes: List<TripRoute>): Map<String, List<RouteDisruption.Signal.NotStepFree>> {
+        val judge = judge ?: return emptyMap()
+        val made = routes.filter { routeKey(it) !in judged }.distinctBy(::routeKey)
+        if (made.isEmpty()) return notStepFree
+        return notStepFree + made.associate { routeKey(it) to judge(it) }.filterValues { it.isNotEmpty() }
+    }
+
     /**
      * The route a Start of [route], as shown, starts: the route as the Planner gave it ([TripRoute.drawnFrom]), never
      * the copy cut to draw ([RideEnds.cut]). A train through a change is made from the routes as planned and only
@@ -65,19 +93,33 @@ internal class ShownRoutes private constructor(
          * in the Planner's order: two the cut draws alike stay two, each its own plan ([TripRoute.drawnFrom]). A Direct
          * row's route ([TripViewModel.State.directKeys]) is drawn as the plan's are, its copy that route by key
          * ([routeKey]), so it's still the row's. A step-free trip's ends are checked against [destination]'s step-free
-         * table ([RideEnds.Destination.access]), with the lifts in [liftsOut] out. Work over the routes: off the main thread.
+         * table ([RideEnds.Destination.access]), with the lifts in [liftsOut] out, and each route's rides against [base],
+         * that table with every lift working, for a way on or off a lift out has taken ([notStepFree]). Work over the
+         * routes: off the main thread.
          */
         @WorkerThread
-        fun of(state: TripViewModel.State, stepFree: StepFree, destination: RideEnds.Destination?, liftsOut: Set<String> = emptySet()): ShownRoutes {
+        fun of(
+            state: TripViewModel.State,
+            stepFree: StepFree,
+            destination: RideEnds.Destination?,
+            liftsOut: Set<String> = emptySet(),
+            base: StepFreeAccess? = null,
+        ): ShownRoutes {
             val routes = state.routes ?: return planned(state, stepFree, liftsOut)
             val shown = RideEnds.cut(routes, stepFree, destination)
-            if (shown.indices.all { shown[it] === routes[it] }) {
-                return ShownRoutes(state, stepFree, liftsOut, state, RideEnds.of(routes, stepFree, destination))
-            }
             // The cut copies' ends, and the routes' as planned, which the trains through a change are made from.
             val drawnCut = shown.filterIndexed { index, route -> route !== routes[index] }
             val ends = RideEnds.of(routes + drawnCut, stepFree, destination)
-            return ShownRoutes(state, stepFree, liftsOut, state.copy(routes = shown), ends)
+            val today = destination?.access
+            // Only a lift going out takes a way on or off: with every lift working, or no table, there's nothing to say.
+            val judge = if (base == null || today == null || today === base) {
+                null
+            } else {
+                { route: TripRoute -> StepFreeExits.along(route, ends, base, today) }
+            }
+            val notStepFree = judge?.let { lost -> shown.associate { routeKey(it) to lost(it) }.filterValues { it.isNotEmpty() } }.orEmpty()
+            val drawn = if (drawnCut.isEmpty()) state else state.copy(routes = shown)
+            return ShownRoutes(state, stepFree, liftsOut, drawn, ends, notStepFree = notStepFree, judge = judge, judged = shown.mapTo(HashSet(), ::routeKey))
         }
     }
 }

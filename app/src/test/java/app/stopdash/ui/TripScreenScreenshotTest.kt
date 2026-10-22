@@ -87,7 +87,12 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.LiftMap
+import app.stopdash.domain.LiftStop
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeLevel
+import app.stopdash.domain.StepFreePlatform
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.DepartureRow
@@ -1257,6 +1262,61 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.waitUntil(timeoutMillis = 5_000) { openRoute.value == null }
         assertEquals(1, notPlanned)
+    }
+
+    @Test
+    fun a_step_free_route_a_lift_out_leaves_with_no_way_on_says_so_in_its_rides_warning() {
+        // Red from A to M, then blue from M to Hill: made-up stops and lines (Hill model). M's blue platform is reached
+        // through one lift, out today, so the change has no step-free way onto the blue.
+        val red = TripLeg(
+            mode = "tube", lineId = "red", lineName = "red", fromId = "A", fromName = "A", toId = "M", toName = "M",
+            departure = now, arrival = now.plusSeconds(120), path = listOf("M"), pathNames = listOf("M"),
+        )
+        val blue = TripLeg(
+            mode = "tube", lineId = "blue", lineName = "blue", fromId = "M", fromName = "M", toId = "940GZZLUHIL", toName = "Hill",
+            departure = now.plusSeconds(300), arrival = now.plusSeconds(600),
+            path = listOf("940GZZLUHLE", "B", "940GZZLUHIL"), pathNames = listOf("Hill East", "Bee", "Hill"),
+        )
+        fun good(id: String) = LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service")
+        val hill = TripViewModel.State(
+            routes = listOf(TripRoute(listOf(red, blue))),
+            plannedAt = now,
+            statuses = mapOf("red" to good("red"), "blue" to good("blue")),
+            statusesAt = mapOf("red" to now, "blue" to now),
+        )
+        val hillLines = mapOf(
+            "red" to LineSequence(routes = listOf(LineRoute("r", listOf("A", "M"))), stopNames = mapOf("A" to "A", "M" to "M")),
+            "blue" to LineSequence(
+                routes = listOf(LineRoute("r", listOf("M", "940GZZLUHLE", "B", "940GZZLUHIL"))),
+                stopNames = mapOf("M" to "M", "940GZZLUHLE" to "Hill East", "B" to "Bee", "940GZZLUHIL" to "Hill"),
+            ),
+        )
+        val hillSource = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = hillLines.getValue(lineId)
+        }
+        val lift = StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("MEE", 1))
+        val table = StepFreeAccess(
+            mapOf("M" to mapOf("blue" to listOf(lift))),
+            mapOf("MEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val toHill = RideEnds.Destination(HillModel.hubs, HillModel.toHill.hubs, table.withLiftsOut(setOf("LIFT1")))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Hill", state = hill, now = now, access = Duration.ZERO,
+                    routeStops = RouteStopsRepository(hillSource), onBack = {}, onRetry = {},
+                    // The lifts as the screen passed them, which it tells its answer by (identity); the table with LIFT1
+                    // out stands for TfL's outages here.
+                    shownRoutes = { placed, at, lifts -> ShownRoutes.of(placed, at, toHill, lifts, base = table) },
+                    stepFree = StepFree.STATION,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // In the blue ride's ⚠ on the card, as On the way says it.
+        val said = hasContentDescription("Not step-free at M: a lift is out", substring = true)
+        composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(said, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        captureSnapshot("trip-not-step-free.png")
     }
 
     @Test

@@ -1045,14 +1045,20 @@ class TripViewModel(
      * Planner gave them. The screen asks as the routes it shows come in and reads the answer as it builds the page.
      * A route drawn cut is keyed as its route as planned ([routeKey]), so the route open on it is one of this trip's
      * ([openKeys]). A step-free trip's rides get off at another call only where TfL's step-free table, with the lifts
-     * in [liftsOut] out of service, says their line meets its level there ([LiftedAccess]).
+     * in [liftsOut] out of service, says their line meets its level there ([LiftedAccess]); a route a lift out leaves
+     * a ride with no step-free way on or off is marked so ([ShownRoutes.notStepFree]), by the table with every lift
+     * working.
      */
     internal suspend fun shownRoutes(placed: State, stepFree: StepFree, liftsOut: Set<String> = emptySet()): ShownRoutes {
         // What the trip's fetches cut its routes by ([drawnFor]); none at no level, as the page passes none.
         liftsDrawn = if (stepFree == StepFree.ANY) emptySet() else liftsOut
         if (placed.routes.isNullOrEmpty()) return ShownRoutes.planned(placed, stepFree, liftsOut)
         val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return ShownRoutes.planned(placed, stepFree, liftsOut)
-        return withContext(compute) { ShownRoutes.of(placed, stepFree, lifted.destination(at, stepFree, liftsOut), liftsOut) }
+        return withContext(compute) {
+            // With no lift out, nothing a lift could have taken away: the table with every lift working isn't needed.
+            val base = if (stepFree == StepFree.ANY || liftsOut.isEmpty()) null else lifted.base()
+            ShownRoutes.of(placed, stepFree, lifted.destination(at, stepFree, liftsOut), liftsOut, base)
+        }
     }
 
     /**

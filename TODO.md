@@ -1138,8 +1138,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           signal (`RouteDisruption.Signal.NotStepFree`, `StepFreeExits.lost`),
                                           its card offering Plan again and Keep going. Judged by each call's
                                           lines over all their platforms, not the platform a train names.
-                                    - [ ] The trip page: a route whose ride has no step-free way off today
-                                          says so on its card and offers to plan again.
+                                    - [x] The trip page's list: a route a lift out leaves a ride with no
+                                          step-free way on or off says so in that ride's ⚠ on its card and
+                                          ranks below every route that can be ridden, as a closed stop ranks
+                                          one (`StepFreeExits.along`, `ShownRoutes.notStepFree`).
+                                    - [ ] The open route saying so where the ride boards or gets off, as its
+                                          closure cards do, and offering to plan again; and a later trip's
+                                          list (`LaterTripViewModel`) marking its cards the same way.
                                     - [x] On the way: a ride's boarding call, judged the same way by its
                                           station record (`StepFreeExits.boardingLost`), raises the same
                                           signal until the rider is aboard that ride.
