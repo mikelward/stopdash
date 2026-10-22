@@ -51,7 +51,6 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.StateRestorationTester
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -155,8 +154,10 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TripScreenScreenshotTest {
+    // A test with a real worker thread ([RealWorker]) queues its effects; the rest run them at once.
     @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    val rule = RealWorkerComposeRule()
+    private val composeRule get() = rule.compose
 
     private val now: Instant = Instant.parse("2026-09-26T07:02:00Z")
 
@@ -358,6 +359,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun trains_are_judged_on_the_page_worker_never_in_composition() {
         // A worker held shut: until it runs, no train can be judged nor any route timed, so no time shows.
         // Had composition judged or timed them on the main thread, the times would show anyway.
@@ -402,6 +404,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_cards_times_are_worked_out_on_the_worker_and_drawn_against_their_own_time() {
         // The worker on a thread of its own, which the test can hold: worked out on the main thread, a
         // card's times would move with the clock however that thread was held.
@@ -454,6 +457,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun the_route_headers_are_worked_out_on_the_page_worker_never_in_composition() {
         // A worker held shut: until it runs, the page has no frame ([tripFrame]), so no card and no
         // header. Had composition labeled them, the headers would show at once.
@@ -475,6 +479,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun new_cards_wait_for_their_own_headers_never_the_last_ones() {
         // The clock moving on with the worker held: the last cards stand in whole, each under its own
         // header, rather than the last headers landing on cards ranked otherwise. A new plan's frame waits
@@ -603,6 +608,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun another_trips_frame_never_stands_in_for_this_one() {
         // A re-locate moves the trip to another model while the screen stays put (Codex, #529): with the
         // worker held, the last trip's routes don't stand in for the new trip's.
@@ -645,6 +651,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun try_again_while_a_plan_runs_never_plans_again() {
         // A retry begins while the worker is held: the frame from before still draws Try again, but a
         // second tap, judged by the live state, plans nothing more (Codex, #529).
@@ -770,6 +777,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun an_answer_under_way_never_replaces_the_one_wanted_again() {
         // A's answer is in; B's is worked out while the key goes back to A: B's never replaces A's,
         // which is the one wanted (Codex, #529).
@@ -815,6 +823,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_slot_runs_one_at_a_time_and_only_the_key_wanted_next() {
         // On a worker of many threads, keys changing while a run is out wait for it, and only the one
         // wanted when it ends is worked out: never several of a slot's runs at once (Codex, #529).
@@ -855,6 +864,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun an_answer_that_cant_stand_in_never_replaces_one_that_can() {
         // A's answer is in and may stand in for C; B's, worked out while the key moves on to C, may not:
         // it never replaces A's, which stands until C's is in (Codex, #529).
@@ -904,6 +914,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_replaced_slots_work_is_canceled() {
         // Another list's slots in place of these (a new set of stops): the old slot's work under way is
         // canceled, never landing beside the new slot's, as its key moving on wouldn't be (Codex, #529).
@@ -928,7 +939,8 @@ class TripScreenScreenshotTest {
                     }
                 }
             }
-            assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            // Through the rule, not a blocking wait: the effect that starts the worker is queued on this thread.
+            composeRule.waitUntil(5_000) { started.count == 0L }
             replaced = true
             composeRule.waitForIdle()
             gate.countDown()
@@ -944,6 +956,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun an_answer_under_way_lands_though_its_key_moved_on() {
         // A worker slower than the clock ticks still lands answers: one under way isn't canceled by a
         // newer key, it's stored for the key it was worked out for (Codex, #529).
@@ -976,7 +989,8 @@ class TripScreenScreenshotTest {
                 }
             }
             // A's run under way before the key moves on: one not yet started is skipped, rightly.
-            assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            // Through the rule, not a blocking wait: the effect that starts the worker is queued on this thread.
+            composeRule.waitUntil(5_000) { started.count == 0L }
             key = "b"
             composeRule.waitForIdle()
             key = "c"
@@ -991,6 +1005,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_frame_stands_in_only_as_confirmed_and_only_for_a_tick() {
         // With the worker held, a frame judged live-confirmed doesn't stand in once a re-locate starts,
         // nor one more than a tick old (Codex, #529).
@@ -1066,6 +1081,7 @@ class TripScreenScreenshotTest {
     // frame still stands in for that tick rather than leave the page without one until its own is in, a
     // flash at each (maintainer: no flicker; Codex, #529). Two ticks on it doesn't.
     @Test
+    @RealWorker
     fun a_frame_stands_in_for_its_next_tick_across_what_turns_in_it() {
         val stop = planned.live.getValue(highbury.first)
         val soon = train("victoria", "Victoria", "tube", "Brixton", 0, "Platform 3").copy(expectedArrival = now.plusSeconds(5))
@@ -1112,6 +1128,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun the_open_routes_walk_is_drawn_against_its_frames_own_access() {
         // The walk to the first stop changes (a new walking speed) while the worker is held: the open
         // route's "Walk to" row never shows a walk its times weren't worked out for. The last frame,
@@ -1151,6 +1168,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun an_open_route_a_settled_plan_drops_is_said_not_planned_and_one_closed_on_back_is_not() {
         // A later trip's list says "Not planned for now" from this, never from reading the plan afterwards.
         var notPlanned = 0
@@ -3107,6 +3125,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_held_through_card_opens_the_route_it_was_drawn_as() {
         // Newer arrivals drop the train through the change while the worker is held: the card still
         // shown opens what it was drawn as, from its own frame, not a bare key the newer state can't
@@ -3191,6 +3210,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun an_open_train_through_a_change_no_longer_predicted_is_off_the_list_closed_while_the_worker_is_held() {
         // Kept only as the one open, its train not predicted: closed while the worker is held, the list
         // the frame in hand shows leaves it off, as the next frame does (Codex, #529).
@@ -3733,6 +3753,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_cards_ride_notices_are_worked_out_with_its_frame_never_in_composition() {
         // Each ride's stop notices come with the card's frame ([TripCardView.rideClosures]), worked
         // out on the page's worker: held shut, no card and no ⚠; released, the card comes with its ⚠.
@@ -4423,6 +4444,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun the_pill_column_is_measured_on_the_page_worker_never_in_composition() {
         // A worker held shut: until it runs, the page has no frame ([tripFrame]) and draws no rows, so
         // composition measures no pill. Released, the rows come with every stop in one column.
@@ -4444,6 +4466,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_cards_pill_column_is_in_before_its_rows_show() {
         // Each card's pill column is measured behind "Checking trips…", so the list first shows with
         // every card's stops in one column, never at a lone pill's width and then shifting sideways as
@@ -4473,6 +4496,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_cards_stops_hold_still_while_the_page_loads() {
         // The page's loads land one after another (a line's status, its route, a stop's trains), each
         // a new state. While the worker answers, the stops keep their columns: the rows shuffled
@@ -4563,6 +4587,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun the_disruptions_row_never_holds_none_over_a_disruption_the_worker_has_not_caught_up_with() {
         // Every line checked as running, the routes' own and the others at their stops.
         val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
@@ -5123,6 +5148,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_routes_line_page_is_up_before_its_line_is_worked_out() {
         // The worker held: the page is up at once, its pill alone, and Back closes it, never the route
         // page under it (Codex, #623).
@@ -5145,6 +5171,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_routes_line_page_never_holds_a_verdict_its_check_no_longer_stands_behind() {
         // Open on a checked line, then its check goes stale while the worker is busy: the good service is
         // taken down at once, never left up until the doubted row is in (Codex, #623).
@@ -5171,6 +5198,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_routes_line_page_never_holds_an_alert_that_has_changed() {
         // Open on a good service, then a closure begins while the worker is busy: the good service is taken
         // down at once, never left up over a line now closed, and the closure follows (Codex, #623).
@@ -5196,6 +5224,7 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    @RealWorker
     fun a_routes_line_page_holds_still_through_an_alert_fetched_again_unchanged() {
         // The same delay fetched again, a new object saying the same: the page stays as it is while its row
         // is worked out again, never blanking to the line's pill (holding still).
