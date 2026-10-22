@@ -965,6 +965,20 @@ class LineMapTest {
     }
 
     @Test
+    fun `a route page's map of the whole line draws every route, its train's still open`() {
+        // The All chip (maintainer, 2026-10-22): every route's stations, none dashed, the train's path open and the
+        // stretch behind it still one fold.
+        val rides = listOf(ids("Highgate", "Archway", "Tufnell Park", "Kentish Town") + bank + morden)
+        val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true, wholeLine = true)!!
+        assertEquals(LineMap.of(northern())!!.rows.map { it.key }, map.rows.map { it.key })
+        assertTrue(map.rows.none { row -> row.otherRoutes || (row.top + row.bottom).any { it.offRoute } })
+        assertEquals(rides[0].size, map.rows.count { it.onPath })
+        assertEquals(listOf("High Barnet", "Mill Hill East"), map.behind!!.origins)
+        val held = map.folded(emptySet()).labels()
+        assertTrue(held.containsAll(rides[0].map { id -> names.getValue(id) }))
+    }
+
+    @Test
     fun `a train running up the map has its route on the right too, the Mill Hill East branch a stub`() {
         val rides = listOf(ids("Highgate", "East Finchley", "Finchley Central", "West Finchley", "Woodside Park", "Totteridge & Whetstone", "High Barnet"))
         val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!

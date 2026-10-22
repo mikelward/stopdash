@@ -268,7 +268,8 @@ internal fun rememberRideChoices(ride: TripLeg, retry: Int): RouteChoicesUi? {
 /**
  * The route chips atop a route page (maintainer, 2026-10-21): one per way its line runs on from the stop, each
  * keyed by its [keys], the [selected] one the page's, a tap on another [onSelect]ing it. Scrolls sideways where they
- * don't fit, composing only those in view, as a line can run many ways from one stop.
+ * don't fit, composing only those in view, as a line can run many ways from one stop. With [onAll], a last chip
+ * labeled [all] for the whole line's map, [allSelected] while it's drawn (maintainer, 2026-10-22).
  */
 @Composable
 internal fun RouteChips(
@@ -277,6 +278,9 @@ internal fun RouteChips(
     selected: Int?,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    all: String = "",
+    allSelected: Boolean = false,
+    onAll: (() -> Unit)? = null,
 ) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -284,14 +288,27 @@ internal fun RouteChips(
     ) {
         itemsIndexed(labels, key = { index, _ -> keys[index] }) { index, label ->
             FilterChip(
-                selected = index == selected,
+                selected = !allSelected && index == selected,
                 onClick = { onSelect(index) },
                 label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 modifier = Modifier.testTag("routeChoice-$index"),
             )
         }
+        if (onAll != null) {
+            item(key = ALL_KEY) {
+                FilterChip(
+                    selected = allSelected,
+                    onClick = onAll,
+                    label = { Text(all, maxLines = 1) },
+                    modifier = Modifier.testTag("routeChoice-all"),
+                )
+            }
+        }
     }
 }
+
+// The All chip's key among the routes' own, which are a way's direction and where it goes, never this.
+private const val ALL_KEY = "|all|"
 
 /**
  * In the chips' place, where the routes they come from couldn't be loaded: said, with a [onRetry], so a transient

@@ -6357,6 +6357,9 @@ internal fun RouteDetailScreen(
     // listed by its stops alone, here, until the rider picks another or a train comes on it.
     // The way the page opened on, its chips first, so moving to another of them doesn't reorder them.
     val openedWay by rememberSaveable(row.stopId, row.lineId) { mutableStateOf(row.direction) }
+    // The All chip chosen: the map draws the whole line, every route's stations, as the line's page does, rather than
+    // the train's route alone (maintainer, 2026-10-22). Kept as the page moves between the stop's routes.
+    var wholeLine by rememberSaveable(row.stopId, row.lineId) { mutableStateOf(false) }
     // Bumped by the stop list's retry, which asks the chips' routes again too, and a ride's ways.
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
     val routeChoices = when {
@@ -6731,7 +6734,18 @@ internal fun RouteDetailScreen(
             if (chipsShown || chipsFailed || holdsChips) {
                 RouteChipsSlot(Modifier.padding(bottom = 8.dp)) {
                     if (chipsShown && routeChoices != null) {
-                        RouteChips(routeChoices.labels, routeChoices.keys, selectedWay, onSelect = chooseRoute)
+                        RouteChips(
+                            routeChoices.labels,
+                            routeChoices.keys,
+                            selectedWay,
+                            onSelect = {
+                                wholeLine = false
+                                chooseRoute(it)
+                            },
+                            all = stringResource(R.string.route_choice_all),
+                            allSelected = wholeLine,
+                            onAll = { wholeLine = true },
+                        )
                     } else if (chipsFailed) {
                         RouteChoicesFailed(onRetry = { routeStopsRetry++ })
                     }
@@ -7018,21 +7032,31 @@ internal fun RouteDetailScreen(
             // with the status): another route or another alert never has the last one's map stand in, while the same
             // alert fetched again as a new status keeps the map up. Built once per status, never compared whole here.
             val routeMapKey = remember(railKey, ByIdentity(shown.status)) { "$railKey|${shown.status?.mapKey.orEmpty()}" }
-            val mapSection = routeMap?.let { inputs ->
+            // The All chip chosen where the page has no train's route to follow (a quiet row with no route chosen, a
+            // stale row's withheld list, a route that couldn't be told): the whole line from its own route data, as its
+            // line page lays it out, with no path kept open, rather than no map at all (Codex on #1113). Not while the
+            // train's stops are still coming, nor where they failed, whose retry the list keeps.
+            val lineOnly = wholeLine && railLoaded == null &&
+                (stops is RouteStopsUi.Hidden || stops is RouteStopsUi.Stale || stops is RouteStopsUi.Unavailable)
+            val mapSection = if (routeMap == null && !lineOnly) {
+                null
+            } else {
                 rememberLineMapSection(
                     row.lineId,
                     shown.status,
                     journeysHere.here.starredStopIds,
-                    inputs.riding,
+                    routeMap?.riding.orEmpty(),
                     statusKey = routeMapKey,
-                    rides = inputs.rides,
+                    rides = routeMap?.rides.orEmpty(),
                     planned = shown.plannedAlerts,
-                    ridesOpen = true,
+                    ridesOpen = routeMap != null,
                     seed = railLoaded?.sequence,
                     singleOpen = true,
-                    foldsFor = railKey,
+                    // The whole line's rows aren't the route's alone: folds opened in one view aren't the other's.
+                    foldsFor = if (wholeLine) "$railKey|all" else railKey,
                     // Only the train's path open: never another station for being nearest the rider.
                     nearMe = false,
+                    wholeLine = wholeLine,
                 )
             }
             // The stations as the map draws them: a bus's way back may be drawn on its outbound poles.
@@ -7067,8 +7091,11 @@ internal fun RouteDetailScreen(
             val pathDrawn = pathDrawnFor?.takeIf { it.first === routeMap }?.second
             // The map where it can be drawn and shows the train's path, else the list it stands in for: never a note,
             // nor another way's stops, in place of the train's stops in hand.
-            val mapDrawable = mapSection != null && mapSection.ui !is LineMapUi.Failed && mapSection.ui !is LineMapUi.Unavailable &&
-                pathDrawn != false && (pathDrawn == true || mapSection.ui !is LineMapUi.Ready)
+            // The line alone has no path to show, and says itself where it fails, with its retry.
+            val mapDrawable = mapSection != null && (
+                lineOnly || mapSection.ui !is LineMapUi.Failed && mapSection.ui !is LineMapUi.Unavailable &&
+                    pathDrawn != false && (pathDrawn == true || mapSection.ui !is LineMapUi.Ready)
+                )
             // The train's stops in hand but the map that stands for them still being worked out (its route's inputs, its
             // layout, then whether it shows the path): its place held for the moment, so the list isn't drawn just to be
             // replaced, which flashed the list, "Loading map…", the list again and the map on each chip's tap
@@ -7090,9 +7117,9 @@ internal fun RouteDetailScreen(
                     modifier = Modifier.padding(top = 16.dp),
                 )
             }
-            if (mapHeld || !mapPending && mapDrawable && mapSection != null && routeMap != null) {
-                // No tip where nothing past the boarding stop can be starred (a train ending here).
-                if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && railLoaded?.endsHere != true) {
+            if (mapHeld || !mapPending && mapDrawable && mapSection != null && (routeMap != null || lineOnly)) {
+                // No tip where nothing past the boarding stop can be starred (a train ending here), nor on the line alone.
+                if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && routeMap != null && railLoaded?.endsHere != true) {
                     JourneyTip(onDismissJourneyTip, Modifier.padding(top = 16.dp))
                 }
                 // A train ending here heads nowhere: said above its map. Any other's way is on the "From" line, beside its
@@ -7129,6 +7156,18 @@ internal fun RouteDetailScreen(
                     CompositionLocalProvider(LocalLineMapExtras provides extras, LocalOpenLineMapStop provides openMapStop) {
                         // No "Show all stations": drawn in the page's column, the whole line at once would stall it; its
                         // folds open one by one, as the stop list drew a route's every stop.
+                        LineMapColumn(mapSection, railColorFor(row), offerAll = false)
+                    }
+                } else if (!mapHeld && mapSection != null && lineOnly) {
+                    // No train to ride: no journey to save, nor its path's marks; a station opens with no ride to offer,
+                    // placed where the map has it, as no train's stops in hand can place it (Codex on #1113).
+                    val openLineStop: ((String, String, Pair<Double, Double>?) -> Unit)? = onOpenStop?.let { open ->
+                        { id, name, position ->
+                            val opened = stopOpen(id, name, null, null, false)
+                            open(opened.copy(position = opened.position ?: position?.let { (lat, lon) -> Coordinates(lat, lon) }))
+                        }
+                    }
+                    CompositionLocalProvider(LocalOpenLineMapStop provides openLineStop) {
                         LineMapColumn(mapSection, railColorFor(row), offerAll = false)
                     }
                 }
