@@ -7,6 +7,7 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,6 +19,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
 import app.stopdash.ui.KeptPages
 import app.stopdash.ui.LocalPageOnTop
@@ -36,7 +39,8 @@ import org.robolectric.annotation.Config
 /**
  * [NearbyArea], the back stack's host: each page keeps what it saved (an open route page) while another covers
  * it, so Back returns to the page it was opened from as it was left (SPEC *Back*), and the back gesture draws the
- * page under the one being swiped, starting nothing it would start on top (`dev-docs/navigation3.md`).
+ * page under the one being swiped, starting nothing it would start on top (`dev-docs/navigation3.md`): under the
+ * trip from here, a placeholder for the near-me list, whose departures are built again once the trip closes.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
@@ -55,18 +59,31 @@ class NearbyAreaTest {
     private var stationSearch by mutableStateOf(true)
     private var stationId by mutableStateOf<String?>(null)
 
+    // The near-me list's departures, as the activity holds them: each model the list builds, and when it was dropped.
+    private val stores = NearbyDeparturesStores()
+    private val listModels = ArrayList<ListModel>()
+    private lateinit var underTrip: ListUnderTrip
+
+    class ListModel : ViewModel() {
+        var dropped = false
+
+        override fun onCleared() {
+            dropped = true
+        }
+    }
+
     /**
      * A screen with a page of its own, opened by a tap on it, standing in for a saved route page: that page's
      * Back closes it, and the screen's Back closes the screen ([page], or none for the near-me view).
      */
     @Composable
-    private fun Screen(name: String, page: Page?) {
+    private fun Screen(name: String, page: Page?, close: () -> Unit = { page?.let(pages::close) }) {
         var inner by rememberSaveable { mutableStateOf(false) }
         val follow = rememberBackFollow()
         if (page != null) {
             RootBack(follow) {
                 closed += name
-                pages.close(page)
+                close()
             }
         }
         PredictiveBack(follow, enabled = inner) { inner = false }
@@ -78,6 +95,7 @@ class NearbyAreaTest {
         composeRule.setContent {
             dispatcher = checkNotNull(LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
             pages = remember { Pages(NavBackStack(Page.NearMe(0))) }
+            underTrip = remember { ListUnderTrip(dropped = pages.tripOpen) }
             NearbyArea(
                 pages = pages,
                 aboveOverlay = {},
@@ -90,7 +108,26 @@ class NearbyAreaTest {
                         Screen(page.toString(), page)
                     }
                 },
-                body = { Screen(LIST, null) },
+                // As the activity's: the trip from here on its own page, and the list under it built only while
+                // it's drawn, not for a look under a back swipe from the trip.
+                body = { trip ->
+                    if (trip) {
+                        Screen(TRIP, pages.hereTrip) {
+                            pages.tripOpen = false
+                            underTrip.tripClosed()
+                        }
+                    } else if (pages.tripOpen && underTrip.dropped) {
+                        Text(PLACEHOLDER)
+                    } else {
+                        DisposableEffect(underTrip) {
+                            underTrip.drawing()
+                            onDispose { underTrip.left(pages.tripOpen, stores) }
+                        }
+                        val owner = remember(stores) { stores.ownerFor(SET) }
+                        viewModel(viewModelStoreOwner = owner) { ListModel().also { listModels += it } }
+                        Screen(LIST, null)
+                    }
+                },
             )
         }
         composeRule.waitForIdle()
@@ -98,6 +135,14 @@ class NearbyAreaTest {
 
     private fun open(page: Page) {
         composeRule.runOnIdle { pages.show(page) }
+        composeRule.waitForIdle()
+    }
+
+    private fun openTrip() {
+        composeRule.runOnIdle {
+            underTrip.tripOpened(stores)
+            pages.tripOpen = true
+        }
         composeRule.waitForIdle()
     }
 
@@ -253,7 +298,91 @@ class NearbyAreaTest {
         assertFalse(onTop.getValue(LIST))
     }
 
+    @Test
+    fun `the list is drawn as the trip from here opens over it, and its departures go once it's covered`() {
+        show()
+        assertEquals(1, listModels.size)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnUiThread {
+            underTrip.tripOpened(stores)
+            pages.tripOpen = true
+            Snapshot.sendApplyNotifications()
+        }
+        composeRule.mainClock.advanceTimeBy(100)
+        // The list as it was, sliding away under the trip: nothing dropped or built again yet.
+        composeRule.onNodeWithText(LIST).assertExists()
+        composeRule.onNodeWithText(TRIP).assertExists()
+        assertFalse(listModels.single().dropped)
+        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.onNodeWithText(LIST).assertDoesNotExist()
+        assertTrue(listModels.single().dropped)
+        assertEquals(1, listModels.size)
+    }
+
+    @Test
+    fun `the list of a new near-me generation is drawn as the trip from here opens over it`() {
+        show()
+        // A shared place's search, say, over the list: the old generation's page leaves after the new one's draws.
+        composeRule.runOnIdle { pages.generation++ }
+        composeRule.waitForIdle()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnUiThread {
+            underTrip.tripOpened(stores)
+            pages.tripOpen = true
+            Snapshot.sendApplyNotifications()
+        }
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText(LIST).assertExists()
+        composeRule.onNodeWithText(PLACEHOLDER).assertDoesNotExist()
+        composeRule.mainClock.advanceTimeBy(300)
+        assertTrue(listModels.last().dropped)
+    }
+
+    @Test
+    fun `a back swipe from the trip from here draws a placeholder for the list, built again on Back as it was left`() {
+        show()
+        // A route page open on the list, then To….
+        composeRule.onNodeWithText(LIST).performClick()
+        openTrip()
+        assertTrue(listModels.single().dropped)
+        // Under the swipe: the list's place held, nothing built for a look.
+        startSwipe()
+        composeRule.onNodeWithText(PLACEHOLDER).assertExists()
+        assertEquals(true, onTop[TRIP])
+        assertEquals(1, listModels.size)
+        letGo()
+        composeRule.onNodeWithText(PLACEHOLDER).assertDoesNotExist()
+        assertEquals(1, listModels.size)
+        // The trip's Back: the list built again, its route page as it was left.
+        back()
+        assertEquals(listOf(TRIP), closed)
+        composeRule.onNodeWithText("$LIST's route page").assertIsDisplayed()
+        assertEquals(2, listModels.size)
+        assertFalse(listModels.last().dropped)
+    }
+
+    @Test
+    fun `the trip from here opened over another page drops the list at once, and its Back returns to that page`() {
+        show()
+        // A stop's To on Lines…, the list long covered.
+        open(Page.Lines)
+        openTrip()
+        assertTrue(listModels.single().dropped)
+        assertEquals(listOf(Page.NearMe(0), Page.Lines, Page.HereTrip(0)), pages.stack.toList())
+        // Back: Lines…, not the list, and nothing built for it.
+        back()
+        composeRule.onNodeWithText(Page.Lines.toString()).assertIsDisplayed()
+        assertEquals(1, listModels.size)
+        // Lines…'s Back: the list, built again.
+        back()
+        composeRule.onNodeWithText(LIST).assertIsDisplayed()
+        assertEquals(2, listModels.size)
+    }
+
     private companion object {
         const val LIST = "List"
+        const val TRIP = "Trip"
+        const val PLACEHOLDER = "Placeholder"
+        const val SET = "set"
     }
 }

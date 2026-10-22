@@ -1,9 +1,9 @@
 # Moving the app's pages onto Navigation 3
 
 **Status: under way, on Navigation 3** (maintainer, 2026-10-22: "ship option 1 and write the plan", then
-Navigation 3 over Navigation Compose 2.x). Steps 1 to 3 are done (*Step 1: what the spike found*, *Step 2:
-what changed*, *Step 3: what changed*): the screens over the near-me view are a back stack, and the back
-gesture draws the real page under them. Predictive back first shipped as "shrink only", every page following
+Navigation 3 over Navigation Compose 2.x). Steps 1 to 3b are done (*Step 1: what the spike found*, *Step 2:
+what changed*, *Step 3: what changed*, *Step 3b: what changed*): the screens over the near-me view, the trip
+from here among them, are a back stack, and the back gesture draws the real page under them. Predictive back first shipped as "shrink only", every page following
 the gesture over a scrim, and pages inside a screen still do (SPEC *Back*). Drawing the real page under every
 page is the payoff this plan works toward. The other gain is a navigation model that can't skip pages.
 
@@ -139,8 +139,8 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
 
    Done: *Step 3: what changed*.
    - The trip from here becoming a page of its own moved to step 3b, below.
-3b. **The trip from here becomes its own page** above `NearMe`, so Lines… under it sits under it on the
-   stack and `LinesPresence.UNDER_TRIP` goes (maintainer, 2026-10-22: in step 3, which this follows).
+3b. **Done:** **the trip from here becomes its own page** above `NearMe`, so Lines… under it sits under it on
+   the stack and `LinesPresence.UNDER_TRIP` goes (maintainer, 2026-10-22: in step 3, which this follows).
    - Split from step 3 for the near-me list under it: drawn there during a swipe, the list would build its
      departures model again, which the trip's opening drops so that it stops fetching (`listStores`), and
      fetch for a glimpse. It needs to keep the model paused under the trip, or draw what it last showed,
@@ -275,6 +275,35 @@ The screens over the near-me view are pages of a back stack (`Pages.kt`), drawn 
 generation, the page under a swipe drawn but not on top, a swipe let go of, an inner page's Back first, a
 page under a swipe not taking Back from the one over it, and the open transition's timing.
 `ForegroundReturnTest` and `ReportScreenTest` follow.
+
+## Step 3b: what changed
+
+The trip from here (To… from the near-me list, a stop's To on Lines…, a saved place's chip or shortcut, a place
+shared in) is a page of its own, `HereTrip`, over the page it was opened from. The near-me body draws it
+(`NearbyArea`'s `body(trip)`), so the location gate, its errors and a re-locate on return apply to it as before.
+
+- **Lines… stays on the stack under the trip** a stop's To planned from it, and `LinesPresence` went: Lines… is
+  open while its page is on the stack (`Pages.flag`), and "under the trip" is the stack's order
+  (`Pages.isUnder`), by which an arrived trip's Done and a change of start still close it with the trip.
+- **The near-me list under the trip is a placeholder.** Its departures model is dropped once the trip covers
+  it, not as the trip opens, so the list is drawn as the trip slides in over it (`ListUnderTrip`). A back
+  swipe from the trip then draws a spinner in its place rather than building the model again, which would
+  fetch for a look and, let go of, leave behind a model the trip's re-locates don't reach. Back from the trip
+  builds it again, as it always has, with what the list saved (its route page, its scroll). Keeping the
+  model paused under the trip, or drawing what the list last showed, would put the real list under the
+  swipe: work in `MainViewModel`, left until a device shows whether the spinner reads wrong.
+- **The trip's Back is the stack's** at its root: its routes, the wait for where it goes, and its To… search
+  with nothing picked yet (`rootBack` on `TripScreen`, `StationPlaceholderScreen` and `StationSearchScreen`).
+  An open route, a later trip's list and a Via… search keep a Back of their own, made later, so they go first.
+- **Back from the trip's page with none of its screens up** (its origin still being worked out, or the
+  location gate in its place) closes it as its own Back would, its models with it (`forgetHereTrip`).
+  Before, the gate over an open trip had no Back of its own, so Back left the app with the trip still open.
+- **A new near-me generation opens the trip afresh too** (`Pages.generation`): a place shared in while a trip
+  is up replaces it with one to that place, none of the old one's pages kept.
+
+`NearbyAreaTest` drives the list under the trip: drawn as the trip opens, dropped once covered, a placeholder
+under a swipe, built again on Back with its route page, and dropped at once under a trip opened over Lines…,
+whose Back returns there. `PagesTest` follows the stack.
 
 ## Decided (maintainer, 2026-10-22)
 

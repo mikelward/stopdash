@@ -145,6 +145,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -1086,10 +1087,9 @@ class MainActivity : ComponentActivity() {
                 val stationSearchState = rememberSaveable { mutableStateOf(false) }
                 val openStationIdState = rememberSaveable { mutableStateOf<String?>(null) }
                 var stationSearchOpen by pages.kept(Page.Stations, stationSearchState, others = { openStationIdState.value != null }) { it }
-                // *Lines…* (SPEC *Finding a line*): the line search, and the page of a line picked there.
-                // Closed, showing, or stepped aside under the trip a stop's To planned ([LinesPresence]).
-                // On the stack while it shows: under the trip, the near-me view that draws the trip is on top.
-                var linesPresence by pages.kept(Page.Lines, rememberSaveable { mutableStateOf(LinesPresence.CLOSED) }) { it.shown }
+                // *Lines…* (SPEC *Finding a line*): the line search, and the page of a line picked there. Open while
+                // its page is on the stack, under the trip a stop's To planned from it too.
+                var linesOpen by pages.flag(Page.Lines)
                 // The line open there: kept here, not in the overlay, so a page under Licenses is still
                 // up after Back from them (the overlay leaves composition beneath them).
                 var linesLine by rememberSaveable(stateSaver = LineRefSaver) { mutableStateOf<LineRef?>(null) }
@@ -1117,7 +1117,7 @@ class MainActivity : ComponentActivity() {
                 var linesQueryReset by rememberSaveable { mutableStateOf(false) }
                 // Null [model]: the search is cleared when Lines… next shows ([linesQueryReset]).
                 val closeLines = { model: LinesViewModel? ->
-                    linesPresence = linesPresence.closed()
+                    linesOpen = false
                     linesForStop = false
                     linesFromRouteStop = false
                     linesLineWork.clear()
@@ -1217,10 +1217,10 @@ class MainActivity : ComponentActivity() {
                 // station's Back doesn't find a search the rider never opened ([searchAfterChange]).
                 var searchForChange by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(stationSearchOpen) { if (!stationSearchOpen) searchForChange = false }
-                // "To…" from the near-me list (SPEC *Finding stops → From… To…*): whether it's open,
-                // whether its destination search is up, and the destination picked. Its starting
-                // stops aren't kept: they're worked out from the current nearby set.
-                var hereTripOpen by rememberSaveable { mutableStateOf(false) }
+                // "To…" from the near-me list (SPEC *Finding stops → From… To…*): whether it's open (its own
+                // page, [Page.HereTrip]), whether its destination search is up, and the destination picked. Its
+                // starting stops aren't kept: they're worked out from the current nearby set.
+                var hereTripOpen by pages::tripOpen
                 // The stop the near-me trip goes via (SPEC *Going via a stop*), and the destination it was chosen for:
                 // held here with the trip's destination rather than in the trip, so it outlasts an overlay over the
                 // trip (From…, Settings) as the destination does, and a view's Via can open the trip with one set.
@@ -1247,12 +1247,18 @@ class MainActivity : ComponentActivity() {
                 var hereFavorite by rememberSaveable(stateSaver = FAVORITE_TRIP_SAVER) {
                     mutableStateOf<TripDestination.Place?>(null)
                 }
-                // The list's retained departures model is dropped when the trip opens: while the trip
+                // The list's retained departures model is dropped once the trip covers it: while the trip
                 // is up it re-locates for both, and a list model left behind would neither take those
                 // re-picks (it'd hide rows by where the rider used to be) nor stop its own fetches (one
                 // could save the old place's departures to the widget mid-fix). Back on the list, it
-                // is rebuilt from the current set.
+                // is rebuilt from the current set ([ListUnderTrip]).
                 val listStores: NearbyDeparturesStores = viewModel()
+                val listUnderTrip = remember { ListUnderTrip(dropped = hereTripOpen) }
+                // The trip from here, over whatever is up: the list under it is dropped as the trip covers it.
+                val openHereTrip = {
+                    listUnderTrip.tripOpened(listStores)
+                    hereTripOpen = true
+                }
                 // Something hidden shown again where nothing re-picked for it at once — Settings'
                 // Hidden list, a trip's Undo — re-picks the near-me set from its fix, its retained
                 // list dropped so it's rebuilt from that set, as a From… page's "Show all" does. The
@@ -1273,9 +1279,10 @@ class MainActivity : ComponentActivity() {
                 // The near-me trip's To… as a station's is held, for a change of start to carry.
                 val hereTo = { ToChoice(picking = herePicking, stopId = hereToId, name = hereToName, place = hereFavorite, level = Pick.Level.ofCode(hereToLevel)) }
                 val closeHereTrip = {
+                    // Back to the page it was opened over: the list, built again, or Lines… at the stop whose To
+                    // opened it.
                     hereTripOpen = false
-                    // Lines… comes back, at the stop whose To opened the trip.
-                    linesPresence = linesPresence.tripClosed()
+                    listUnderTrip.tripClosed()
                     herePicking = false
                     hereToId = null
                     hereToLevel = null
@@ -1292,7 +1299,7 @@ class MainActivity : ComponentActivity() {
                 // dropped, and Lines… it stepped aside from (a stop's To) closed with it rather than coming
                 // back over the near-me list (Codex, #658).
                 val leaveNearMeTrip = {
-                    val linesUnder = linesPresence == LinesPresence.UNDER_TRIP
+                    val linesUnder = pages.isUnder(Page.Lines, pages.hereTrip)
                     nearMeTripStores.clearAll()
                     nearMeToStores.clearAll()
                     closeHereTrip()
@@ -1310,13 +1317,12 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(applicationContext, R.string.route_needs_location, Toast.LENGTH_SHORT).show()
                         return@routeToPlace
                     }
-                    listStores.clearAll()
                     hereFavorite = place
                     hereToId = null
                     hereToLevel = null
                     hereToName = place.name
                     herePicking = false
-                    hereTripOpen = true
+                    openHereTrip()
                 }
                 // The saved favorite places, for the near-me list's route chips (SPEC D9 → *Routing
                 // from the near-me list*). Collected from the first frame, so the list has them by
@@ -1658,7 +1664,7 @@ class MainActivity : ComponentActivity() {
                         placesFromStop = false
                         placesFromStation = false
                         onTheWayOpen = false
-                        if (linesPresence.isOpen) closeLines(null)
+                        if (linesOpen) closeLines(null)
                         if (stationSearchOpen || openStationId != null || originChange != null) {
                             ViewModelProvider(this@MainActivity)["station-stores", NearbyDeparturesStores::class.java].clearAll()
                             if (!clearFromSearch()) stationSearchReset = true
@@ -1693,7 +1699,6 @@ class MainActivity : ComponentActivity() {
                                 Toast.makeText(applicationContext, R.string.route_needs_location, Toast.LENGTH_SHORT).show()
                                 return@LaunchedEffect
                             }
-                            listStores.clearAll()
                             hereFavorite = null
                             hereToId = null
                             hereToLevel = null
@@ -1702,7 +1707,7 @@ class MainActivity : ComponentActivity() {
                             shownModels().toSearch?.clear()
                             toQueryAsked.value = ask.query
                             herePicking = true
-                            hereTripOpen = true
+                            openHereTrip()
                         }
                     }
                 }
@@ -1761,7 +1766,7 @@ class MainActivity : ComponentActivity() {
                         leaveNearMeTrip()
                     }
                     onTheWayFrom = openStationId.orEmpty()
-                    onTheWayOverLines = openStationId != null && stationFromLines != null && linesPresence.isOpen
+                    onTheWayOverLines = openStationId != null && stationFromLines != null && linesOpen
                     onTheWayOpen = true
                     // A trip started from a ride's station is a way out of it like any other, so that
                     // station's Back no longer reopens the ride (SPEC *Journeys*; Codex, #959).
@@ -1793,7 +1798,7 @@ class MainActivity : ComponentActivity() {
                 // Kept under its own Departures, as the details are, so Back finds the star as it was; a failure
                 // meanwhile is still said app-wide, by the write's own check below (Codex on #736).
                 val routeStopRootShown = routeStopTrail?.previous == null && routeStopTrail != null &&
-                    !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesPresence.isOpen)
+                    !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesOpen)
                 val stopJourney = routeStopOpened?.takeIf { routeStopRootShown }?.journey
                 val stopJourneyState = stopJourney?.let { journey ->
                     val store = remember { DataStoreFavoriteJourneysStore.from(applicationContext, warn = ::logStarWarning) }
@@ -1849,7 +1854,7 @@ class MainActivity : ComponentActivity() {
                                 if (latest) {
                                     withContext(Dispatchers.Main) {
                                         val stillOpen = routeStopTrail?.previous == null && routeStopTrail != null &&
-                                            !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesPresence.isOpen, departures = departuresStationId != null) &&
+                                            !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesOpen, departures = departuresStationId != null) &&
                                             routeStopOpened?.journey?.key == journey.key
                                         if (!stillOpen || StopJourneyWrites.shown != journey.key) {
                                             Toast.makeText(applicationContext, R.string.station_journey_write_failed_away, Toast.LENGTH_SHORT).show()
@@ -1887,7 +1892,7 @@ class MainActivity : ComponentActivity() {
                     linesLine = line
                     linesStop = LineStopRef(id, name, distance, position = at)
                     linesForStop = true
-                    linesPresence = linesPresence.opened()
+                    linesOpen = true
                 } }
                 // A stop tapped on a route page's stop list: its details over the route page, which stays under them for
                 // Back, headed by the departure tapped with Go and the journey there to favorite (maintainer, 2026-10-09).
@@ -1948,14 +1953,14 @@ class MainActivity : ComponentActivity() {
                     // A station tapped on a line page's map with no stop details of its own: Lines…'s, over it, only
                     // where nothing else is open above the page, so Lines… opens over it rather than under another.
                     LocalOpenLineStop provides openLineStop.takeIf {
-                        linesPresence == LinesPresence.CLOSED && !onTheWayOpen && !licensesOpen && !settingsOpen &&
+                        !linesOpen && !onTheWayOpen && !licensesOpen && !settingsOpen &&
                             !favoritePlacesOpen && !favoriteJourneysOpen && !stationSearchOpen && openStationId == null
                     },
                     LocalOpenLines provides {
                         UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                        // Hidden under a stop's trip (the location gate's overflow offers it there), it
-                        // shows again where it was left.
-                        linesPresence = linesPresence.opened()
+                        // Under a stop's trip (the location gate's overflow offers it there), it comes up
+                        // from under it, where it was left.
+                        linesOpen = true
                     },
                     LocalOnTheWayBanner provides onTheWayTrip?.let { trip ->
                         OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt, onTheWayAnsweredAt) { onTheWayOpen = true }
@@ -1984,6 +1989,12 @@ class MainActivity : ComponentActivity() {
                                     openStationLevel = null
                                     stationTo = ToChoice.NONE
                                     originChange = null
+                                }
+                                // Its origin still being worked out, or the location gate in its place: ended as its
+                                // own Back would, its models with it.
+                                is Page.HereTrip -> {
+                                    forgetHereTrip()
+                                    closeHereTrip()
                                 }
                                 is Page.NearMe -> Unit
                             }
@@ -2054,7 +2065,7 @@ class MainActivity : ComponentActivity() {
                                                 if (!clearFromSearch()) stationSearchReset = true
                                                 // Lines… it was opened from (its From) goes too, reset as its Back
                                                 // resets it; one opened only over the notification stays (Codex, #658).
-                                                val closesLines = onTheWayOverLines && linesPresence.isOpen
+                                                val closesLines = onTheWayOverLines && linesOpen
                                                 if (doneClosesRouteStop(closesLines, linesFromRouteStop)) closeRouteStopDetails()
                                                 if (closesLines) {
                                                     closeLines(null)
@@ -2690,21 +2701,18 @@ class MainActivity : ComponentActivity() {
                                             openStationLevel = null
                                             stationFromLines = stop.fromId ?: stop.id
                                         },
-                                        // A trip there from the stops near the rider, as To… plans one. The trip is
-                                        // the list's own, so Lines… steps aside for it, kept under it for its Back.
-                                        // Not over a trip a stop was tapped on, which a trip from here would replace,
-                                        // so Back would never come back to it (Codex on #708).
+                                        // A trip there from the stops near the rider, as To… plans one, over Lines…,
+                                        // which its Back returns to. Not over a trip a stop was tapped on, which a trip
+                                        // from here would replace, so Back would never come back to it (Codex on #708).
                                         onTo = if (linesToOrigin?.isNotEmpty() == true && !(linesForStop && hereTripOpen)) {
                                             { stop ->
-                                                linesPresence = linesPresence.stepAsideForTrip()
-                                                listStores.clearAll()
                                                 // A station under several ids: its interchange, as From opens.
                                                 hereToId = stop.fromId ?: stop.id
                                                 hereToLevel = null
                                                 hereToName = stop.name
                                                 hereFavorite = null
                                                 herePicking = false
-                                                hereTripOpen = true
+                                                openHereTrip()
                                             }
                                         } else {
                                             null
@@ -2735,7 +2743,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 // A stop's page opened over Lines… (its From): leaving it for near me closes
                                 // Lines… too, while its Back still returns to the stop (Codex on #659).
-                                val linesUnder = if (linesPresence.isOpen) linesModel() else null
+                                val linesUnder = if (linesOpen) linesModel() else null
                                 val leaveLines = { linesUnder?.let(closeLines) }
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
                                 val replanActions = replanActionsOr(LocalOnTheWay.current, replanning)
@@ -2767,7 +2775,7 @@ class MainActivity : ComponentActivity() {
                                                 nearMeTripStores.clearAll()
                                                 nearMeToStores.clearAll()
                                                 // A stop's trip gives way to a station's: Lines… under it goes too.
-                                                if (linesPresence == LinesPresence.UNDER_TRIP) leaveLines()
+                                                if (pages.isUnder(Page.Lines, pages.hereTrip)) leaveLines()
                                                 closeHereTrip()
                                             }
                                             originChange = null
@@ -2809,7 +2817,7 @@ class MainActivity : ComponentActivity() {
                                             originChange = OriginChange.afterLeaving(change, landing)
                                             // Back to a near-me trip left open underneath keeps Lines… under it too.
                                             val tripKept = change is OriginChange.NearMe && landing is OriginChange.Landing.NearMe
-                                            if (OriginChange.closesLines(landing) && !(linesPresence == LinesPresence.UNDER_TRIP && tripKept)) leaveLines()
+                                            if (OriginChange.closesLines(landing) && !(pages.isUnder(Page.Lines, pages.hereTrip) && tripKept)) leaveLines()
                                             when (landing) {
                                                 null -> {
                                                     stationSearchOpen = false
@@ -2825,8 +2833,7 @@ class MainActivity : ComponentActivity() {
                                                     // A replan moving here goes on replacing the trip there.
                                                     if (replanning) replanningHere = true
                                                     if (change is OriginChange.Station) {
-                                                        listStores.clearAll()
-                                                        hereTripOpen = true
+                                                        openHereTrip()
                                                         herePicking = landing.to.picking
                                                         hereToId = landing.to.stopId
                                                         hereToLevel = landing.to.level?.code
@@ -3037,7 +3044,9 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         },
-                        body = {
+                        // The near-me page, or the trip from here's over it ([trip]): both in the near-me lifecycle, so
+                        // the location gate, its errors and a re-locate on return apply to the trip as to the list.
+                        body = { trip ->
                             // The precise-fix follow-up is foreground-only: it stops when the nearby
                             // surface leaves (an overlay replaces it) or the app goes to the background,
                             // and asks again on return if the outcome is still flagged coarse. Only while the
@@ -3130,6 +3139,7 @@ class MainActivity : ComponentActivity() {
                                         repicked = nearbyViewModel.repicked,
                                         locationBanner = nearbyViewModel.locationBanner,
                                         noneNearby = noneNearby,
+                                        rootBack = true,
                                     )
                                 }
                             }
@@ -3137,7 +3147,7 @@ class MainActivity : ComponentActivity() {
                             // thread, so a re-locate moves the trip with the rider; none left (all hidden)
                             // ends it. Null until it's in, never an empty origin, which would end it.
                             val nearbyNow = nearby
-                            val hereOrigin = if (hereTripOpen && nearbyNow is NearbyStopsViewModel.State.Ready) {
+                            val hereOrigin = if (trip && nearbyNow is NearbyStopsViewModel.State.Ready) {
                                 val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
                                 rememberHereOrigin(
                                     nearbyNow, hidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places"),
@@ -3151,20 +3161,18 @@ class MainActivity : ComponentActivity() {
                             // messages come in the same way inside it ([LocationGate]). The trip's own
                             // spinner, while its origin is worked out, counts as loading too, so the reveal
                             // waits for the trip itself (Codex, #714).
-                            // What the departures list saved (a platform, journey or route page, its scroll), kept
-                            // while the trip from here takes its place, and dropped with its stores under the gate.
+                            // What the departures list saved (a platform, journey or route page, its scroll), kept with
+                            // the page while another covers it, and dropped with its stores under the gate.
                             val nearMeListPages = rememberSaveableStateHolder()
                             RevealsAfterLoading(
-                                state = NearMeShown(nearby, hereTripOpen, originPending = hereTripOpen && nearbyNow is NearbyStopsViewModel.State.Ready && hereOrigin == null),
+                                state = NearMeShown(nearby, trip, originPending = trip && nearbyNow is NearbyStopsViewModel.State.Ready && hereOrigin == null),
                                 loading = { it.loading },
                                 modifier = Modifier.fillMaxSize(),
                                 key = { it.screen },
                                 reveals = { from, to -> to.revealedAfter(from) },
                             ) { shown ->
                                 when (val state = shown.nearby) {
-                                    // "To…" from the near-me list takes the list's place while it's open,
-                                    // inside the nearby lifecycle: the location gate, its errors and a
-                                    // re-locate on return apply to it as they do to the list.
+                                    // "To…" from the near-me list, on its own page over it.
                                     is NearbyStopsViewModel.State.Ready -> if (shown.tripOpen) {
                                         // A placeholder until the origin is in ([NearMeShown.originPending]).
                                         if (hereOrigin == null) {
@@ -3179,9 +3187,18 @@ class MainActivity : ComponentActivity() {
                                             clusters = state.eager + state.more,
                                             noneNearby = false,
                                         )
+                                    } else if (hereTripOpen && listUnderTrip.dropped) {
+                                        // Under the trip from here, drawn only for a back swipe from it: its departures
+                                        // were dropped as the trip covered it, and are built again once it closes rather
+                                        // than fetched for a look ([ListUnderTrip]). What the list saved is kept for then.
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                                     } else {
-                                        // Kept under the trip from here, so Back from one opened from a platform or
-                                        // journey view returns to that view as it was left (SPEC *Back*).
+                                        // Its departures go once the trip from here covers it, not as the trip opens over
+                                        // it: they're drawn as the trip slides in.
+                                        DisposableEffect(listUnderTrip) {
+                                            listUnderTrip.drawing()
+                                            onDispose { listUnderTrip.left(hereTripOpen, listStores) }
+                                        }
                                         nearMeListPages.SaveableStateProvider(NEAR_ME_LIST) {
                                             DeparturesForStops(
                                                 ready = state,
@@ -3203,16 +3220,14 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 onPlanTo = {
                                                     UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                                    listStores.clearAll()
-                                                    hereTripOpen = true
+                                                    openHereTrip()
                                                     herePicking = true
                                                 },
                                                 // As To…, the trip going via the view's stop from the start.
                                                 onPlanVia = { via ->
                                                     UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                                    listStores.clearAll()
                                                     hereVia.value = DestinationViaChoice(null, ViaChoice().picked(via, via.stopId.startsWith(HUB_PREFIX), toId = null))
-                                                    hereTripOpen = true
+                                                    openHereTrip()
                                                     herePicking = true
                                                 },
                                                 favoritePlaces = savedPlaces,
@@ -3275,11 +3290,12 @@ class MainActivity : ComponentActivity() {
                                         // (Codex). Ready never enters this branch, so a same-set relocate is
                                         // untouched. Runs once on gate entry (keyed Unit).
                                         val stores: NearbyDeparturesStores = viewModel()
-                                        // The from-here trip's origins too, for the same reason (Codex).
+                                        // The from-here trip's origins too, for the same reason (Codex): by its own page's
+                                        // gate while it's open, as "No stops found nearby" under it is no gate of its.
                                         val hereTripStores: NearbyDeparturesStores = viewModel(key = "here-trip-stores")
                                         DisposableEffect(Unit) {
                                             stores.clearAll()
-                                            hereTripStores.clearAll()
+                                            if (trip || !hereTripOpen) hereTripStores.clearAll()
                                             nearMeListPages.removeState(NEAR_ME_LIST)
                                             onDispose {}
                                         }
@@ -3382,7 +3398,7 @@ class MainActivity : ComponentActivity() {
                         // takes over the app is up: a window of its own, it would cover them. Back from those finds it again.
                         // Not for its own Departures: that's a window made after this one, so it shows over the details,
                         // which stay composed beneath it, links and ride and all, for Back (Codex on #736).
-                        !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesPresence.isOpen)
+                        !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesOpen)
                     }?.let { open ->
                         val line = open.line
                         routeStopTrail?.takeIf { line != null }?.let { page ->
@@ -3426,7 +3442,7 @@ class MainActivity : ComponentActivity() {
                                         openStationLevel = null
                                         // Over Lines… (a route page of a stop's details there), the station flow starts from it, as
                                         // Lines…'s own From starts one, so an arrived trip's Done closes back past it (Codex, #658).
-                                        if (linesPresence.isOpen) stationFromLines = stop.fromId ?: stop.id
+                                        if (linesOpen) stationFromLines = stop.fromId ?: stop.id
                                     },
                                     // The details step aside for the editor ([routeStopCovered]), whose Save or Cancel
                                     // returns to them.
@@ -3439,7 +3455,7 @@ class MainActivity : ComponentActivity() {
                                     // where Lines… would show (nothing else open above the page, as for a line page's map).
                                     // Over the details, which step aside for it ([routeStopCovered]) and come back on its Back.
                                     onDepartures = openDepartures,
-                                    onPickLine = if (linesPresence == LinesPresence.CLOSED && !onTheWayOpen && !licensesOpen && !settingsOpen &&
+                                    onPickLine = if (!linesOpen && !onTheWayOpen && !licensesOpen && !settingsOpen &&
                                         !favoritePlacesOpen && !favoriteJourneysOpen && !stationSearchOpen && openStationId == null
                                     ) {
                                         { picked ->
@@ -3449,7 +3465,7 @@ class MainActivity : ComponentActivity() {
                                             linesStop = null
                                             linesForStop = true
                                             linesFromRouteStop = true
-                                            linesPresence = linesPresence.opened()
+                                            linesOpen = true
                                         }
                                     } else {
                                         null
@@ -3465,7 +3481,7 @@ class MainActivity : ComponentActivity() {
                     departuresStationId?.takeIf {
                         !routeStopCovered(
                             licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen,
-                            favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesPresence.isOpen,
+                            favoriteJourneys = favoriteJourneysOpen, lines = linesFromRouteStop && linesOpen,
                             window = RouteStopWindow.DEPARTURES,
                         )
                     }?.let { id ->
@@ -4610,6 +4626,22 @@ class MainActivity : ComponentActivity() {
     private fun shownModels(): ShownModels = ViewModelProvider(this)["shown-models", ShownModels::class.java]
 
     /**
+     * The trip from here's models dropped as its own Back drops them ([HereTripArea]), for its page closed with
+     * none of its screens up: its origin still being worked out, or the location gate in its place.
+     */
+    private fun forgetHereTrip() {
+        val models = ViewModelProvider(this)
+        for (key in listOf("here-trip-stores", "here-to-stores", "here-via-stores")) {
+            models[key, NearbyDeparturesStores::class.java].clearAll()
+        }
+        shownModels().toSearch?.clear()
+        models["here-here-anchor", HereAnchorHolder::class.java].apply {
+            anchor = null
+            start = null
+        }
+    }
+
+    /**
      * Clears the From… search now, cancelling its query, if it has been shown; false (never shown
      * since process start) leaves the caller to reset it on its next showing rather than creating a
      * model just to clear it.
@@ -5286,6 +5318,9 @@ class MainActivity : ComponentActivity() {
         // [here] alone, which needs none (Codex on #315), keyed by where it plans from in place of a
         // nearest stop. Otherwise an empty [origin] (every mode hidden) ends the trip, as before.
         noneNearby: Boolean = false,
+        // The trip is its page ([Page.HereTrip]): Back from its To… search with nothing picked yet, from the wait for
+        // where it goes, or from its routes closes the page, which the back swipe draws closing ([RootBack]).
+        rootBack: Boolean = false,
     ) {
         val appContext = applicationContext
         ConsumeForegroundReturn(
@@ -5451,6 +5486,7 @@ class MainActivity : ComponentActivity() {
                         search.clear()
                         if (toId == null && favorite == null) close() else onClosePicker()
                     },
+                    rootBack = rootBack && noDestination,
                     hint = stringResource(R.string.station_search_to_hint),
                     // Tapping a favorite place routes the trip to its coordinate: drop any prior To…
                     // stores, forget the search, and hand the destination up (which sets the trip's
@@ -5540,6 +5576,7 @@ class MainActivity : ComponentActivity() {
                         state = to,
                         onRetry = toModel::retry,
                         onBack = close,
+                        rootBack = rootBack,
                         // From a From… station, back to near me; from here, re-locate, as the trip's page does.
                         onLocate = onLocate ?: relocate,
                     )
@@ -5894,6 +5931,7 @@ class MainActivity : ComponentActivity() {
             routeStops = routeStops(appContext),
             starredStops = starredStops,
             onBack = close,
+            rootBack = rootBack,
             onRetry = trip::retry,
             locationBanner = locationBanner.collectAsStateWithLifecycle().value,
             relocating = relocatingNow,
@@ -6890,6 +6928,49 @@ internal class NearbyDeparturesStores : androidx.lifecycle.ViewModel() {
     override fun onCleared() = clearAll()
 }
 
+/**
+ * The near-me list's departures under the trip from here ([Page.HereTrip]), dropped from [NearbyDeparturesStores]
+ * once the trip covers the list, not as it opens, so the list is drawn as the trip slides in over it. Until the
+ * trip closes, the list drawn under a back swipe from it is a placeholder ([dropped]): built again for a look, it
+ * would fetch, and its model left behind would neither take the trip's re-locates nor stop fetching.
+ */
+@Stable
+internal class ListUnderTrip(dropped: Boolean) {
+    /** Whether the list's departures were dropped under the trip, to be built again once it closes. */
+    var dropped by mutableStateOf(dropped)
+        private set
+
+    // How many near-me pages draw the list now: on top, or sliding away under a page opening over it. Two while a
+    // new near-me generation takes the old one's place.
+    private var drawn = 0
+
+    /** The list is drawn ([left] once it isn't). */
+    fun drawing() {
+        drawn++
+    }
+
+    /** The trip opened over the page on top: the list is dropped now if that isn't it, else once it's covered. */
+    fun tripOpened(stores: NearbyDeparturesStores) {
+        if (drawn == 0) drop(stores)
+    }
+
+    /** The list no longer drawn: covered by the trip, its departures go. */
+    fun left(tripOpen: Boolean, stores: NearbyDeparturesStores) {
+        drawn--
+        if (tripOpen && drawn == 0) drop(stores)
+    }
+
+    /** The trip closed: Back to the list builds it again. */
+    fun tripClosed() {
+        dropped = false
+    }
+
+    private fun drop(stores: NearbyDeparturesStores) {
+        stores.clearAll()
+        dropped = true
+    }
+}
+
 /** What the nearby gate should do for the current location-permission state (see [nearbyPermissionAction]). */
 internal enum class NearbyPermissionAction { LOCATE, REQUEST_PRECISE, WAIT, REFUSED }
 
@@ -7139,8 +7220,9 @@ internal fun stationFlowPages(search: Boolean, stationId: String?): Set<String> 
  *
  * Each page keeps what it saved (an open route page, a platform view, its scroll) while another covers it, and
  * has it back once uncovered, so Back returns to the page it was opened over, as it was left (SPEC *Back*); a page
- * closed is forgotten. A new near-me generation ([Page.NearMe]) drops what the near-me view kept: an arrived
- * trip's Done, or a shared place, lands on the list.
+ * closed is forgotten. A new near-me generation ([Page.NearMe]) drops what the near-me view and the trip from here
+ * kept: an arrived trip's Done, or a shared place, lands on the list. [body] draws both, the trip's when its flag
+ * is set ([Page.HereTrip]).
  *
  * Back from a page is its screen's own ([RootBack]), else [onBack]: the back gesture draws the page under it as
  * the rider swipes, and a swipe let go of leaves it as it was (`dev-docs/navigation3.md`). Pages open and close
@@ -7151,7 +7233,7 @@ internal fun NearbyArea(
     pages: Pages,
     aboveOverlay: @Composable () -> Unit,
     overlayContent: @Composable (Page) -> Unit,
-    body: @Composable () -> Unit,
+    body: @Composable (trip: Boolean) -> Unit,
     // Back from a page whose screen has none of its own up: closes it as that screen would.
     onBack: (Page) -> Unit = pages::close,
 ) {
@@ -7178,7 +7260,11 @@ internal fun NearbyArea(
                 // On top only once the stack says so: the page a back gesture reveals isn't, until the swipe is
                 // done, so a glimpse of it starts nothing ([LocalPageOnTop]).
                 CompositionLocalProvider(LocalPageOnTop provides (page == pages.top), LocalPageBack provides back) {
-                    if (page is Page.NearMe) body() else overlayContent(page)
+                    when (page) {
+                        is Page.NearMe -> body(false)
+                        is Page.HereTrip -> body(true)
+                        else -> overlayContent(page)
+                    }
                 }
             }
         },
@@ -7210,7 +7296,7 @@ private fun pageCloses(rtl: Boolean): ContentTransform {
         )
 }
 
-// The departures list's pages, kept under the trip from here ([NearbyArea]'s body).
+// The departures list's pages, kept with the near-me page ([NearbyArea]'s body) and dropped under the gate.
 private const val NEAR_ME_LIST = "near-me-list"
 
 /**

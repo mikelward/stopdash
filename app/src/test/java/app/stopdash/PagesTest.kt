@@ -23,7 +23,8 @@ class PagesTest {
     private val openStationIdState = mutableStateOf<String?>(null)
     private var stationSearchOpen by pages.kept(Page.Stations, stationSearchState, others = { openStationIdState.value != null }) { it }
     private var openStationId by pages.kept(Page.Stations, openStationIdState, others = { stationSearchState.value }) { it != null }
-    private var linesPresence by pages.kept(Page.Lines, mutableStateOf(LinesPresence.CLOSED)) { it.shown }
+    private var linesOpen by pages.flag(Page.Lines)
+    private var hereTripOpen by pages::tripOpen
 
     private fun shown(vararg page: Page) = assertEquals(listOf(Page.NearMe(0), *page), pages.stack.toList())
 
@@ -53,7 +54,7 @@ class PagesTest {
 
     @Test
     fun `a screen opened from Lines shows over it, and its Back returns to Lines`() {
-        linesPresence = LinesPresence.CLOSED.opened()
+        linesOpen = true
         // A line page's menu opens the disruptions settings over Lines….
         settingsOpen = true
         shown(Page.Lines, Page.Settings)
@@ -98,20 +99,29 @@ class PagesTest {
     }
 
     @Test
-    fun `Lines steps off the stack under the trip from here, and is back on top when it closes`() {
-        linesPresence = LinesPresence.CLOSED.opened()
-        shown(Page.Lines)
-        // A stop's To: the near-me view, which draws the trip, is on top.
-        linesPresence = linesPresence.stepAsideForTrip()
-        assertEquals(LinesPresence.UNDER_TRIP, linesPresence)
+    fun `the trip from here opens over the page it was opened from, which its Back returns to`() {
+        // To… from the near-me list.
+        hereTripOpen = true
+        shown(Page.HereTrip(0))
+        hereTripOpen = false
         shown()
-        // A screen opened over the trip, then the trip's Back: Lines… shows again, over the near-me list.
+        // A stop's To on Lines…: the trip over it, Lines… under it, rather than stepping off the stack.
+        linesOpen = true
+        hereTripOpen = true
+        shown(Page.Lines, Page.HereTrip(0))
+        assertTrue(pages.isUnder(Page.Lines, pages.hereTrip))
+        // A screen opened over the trip, then the trip's Back: Lines… on top, at the stop.
         settingsOpen = true
         settingsOpen = false
-        linesPresence = linesPresence.tripClosed()
+        hereTripOpen = false
         shown(Page.Lines)
-        linesPresence = linesPresence.closed()
-        shown()
+        assertFalse(pages.isUnder(Page.Lines, pages.hereTrip))
+        // Lines… opened over a trip isn't under it.
+        linesOpen = false
+        hereTripOpen = true
+        linesOpen = true
+        shown(Page.HereTrip(0), Page.Lines)
+        assertFalse(pages.isUnder(Page.Lines, pages.hereTrip))
     }
 
     @Test
@@ -123,6 +133,18 @@ class PagesTest {
         assertEquals(listOf(Page.NearMe(1), Page.Settings), pages.stack.toList())
         assertTrue(settingsOpen)
         assertFalse(licensesOpen)
+    }
+
+    @Test
+    fun `a new near-me generation opens the trip from here afresh too, where it was`() {
+        // A shared place while a trip is up under Settings: the trip opens afresh to it, not as it was left.
+        hereTripOpen = true
+        settingsOpen = true
+        pages.generation++
+        assertEquals(listOf(Page.NearMe(1), Page.HereTrip(1), Page.Settings), pages.stack.toList())
+        assertTrue(hereTripOpen)
+        hereTripOpen = false
+        assertEquals(listOf(Page.NearMe(1), Page.Settings), pages.stack.toList())
     }
 
     @Test

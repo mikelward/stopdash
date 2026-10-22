@@ -1182,6 +1182,9 @@ internal fun TripScreen(
     // The open route closed because a settled plan doesn't offer it ([openRouteNotPlanned]), just before it
     // closes: not on Back, nor for a mode hidden or a line avoided. A later trip's list says so on return.
     onOpenNotPlanned: () -> Unit = {},
+    // The trip is its page, the trip from here's: Back with no route open closes that page, which the back swipe
+    // draws closing ([RootBack]).
+    rootBack: Boolean = false,
     // The routes as drawn ([TripViewModel.shownRoutes]): each last ride arriving by hub cut at its first call
     // there, and where every ride gets off, worked out off the main thread as they come in, a step-free trip's
     // against the lifts out of service now. By default (a test), as planned, each ride getting off where the
@@ -1238,6 +1241,7 @@ internal fun TripScreen(
             onChangeTime = onChangeTime,
             openNotice = openNotice,
             onOpenNotPlanned = onOpenNotPlanned,
+            rootBack = rootBack,
         )
     }
 }
@@ -1386,6 +1390,7 @@ private fun TripContent(
     onChangeTime: (() -> Unit)? = null,
     openNotice: String? = null,
     onOpenNotPlanned: () -> Unit = {},
+    rootBack: Boolean = false,
 ) {
     // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
     // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
@@ -1605,7 +1610,14 @@ private fun TripContent(
     // The on-screen arrow too.
     val back = { if (openRef != null) setOpen(null) else onBack() }
     val follow = rememberBackFollow()
-    PredictiveBack(follow, onBack = back)
+    if (rootBack) {
+        // The trip's own page closes as the stack's, the page under it drawn as the rider swipes; an open route
+        // first, over it.
+        RootBack(follow, onBack = onBack)
+        PredictiveBack(follow, enabled = openRef != null) { setOpen(null) }
+    } else {
+        PredictiveBack(follow, onBack = back)
+    }
     // A leg's row tapped on an open route: its line's page, as a row on the main screen opens it,
     // with the line's full service alert and its stops (SPEC *Trips with a change*). Found again among
     // the open route's rows on every refresh, so it stays live; its row gone, it moves to the leg's row now,
