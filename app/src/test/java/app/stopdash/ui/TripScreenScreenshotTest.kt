@@ -1264,26 +1264,30 @@ class TripScreenScreenshotTest {
         assertEquals(1, notPlanned)
     }
 
-    @Test
-    fun a_step_free_route_a_lift_out_leaves_with_no_way_on_says_so_in_its_rides_warning() {
-        // Red from A to M, then blue from M to Hill: made-up stops and lines (Hill model). M's blue platform is reached
-        // through one lift, out today, so the change has no step-free way onto the blue.
-        val red = TripLeg(
-            mode = "tube", lineId = "red", lineName = "red", fromId = "A", fromName = "A", toId = "M", toName = "M",
-            departure = now, arrival = now.plusSeconds(120), path = listOf("M"), pathNames = listOf("M"),
-        )
-        val blue = TripLeg(
-            mode = "tube", lineId = "blue", lineName = "blue", fromId = "M", fromName = "M", toId = "940GZZLUHIL", toName = "Hill",
-            departure = now.plusSeconds(300), arrival = now.plusSeconds(600),
-            path = listOf("940GZZLUHLE", "B", "940GZZLUHIL"), pathNames = listOf("Hill East", "Bee", "Hill"),
-        )
-        fun good(id: String) = LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service")
-        val hill = TripViewModel.State(
-            routes = listOf(TripRoute(listOf(red, blue))),
-            plannedAt = now,
-            statuses = mapOf("red" to good("red"), "blue" to good("blue")),
-            statusesAt = mapOf("red" to now, "blue" to now),
-        )
+    // Red from A to M, then blue from M to Hill: made-up stops and lines (Hill model). M's blue platform is reached
+    // through one lift, out today, so the change has no step-free way onto the blue.
+    private val hillRed = TripLeg(
+        mode = "tube", lineId = "red", lineName = "red", fromId = "A", fromName = "A", toId = "M", toName = "M",
+        departure = now, arrival = now.plusSeconds(120), path = listOf("M"), pathNames = listOf("M"),
+    )
+    private val hillBlue = TripLeg(
+        mode = "tube", lineId = "blue", lineName = "blue", fromId = "M", fromName = "M", toId = "940GZZLUHIL", toName = "Hill",
+        departure = now.plusSeconds(300), arrival = now.plusSeconds(600),
+        path = listOf("940GZZLUHLE", "B", "940GZZLUHIL"), pathNames = listOf("Hill East", "Bee", "Hill"),
+    )
+    private val hillChanging = TripRoute(listOf(hillRed, hillBlue))
+    private val hillTrip = TripViewModel.State(
+        routes = listOf(hillChanging),
+        plannedAt = now,
+        statuses = mapOf(
+            "red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"),
+            "blue" to LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"),
+        ),
+        statusesAt = mapOf("red" to now, "blue" to now),
+    )
+
+    // [hillTrip] on a step-free trip with M's lift out, [openRoute] open if given.
+    private fun showHillLiftOut(openRoute: MutableState<String?>? = null, onRetry: () -> Unit = {}) {
         val hillLines = mapOf(
             "red" to LineSequence(routes = listOf(LineRoute("r", listOf("A", "M"))), stopNames = mapOf("A" to "A", "M" to "M")),
             "blue" to LineSequence(
@@ -1303,8 +1307,8 @@ class TripScreenScreenshotTest {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
-                    title = "To Hill", state = hill, now = now, access = Duration.ZERO,
-                    routeStops = RouteStopsRepository(hillSource), onBack = {}, onRetry = {},
+                    title = "To Hill", state = hillTrip, now = now, access = Duration.ZERO,
+                    routeStops = RouteStopsRepository(hillSource), onBack = {}, onRetry = onRetry, openRoute = openRoute,
                     // The lifts as the screen passed them, which it tells its answer by (identity); the table with LIFT1
                     // out stands for TfL's outages here.
                     shownRoutes = { placed, at, lifts -> ShownRoutes.of(placed, at, toHill, lifts, base = table) },
@@ -1313,10 +1317,31 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun a_step_free_route_a_lift_out_leaves_with_no_way_on_says_so_in_its_rides_warning() {
+        showHillLiftOut()
         // In the blue ride's ⚠ on the card, as On the way says it.
         val said = hasContentDescription("Not step-free at M: a lift is out", substring = true)
         composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(said, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         captureSnapshot("trip-not-step-free.png")
+    }
+
+    @Test
+    fun an_open_step_free_route_a_lift_out_leaves_with_no_way_on_says_so_where_it_boards_and_plans_again() {
+        val openRoute = mutableStateOf<String?>(openRouteOf(hillChanging, hillTrip, StepFree.STATION, emptyMap()).encode())
+        var retries = 0
+        showHillLiftOut(openRoute, onRetry = { retries++ })
+        // Where the blue boards at M, before its ride, with a plan asked for again.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("openNotStepFree", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Not step-free at M: a lift is out").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("openNotStepFree", useUnmergedTree = true).assertCountEquals(1)
+        captureSnapshot("trip-open-not-step-free.png")
+        composeRule.onNode(hasText("Try again") and hasAnyAncestor(hasTestTag("openNotStepFree"))).performClick()
+        assertEquals(1, retries)
     }
 
     @Test
