@@ -1529,12 +1529,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         near-me list only, and only where its timetable has a train due, or, unable to say, for a
         tube, Elizabeth line, Overground, DLR or tram line; never National Rail, so a hub's
         intercity services add no rows.
-  - [ ] **The same "?" rows on a station's own page** (opened from its header): it still lists
-        only a quiet line's disruption, not its missing times.
-  - [ ] **A "Times unknown" note on a "?" line's page**: a "?" row opens nothing for now, since the
-        page has no times and no words yet for why (copy to agree with the maintainer first).
-        Until then a "?" row's planned work shows only as its calendar glyph: its full notice and
-        dismissal are on that page (Codex, #505).
+  - [x] **The same "?" rows on a station's own page** (opened from its header). Done (2026-10-22): a
+        station's or platform's page shows the near-me list's "?" rows at its stops, taken from the list's
+        own rows, so the two never disagree; a "?" row names no platform, so every page of its stop has it.
+  - [x] **A "Times unknown" note on a "?" line's page**: done with the "?" row's page (maintainer,
+        2026-10-21; SPEC *Departures*): it opens its line's page, which says "No live times" and why.
     - [x] **Don't move a route's direction onto a stop with older data** (Codex, #528): the
       "directions together" rule picked a place by distance alone, so after a partial refresh
       failure it could trade a direction's fresh row for the other place's stale one (a "21:14?"
