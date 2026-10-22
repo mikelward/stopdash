@@ -1145,8 +1145,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                     - [x] The open route saying so where the ride boards or gets off, as its
                                           closure cards do, and offering to plan again (`TripOpenView.stepFree`,
                                           with the page's *Try again*).
-                                    - [ ] A later trip's list (`LaterTripViewModel`) marking its cards the
-                                          same way.
+                                    - [x] A later trip's list (`LaterTripViewModel`): each such ride says so
+                                          under its row, by the lifts out now (`Row.notStepFree`); its order
+                                          stays the timetable's.
                                     - [x] On the way: a ride's boarding call, judged the same way by its
                                           station record (`StepFreeExits.boardingLost`), raises the same
                                           signal until the rider is aboard that ride.

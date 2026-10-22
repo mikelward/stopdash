@@ -752,6 +752,56 @@ class LaterTripViewModelTest {
     }
 
     @Test
+    fun `a step-free ride a lift out now leaves with no way on says so under its row, only while the lift is out`() = runTest(dispatcher) {
+        // Red boards at X's platform through one lift (made up); the lift goes out, and comes back.
+        val route = TripRoute(listOf(leg("red", "X", "910GHILL", 5, 30)))
+        val planner = Planner(mapOf("910GHILL" to listOf(route)))
+        val access = StepFreeAccess(
+            mapOf("X" to mapOf("red" to listOf(StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("XEE", 1))))),
+            mapOf("XEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        var out = setOf("LIFT1")
+        val later = LaterTripViewModel(
+            planner, { TripOrigin.Stop("X") }, listOf(TripDestination.Stop("910GHILL")),
+            arriving = { HillModel.toHill }, stepFreeAccess = { access }, liftsOut = { out }, io = dispatcher, compute = dispatcher,
+        )
+        val request = LaterTripViewModel.Request(leave, stepFree = StepFree.STATION)
+        later.show(request)
+        advanceUntilIdle()
+        assertEquals(listOf("X"), later.state.value.cards!!.single().rows.single().notStepFree)
+        // Back in service: listed again with nothing to say, no new plan asked for.
+        val asked = planner.asked.size
+        out = emptySet()
+        later.show(request)
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), later.state.value.cards!!.single().rows.single().notStepFree)
+        assertEquals(asked, planner.asked.size)
+        // At no level, nothing is checked, the lift out or not.
+        out = setOf("LIFT1")
+        val any = LaterTripViewModel(
+            planner, { TripOrigin.Stop("X") }, listOf(TripDestination.Stop("910GHILL")),
+            arriving = { HillModel.toHill }, stepFreeAccess = { access }, liftsOut = { out }, io = dispatcher, compute = dispatcher,
+        )
+        any.show(LaterTripViewModel.Request(leave, stepFree = StepFree.ANY))
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), any.state.value.cards!!.single().rows.single().notStepFree)
+    }
+
+    @Test
+    fun `a card's rows say where a lift out has taken a ride's way on or off, by the leg, walks left out`() {
+        val walk = TripLeg(TripLeg.WALKING, "", "", "S", "S", "A", "A", at(0), at(3))
+        val route = TripRoute(listOf(walk, leg("red", "A", "B", 5, 10), leg("blue", "B", "C", 12, 20)))
+        val lost = listOf(
+            app.stopdash.domain.RouteDisruption.Signal.NotStepFree(1, "A", "A"),
+            app.stopdash.domain.RouteDisruption.Signal.NotStepFree(2, "C", ""),
+        )
+        val rows = LaterTripViewModel.cardOf(route, lost = lost).rows
+        // A stop with no name says its id, as On the way does.
+        assertEquals(listOf(emptyList(), listOf("A"), listOf("C")), rows.map { it.notStepFree })
+        assertEquals(listOf(emptyList<String>(), emptyList(), emptyList()), LaterTripViewModel.cardOf(route).rows.map { it.notStepFree })
+    }
+
+    @Test
     fun `a listed route riding on through the destination is cut where it first gets there, after the timed ones`() = runTest(dispatcher) {
         // Through Hill East, another station of Hill's hub ([HillModel]), on to Vale and a train back to Hill: the rider
         // gets off at Hill East, where the Planner gave no time, so its card says when it leaves alone.
