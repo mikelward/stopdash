@@ -62,13 +62,18 @@ class PlaceHitsTest {
     }
 
     @Test
-    fun `keeps a postcode query's candidates in TfL's order, since their names needn't match the digits`() {
-        // A postcode resolves to a location whose name doesn't contain the postcode, so name-matching
-        // would wrongly drop it: keep TfL's own order and tag them Postcode.
-        val candidates = listOf(candidate("First Result"), candidate("Second Result"))
-        val hits = PlaceHits.rank("X1 9XX", candidates, PlaceKind.POSTCODE)
-        assertEquals(listOf("First Result", "Second Result"), hits.map { it.name })
+    fun `keeps only the postcode typed, tagged Postcode`() {
+        // TfL names a postcode it places by the postcode itself; one it doesn't know it answers with
+        // another ("XX1 9XX" for "X1 9XX") or offers look-alikes ("X1 9XY"), none of them the place typed.
+        val candidates = listOf(candidate("XX1 9XX"), candidate("X1 9XY"), candidate("X1 9XX"), candidate("Zeta Hall"))
+        val hits = PlaceHits.rank("x19xx", candidates, PlaceKind.POSTCODE)
+        assertEquals(listOf("X1 9XX"), hits.map { it.name })
         hits.forEach { assertEquals(PlaceKind.POSTCODE, it.kind) }
+    }
+
+    @Test
+    fun `a postcode TfL answers with another postcode finds nothing`() {
+        assertEquals(emptyList<PlaceHit>(), PlaceHits.rank("X1 9XX", listOf(candidate("XX1 9XX")), PlaceKind.POSTCODE))
     }
 
     @Test

@@ -710,6 +710,21 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
+    fun `a postcode TfL answers with another is said not found, never offered to save`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            findOutside = { listOf(PlaceCandidate("XX2 9XX", Coordinates(52.0, -0.5))) },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X2 9XX")
+        advanceUntilIdle()
+        assertEquals(OutsideLondon.NoSuchPostcode, model.state.value.editor!!.outside)
+        assertNull(model.state.value.editor!!.coordinate)
+    }
+
+    @Test
     fun `a place the bundle lacks is offered outside London, asked only when tapped`() = runTest {
         val asked = mutableListOf<String>()
         val model = FavoritePlacesViewModel(

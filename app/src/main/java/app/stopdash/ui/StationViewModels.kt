@@ -56,7 +56,19 @@ sealed interface OutsideLondon {
     data object Searching : OutsideLondon
     data class Found(val places: List<PlaceHit>) : OutsideLondon
     data object NoMatches : OutsideLondon
+
+    /** A postcode TfL doesn't place, or answers with another in its stead ([app.stopdash.domain.UkPostcode.names]). */
+    data object NoSuchPostcode : OutsideLondon
     data object Failed : OutsideLondon
+
+    companion object {
+        /** What a search outside London that found [places] for a query of [kind] says. */
+        fun of(places: List<PlaceHit>, kind: PlaceKind): OutsideLondon = when {
+            places.isNotEmpty() -> Found(places)
+            kind == PlaceKind.POSTCODE -> NoSuchPostcode
+            else -> NoMatches
+        }
+    }
 }
 
 /**
@@ -729,7 +741,7 @@ class StationSearchViewModel(
             withContext(compute) {
                 val kind = if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
                 val places = PlaceHits.rank(query, PlaceHits.outsideBundle(candidates), kind, near = from)
-                if (places.isEmpty()) OutsideLondon.NoMatches else OutsideLondon.Found(places)
+                OutsideLondon.of(places, kind)
             }
         } catch (e: TflException) {
             // Said on the row, with a Retry; the bundled rows above are untouched.

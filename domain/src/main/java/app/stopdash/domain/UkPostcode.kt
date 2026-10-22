@@ -24,6 +24,10 @@ object UkPostcode {
     // sector digit is found whether or not a second district character was typed (e.g. N1 9GU).
     private val COMPLETE = Regex("^[A-Z]{1,2}[0-9][0-9A-Z]?[0-9][A-Z]{2}$")
 
+    // A whole postcode within longer text, space optional, not part of a longer run of letters or
+    // digits: so "XX1 9XX" holds XX1 9XX and not X1 9XX.
+    private val IN_TEXT = Regex("(?<![A-Z0-9])[A-Z]{1,2}[0-9][0-9A-Z]?\\s*[0-9][A-Z]{2}(?![A-Z0-9])")
+
     // A leading fragment of the above: area letters alone, or area letters then a digit and up to the
     // four remaining postcode characters. Bounded so a run of text past a full code stops matching.
     private val PARTIAL = Regex("^[A-Z]{1,2}([0-9][0-9A-Z]{0,4})?$")
@@ -43,6 +47,21 @@ object UkPostcode {
 
     /** True when [text] is a complete, well-formed UK postcode. */
     fun isComplete(text: String): Boolean = COMPLETE.matches(normalize(text))
+
+    /**
+     * Whether [name] (a place TfL named) names the postcode [typed] itself. TfL answers a postcode it
+     * doesn't know with another it does, named as that one ("XX1 9XX" for "X1 9XX"), and offers
+     * look-alikes ("X1 9XY"): neither is the place typed.
+     */
+    fun names(name: String, typed: String): Boolean {
+        val wanted = normalize(typed).takeIf { COMPLETE.matches(it) } ?: return false
+        return IN_TEXT.findAll(asciiUpper(name)).any { normalize(it.value) == wanted }
+    }
+
+    // [text] with only `a`–`z` uppercased, as [normalize] folds them, whitespace kept.
+    private fun asciiUpper(text: String): String = buildString {
+        for (c in text) append(if (c in 'a'..'z') c.uppercaseChar() else c)
+    }
 
     /**
      * [text] in canonical `OUTCODE INCODE` form (a single space before the last three characters),

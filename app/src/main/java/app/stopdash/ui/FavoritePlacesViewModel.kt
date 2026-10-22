@@ -682,7 +682,7 @@ class FavoritePlacesViewModel(
                 withContext(compute) {
                     val kind = if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
                     val places = PlaceHits.rank(query, PlaceHits.outsideBundle(candidates), kind)
-                    if (places.isEmpty()) OutsideLondon.NoMatches else OutsideLondon.Found(places)
+                    OutsideLondon.of(places, kind)
                 }
             } catch (e: TflException) {
                 // Said on the row, with a Retry; the bundled rows above are untouched.

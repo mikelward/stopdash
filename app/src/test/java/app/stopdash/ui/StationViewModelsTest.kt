@@ -452,6 +452,24 @@ class StationViewModelsTest {
     }
 
     @Test
+    fun `a postcode TfL answers with another says it isn't found, rather than offer that one`() = runTest {
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            findOutside = { listOf(PlaceCandidate("XX2 9XX", Coordinates(52.0, -0.5))) },
+        )
+        runCurrent()
+        vm.onQueryChange("X2 9XX")
+        advanceUntilIdle()
+        assertEquals(OutsideLondon.NoSuchPostcode, vm.state.value.outside)
+        // A place name finding nothing still says so as before.
+        vm.onQueryChange("Zeta Town")
+        advanceUntilIdle()
+        vm.searchOutside()
+        advanceUntilIdle()
+        assertEquals(OutsideLondon.NoMatches, vm.state.value.outside)
+    }
+
+    @Test
     fun `a search with no outside lookup offers none`() = runTest {
         val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher)
         runCurrent()

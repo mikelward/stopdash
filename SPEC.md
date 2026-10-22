@@ -511,7 +511,10 @@ The app finds stops two ways:
     outside London** row asks TfL's Journey Planner for what's typed, only when tapped; a complete
     postcode the index doesn't hold is asked at once. Only TfL's places outside the index's area are
     listed, under an **Outside London** heading, so nothing above moves and nothing is listed twice; a failure says so
-    with a Retry, and the bundled rows stand. *To…*, *From…* and the favorite place editor offer it;
+    with a Retry, and the bundled rows stand. For a postcode, only the postcode typed is listed: TfL
+    answers one it doesn't know with another it does ("XX1 9XX" for "X1 9XX") and offers
+    look-alikes, so with none it says **Postcode not found** rather than offer a place the rider didn't
+    type (2026-10-22). *To…*, *From…* and the favorite place editor offer it;
     the favorite-journey picker, which takes saved places only, doesn't. Stops and places are **one list ranked by match**, so a place the query
   starts ("Tate Britain" for "tate") sits above a stop that only contains it ("… Estate"); a stop wins a
   tie, and a postcode's places follow the stops (maintainer, 2026-09-28), except that a landmark (a place
