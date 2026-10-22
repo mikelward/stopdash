@@ -1064,14 +1064,14 @@ class TripViewModelTest {
         trip.refreshFor(null)
         advanceUntilIdle()
         assertEquals(2, client.asked.size)
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         key.value = "EXAMPLE"
         advanceUntilIdle()
         // Nothing fetched under the old key stays up, and nothing is fetched while the trip is away.
         assertTrue(trip.state.value.live.isEmpty())
         assertEquals(2, client.asked.size)
-        // Withdrawn as a failure is, so a frame drawn from them never stands in (Codex, #529).
-        assertEquals(before + 1, trip.state.value.failures)
+        // Withdrawn, so a frame drawn from them never stands in (Codex, #529).
+        assertEquals(before + 1, trip.state.value.overturned)
         // Shown again for the same re-pick, it fetches afresh.
         trip.refreshFor(null)
         advanceUntilIdle()
@@ -3657,8 +3657,6 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf(route), trip.state.value.routes)
         assertTrue(trip.state.value.planIncomplete)
-        // A plan failing in part moves the failure generation (Codex, #529).
-        assertTrue(trip.state.value.failures >= 1)
         assertNull(trip.state.value.planError)
         assertNull(plans.get("A", listOf("C", "D").map { TripDestination.Stop(it) }))
     }
@@ -4618,30 +4616,47 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `a new failure moves the failure generation, a repeated one doesn't`() = runTest(dispatcher) {
-        // What's drawn from an earlier state tells by it that something has since failed, even when as
-        // many things fail as before (Codex, #529).
+    fun `a failed check overturns nothing drawn from before it`() = runTest(dispatcher) {
+        // What's drawn from the last good answer stands until the page draws the failure, as for any
+        // refresh, rather than a blank meanwhile (maintainer, 2026-10-22: the page flashed at each
+        // failure while TfL rate-limited the app). A stop, the lines' statuses, the stops' closures and
+        // the plan, each failing in turn, then answering again unchanged.
         val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
-        val trip = model(FakePlanner(listOf(route)), client)
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, client)
         trip.refresh()
         advanceUntilIdle()
-        val start = trip.state.value.failures
+        val start = trip.state.value.overturned
         client.failStops = setOf("A")
         now = now.plusSeconds(30)
         trip.pullRefresh()
         advanceUntilIdle()
-        assertEquals(start + 1, trip.state.value.failures)
-        // A again: nothing new has failed.
-        now = now.plusSeconds(30)
-        trip.pullRefresh()
-        advanceUntilIdle()
-        assertEquals(start + 1, trip.state.value.failures)
-        // A answers, B fails: as many fail as before, but B newly.
+        assertEquals(true, trip.state.value.live["A"]?.failed)
         client.failStops = setOf("B")
-        now = now.plusSeconds(30)
+        client.failStatus = true
+        client.failDisruptions = setOf("A", "B", "C")
+        // Past the closures' reuse, so they're asked again.
+        now = now.plus(Duration.ofMinutes(10))
         trip.pullRefresh()
         advanceUntilIdle()
-        assertEquals(start + 2, trip.state.value.failures)
+        assertTrue(trip.state.value.statusFailed)
+        assertTrue(trip.state.value.closuresFailed.isNotEmpty())
+        planner.failWith = TflException.RateLimited(null)
+        now = now.plusSeconds(30)
+        trip.retry()
+        advanceUntilIdle()
+        assertNotNull(trip.state.value.planError)
+        assertEquals(start, trip.state.value.overturned)
+        client.failStops = emptySet()
+        client.failStatus = false
+        client.failDisruptions = emptySet()
+        planner.failWith = null
+        now = now.plusSeconds(30)
+        trip.retry()
+        advanceUntilIdle()
+        assertNull(trip.state.value.planError)
+        assertFalse(trip.state.value.statusFailed)
+        assertEquals(start, trip.state.value.overturned)
     }
 
     @Test
@@ -5385,23 +5400,23 @@ class TripViewModelTest {
         assertFalse("As" in client.asked)
         // Not fetched, the screen keeps the Planner's stand.
         assertEquals("As2", onPoles(trip.state.value, mapOf("1" to atStation)).routes.orEmpty().single().legs.single().fromId)
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         trip.boardAt(setOf(atRouteStand))
         advanceUntilIdle()
         assertEquals(listOf(north), trip.state.value.live["As"]?.departures)
         // The leg moves to it now it's fetched: what was drawn from the Planner's stand no longer stands
         // (Codex, #529).
-        assertTrue(trip.state.value.failures > before)
+        assertTrue(trip.state.value.overturned > before)
         // Let go of while fetched, and placed again with its arrivals still held (no fetch): each moves the
         // leg at once, so each moves the generation too (Codex, #529).
-        val placedBefore = trip.state.value.failures
+        val placedBefore = trip.state.value.overturned
         trip.boardAt(emptySet())
         advanceUntilIdle()
-        assertTrue(trip.state.value.failures > placedBefore)
-        val againBefore = trip.state.value.failures
+        assertTrue(trip.state.value.overturned > placedBefore)
+        val againBefore = trip.state.value.overturned
         trip.boardAt(setOf(atRouteStand))
         advanceUntilIdle()
-        assertTrue(trip.state.value.failures > againBefore)
+        assertTrue(trip.state.value.overturned > againBefore)
         // Logged once, by stop and line ids, for a bug report to show whether the move was made.
         assertEquals(listOf("trip bus 1 boards at the route's stand As, not the Planner's As2"), logged.filter { "route's stand" in it })
         // Fetched, the leg boards there and its bus times it.
@@ -5453,7 +5468,7 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `a stop pair placed after its lookup failed moves the failure generation`() = runTest(dispatcher) {
+    fun `a stop pair placed after its lookup failed overturns what was drawn`() = runTest(dispatcher) {
         // Its lookup failing, the ride boards at the Planner's stop; placed on the next refresh, it moves
         // to its pole, so what was drawn from the Planner's stop no longer stands (Codex, #529).
         var lookupFails = true
@@ -5467,7 +5482,7 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertTrue(trip.state.value.areaPoles.isEmpty())
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         lookupFails = false
         t = t.plus(Duration.ofMinutes(2))
         // Held at the new pole's arrivals: the state as placed, before this refresh's answers are in.
@@ -5476,7 +5491,7 @@ class TripViewModelTest {
         trip.refresh()
         runCurrent()
         assertEquals(listOf("Bn", "Bs"), trip.state.value.areaPoles["BG"])
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before + 1, trip.state.value.overturned)
         held.complete(Unit)
         advanceUntilIdle()
     }
@@ -5542,8 +5557,6 @@ class TripViewModelTest {
         trip.boardAt(setOf(atRouteStand))
         advanceUntilIdle()
         assertEquals(true, trip.state.value.live["As"]?.failed)
-        // Told by a new failure generation, for what's drawn from an earlier state (Codex, #529).
-        assertTrue(trip.state.value.failures >= 1)
     }
 
     @Test
@@ -6367,9 +6380,9 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `a status check failing wholly after failing in part moves the failure generation`() = runTest(dispatcher) {
-        // One line failed already; then the whole check fails, every line newly failed but the one
-        // (Codex, #529).
+    fun `a status check failing wholly after failing in part overturns nothing`() = runTest(dispatcher) {
+        // One line failed already; then the whole check fails, every line newly failed but the one: what was
+        // drawn from the last good answer stands until the page draws the failure ([State.overturned]).
         // Line ids long enough that TfL needs a request for each (LineStatusBatch), so one can fail alone.
         val first = "red-" + "x".repeat(150)
         val second = "blue-" + "y".repeat(150)
@@ -6380,37 +6393,37 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertEquals(setOf(second), trip.state.value.statusFailedLines)
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         client.failStatus = true
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
         assertTrue(trip.state.value.statusFailed)
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before, trip.state.value.overturned)
     }
 
     @Test
-    fun `a status answered differently moves the failure generation, the same answer doesn't`() = runTest(dispatcher) {
+    fun `a status answered differently overturns what was drawn, the same answer doesn't`() = runTest(dispatcher) {
         // A line now disrupted: what was drawn from it running well can't stand (Codex, #529). The same
         // answer again leaves the generation be, so a refresh doesn't drop what's drawn for nothing.
         val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
         val trip = model(FakePlanner(listOf(route)), client)
         trip.refresh()
         advanceUntilIdle()
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
-        assertEquals(before, trip.state.value.failures)
+        assertEquals(before, trip.state.value.overturned)
         client.disruptedLines = setOf("red")
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before + 1, trip.state.value.overturned)
     }
 
     @Test
-    fun `a line TfL leaves out of a later answer moves the failure generation`() = runTest(dispatcher) {
+    fun `a line TfL leaves out of a later answer overturns what was drawn`() = runTest(dispatcher) {
         // Answered before, then left out: its status goes, so what was drawn from it can't stand
         // (Codex, #529).
         val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
@@ -6418,52 +6431,52 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertTrue("red" in trip.state.value.statuses)
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         client.omitLines = setOf("red")
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
         assertTrue("red" in trip.state.value.statusUnknown)
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before + 1, trip.state.value.overturned)
     }
 
     @Test
-    fun `another line at a boarding stop TfL leaves out of a later answer moves the failure generation`() = runTest(dispatcher) {
+    fun `another line at a boarding stop TfL leaves out of a later answer overturns what was drawn`() = runTest(dispatcher) {
         // Not one of the plan's lines, but its status goes all the same (Codex, #529).
         val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3))))
         val trip = model(FakePlanner(listOf(route)), client)
         trip.refresh()
         advanceUntilIdle()
         assertTrue("green" in trip.state.value.statuses)
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         client.omitLines = setOf("green")
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
         assertTrue("green" !in trip.state.value.statuses)
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before + 1, trip.state.value.overturned)
     }
 
     @Test
-    fun `a line first seen in arrivals whose own check fails moves the failure generation`() = runTest(dispatcher) {
-        // Its late check fails alone: what's drawn from an earlier state tells it has (Codex, #529).
+    fun `a line first seen in arrivals whose own check fails overturns nothing`() = runTest(dispatcher) {
+        // Its late check fails alone: what was drawn stands until the page draws that ([State.overturned]).
         val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2)))
         val client = FakeClient(arrivals)
         val trip = model(FakePlanner(listOf(route)), client)
         trip.refresh()
         advanceUntilIdle()
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
         client.failLines = setOf("green")
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
         assertTrue("green" in trip.state.value.statusFailedLines)
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before, trip.state.value.overturned)
     }
 
     @Test
-    fun `a line held before that a late check leaves out moves the failure generation`() = runTest(dispatcher) {
+    fun `a line held before that a late check leaves out overturns what was drawn`() = runTest(dispatcher) {
         // Green's status held from before; it comes back to the board and its own late check leaves it
         // out: its status goes, so what was drawn from it can't stand (Codex, #529).
         val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3)))
@@ -6476,14 +6489,14 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertTrue("green" in trip.state.value.statuses)
-        val before = trip.state.value.failures
+        val before = trip.state.value.overturned
         arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
         client.omitLines = setOf("green")
         now = now.plus(Duration.ofMinutes(2))
         trip.refresh()
         advanceUntilIdle()
         assertTrue("green" !in trip.state.value.statuses)
-        assertEquals(before + 1, trip.state.value.failures)
+        assertEquals(before + 1, trip.state.value.overturned)
     }
 
     @Test

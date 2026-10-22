@@ -2364,7 +2364,11 @@ recent (maintainer, 2026-09-29): a later re-plan, from that fix or a walking spe
 afresh for any stop it boards at, and a fix nearer another stop, which is a trip of its own, plans
 and fetches afresh too rather than take up a plan or arrivals kept from before the pull. A request
 that fails keeps the stop's last arrivals, marked as failed and aging as any failed refresh's do
-(*When something is wrong*), rather than blank the leg. An
+(*When something is wrong*), rather than blank the leg. Nor does any failed check (a plan, a stop, a
+status, a closure) blank the page while its routes are worked out again to say so: the routes, or the
+open route, stay as drawn for that moment, as for any refresh (maintainer, 2026-10-22: both flashed to
+"Checking…" at each failure while TfL rate-limited the app). Only an answer that changes what they showed
+(a line now disrupted, a stop now closed) waits to be drawn. An
 opened route has no pull: its times keep the minute tick. While a re-locate is in flight, or after
 one that fails (which keeps the old stop, as on the list, and shows the list's location banner over
 the trip), the origin is unconfirmed: until a fix is confirmed again, the walk is

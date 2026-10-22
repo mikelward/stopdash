@@ -3146,6 +3146,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         empties that budget and holds every request on it for the wait TfL's `Retry-After` names (a
         minute at most), so the requests behind it wait it out, or show as rate-limited unsent. Each
         429 logs the wait TfL named, or that it named none: the next report says whether TfL sends one.
+  - [x] **Keep a trip's routes up while a check fails** (2026-10-22). While TfL rate-limited the app,
+        the trip's list and its open route flashed to "Checking…" at each newly failed check (maintainer):
+        a failure kept the page's last frame from standing in while the next was worked out. Now only an
+        answer that changes what was drawn, withdrawn arrivals or a moved leg does (`State.overturned`).
   - [x] **Size the shared limiter to the active budget from the user `app_key`** (item-6 follow-up,
         2026-09-22). Done with the Settings paste path: `KeyedTflRateLimiter` holds a keyless
         (~50/min) and a keyed (~500/min, SPEC D7) bucket and selects between them **per acquire** by

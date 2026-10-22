@@ -1057,11 +1057,15 @@ class TripScreenScreenshotTest {
             composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             maxWalk = MaxWalk.DEFAULT
             composeRule.waitForIdle()
-            // Nor once a refresh fails: the frame that showed its trains as live waits for one that says it
-            // couldn't (Codex, #529).
-            state = planned.copy(statusFailed = true, failures = planned.failures + 1)
+            // Nor once a check answers differently: what the frame showed no longer stands (Codex, #529).
+            state = planned.copy(overturned = planned.overturned + 1)
             composeRule.waitForIdle()
             composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
+            // A refresh that fails is the last good answer: it stands in until the frame that says so is in,
+            // rather than "Checking…" in its place, a flash at each failure (maintainer, 2026-10-22).
+            state = planned.copy(statusFailed = true, statusFailedLines = planned.statuses.keys)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
             state = planned
             composeRule.waitForIdle()
             // A tick on, it stands in; two, it doesn't (Codex, #529).
