@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import android.content.res.Resources
 import android.icu.util.LocaleData
 import android.icu.util.ULocale
 import androidx.compose.runtime.Composable
@@ -9,8 +10,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.stopdash.R
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.domain.DistanceSystem
+import app.stopdash.domain.DistanceUnit
+import app.stopdash.domain.StopDistance
 import java.util.Locale
 
 /**
@@ -50,3 +54,22 @@ internal fun ProvideDistanceSystem(content: @Composable () -> Unit) {
     }
     CompositionLocalProvider(LocalDistanceSystem provides system, content = content)
 }
+
+/**
+ * [meters] as a stop's distance reads in [system], in the app's language ([StopDistance.reading]):
+ * "120 m", "0.6 km", its decimal mark the language's own. One string format, so fine on any thread.
+ */
+internal fun distanceText(meters: Double, system: DistanceSystem, resources: Resources): String {
+    val reading = StopDistance.reading(meters, system)
+    val text = DISTANCE_TEXT.getValue(reading.unit)
+    return if (reading.unit.tenths) resources.getString(text, reading.amount) else resources.getString(text, reading.count)
+}
+
+/** Each unit's words, its amount a whole number up close and to a tenth farther out ([DistanceUnit.tenths]). */
+private val DISTANCE_TEXT = mapOf(
+    DistanceUnit.METERS to R.string.distance_meters,
+    DistanceUnit.KILOMETERS to R.string.distance_kilometers,
+    DistanceUnit.YARDS to R.string.distance_yards,
+    DistanceUnit.FEET to R.string.distance_feet,
+    DistanceUnit.MILES to R.string.distance_miles,
+)

@@ -193,7 +193,6 @@ import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
-import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.StopLocation
@@ -2946,6 +2945,8 @@ private fun DepartureList(
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
     // null (no labels) until the stored choice has been read.
     val distanceSystem = LocalDistanceSystem.current
+    // Their words, in the app's language ([distanceText]).
+    val resources = LocalResources.current
     // What a notice heading's one tap opens, for a screen reader ([noticeGroupItems]).
     val wholeStationLabel = stringResource(R.string.action_show_station)
     val mapLabel = stringResource(R.string.action_show_on_map)
@@ -3084,9 +3085,9 @@ private fun DepartureList(
     }
     fun LazyListScope.journeyItems(cards: List<JourneyCard>, farMeters: Map<String, Double>? = null) {
             cards.forEachIndexed { index, card ->
-                val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { StopDistance.label(it, system) } }
+                val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { distanceText(it, system, resources) } }
                 // How far the stop a near ride boards from is, for its heading ([rideMeters]).
-                val rideDistance = distanceSystem?.let { system -> rideMeters[card.journey.key]?.let { StopDistance.label(it, system) } }
+                val rideDistance = distanceSystem?.let { system -> rideMeters[card.journey.key]?.let { distanceText(it, system, resources) } }
                 val onOpen = onOpenJourney?.let { open -> { open(card.journey) } }
                 // Grouped by stop (SPEC *Journeys*), each stop the ride boards from carries the star and
                 // where it goes, so the ride needs no heading of its own — once it has departures to
@@ -3233,7 +3234,7 @@ private fun DepartureList(
                                 // How far the stop is, as its near-me heading says it ([ridePlaceMeters]); else,
                                 // for a far ride whose stops have no distance, how far its origin is.
                                 val stopDistance = ridePlaceMeters[group.placeKey]?.let { meters ->
-                                    distanceSystem?.let { StopDistance.label(meters, it) }
+                                    distanceSystem?.let { distanceText(meters, it, resources) }
                                 }
                                 item(key = "journey-stop|${card.journey.key}|${group.key}") {
                                     RideStopHeader(
@@ -3376,7 +3377,7 @@ private fun DepartureList(
             // present only when this place's stops are in the map (D1). A place groups several stops (a
             // junction's poles, a station's platforms), so it shows the distance to the *closest* of
             // them — the one a rider walks to (placeDistanceMeters).
-            val distanceLabel = distanceSystem?.let { system -> placeDistanceMeters[group.placeKey]?.let { StopDistance.label(it, system) } }
+            val distanceLabel = distanceSystem?.let { system -> placeDistanceMeters[group.placeKey]?.let { distanceText(it, system, resources) } }
             // Draw the header when the grouping distinguishes this place (>1 place, a split into
             // platforms/poles, a closure) OR there's a distance to promise. A lone bare near-me place
             // still shows its name and distance, else a one-place result would drop both (Codex, PR
@@ -3547,7 +3548,7 @@ private fun DepartureList(
                         notice.bearing.isNotBlank() -> StopQualifier.BusBearing(notice.bearing)
                         else -> null
                     },
-                    distanceSystem?.let { system -> meters?.let { StopDistance.label(it, system) } },
+                    distanceSystem?.let { system -> meters?.let { distanceText(it, system, resources) } },
                     firstOnScreen = first,
                     onClick = station?.let { group -> onOpenStation?.let { open -> { open(group) } } }
                         ?: mapStopId?.takeIf { meters != null }?.let { stopId -> onOpenStopMap?.let { open -> { open(stopId, name) } } },
@@ -4120,7 +4121,7 @@ private fun FartherCardView(
             StopGroupHeader(
                 place.name,
                 qualifier = null,
-                distanceLabel = distanceSystem?.takeIf { showDistance }?.let { StopDistance.label(place.meters, it) },
+                distanceLabel = distanceSystem?.takeIf { showDistance }?.let { distanceText(place.meters, it, LocalResources.current) },
                 firstOnScreen = false,
             )
         }

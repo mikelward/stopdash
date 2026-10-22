@@ -1146,6 +1146,22 @@
     <string name="settings_watch_install_summary">Open StopDash\'s Play Store page on your watch</string>
     <string name="settings_pinch_title">Pinch to resize text</string>
     <string name="settings_pinch_summary">Spread or pinch two fingers anywhere in the app to change the text size.</string>
+    <!-- TODO: translate -->
+    <!-- How far a stop or a walk's end is, after its name or beside a walk: %1$d a whole number of meters,
+         rounded to the nearest 10 ("120 m"). -->
+    <string name="distance_meters" tools:ignore="MissingTranslation">%1$d m</string>
+    <!-- TODO: translate -->
+    <!-- The same from about 500 m: %1$.1f kilometers to one decimal ("0.6 km"). -->
+    <string name="distance_kilometers" tools:ignore="MissingTranslation">%1$.1f km</string>
+    <!-- TODO: translate -->
+    <!-- The same in yards, the UK's units: %1$d, rounded to the nearest 10 ("130 yd"). -->
+    <string name="distance_yards" tools:ignore="MissingTranslation">%1$d yd</string>
+    <!-- TODO: translate -->
+    <!-- The same in feet, the US's units: %1$d, rounded to the nearest 10 ("390 ft"). -->
+    <string name="distance_feet" tools:ignore="MissingTranslation">%1$d ft</string>
+    <!-- TODO: translate -->
+    <!-- The same farther out in yards or feet: %1$.1f miles to one decimal ("0.4 mi"). -->
+    <string name="distance_miles" tools:ignore="MissingTranslation">%1$.1f mi</string>
     <!-- Settings: the units near-me distances are written in. "Auto" follows the phone's language. -->
     <string name="settings_distance_units_title">Distance units</string>
     <string name="settings_distance_units_auto">Auto</string>

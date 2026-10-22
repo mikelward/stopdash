@@ -13,7 +13,6 @@ import app.stopdash.domain.DistanceSystem
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.PlatformDirection
-import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripMeter
@@ -21,6 +20,7 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.ui.ARROW
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.busPoleLabel
+import app.stopdash.ui.distanceText
 import app.stopdash.ui.groupHeaderLabel
 import app.stopdash.ui.localeDistanceSystem
 import app.stopdash.ui.lineFillColor
@@ -89,7 +89,7 @@ internal object OnTheWayLiveUpdate {
         val walking = progress as? TripProgress.Walking ?: return null
         val meters = walking.metersLeft ?: return null
         // Not until the rider's units are known: never a moment in the wrong ones.
-        val label = StopDistance.label(meters, system ?: return null)
+        val label = distanceText(meters, system ?: return null, resources)
             .let { if (walking.estimated) resources.getString(R.string.on_the_way_walk_left_estimated, it) else it }
         val point = walking.point ?: return label
         val closed = label.replace(" ", "")
