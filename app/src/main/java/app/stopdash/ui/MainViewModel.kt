@@ -1373,9 +1373,10 @@ class MainViewModel(
         useShared: Boolean = true,
     ): FetchBatch {
         lastFetchAt = now
-        // The caller's thread (the main one), and one [compute] worker at a time for the progress
-        // reports, so they're worked out in order, off the main thread.
-        val caller = checkNotNull(currentCoroutineContext()[ContinuationInterceptor])
+        // One [compute] worker at a time, off the main thread: what each stop's launch reads as it's sent (the
+        // shared arrivals, its kept closure), the batch's bookkeeping between its requests ([hubOf], which
+        // poles a batch found answered) and the progress reports all run on it, so they take turns, in
+        // order, as they did on the caller's thread (AGENTS.md *Main thread: read and dispatch only*).
         val serial = compute.limitedParallelism(1)
         // This batch's fetches, stamped by the steady clock ([SteadyClock]) so setting the device's
         // clock doesn't change how old they read.
@@ -1445,6 +1446,7 @@ class MainViewModel(
         val places = plan.places
         // One interchange lookup per hub per batch, shared by the early per-stop reveal and the final
         // pass, so members asking at once — or a failed lookup, which isn't cached — cost one call.
+        // Touched only on [serial].
         val hubLookups = HashMap<String, CompletableDeferred<HubInfo>>()
         // The hub lookups that went to TfL this batch (not the cache), for the per-fetch log line —
         // counted where they start, since the early reveal can warm the cache before the final pass.
@@ -1470,7 +1472,7 @@ class MainViewModel(
         // is back, so a cold load can vouch for them while a stop is still out (SPEC *Freshness →
         // Cold load*). A line only a prediction names is checked after the merge, below.
         val declaredLineIds = plan.declaredLineIds
-        val (arrivalResults, disruptionResults, earlyLines) = coroutineScope {
+        val (arrivalResults, disruptionResults, earlyLines) = withContext(serial) {
             val arrivals = stops.mapIndexed { i, stop ->
                 val sharedNow = sharedOf(stop.id, prior, now, useShared, source)
                 val held = prior[stop.id]
@@ -1598,8 +1600,8 @@ class MainViewModel(
             if (onProgress != null) {
                 // Each stop as it lands, in stop order. Run on one [compute] worker at a time
                 // ([serial]), off the main thread, so these watchers take turns on [landed],
-                // [waiting] and [failed]; only the hub lookup ([hubOf]) goes back to the caller's
-                // thread. A stop whose arrivals failed is named as failed at once, not left "Loading".
+                // [waiting] and [failed], and with the hub lookups ([hubOf]). A stop whose arrivals
+                // failed is named as failed at once, not left "Loading".
                 // A stop with a prior (reused, or shown by a cold load this one restarted) shows it
                 // until its answer lands, rather than going back to "Loading".
                 val landed = arrayOfNulls<StopArrivals>(stops.size)
@@ -1698,8 +1700,8 @@ class MainViewModel(
                                 closurePending += stop.id
                                 report()
                             }
-                            // On the caller's thread, where the batch's other hub lookups are kept.
-                            withContext(caller) { hubOf(stop.interchangeId) }
+                            // On [serial], where the batch's other hub lookups are kept.
+                            hubOf(stop.interchangeId)
                         } else {
                             HubInfo()
                         }
@@ -1723,10 +1725,11 @@ class MainViewModel(
         // needs its member aliases (SPEC *Disruptions*). Deduplicated up front so a hub shared by
         // several disrupted stops costs one call even when it fails, and every member agrees. A stop
         // with no disruption, or no hub, costs no call and titles by its own name.
-        val interchangeIds = stops.indices
-            .filter { i -> stops[i].interchangeId.isNotBlank() && !disruptionResults[i]?.getOrNull()?.notices.isNullOrEmpty() }
-            .mapTo(LinkedHashSet()) { i -> stops[i].interchangeId }
-        val hubs: Map<String, HubInfo> = coroutineScope {
+        // On [serial], as the launches' own lookups were.
+        val hubs: Map<String, HubInfo> = withContext(serial) {
+            val interchangeIds = stops.indices
+                .filter { i -> stops[i].interchangeId.isNotBlank() && !disruptionResults[i]?.getOrNull()?.notices.isNullOrEmpty() }
+                .mapTo(LinkedHashSet()) { i -> stops[i].interchangeId }
             interchangeIds.map { interchangeId -> async { interchangeId to hubOf(interchangeId) } }.awaitAll().toMap()
         }
 

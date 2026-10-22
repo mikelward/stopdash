@@ -113,12 +113,11 @@ exercises the whole spine the widget later renders from.
       #532's; the screen's journey-stop and destination reports (`setJourneyStops`,
       `setJourneyDestinations`) are worked out on the worker, applied in order; so are a destination
       check's cards.
-- [ ] `fetchBatch`'s launch loop off the main thread: it still runs on the caller's thread, one request
-      per stop, each with its constant-time cache reads as it's launched (the shared arrivals, the kept
-      closure, `closureStillShown`). Launching from a serial view of `compute` instead needs everything
-      the loop starts safe there first: the early line check (`checkLines`) writes main-thread state
-      (`lineStatusMarks`, `unknownLineIds`), and the batch's bookkeeping (`arrivalOf`, `poleFromCache`,
-      the hub lookups) assumes one thread (Codex, #619).
+- [x] `fetchBatch`'s launch loop off the main thread (Codex, #619): each stop's launch, with its
+      constant-time cache reads (the shared arrivals, the kept closure, `closureStillShown`), and the
+      batch's bookkeeping between its requests (`arrivalOf`, `poleFromCache`, the hub lookups) now run
+      on the batch's serial view of `compute`, taking turns as they did on the caller's thread. The
+      early line check (`checkLines`) already ran on `compute` under its lock.
 - [x] **A stop's closure as the list publishes it, not as it was read** (Codex, #619; the maintainer
       had no preference, so the smaller design). A near-me refresh now takes each stop as the caches
       stand when it publishes (`asPublished`, in the publish pass on the worker): the closure cache's

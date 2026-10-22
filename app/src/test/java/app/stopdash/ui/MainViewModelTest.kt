@@ -2268,6 +2268,50 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a refresh sends each stop's requests off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        // Where each read of a stop's shared arrivals ran: the cache asks an entry's source whether it's
+        // the reader's own ([ArrivalsCache.get]), which each stop's launch does as its request goes out.
+        val read = mutableListOf<Boolean>()
+        val source = object {
+            override fun equals(other: Any?): Boolean {
+                read += onWorker.get()
+                return other === this
+            }
+            override fun hashCode() = 0
+        }
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+            override fun arrivalsSource(): Any = source
+        }
+        val shared = ArrivalsCache()
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker, sharedArrivals = shared)
+        advanceUntilIdle()
+        // Another screen's fetch of each stop, from the same source, so each launch reads it.
+        seeds.forEach { shared.put(it.id, listOf(departure("victoria", "Victoria", 120)), now, source = source) }
+        read.clear()
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(seeds.map { it.id }.toSet(), (vm.state.value as DeparturesUiState.Loaded).stops.mapTo(HashSet()) { it.stopId })
+        assertTrue("$read", read.isNotEmpty() && read.all { it })
+    }
+
+    @Test
     fun `what a refresh is for, and what each stop needs, are worked out off the main thread`() = runTest(dispatcher) {
         // A worker of its own, on the test's scheduler, that marks the work it runs.
         val onWorker = ThreadLocal.withInitial { false }
