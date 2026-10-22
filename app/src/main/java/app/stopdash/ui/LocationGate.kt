@@ -120,6 +120,9 @@ fun LocationGate(
     // Each of those stops' postcode district, by [StationMatch.key], shown before its modes.
     stationAreas: Map<String, String> = emptyMap(),
     onOpenStation: (StationMatch) -> Unit = {},
+    // A store behind those couldn't be read, so some may be missing: said with a Retry ([onRetryStations]).
+    stationsFailed: Boolean = false,
+    onRetryStations: (() -> Unit)? = null,
     // Unpauses journey alerts from the card saying they're paused ([AlertsPausedCard]), at the top of the
     // gate's content as atop the list: the one way back, so it never waits on location. Null shows none.
     onUnpauseAlerts: (() -> Unit)? = null,
@@ -207,7 +210,7 @@ fun LocationGate(
                                         Text(stringResource(R.string.menu_find_station))
                                     }
                                 }
-                                YourStations(starredStations, recentStations, onOpenStation, stationAreas)
+                                YourStations(starredStations, recentStations, onOpenStation, stationAreas, stationsFailed, onRetryStations)
                             }
 
                             NearbyStopsViewModel.State.Locating -> {
@@ -373,9 +376,16 @@ private fun YourStations(
     recent: List<StationMatch>,
     onOpen: (StationMatch) -> Unit,
     areas: Map<String, String> = emptyMap(),
+    failed: Boolean = false,
+    onRetry: (() -> Unit)? = null,
 ) {
-    if (starred.isEmpty() && recent.isEmpty()) return
+    if (starred.isEmpty() && recent.isEmpty() && !failed) return
     Column(Modifier.fillMaxWidth().padding(top = 24.dp).testTag("gateYourStations")) {
+        // Some may be missing: said first, so what's listed isn't read as all there is.
+        if (failed) {
+            ReadError(onRetry, R.string.station_search_yours_error)
+            HorizontalDivider()
+        }
         listOf(R.string.station_search_starred to starred, R.string.station_search_recent to recent).forEach { (heading, matches) ->
             if (matches.isEmpty()) return@forEach
             SectionHeading(stringResource(heading))

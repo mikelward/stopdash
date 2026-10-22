@@ -877,6 +877,9 @@
     <string name="station_search_remove_recent_failed">Couldn\'t remove that from Recent</string>
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
+    <!-- Atop the station search's starting list and the location-free home when a store behind the rider's starred and recent stations couldn't be read, with a Retry. -->
+    <!-- TODO: translate -->
+    <string name="station_search_yours_error" tools:ignore="MissingTranslation">Couldn\'t load your stations</string>
     <!-- Right-column tag on a To… place result, telling a place/street/postcode apart from a stop. -->
     <string name="station_search_kind_place">Place</string>
     <string name="station_search_kind_street">Street</string>

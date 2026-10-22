@@ -123,6 +123,9 @@ fun StationSearchScreen(
     onPlacePicked: (PlaceHit) -> Unit = {},
     // Re-reads the saved places, for the Retry shown when their read failed. Null hides the retry.
     onRetryPlaces: (() -> Unit)? = null,
+    // Re-reads the user's own stations, for the Retry shown when a store behind them couldn't be read
+    // ([StationSearchViewModel.State.yoursFailed]). Null hides the retry.
+    onRetryYours: (() -> Unit)? = null,
     // Set where the search picks where a trip starts (From…): "Here", behind the crosshair, heads the
     // list before anything is typed, and taps back to the rider's position (maintainer, 2026-09-28).
     // Null leaves it out, as the To… destination search does.
@@ -346,7 +349,7 @@ fun StationSearchScreen(
                     // "Here" needs nothing read, so a From… search lists it at once and the rest follow.
                     state.query.isBlank() && !state.yoursRead && onPickHere == null -> Unit
                     state.query.isBlank() && (
-                        onPickHere != null || state.favorites.isNotEmpty() ||
+                        onPickHere != null || state.favorites.isNotEmpty() || state.yoursFailed ||
                             state.recent.any { onOpenPlace != null || onStartFromPlace != null || it is SearchEntry.Stop } ||
                             ((onOpenPlace != null || onPickPlace != null) && (state.favoritePlaces.isNotEmpty() || state.favoritePlacesFailed))
                         ) ->
@@ -359,6 +362,8 @@ fun StationSearchScreen(
                             onOpenPlace = onOpenPlace,
                             onPlacePicked = onPlacePicked,
                             onRetryPlaces = onRetryPlaces,
+                            yoursFailed = state.yoursFailed,
+                            onRetryYours = onRetryYours,
                             onPickHere = onPickHere,
                             onStartFromPlace = onStartFromPlace,
                             onPickPlace = onPickPlace,
@@ -478,6 +483,8 @@ private fun YourStopsList(
     onOpenPlace: ((TripDestination.Place) -> Unit)?,
     onPlacePicked: (PlaceHit) -> Unit,
     onRetryPlaces: (() -> Unit)?,
+    yoursFailed: Boolean = false,
+    onRetryYours: (() -> Unit)? = null,
     onPickHere: (() -> Unit)? = null,
     onStartFromPlace: ((TripDestination.Place) -> Unit)? = null,
     onPickPlace: ((FavoritePlace, String) -> Unit)? = null,
@@ -528,7 +535,15 @@ private fun YourStopsList(
             // Read failed (not genuinely empty): say so honestly with a Retry, rather than hide the
             // places as "none" (SPEC principle 2). Station search below stays usable.
             item(key = "places-error") {
-                PlacesError(onRetryPlaces)
+                ReadError(onRetryPlaces)
+                HorizontalDivider()
+            }
+        }
+        if (yoursFailed) {
+            // A store behind Recent and Starred couldn't be read: some of the rider's stations may be
+            // missing, so say so with a Retry rather than list fewer as if that were all (SPEC principle 2).
+            item(key = "yours-error") {
+                ReadError(onRetryYours, R.string.station_search_yours_error)
                 HorizontalDivider()
             }
         }
@@ -607,10 +622,12 @@ internal fun SectionHeading(text: String) {
     )
 }
 
-/** The Places section when the saved places couldn't be read: an honest line with a Retry, rather
- *  than hiding the section as if there were none (SPEC principle 2). */
+/**
+ * A section whose saved data couldn't be read (the places, by default, or the rider's stations): an
+ * honest [message] with a Retry, rather than hiding the section as if there were none (SPEC principle 2).
+ */
 @Composable
-private fun PlacesError(onRetry: (() -> Unit)?) {
+internal fun ReadError(onRetry: (() -> Unit)?, message: Int = R.string.station_search_places_error) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -619,7 +636,7 @@ private fun PlacesError(onRetry: (() -> Unit)?) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            stringResource(R.string.station_search_places_error),
+            stringResource(message),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),

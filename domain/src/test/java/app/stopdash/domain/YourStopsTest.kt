@@ -191,4 +191,12 @@ class YourStopsTest {
         assertEquals(many.take(YourStops.HOME_ROWS), YourStops(favorites = many).homeStarred)
         assertEquals(many.take(3), YourStops(favorites = many.take(3)).homeStarred)
     }
+
+    @Test
+    fun `a store that couldn't be read is carried through, so the lists can say so`() {
+        val read = YourStops.of(journeys = emptyList(), starred = emptyList(), recent = emptyList(), known = emptyList(), unreadable = true)
+        assertEquals(true, read.unreadable)
+        assertEquals(true, read.withoutRecent(setOf("x")).unreadable)
+        assertEquals(false, YourStops.of(journeys = emptyList(), starred = emptyList(), recent = emptyList(), known = emptyList()).unreadable)
+    }
 }

@@ -22,6 +22,10 @@ data class YourStops(
     // What's listed under Recent, most recent first: [recent]'s stops and the geocoded places picked
     // among them, in the order they were picked. Only the stops match as the user types.
     val recentPicks: List<SearchEntry> = recent.map(SearchEntry::Stop),
+    // A store these lists are read from (favorite journeys, starred rows, what was lately shown) couldn't
+    // be read, so some of the rider's stations may be missing: said, with a retry, rather than shown as
+    // fewer or none (SPEC principle 2).
+    val unreadable: Boolean = false,
 ) {
     /** Every stop here once, the user's own first. */
     val all: List<StationMatch> get() = (recent + favorites + known).distinctBy { it.key }
@@ -94,6 +98,8 @@ data class YourStops(
             // Each stop as a search row of what it is ([Hubs.asStopRow]): a bus stop at its stop's own
             // pole, so the user's rows at one stop are one. As saved by default (no station model).
             asRow: (StationMatch) -> StationMatch = { it },
+            // A source behind these couldn't be read ([YourStops.unreadable]).
+            unreadable: Boolean = false,
         ): YourStops {
             val journeyEnds = journeys.flatMap { journey ->
                 val modes = listOf(journey.mode).filter { it.isNotBlank() }
@@ -127,6 +133,7 @@ data class YourStops(
                 known = known.filter { it.modes.isNotEmpty() }.map(asRow).cleaned().filter { it.key !in pickedKeys },
                 unnamedStarred = unnamedStarred,
                 recentPicks = picks,
+                unreadable = unreadable,
             )
         }
 

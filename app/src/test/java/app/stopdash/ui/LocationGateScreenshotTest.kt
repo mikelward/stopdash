@@ -22,6 +22,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.Coordinates
@@ -103,6 +104,31 @@ class LocationGateScreenshotTest {
         org.junit.Assert.assertTrue(allowed)
         composeRule.onNodeWithText("Victoria").performScrollTo().performClick()
         assertEquals(victoria, opened)
+    }
+
+    @Test
+    fun `without location the home says when the rider's stations couldn't be read`() {
+        val victoria = StationMatch("HUBVIC", "Victoria", listOf("tube", "national-rail"))
+        var retried = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    LocationGate(
+                        NearbyStopsViewModel.State.PermissionRequired,
+                        onAllow = {},
+                        onRetry = {},
+                        onOpenSettings = {},
+                        recentStations = listOf(victoria),
+                        stationsFailed = true,
+                        onRetryStations = { retried = true },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Couldn't load your stations").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Victoria").assertExists()
+        composeRule.onNodeWithText("Retry").performScrollTo().performClick()
+        composeRule.runOnIdle { org.junit.Assert.assertTrue(retried) }
     }
 
     @Test

@@ -4453,7 +4453,10 @@ Under it, **Find a station** searches by name, then the rider's **Starred** and
 **Recent** stations, as the station search lists them before anything is typed (ten of each at
 most; the search has the rest), each opening its page in one tap with Back returning home. The
 screen reads from the top and its buttons show at once, so its stations, read from the device each
-time it comes up, arrive and change below the buttons without moving them. So a rider who never shares location still has their
+time it comes up, arrive and change below the buttons without moving them. Where a store they're
+read from (favorite journeys, starred rows, what was lately shown) can't be read, here and atop the
+search's own list a line says **Couldn't load your stations** with a **Retry**, above whatever was
+read, rather than a shorter list passed off as all of them. So a rider who never shares location still has their
 stations one tap from opening the app.
 
 Nothing points the rider without a grant somewhere it can't take them (maintainer, 2026-10-09). Once Android has stopped asking (refused twice), the gate offers **Open settings** from
