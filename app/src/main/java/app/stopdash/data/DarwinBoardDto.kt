@@ -8,6 +8,7 @@ import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailFollow
 import app.stopdash.domain.RailPoint
 import app.stopdash.domain.RailRun
+import app.stopdash.domain.RailTimetable
 import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TFL_RUN_OPERATORS
 import app.stopdash.domain.UntimedTrain
@@ -242,6 +243,67 @@ fun DarwinBoardDto.toBoard(
     if (unfollowable > 0) warn("national rail board: $unfollowable train(s) with no readable schedule can't be followed")
     if (unknownTerminus > 0) warn("national rail board: $unknownTerminus train(s) to a terminus with no known code can't be followed")
     return RailBoard(departures, untimed, messages)
+}
+
+/**
+ * The board's trains as a route page's timetable lists them ([RailTimetable], maintainer, 2026-10-22): each by its
+ * schedule here, with its estimate where that's another time, or as canceled, or "Delayed" with none, and where it
+ * ends. Left out, as [toBoard] leaves them: a TfL-run train and one with no operator. A train whose schedule or
+ * estimate can't be read is left out too, the timetable then said to be incomplete and the count reported ([warn]),
+ * never shown by a time it can't vouch for; every one unreadable fails it, as it does a board. A board listing [rows]
+ * trains (all it was asked for) may have more it couldn't list, so it's incomplete too. Throws, as [toBoard] does, for
+ * a board with trains whose time it was made at can't be read, and for one Darwin has suppressed.
+ */
+@WorkerThread
+fun DarwinBoardDto.toTimetable(rows: Int, warn: (String) -> Unit = {}): RailTimetable {
+    checkAvailable()
+    val services = trainServices.orEmpty()
+    if (services.isEmpty()) return RailTimetable(emptyList())
+    val generated = generatedAt?.let {
+        try {
+            OffsetDateTime.parse(it)
+        } catch (e: DateTimeParseException) {
+            null
+        }
+    } ?: throw IllegalStateException("board has no valid generatedAt")
+    val now = generated.atZoneSameInstant(UK)
+    var read = 0
+    var unreadable = 0
+    val trains = ArrayList<RailTimetable.Train>()
+    for (service in services) {
+        if (service.operatorCode?.uppercase() in TFL_RUN_OPERATORS) continue
+        val operator = service.operator?.trim()?.ifBlank { null } ?: continue
+        read++
+        val scheduled = parseClock(service.std.orEmpty().trim())?.let { scheduleNear(now, it) }
+        val etd = service.etd?.trim()
+        val canceled = service.isCancelled || etd == "Cancelled"
+        val delayed = !canceled && etd == "Delayed"
+        val expected = when {
+            canceled || delayed || etd == "On time" -> null
+            else -> etd?.let(::parseClock)?.let { instantNear(now, it) } ?: run {
+                unreadable++
+                continue
+            }
+        }
+        if (scheduled == null) {
+            unreadable++
+            continue
+        }
+        trains += RailTimetable.Train(
+            scheduled = scheduled,
+            lineId = railLineId(operator, service.operatorCode),
+            ends = service.destination.orEmpty().mapNotNullTo(HashSet()) { crsOf(it.crs) },
+            expected = expected?.takeIf { it != scheduled },
+            canceled = canceled,
+            delayed = delayed,
+            serviceId = service.serviceID?.trim().orEmpty(),
+        )
+    }
+    if (unreadable > 0) {
+        check(unreadable < read) { "board times unreadable" }
+        warn("national rail timetable: $unreadable train(s) with unreadable times left out")
+    }
+    return RailTimetable(trains, complete = unreadable == 0 && services.size < rows)
 }
 
 /**

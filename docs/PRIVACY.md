@@ -48,7 +48,11 @@ train isn't known yet (its departures, and toward the trains there it checks), u
 checked in all each refresh, one board each; and, while it follows your train, the station it's due at
 next, the one after it and one it may be held at, at most three a refresh. For a train more than about
 25 minutes away from where you board, the board there is asked from a later time, in quarter hours,
-which says roughly when your train is due. Usually that's one or two boards a refresh. Your
+which says roughly when your train is due. Usually that's one or two boards a refresh. A National
+Rail line's **timetable**, opened from its route page, asks the station's board for the next four
+hours in two requests, again every two minutes while it stays open: the station's code and, for one
+of the line's ways, the code of the station its trains end at, or for a favorite ride the station
+you get off at. Your
 key is your own credential, sent only with those requests, never logged. Without a key of your
 own, the same requests go to **stopdash's own proxy** instead, which asks National Rail with
 stopdash's key: it sees the same station codes and your connection's IP address, passes on only

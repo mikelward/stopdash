@@ -249,6 +249,25 @@ test("a followed train's board is asked with its filter and offset", async () =>
   assert.deepEqual(Object.fromEntries(upstreamUrl.searchParams), { numRows: "10", filterCrs: "MKC", filterType: "to", timeOffset: "30" });
 });
 
+test("a timetable's two parts are each asked over Darwin's longest window, as many trains as it lists", async () => {
+  const e = await seeded();
+  const cache = edgeCache();
+  const { calls, fetcher } = boards();
+  assert.equal((await handle(ask("/v1/board/EUS/timetable?from=0"), e, { now: NOW, cache, fetcher })).status, 200);
+  assert.equal((await handle(ask("/v1/board/EUS/timetable?from=120&to=MKC"), e, { now: NOW, cache, fetcher })).status, 200);
+  const [first, second] = calls.map((call) => new URL(call.url));
+  assert.equal(first.pathname.endsWith("/GetDepartureBoard/EUS"), true);
+  assert.deepEqual(Object.fromEntries(first.searchParams), { numRows: "150", timeWindow: "120" });
+  // The two hours after the first: from as far on as Darwin asks.
+  assert.deepEqual(Object.fromEntries(second.searchParams), { numRows: "150", filterCrs: "MKC", filterType: "to", timeWindow: "120", timeOffset: "119" });
+  // Cached apart from the station's plain board, which is asked for on its own.
+  assert.equal((await handle(ask("/v1/board/EUS/timetable?from=0"), e, { now: NOW + 1000, cache, fetcher })).status, 200);
+  assert.equal(calls.length, 2);
+  await handle(ask("/v1/board/EUS"), e, { now: NOW + 1000, cache, fetcher });
+  assert.equal(new URL(calls[2].url).searchParams.get("numRows"), "20");
+  assert.deepEqual(logged, []);
+});
+
 test("only cold board requests count against a caller, under today's HMAC of the IP", async () => {
   const cold = limiter((n) => n <= 1);
   const e = await seeded({ COLD_PER_CALLER: cold });
@@ -363,6 +382,15 @@ test("a board request outside its shape is refused before the cache or National 
     ["/v1/board/EUS/details?to=mkc", 400],
     ["/v1/board/EUS/details?to=MKC&to=WFJ", 400],
     ["/v1/board/EUS/details?to=MKC&station=EUS", 400],
+    ["/v1/board/EUS/details?to=MKC&from=0", 400],
+    ["/v1/board/EUS/timetable", 400],
+    ["/v1/board/EUS/timetable?from=60", 400],
+    ["/v1/board/EUS/timetable?from=0&from=120", 400],
+    ["/v1/board/EUS/timetable?from=0&offset=30", 400],
+    ["/v1/board/EUS/timetable?from=0&to=mkc", 400],
+    ["/v1/board/EUS/timetable?from=0&to=MKC&to=WFJ", 400],
+    ["/v1/board/EUS?from=0", 400],
+    ["/v1/board/EUS/timetable/MKC", 404],
   ];
   for (const [path, status] of cases) {
     const response = await handle(ask(path), e, { now: NOW, cache: edgeCache(), fetcher });

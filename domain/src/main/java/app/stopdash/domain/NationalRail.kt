@@ -38,6 +38,13 @@ interface RailBoardSource {
      * board's first few, with the board's own age ([RailRuns]). Null when this source has none to give.
      */
     suspend fun runs(crs: String, towards: String, offsetMinutes: Int = 0): RailRuns? = null
+
+    /**
+     * [crs]'s trains over the next [RailTimetable.HOURS] hours by schedule, each with its estimate, for a route page's
+     * timetable ([RailTimetable]): those calling at [towards] (a station code) where it's given. Null when this source
+     * has none to give.
+     */
+    suspend fun timetable(crs: String, towards: String?): RailTimetable? = null
 }
 
 /**

@@ -61,11 +61,13 @@ clock).
 | `/v1/board/{crs}` | `GetDepartureBoard/{crs}?numRows=20` | The plain board every screen shares. |
 | `/v1/board/{crs}/details` | `GetDepBoardWithDetails/{crs}?numRows=10` | A trip's calling points. |
 | `/v1/board/{crs}/details?to={crs}&offset={m}` | same, `filterCrs`, `filterType=to`, `timeOffset` | Following a train (`RailBoardSource.runs`). |
+| `/v1/board/{crs}/timetable?from={0\|120}[&to={crs}]` | `GetDepartureBoard/{crs}?numRows=150&timeWindow=120`, `timeOffset=119` for `from=120`, `filterCrs`/`filterType=to` with `to` | A route page's timetable, the next four hours in two parts (`RailBoardSource.timetable`, maintainer, 2026-10-22). |
 | `/v1/health` | none | The incident list's `fetchedAt` and the cron job's last attempt and status. No user data. |
 
 **Validation**, before anything touches the cache or the marketplace: `crs` and `to` match
 `^[A-Z]{3}$`; `offset` is an integer the app already snaps to quarter hours, accepted only as a
-multiple of 15 in −120…105 (Darwin takes −120…119); any other query parameter is a 400. That bounds the space of
+multiple of 15 in −120…105 (Darwin takes −120…119); a timetable's `from` is `0` or `120` alone; any
+other query parameter is a 400. That bounds the space of
 distinct upstream requests, so neither the cache nor the marketplace can be flooded with
 variants.
 
@@ -168,7 +170,8 @@ is shared with.
   causes at most about 6 (up to three boards every 30 s, fewer when another rider's are cached), so
   it leaves room for a few riders behind one carrier-NAT address while stopping a scraper walking
   stations within seconds. Over it, a 429, which the app treats as a failed refresh and shows
-  honestly; a board already cached is still served.
+  honestly; a board already cached is still served. A route page's timetable adds two (its two
+  parts) when it opens and every two minutes it stays open.
 - **Upstream budget**: the rate-limit binding, keyed by product, caps cold calls to the
   marketplace (60 a minute to start, raised under the product's quota once known). A miss over
   budget gets a 503, which the app shows as "No data". It protects the marketplace key whatever one
@@ -193,6 +196,8 @@ is shared with.
 - **KV:** 720 writes and well under 100,000 reads a day, both inside the free plan.
 - **Rail Data Marketplace:** free, within whatever per-key quota the products set (see *Open*).
 - **Battery:** no new wakeup or refresh interval on the phone; requests replace ones made today.
+  The one exception is a National Rail timetable on screen, asked again every two minutes while it's
+  open (two requests each time), and never once it's closed.
 
 ## Failure modes
 

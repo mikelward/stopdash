@@ -6,6 +6,7 @@ import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailBoardSource
 import app.stopdash.domain.RailKeyRejected
 import app.stopdash.domain.RailRuns
+import app.stopdash.domain.RailTimetable
 import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
@@ -35,7 +36,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * answers the same boards. With neither it's unavailable and asks nothing. A board asked for with
  * neither (a key cleared since [available] was read) fails, never reading as one with no trains.
  *
- * Only the station's CRS code (and, following a train, its terminus's and an offset) is sent, with the
+ * Only the station's CRS code (and, following a train or for a timetable, the station it's to and an offset) is sent, with the
  * key where it's the rider's: never a location (SPEC *Privacy*). Failures map
  * to the same [TflException] kinds as TfL's client (offline, rate-limited, unreachable), sanitized to
  * a status or class name; the key is never logged.
@@ -71,7 +72,7 @@ class KtorDarwinClient(
     override suspend fun board(crs: String): RailBoard {
         // Cleared since the caller checked [available]: no answer, never a board with no trains (Codex, #883).
         val route = route() ?: throw TflException.Unreachable("no national rail key", null)
-        return fetch(route, BOARD, crs, ROWS) { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn).copy(age = age) }
+        return fetch(route, BOARD, crs, ROWS, proxyPath = "/v1/board/$crs") { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn).copy(age = age) }
     }
 
     /**
@@ -81,7 +82,9 @@ class KtorDarwinClient(
      */
     override suspend fun boardWithDetails(crs: String): RailBoard? {
         val route = route() ?: return null
-        return fetch(route, DETAILS, crs, DETAIL_ROWS) { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn).copy(age = age) }
+        return fetch(route, DETAILS, crs, DETAIL_ROWS, proxyPath = "/v1/board/$crs/details") { board, age ->
+            board.toBoard(stopIdFor, stopIdsFor, warn).copy(age = age)
+        }
     }
 
     /**
@@ -93,7 +96,45 @@ class KtorDarwinClient(
     override suspend fun runs(crs: String, towards: String, offsetMinutes: Int): RailRuns? {
         val route = route() ?: return null
         val from = if (offsetMinutes == 0) emptyMap() else mapOf("timeOffset" to offsetMinutes.toString())
-        return fetch(route, DETAILS, crs, DETAIL_ROWS, mapOf("filterCrs" to towards, "filterType" to "to") + from, towards, offsetMinutes) { board, age -> RailRuns(board.toRuns(), age) }
+        val proxied = mapOf("to" to towards) + if (offsetMinutes == 0) emptyMap() else mapOf("offset" to offsetMinutes.toString())
+        return fetch(route, DETAILS, crs, DETAIL_ROWS, mapOf("filterCrs" to towards, "filterType" to "to") + from, "/v1/board/$crs/details", proxied) { board, age ->
+            RailRuns(board.toRuns(), age)
+        }
+    }
+
+    /**
+     * [crs]'s trains over the next [RailTimetable.HOURS] hours (maintainer, 2026-10-22), calling at [towards] where
+     * it's given: two of Darwin's longest windows ([TIMETABLE_WINDOW]), the second from as far on as it asks
+     * ([TIMETABLE_SECOND]), each up to its most trains ([TIMETABLE_ROWS]), joined ([RailTimetable.joined]). A part
+     * listing that many may have been cut short, so the timetable says it may be missing some. A stopdash proxy too
+     * old to ask ahead (its 404 for the timetable) gives the board it has instead, said as incomplete, until it's
+     * deployed again. Failures as [board]'s.
+     */
+    override suspend fun timetable(crs: String, towards: String?): RailTimetable? {
+        val route = route() ?: return null
+        val filter = towards?.let { mapOf("filterCrs" to it, "filterType" to "to") }.orEmpty()
+        val proxiedTo = towards?.let { mapOf("to" to it) }.orEmpty()
+        val parts = ArrayList<RailTimetable>()
+        for (offset in listOf(0, TIMETABLE_SECOND)) {
+            val ahead = mapOf("timeWindow" to TIMETABLE_WINDOW.toString()) + if (offset == 0) emptyMap() else mapOf("timeOffset" to offset.toString())
+            val proxied = proxiedTo + mapOf("from" to (if (offset == 0) 0 else TIMETABLE_WINDOW).toString())
+            parts += try {
+                fetch(route, BOARD, crs, TIMETABLE_ROWS, filter + ahead, "/v1/board/$crs/timetable", proxied) { board, age ->
+                    board.toTimetable(TIMETABLE_ROWS, warn).copy(age = age)
+                }
+            } catch (e: TflException.Unreachable) {
+                if (route !is Route.Proxy || (e.cause as? ClientRequestException)?.response?.status != HttpStatusCode.NotFound) throw e
+                // A proxy from before the timetable: the board it can give, said as incomplete, in its place. Its plain
+                // board for every train, else its board toward [towards], which lists fewer but only those calling there.
+                warn("stopdash proxy: no timetable, its board instead")
+                val path = if (towards == null) "/v1/board/$crs" else "/v1/board/$crs/details"
+                val board = fetch(route, if (towards == null) BOARD else DETAILS, crs, ROWS, proxyPath = path, proxyParams = proxiedTo) { answer, age ->
+                    answer.toTimetable(Int.MAX_VALUE, warn).copy(complete = false, age = age)
+                }
+                return board
+            }
+        }
+        return RailTimetable.joined(parts)
     }
 
     // Where a board is asked: straight from National Rail with the rider's key, else through the proxy.
@@ -120,9 +161,9 @@ class KtorDarwinClient(
         crs: String,
         rows: Int,
         filters: Map<String, String> = emptyMap(),
-        // The proxy's form of [filters] (a followed train's terminus and offset): it sets the rows itself.
-        towards: String? = null,
-        offsetMinutes: Int = 0,
+        // The proxy's path for the board, and its form of [filters]: the proxy sets the rows itself.
+        proxyPath: String,
+        proxyParams: Map<String, String> = emptyMap(),
         // Run on [decodeDispatcher], never the caller's thread: it reads the whole board.
         @WorkerThread read: (DarwinBoardDto, Duration) -> T,
     ): T {
@@ -136,9 +177,8 @@ class KtorDarwinClient(
                             filters.forEach { (name, value) -> parameter(name, value) }
                         }
                         // The proxy's own shape, with nothing of the rider's: no key, the board's codes alone.
-                        is Route.Proxy -> httpClient.get("${route.url}/v1/board/$crs${if (operation == DETAILS) "/details" else ""}") {
-                            towards?.let { parameter("to", it) }
-                            if (towards != null && offsetMinutes != 0) parameter("offset", offsetMinutes)
+                        is Route.Proxy -> httpClient.get("${route.url}$proxyPath") {
+                            proxyParams.forEach { (name, value) -> parameter(name, value) }
                         }
                     }
                 // Seconds the proxy counted itself, so the board is dated by its real age, never by clocks.
@@ -201,6 +241,15 @@ class KtorDarwinClient(
 
         /** How many a board with calling points lists: Darwin's most for one with details. */
         const val DETAIL_ROWS = 10
+
+        /** How many trains a timetable's part asks for: Darwin's most for a plain board. */
+        const val TIMETABLE_ROWS = 150
+
+        /** How many minutes a timetable's part spans: Darwin's longest window. */
+        const val TIMETABLE_WINDOW = 120
+
+        /** Where a timetable's second part starts, in minutes on: as far on as Darwin asks (its `timeOffset` tops out at 119). */
+        const val TIMETABLE_SECOND = 119
 
         /** How long a board waits for the saved key to be read back: it's a small local read. */
         val KEY_LOAD_WAIT: Duration = Duration.ofSeconds(5)

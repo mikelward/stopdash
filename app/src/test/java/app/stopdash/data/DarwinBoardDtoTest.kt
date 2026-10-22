@@ -7,6 +7,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -118,6 +119,39 @@ class DarwinBoardDtoTest {
         // Canceled by its estimate alone, too.
         val canceledByEtd = board().trainServices!!.first().copy(etd = "Cancelled")
         assertEquals(listOf(true), board().copy(trainServices = listOf(canceledByEtd)).toBoard().untimed.map { it.canceled })
+    }
+
+    @Test
+    fun `a board as a timetable lists each train by its schedule, with what National Rail says of it`() {
+        // Made at 23:40 BST: Guildford on time, Reading late, Woking delayed, Windsor canceled, the TfL-run one left out,
+        // and past midnight one dividing for Portsmouth Harbour and Southampton.
+        val timetable = board().toTimetable(rows = 150)
+        assertEquals(listOf("1", "2", "3", "4", "6"), timetable.trains.map { it.serviceId })
+        assertEquals(Instant.parse("2026-09-24T22:45:00Z"), timetable.trains[0].scheduled)
+        assertEquals(null, timetable.trains[0].expected)
+        assertEquals(Instant.parse("2026-09-24T22:52:00Z"), timetable.trains[1].expected)
+        assertTrue(timetable.trains[2].delayed && timetable.trains[2].expected == null && !timetable.trains[2].canceled)
+        assertTrue(timetable.trains[3].canceled && !timetable.trains[3].delayed)
+        assertEquals(Instant.parse("2026-09-24T23:10:00Z"), timetable.trains[4].scheduled)
+        assertEquals(setOf("PMH", "SOU"), timetable.trains[4].ends)
+        assertTrue(timetable.trains.all { it.lineId == "south-western-railway" })
+        assertTrue(timetable.complete)
+        // As many trains as it was asked for: there may be more it couldn't list.
+        assertFalse(board().toTimetable(rows = 6).complete)
+    }
+
+    @Test
+    fun `a timetable's train with an unreadable time is left out and said, and all unreadable fails it`() {
+        val odd = board().trainServices!!.first().copy(etd = "soon-ish", serviceID = "odd")
+        val unscheduled = board().trainServices!!.first().copy(std = "later", serviceID = "unscheduled")
+        val warnings = mutableListOf<String>()
+        val timetable = board().copy(trainServices = board().trainServices!! + odd + unscheduled).toTimetable(150) { warnings += it }
+        assertEquals(listOf("1", "2", "3", "4", "6"), timetable.trains.map { it.serviceId })
+        assertFalse(timetable.complete)
+        assertEquals(listOf("national rail timetable: 2 train(s) with unreadable times left out"), warnings)
+        assertTrue(runCatching { board().copy(trainServices = listOf(odd)).toTimetable(150) }.exceptionOrNull() is IllegalStateException)
+        // A suppressed board fails, never reads as a timetable with no trains.
+        assertTrue(runCatching { board().copy(areServicesAvailable = false).toTimetable(150) }.exceptionOrNull() is SuppressedRailBoard)
     }
 
     @Test

@@ -14,9 +14,14 @@ const SECRET_PREFIX = "caller-secret:";
 // on top of its own refresh, inside what it already treats as live.
 export const BOARD_SECONDS = 30;
 // Darwin's rows: the plain board's, about the next hour at a busy terminus; a board with calling
-// points lists at most ten.
+// points lists at most ten; a timetable's part, the most a plain board lists.
 const ROWS = 20;
 const DETAIL_ROWS = 10;
+const TIMETABLE_ROWS = 150;
+// A timetable's part spans Darwin's longest window, the second from as far on as it asks (its timeOffset
+// tops out at 119): together about the next four hours.
+const TIMETABLE_WINDOW = 120;
+const TIMETABLE_SECOND = 119;
 // Station codes and a train's terminus: three capitals, never anything else.
 const CRS = /^[A-Z]{3}$/;
 // Boards fetched now, by cache key: callers missing the same board share one upstream request.
@@ -80,34 +85,46 @@ export const UPSTREAM_TIMEOUT_MS = 30_000;
 /**
  * One station's board: `/v1/board/{crs}` (Darwin's GetDepartureBoard), or `/v1/board/{crs}/details`
  * (GetDepBoardWithDetails), optionally `?to={crs}` (trains calling there) and `&offset={minutes}` (from
- * that many on, in quarter hours within Darwin's -120 to 119). Anything else is refused before the cache or National Rail sees it,
- * which keeps the set of distinct boards small. Served from the cache while under [BOARD_SECONDS]
- * old; a miss is a cold request, counted against the caller's limit and the proxy's own budget, and
- * shared with any caller already waiting on the same board. A cached board is never refused.
+ * that many on, in quarter hours within Darwin's -120 to 119), or `/v1/board/{crs}/timetable` (a route
+ * page's timetable: GetDepartureBoard over Darwin's longest window, as many trains as it lists),
+ * `?from=0` or `?from=120` (the next two hours, or the two after), optionally `&to={crs}`. Anything else
+ * is refused before the cache or National Rail sees it, which keeps the set of distinct boards small.
+ * Served from the cache while under [BOARD_SECONDS] old; a miss is a cold request, counted against the
+ * caller's limit and the proxy's own budget, and shared with any caller already waiting on the same
+ * board. A cached board is never refused.
  */
 async function board(url, request, env, now, cache, fetcher) {
-  const match = /^\/v1\/board\/([^/]+)(\/details)?$/.exec(url.pathname);
+  const match = /^\/v1\/board\/([^/]+)(\/details|\/timetable)?$/.exec(url.pathname);
   if (!match || !CRS.test(match[1])) return error(404, "not found");
   const crs = match[1];
-  const details = Boolean(match[2]);
+  const details = match[2] === "/details";
+  const timetable = match[2] === "/timetable";
   const to = url.searchParams.get("to");
   const offset = url.searchParams.get("offset");
+  const from = url.searchParams.get("from");
+  const allowed = details ? ["to", "offset"] : timetable ? ["to", "from"] : [];
   for (const name of url.searchParams.keys()) {
-    if (!details || (name !== "to" && name !== "offset")) return error(400, "unexpected query parameter");
+    if (!allowed.includes(name)) return error(400, "unexpected query parameter");
   }
-  if (url.searchParams.getAll("to").length > 1 || url.searchParams.getAll("offset").length > 1) return error(400, "repeated query parameter");
+  if (allowed.some((name) => url.searchParams.getAll(name).length > 1)) return error(400, "repeated query parameter");
   if (to !== null && !CRS.test(to)) return error(400, "bad destination");
   if (offset !== null && (to === null || !/^-?\d+$/.test(offset) || Number(offset) % 15 !== 0 || Number(offset) < -120 || Number(offset) > 105)) {
     return error(400, "bad offset");
   }
+  // Two parts only, so a station's timetable is at most two boards a destination.
+  if (timetable && from !== "0" && from !== String(TIMETABLE_WINDOW)) return error(400, "bad from");
   const operation = details ? "GetDepBoardWithDetails" : "GetDepartureBoard";
   const upstream = new URL(`${LDB}/${operation}/${crs}`);
-  upstream.searchParams.set("numRows", String(details ? DETAIL_ROWS : ROWS));
+  upstream.searchParams.set("numRows", String(details ? DETAIL_ROWS : timetable ? TIMETABLE_ROWS : ROWS));
   if (to !== null) {
     upstream.searchParams.set("filterCrs", to);
     upstream.searchParams.set("filterType", "to");
   }
   if (offset !== null && Number(offset) !== 0) upstream.searchParams.set("timeOffset", String(Number(offset)));
+  if (timetable) {
+    upstream.searchParams.set("timeWindow", String(TIMETABLE_WINDOW));
+    if (from !== "0") upstream.searchParams.set("timeOffset", String(TIMETABLE_SECOND));
+  }
   // Keyed by the upstream request, built from the validated parts alone: nothing from the caller.
   const key = `https://board.cache.invalid/${upstream.pathname.split("/").slice(-2).join("/")}${upstream.search}`;
 

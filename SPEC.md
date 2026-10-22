@@ -1108,8 +1108,20 @@ under **"Scheduled"**, so they never read as live, nor as a promise the disrupti
 2026-10-22). A stretch of at least six trains a steady gap apart, 12 minutes or less (TfL's own high frequency), reads
 as one line, "06:30–09:30 every 5 min" ("every 3–5 min" where the gap wobbles); the rest are listed by time, an hour
 to a line, today's already gone grayed. A holiday, a train the timetable couldn't read, and a stop or ride TfL has no
-timetable for are said. National Rail lines, which TfL doesn't time, have no button. It asks for nothing a board or a
-ride doesn't already: the same one timetable per line and stop (or per ride) a service day.
+timetable for are said. It asks for nothing a board or a ride doesn't already: the same one timetable per line and
+stop (or per ride) a service day.
+
+**A National Rail line's timetable** (maintainer, 2026-10-22: "Darwin, next ~4 hours"): TfL has none for it, so its
+page's button opens the station's National Rail board asked further ahead, the **next 4 hours**, said so in place of
+Today and Tomorrow, which it can't reach. It's the board's own trains for the line: a way's chip (one per station
+the line's trains end at) keeps those ending there, a ride's those calling where it gets off, and with no ways to
+choose between, every one, said as "All routes from here". Each is listed by its schedule, an hour to a line and never
+summed up as a frequency, since each says how it's running: "10:15 (10:22)" late, "(canceled)", "(delayed)" with no
+estimate. Those words are live, so they show only while the answer is under 5 minutes old (D4); past that, the
+schedule alone, said as "Live times couldn't be updated". It's asked again every 2 minutes while it's open, two
+requests each (the next two hours, then the two after), and nothing once it's closed. More trains than National Rail
+lists at once (150 a part), or a stopdash proxy too old to ask ahead, is said as "Some times may be missing". Offered
+where National Rail can be asked: a key of the rider's own, or the proxy.
 
 The list shows the **watched stops'** rows (D1) — stopdash renders the stops the user
 chose ahead of time, not "nearest to me" — ordered **location-free** so the view works

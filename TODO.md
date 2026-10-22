@@ -4348,6 +4348,13 @@ Builds on Phase 1's minimal line-status marking.
       under the page's notices, a steady run every 12 minutes or less summed up (`ScheduledDay`), Today or
       Tomorrow. Needs a device check, and a look at how real timetables' frequencies read (a stretch that
       wobbles past the band splits in two).
+- [x] **A timetable for Thameslink and National Rail too** (maintainer, 2026-10-22: "can we display a timetable
+      for Thameslink and national rail too", choosing "Darwin, next ~4 hours"). TfL has none for them. Done
+      (2026-10-22): the route page's button opens the station's National Rail board over the next 4 hours
+      (`RailTimetables`, two of Darwin's two-hour windows), the line's trains for the chosen way, each with how
+      it's running while that's under 5 minutes old, asked again every 2 minutes while open. Needs the proxy
+      deployed again (`/v1/board/{crs}/timetable`; until then, the board it has, said as incomplete) and a device
+      check, including how a busy station's 150-train parts read.
 - [x] **Put the direction beside the platform on the route page** (maintainer, 2026-10-21: "From Highgate -
       Southbound - Platform 2" on one line if it fits; Southbound never more than a row from the platform).
       Done (2026-10-21): the "From" line names the way between the place and the platform, and the heading

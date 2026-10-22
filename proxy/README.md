@@ -7,8 +7,9 @@ about a caller; keep it that way (the tests fail on any console output while ans
 
 - `GET /v1/incidents`: today's incidents, as National Rail's Disruptions API gives them, at most
   five minutes old (`Age` says how old, `X-Fetched-At` when), else 503.
-- `GET /v1/board/{CRS}` and `GET /v1/board/{CRS}/details[?to={CRS}[&offset={minutes}]]`: a
-  station's live departure board, as Darwin's Live Departure Board gives it, cached for 30 s.
+- `GET /v1/board/{CRS}`, `GET /v1/board/{CRS}/details[?to={CRS}[&offset={minutes}]]` and
+  `GET /v1/board/{CRS}/timetable?from={0|120}[&to={CRS}]` (a route page's timetable, two hours a
+  part): a station's live departure board, as Darwin's Live Departure Board gives it, cached for 30 s.
   Only a request that misses the cache reaches National Rail, and only those count against a
   caller (20 a minute) and the proxy's own budget (60 a minute per Cloudflare location, to raise
   once the product's quota is known).
