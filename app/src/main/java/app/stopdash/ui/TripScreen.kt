@@ -2967,8 +2967,9 @@ private fun RideStops(
                 }
                 if (index == 0) {
                     // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
+                    val words = rememberCountdownWords()
                     val description = times.shown.map { (train, catchable) ->
-                        val time = Countdown.mergedLabel(listOf(train), now)
+                        val time = Countdown.mergedLabel(listOf(train), now, words)
                         val to = train.destination.ifBlank { ride.toName }
                         stringResource(trainDescription(train, catchable, train in times.checking, times.reachable), time, to)
                     }.joinToString(", ")
@@ -3156,20 +3157,23 @@ internal fun destinationsLadder(names: List<String>): List<String> = listOf(
  */
 @Composable
 private fun trainTimes(shown: List<Pair<Departure, Boolean>>, now: Instant, loading: Boolean) = buildAnnotatedString {
+    // The unit written once around the numbers, as [Countdown.mergedLabel] writes it, each number styled on its own.
+    val words = rememberCountdownWords()
     if (shown.isEmpty()) {
         append(if (loading) stringResource(R.string.trip_times_loading) else "–")
         return@buildAnnotatedString
     }
+    append(words.around.first)
     shown.forEachIndexed { i, (train, catchable) ->
-        if (i > 0) append(" · ")
-        val minutes = Countdown.mergedLabel(listOf(train), now).removeSuffix(" min")
+        if (i > 0) append(words.between)
+        val minutes = Countdown.minutes(train.expectedArrival, now).toString()
         if (catchable && !train.grayed) {
             append(minutes)
         } else {
             withStyle(SpanStyle(color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.Normal)) { append(minutes) }
         }
     }
-    append(" min")
+    append(words.around.second)
 }
 
 /** A tapped route, leg by leg: each ride's header and route card, then how far it rides; walks as a link. */

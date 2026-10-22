@@ -57,10 +57,10 @@ object Countdown {
      * (SPEC D8). Empty in, empty out. Every entry is a number ("0" for an imminent train),
      * so the "min" unit is always written once at the end.
      */
-    fun mergedLabel(departures: List<Departure>, now: Instant): String {
+    fun mergedLabel(departures: List<Departure>, now: Instant, words: CountdownWords = CountdownWords.ENGLISH): String {
         if (departures.isEmpty()) return ""
         // Every entry is a number, so the "min" unit always belongs at the end.
-        return departures.joinToString(" · ") { minutes(it.expectedArrival, now).toString() } + " min"
+        return words.minutes(departures.joinToString(words.between) { minutes(it.expectedArrival, now).toString() })
     }
 
     /**
@@ -103,14 +103,20 @@ object Countdown {
      * unit goes after the last number, so "5 · Canceled · 12 min" and "5 min · Canceled" both read;
      * with no number there's no unit.
      */
-    fun mergedLabel(entries: List<Entry>, now: Instant, canceled: String, delayed: String): String {
+    fun mergedLabel(
+        entries: List<Entry>,
+        now: Instant,
+        canceled: String,
+        delayed: String,
+        words: CountdownWords = CountdownWords.ENGLISH,
+    ): String {
         val last = entries.indexOfLast { it is Entry.Timed }
         return entries.mapIndexed { i, entry ->
             when (entry) {
-                is Entry.Timed -> minutes(entry.departure.expectedArrival, now).toString() + if (i == last) " min" else ""
+                is Entry.Timed -> minutes(entry.departure.expectedArrival, now).toString().let { if (i == last) words.minutes(it) else it }
                 is Entry.Untimed -> if (entry.train.canceled) canceled else delayed
             }
-        }.joinToString(" · ")
+        }.joinToString(words.between)
     }
 
     /**
@@ -170,4 +176,31 @@ object Countdown {
     private fun inGrace(d: Departure, now: Instant, lineMode: Map<String, String>): Boolean =
         d.mode.ifBlank { lineMode[d.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
             now.isBefore(d.expectedArrival.plus(BOARD_GRACE))
+}
+
+/**
+ * A countdown's words in the app's language: the minutes unit, written once around the numbers it
+ * counts ([minutes]: "3 · 7 min"), and what goes between those numbers ([between]: " · ").
+ * [ENGLISH] for a caller with no resources: a test, a diagnostic.
+ */
+class CountdownWords(val between: String, private val unit: (numbers: String) -> String) {
+    /** [numbers], already joined, with the unit around them: "3 · 7" as "3 · 7 min". */
+    fun minutes(numbers: String): String = unit(numbers)
+
+    /**
+     * The unit's words before and after the numbers it goes around ("" and " min"), for a caller that
+     * styles each number on its own (a grayed time) and so can't take [minutes]' one string.
+     */
+    val around: Pair<String, String> by lazy {
+        val marked = unit(MARK)
+        marked.substringBefore(MARK) to marked.substringAfter(MARK, "")
+    }
+
+    companion object {
+        /** The English the app has always written. */
+        val ENGLISH = CountdownWords(" · ") { "$it min" }
+
+        // A character no unit's words contain, to find where the numbers go in them.
+        private const val MARK = "\u0000"
+    }
 }

@@ -73,6 +73,22 @@ class CountdownTest {
     }
 
     @Test
+    fun `a countdown's words are the caller's, the unit around the numbers and its joiner between`() {
+        val soon = departure(offsetSeconds = 30)
+        val mid = departure(offsetSeconds = 180)
+        val german = CountdownWords(" | ") { "$it Min." }
+        assertEquals("0 | 3 Min.", Countdown.mergedLabel(listOf(soon, mid), now, german))
+        val canceled = UntimedTrain(departure(offsetSeconds = 420), canceled = true)
+        assertEquals("3 Min. | X", Countdown.mergedLabel(Countdown.entries(listOf(mid), listOf(canceled)), now, "X", "D", german))
+        // A unit before its numbers too, for a caller styling each number on its own.
+        assertEquals("" to " Min.", german.around)
+        assertEquals("ca. " to "", CountdownWords(" · ") { "ca. $it" }.around)
+        // The English the app has always written.
+        assertEquals("" to " min", CountdownWords.ENGLISH.around)
+        assertEquals(Countdown.mergedLabel(listOf(soon, mid), now), Countdown.mergedLabel(listOf(soon, mid), now, CountdownWords.ENGLISH))
+    }
+
+    @Test
     fun `mergedLabel of nothing is empty`() {
         assertEquals("", Countdown.mergedLabel(emptyList(), now))
     }
