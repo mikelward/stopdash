@@ -28,7 +28,8 @@ data class AlertMarks(
          * the row; null when it's an alert behind the stop, which flags no stop). [trainStops] is the
          * train's own list when shown, else null, and [lineStops] the line's stations otherwise;
          * [wholeRoute] the route [trainStops] is part of, from its first stop. [shortName] is how a
-         * stop is called beside the chip. Runs on [worker], never the caller's thread
+         * stop is called beside the chip, and [between] how a stretch's two ends are joined ("A to
+         * B"), in the app's language. Runs on [worker], never the caller's thread
          * (AGENTS.md *Main-safe by default*).
          */
         suspend fun of(
@@ -39,6 +40,7 @@ data class AlertMarks(
             lineStops: List<RouteStop>,
             wholeRoute: List<RouteStop>,
             shortName: (RouteStop) -> String,
+            between: (from: String, to: String) -> String,
             worker: CoroutineDispatcher = Dispatchers.Default,
         ): AlertMarks = withContext(worker) {
             if (alertText == null) return@withContext NONE
@@ -50,8 +52,8 @@ data class AlertMarks(
                 trainStops != null -> AlertStops.affected(statusText, trainStops)
                 else -> named.mapTo(HashSet()) { it.id }
             }
-            val onList = trainStops?.let { AlertStops.runs(stretch, it, shortName) }.orEmpty()
-            val places = onList.ifEmpty { AlertStops.runs(AlertStops.affected(alertText, wholeRoute), wholeRoute, shortName) }
+            val onList = trainStops?.let { AlertStops.runs(stretch, it, shortName, between) }.orEmpty()
+            val places = onList.ifEmpty { AlertStops.runs(AlertStops.affected(alertText, wholeRoute), wholeRoute, shortName, between) }
                 .ifEmpty { named.map(shortName).distinct() }
             AlertMarks(named, stretch, places)
         }

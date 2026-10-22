@@ -71,11 +71,12 @@ object AlertStops {
 
     /**
      * [marked] stops of [stops] (in route order) as the runs they make, each by its ends: "A to B" for
-     * a run, "A" for a stop alone (maintainer, 2026-10-01), each stop called by [name]. A run whose
-     * ends share a name is that name once, and a label already given isn't given again.
+     * a run, "A" for a stop alone (maintainer, 2026-10-01), each stop called by [name] and a run's ends
+     * joined by [between], the caller's words in the app's language. A run whose ends share a name is
+     * that name once, and a label already given isn't given again.
      */
     @WorkerThread
-    fun runs(marked: Set<String>, stops: List<RouteStop>, name: (RouteStop) -> String): List<String> {
+    fun runs(marked: Set<String>, stops: List<RouteStop>, name: (RouteStop) -> String, between: (from: String, to: String) -> String): List<String> {
         val runs = ArrayList<List<RouteStop>>()
         var run = ArrayList<RouteStop>()
         for (stop in stops) {
@@ -87,7 +88,11 @@ object AlertStops {
             }
         }
         if (run.isNotEmpty()) runs += run
-        return runs.map { listOf(name(it.first()), name(it.last())).distinct().joinToString(" to ") }.distinct()
+        return runs.map { run ->
+            val from = name(run.first())
+            val to = name(run.last())
+            if (from == to) from else between(from, to)
+        }.distinct()
     }
 
     /**

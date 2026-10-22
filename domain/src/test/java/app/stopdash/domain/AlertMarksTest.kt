@@ -14,10 +14,11 @@ class AlertMarksTest {
 
     private val train = stops("Old Street", "Moorgate", "Bank", "Monument", "Tower Hill")
     private val alert = "Diverted between Moorgate and Monument due to roadworks."
+    private val between = { from: String, to: String -> "$from to $to" }
 
     @Test
     fun `the train's list gives the named stations, the stretch between them, and its run`() = runTest {
-        val marks = AlertMarks.of(alert, alert, hasStatus = true, train, emptyList(), train, RouteStop::name)
+        val marks = AlertMarks.of(alert, alert, hasStatus = true, train, emptyList(), train, RouteStop::name, between)
         assertEquals(listOf("Moorgate", "Monument"), marks.named.map { it.name })
         assertEquals(setOf("S1", "S2", "S3"), marks.stretch)
         assertEquals(listOf("Moorgate to Monument"), marks.places)
@@ -25,17 +26,17 @@ class AlertMarksTest {
 
     @Test
     fun `without the train's list, the line's stations it names are marked, and no stretch`() = runTest {
-        val marks = AlertMarks.of(alert, alert, hasStatus = true, null, train, emptyList(), RouteStop::name)
+        val marks = AlertMarks.of(alert, alert, hasStatus = true, null, train, emptyList(), RouteStop::name, between)
         assertEquals(setOf("S1", "S3"), marks.stretch)
         assertEquals(listOf("Moorgate", "Monument"), marks.places)
     }
 
     @Test
     fun `an alert behind the stop flags no stop, and nothing marks nothing`() = runTest {
-        val behind = AlertMarks.of(alert, null, hasStatus = false, train, emptyList(), train, RouteStop::name)
+        val behind = AlertMarks.of(alert, null, hasStatus = false, train, emptyList(), train, RouteStop::name, between)
         assertEquals(emptySet<String>(), behind.stretch)
         assertEquals(listOf("Moorgate", "Monument"), behind.named.map { it.name })
-        assertEquals(AlertMarks.NONE, AlertMarks.of(null, null, hasStatus = false, train, emptyList(), train, RouteStop::name))
+        assertEquals(AlertMarks.NONE, AlertMarks.of(null, null, hasStatus = false, train, emptyList(), train, RouteStop::name, between))
     }
 
     @Test
@@ -50,7 +51,7 @@ class AlertMarksTest {
                 AlertMarks.of(alert, alert, hasStatus = true, train, emptyList(), train, { stop ->
                     namedOn.note()
                     stop.name
-                }, worker = worker)
+                }, between, worker = worker)
             }
             assertTrue(namedOn.threads().isNotEmpty())
             // Debug coroutines append " @coroutine#n" to the name; the thread is what matters.

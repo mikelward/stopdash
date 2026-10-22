@@ -809,9 +809,11 @@ class AlertStopsTest {
     fun `marked stops are named as runs by their ends`() {
         val route = stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road", "Echo Road", "Beta Road")
         val name: (RouteStop) -> String = { it.name }
-        assertEquals(listOf("Alpha Road to Gamma Road", "Echo Road"), AlertStops.runs(setOf("S0", "S1", "S2", "S4"), route, name))
+        // A run's ends are joined in the caller's words (the app's "A to B", in its language).
+        val between = { from: String, to: String -> "$from → $to" }
+        assertEquals(listOf("Alpha Road → Gamma Road", "Echo Road"), AlertStops.runs(setOf("S0", "S1", "S2", "S4"), route, name, between))
         // A stop alone, or a run whose ends share a name, is that name once; a label isn't repeated.
-        assertEquals(listOf("Beta Road"), AlertStops.runs(setOf("S1", "S5"), route, name))
-        assertEquals(emptyList<String>(), AlertStops.runs(emptySet(), route, name))
+        assertEquals(listOf("Beta Road"), AlertStops.runs(setOf("S1", "S5"), route, name, between))
+        assertEquals(emptyList<String>(), AlertStops.runs(emptySet(), route, name, between))
     }
 }
