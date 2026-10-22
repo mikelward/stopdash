@@ -2046,6 +2046,36 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a platform view stays open while a new set of stops loads afresh`() {
+        // A fix that picks a different set of nearby stops gives the list a model of its own, which starts with
+        // nothing loaded and takes its stops in one by one: the view's own isn't gone while it's still coming in
+        // (maintainer, 2026-10-22).
+        val station = kingsCrossStPancras()
+        var state by mutableStateOf<DeparturesUiState>(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60)))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) { MainScreen(state, now, {}) }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("Platform 1, Northbound", substring = true).onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+
+        state = DeparturesUiState.Loading
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        state = DeparturesUiState.Loaded(emptyList(), now.minusSeconds(60), pendingStops = listOf(StopRef(station.stopId, station.stopName)))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+
+        state = DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onNodeWithText("Walthamstow Central").assertExists()
+    }
+
+    @Test
     fun `a platform view shows its place's closure card, and a dismissal there hides it everywhere`() {
         val dismissed = mutableStateOf(emptySet<DismissedAlert>())
         val closed = manorHouse().copy(disruptions = listOf(StopDisruption("Station closed until further notice")))

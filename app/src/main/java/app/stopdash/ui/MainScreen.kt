@@ -1160,14 +1160,21 @@ fun MainScreen(
         if (ids == null || drawn == null) {
             null
         } else {
+            val loading = drawn.from.loadingStopIds
             platformViewOf(
                 drawn.from.source, drawn.from.now, ids, platformKey, platformIsStation, platformTitle, starred, dismissed,
                 drawn.rows, hiddenModes, alertSequences, topology, stopDistanceMeters, board = drawn.from.board,
-            )
+            ).takeUnless { view ->
+                // Its stops still coming in (a new set of nearby stops loads stop by stop): not gone, just not in yet,
+                // so the view waits for them rather than close (maintainer, 2026-10-22). A station view's keys are its
+                // clusters, so any stop still loading holds it.
+                view.title == null && loading.isNotEmpty() && (platformIsStation || ids.any { it in loading })
+            }
         }
     }?.takeIf { platformStopIds != null }
-    // A view opened over a loaded list whose rows aren't in yet: a spinner, not the full list.
-    val platformPending = platformStopIds != null && loaded != null && platformView == null
+    // A view opened over a loaded list whose rows aren't in yet, or over a list loading afresh (a new set of nearby
+    // stops): a spinner under the view's own bar, not the full list's.
+    val platformPending = platformStopIds != null && platformView == null
     // Close the view when the snapshot no longer holds the tapped group: its stops weren't fetched
     // (a near-me set re-resolved elsewhere), its last departure passed, or the feed dropped the
     // platform number it was keyed on. An empty page would assert "no departures" for a platform

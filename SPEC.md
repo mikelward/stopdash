@@ -1356,7 +1356,9 @@ platform that also serves it. It reads the same snapshot as the list and fetches
 own. When a refresh no longer holds that platform — its stops weren't fetched, its last train has
 left, or the feed dropped the platform number — the view closes back (to the full list, or to its
 station when opened from one) rather than
-show an empty platform as "no departures". A route tapped inside it opens the route page, and back
+show an empty platform as "no departures". Not while its stops are still loading: a new set of nearby stops
+comes in stop by stop, and until the view's own are in it shows its bar over a spinner (maintainer,
+2026-10-22). A route tapped inside it opens the route page, and back
 from there returns to the platform view.
 
 A heading is **one tap target** (maintainer, 2026-10-16): the whole row opens its platform, name
