@@ -1319,7 +1319,7 @@ class ActiveTripTracker(
         _replanFrom.value = from?.let { withContext(io) { it.copy(to = ToChoice.of(trip)) } }
     }
 
-    // Each coming ride of a step-free [trip] that the lifts out today leave with no way off at its level
+    // Each coming ride of a step-free [trip] that the lifts out today leave with no way on or off at its level
     // ([RouteDisruption.notStepFree]), getting off where its cards have it ([endOf]): none at no level, or one not known,
     // with no lifts out, or with no table or lifts to be had, when the rides get off where the Planner does.
     private suspend fun notStepFree(trip: ActiveTrip, progress: TripProgress): List<RouteDisruption.Signal.NotStepFree> {

@@ -1132,8 +1132,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           lines over all their platforms, not the platform a train names.
                                     - [ ] The trip page: a route whose ride has no step-free way off today
                                           says so on its card and offers to plan again.
-                                    - [ ] A ride's boarding call, which On the way doesn't yet judge against
-                                          today's lifts either.
+                                    - [x] On the way: a ride's boarding call, judged the same way by its
+                                          station record (`StepFreeExits.boardingLost`), raises the same
+                                          signal until the rider is aboard that ride.
                                 - [ ] The detour cut, offering every equally good ride.
                                     - [x] On the way: a ride before the last gets the rider off where
                                           the route first reaches the destination, once on board: at its

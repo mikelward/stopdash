@@ -59,6 +59,21 @@ class StepFreeExitsTest {
     }
 
     @Test
+    fun `a lift out at the call a ride boards at loses its way on`() {
+        val fromPraed = toPraed.copy(fromId = "940GZZLUPRA", fromName = "Praed", toId = "940GZZLUHAM", toName = "Hamlet", path = listOf("940GZZLUHAM"))
+        assertTrue(StepFreeExits.boardingLost(fromPraed, StepFree.FULLY, access, liftOut))
+        // By its platform, as its station's record.
+        assertTrue(StepFreeExits.boardingLost(fromPraed.copy(fromId = "9400ZZLUPRA"), StepFree.FULLY, access, liftOut))
+        // Every lift working, or a station no lift makes step-free: nothing lost.
+        assertFalse(StepFreeExits.boardingLost(fromPraed, StepFree.FULLY, access, access))
+        assertFalse(StepFreeExits.boardingLost(fromPraed.copy(fromId = "940GZZLUHAM"), StepFree.FULLY, access, liftOut))
+        // A call the table fails without a lift out says nothing; nor does no level, nor a bus.
+        assertFalse(StepFreeExits.boardingLost(fromPraed.copy(fromId = "940GZZLUXXX"), StepFree.FULLY, access, liftOut))
+        assertFalse(StepFreeExits.boardingLost(fromPraed, StepFree.ANY, access, liftOut))
+        assertFalse(StepFreeExits.boardingLost(fromPraed.copy(mode = "bus", lineId = "25"), StepFree.FULLY, access, liftOut))
+    }
+
+    @Test
     fun `nothing is lost at no level or from the street`() {
         assertFalse(StepFreeExits.lost(toPraed, at(StepFree.ANY, "940GZZLUPRA"), access, liftOut))
         val bus = toPraed.copy(mode = "bus", lineId = "25")
