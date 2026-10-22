@@ -401,6 +401,29 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the banner's names and reason are the state's own, kept by every copy of it`() {
+        val server = DeparturesUiState.Error.Kind.SERVER
+        val loaded = DeparturesUiState.Loaded(
+            stops = emptyList(),
+            fetchedAt = now,
+            partialRefresh = true,
+            // Two poles of one place fail by the same name: named once, nearest first.
+            partialStops = linkedMapOf(
+                "A" to DeparturesUiState.FailedStop("Oxford Circus", server),
+                "B" to DeparturesUiState.FailedStop("Oxford Circus", server),
+                "C" to DeparturesUiState.FailedStop("Green Park", server),
+            ),
+        )
+        assertEquals(listOf("Oxford Circus", "Green Park"), loaded.partialNames)
+        assertEquals(server, loaded.partialReason)
+        // Worked out with the state, a copy that changes its failed stops gives their names and reason, not the first's.
+        val trimmed = loaded.copy(partialStops = mapOf("C" to DeparturesUiState.FailedStop("Green Park")))
+        assertEquals(listOf("Green Park"), trimmed.partialNames)
+        assertEquals(null, trimmed.partialReason)
+        assertEquals(emptyList<String>(), loaded.copy(partialStops = emptyMap()).partialNames)
+    }
+
+    @Test
     fun `a complete refresh names no stop and no reason`() = runTest(dispatcher) {
         val vm = viewModel(
             FakeClient(
@@ -3131,6 +3154,24 @@ class MainViewModelTest {
         assertTrue(state.partialRefresh)
         assertEquals(setOf(seeds[1].id), state.partialStops.keys)
         assertEquals(listOf(seeds[0].id), state.stops.map { it.stopId })
+    }
+
+    @Test
+    fun `a cold load cut short reads what was worked out with it, so a relocation works none of it out`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val warnings = mutableListOf<String>()
+        val vm = viewModel(GatedClient(seeds[1].id, gate), warn = { warnings += it })
+        advanceUntilIdle()
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).statusPending)
+
+        // A relocation's tap, on the main thread: the cut-short state, its banner's words among it, is the one the worker
+        // worked out with the state shown (Codex on #1084), not one worked out here.
+        vm.cancelFetch()
+        val state = vm.state.value as DeparturesUiState.Loaded
+        assertFalse(state.statusPending)
+        assertEquals(listOf(seeds[1].name), state.partialNames)
+        assertEquals(null, state.partialReason)
+        assertTrue("cut short with nothing worked out for it: $warnings", warnings.none { "cut short" in it })
     }
 
     @Test
