@@ -5,7 +5,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -181,14 +180,23 @@ private val wantedKeys: MutableMap<MutableState<*>, Any> = java.util.Collections
  * skipped, so a worker slower than the keys change still lands answers (Codex, #529). A slot runs one
  * at a time: the keys that change meanwhile wait, and only the one wanted when the run ends is worked
  * out next, so a slow slot never takes up more than one of the worker's threads (Codex, #529).
+ *
+ * While [hold], the stage is worked out from another stage's answer that is still standing in: it holds the
+ * answer [slot] has, for the key it was worked out for, rather than work one out against what's standing in,
+ * which the current one would then undo (a report ahead of what it says is in, a route load canceled and asked
+ * again). No run starts while held, even where a newer answer has landed in [slot] since this composition read
+ * it: a run for the key read would be worked out from this composition's inputs, not that key's, and land over
+ * the newer answer (a trip page's frame of no routes over its last one, the list flashing "Checking trips…").
  */
 @Composable
 internal fun <K : Any, T> rememberWorked(
     slot: MutableState<Worked<K, T>?>,
-    key: K,
+    wanted: K,
     keep: (held: K, wanted: K) -> Boolean = { _, _ -> false },
+    hold: Boolean = false,
     @WorkerThread compute: () -> T,
 ): T? {
+    val key = slot.value?.key?.takeIf { hold } ?: wanted
     val worker = LocalWorker.current
     // The work runs in a scope of the slot's own, not the effect's: a newer key (a clock tick) never
     // cancels an answer under way, while leaving composition, or the slot being replaced (another
@@ -208,11 +216,11 @@ internal fun <K : Any, T> rememberWorked(
             scope.cancel()
         }
     }
-    LaunchedEffect(slot, key, worker) {
+    LaunchedEffect(slot, key, worker, hold) {
         // The key wanted now, kept with the slot, so every composition using it (one that left and came
         // back, a slot hoisted above an overlay) reads the same one (Codex, #529).
         wantedKeys[slot] = key
-        if (slot.value?.key == key) return@LaunchedEffect
+        if (hold || slot.value?.key == key) return@LaunchedEffect
         scope.launch {
             runs.withLock {
                 // Already in, by a run for the same key that went first.
@@ -239,15 +247,6 @@ internal fun <K : Any, T> rememberWorked(
     val held = slot.value ?: return null
     return held.value.takeIf { held.key == key || keep(held.key, key) }
 }
-
-/**
- * The key a stage is wanted for when it's worked out from another stage's answer: [wanted], or, while
- * that answer is [pending] for things as they stand, the key [slot] last answered, so the stage holds
- * its last answer rather than work one out against an answer standing in, which the current one would
- * then undo (a report ahead of what it says is in, a route load canceled and asked again).
- */
-internal fun <K : Any> heldWhile(pending: Boolean, slot: State<Worked<K, *>?>, wanted: K): K =
-    slot.value?.key?.takeIf { pending } ?: wanted
 
 /**
  * Calls [report] with [reported]'s value once it's worked out, and again only as it changes: a null
