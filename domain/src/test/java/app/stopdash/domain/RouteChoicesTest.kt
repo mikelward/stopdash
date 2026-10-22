@@ -294,9 +294,106 @@ class RouteChoicesTest {
         assertEquals(listOf("Zulu/X", "Zulu/Y"), RouteChoices.of(line, empty("A", "l"), emptyList(), null).choices.map(::label))
     }
 
+    // A National Rail line through A: south by a stopping and a fast pattern to Zulu, one ending there under its
+    // station's other id, and a stopping one to Yankee; north to November.
+    private val rail = LineSequence(
+        routes = listOf(
+            LineRoute("November - Zulu", listOf("N", "A", "B", "C", "Z"), "outbound"),
+            LineRoute("November - Zulu (fast)", listOf("N", "A", "C", "Z2"), "outbound"),
+            LineRoute("November - Yankee", listOf("N", "A", "B", "Y"), "outbound"),
+            LineRoute("Zulu - November", listOf("Z", "C", "B", "A", "N"), "inbound"),
+        ),
+        stopNames = mapOf("N" to "November", "A" to "Alpha", "B" to "Bravo", "C" to "Charlie", "Y" to "Yankee", "Z" to "Zulu", "Z2" to "Zulu"),
+        stationCodes = mapOf("Z" to "ZUL", "Z2" to "ZUL"),
+    )
+
+    private fun rail(destination: String, inSeconds: Long, direction: String = "outbound") =
+        Departure("southern", "Southern", direction, destination, null, now.plusSeconds(inSeconds), "national-rail")
+
     @Test
-    fun `a National Rail line offers no choices`() {
-        assertEquals(RouteChoices.NONE, RouteChoices.of(northern, empty(HGT, "thameslink", "national-rail"), emptyList(), null))
+    fun `a National Rail line's chips are where it goes, its patterns to one station one chip`() {
+        val choices = RouteChoices.of(rail, empty("A", "southern", "national-rail"), emptyList(), null)
+        // Its stopping and fast patterns to Zulu are one way, whichever of its ids each ends at; each chip lists the
+        // first pattern TfL lists while no train is on it.
+        assertEquals(listOf("Zulu", "Yankee", "November"), choices.choices.map(::label))
+        assertEquals(listOf("A", "B", "C", "Z"), choices.choices[0].path)
+        // Known by where it goes, not its stops.
+        assertEquals(listOf("outbound|to|ZUL", "outbound|to|Y", "inbound|to|N"), choices.choices.map { it.key })
+        assertNull(choices.current)
+        // A ride's far end on a pattern of its own first: Yankee's, by its stopping pattern.
+        assertEquals(
+            listOf("Yankee", "Zulu", "November"),
+            RouteChoices.of(rail, empty("A", "southern", "national-rail"), emptyList(), null, reaching = setOf("Y")).choices.map(::label),
+        )
+    }
+
+    @Test
+    fun `each National Rail chip follows its place's soonest train, and the page's own picks its chip`() {
+        val board = rows("A", rail("Zulu", 300), rail("Zulu", 120), rail("Yankee", 240), rail("November", 60, direction = "inbound"))
+        val south = board.single { it.direction == "outbound" }
+        val north = board.single { it.direction == "inbound" }
+        val yankee = RouteFocus.of(DepartureRows.destinationLines(south, 3).single { it.destination == "Yankee" })
+        val choices = RouteChoices.of(rail, south, board, yankee)
+        // The row's own way first.
+        assertEquals(listOf("Zulu", "Yankee", "November"), choices.choices.map(::label))
+        assertEquals(1, choices.current)
+        // A train to Zulu could take either pattern, so it goes on Zulu's chip by its name; the soonest is followed.
+        assertSame(south, choices.choices[0].live?.row)
+        assertEquals(RouteFocus("Zulu", null), choices.choices[0].live?.focus)
+        assertSame(north, choices.choices[2].live?.row)
+        // Each chip the same one with its trains as without, so a refresh keeps the one chosen.
+        assertEquals(
+            RouteChoices.of(rail, empty("A", "southern", "national-rail"), emptyList(), null).choices.map { it.key },
+            choices.choices.map { it.key },
+        )
+        // Without a tap, the row's soonest train is the page's.
+        assertEquals(0, RouteChoices.of(rail, south, board, null).current)
+    }
+
+    @Test
+    fun `National Rail chips keep their order whichever train the page follows, as its boards name no way`() {
+        // Darwin gives a train no direction, so the page opens on no way (Codex on #1095): the chips keep TfL's order,
+        // not the followed train's way first, so choosing one the other way, or a refresh, never reorders them.
+        val board = rows("A", rail("Zulu", 120), rail("November", 60, direction = "inbound"))
+        val south = board.single { it.direction == "outbound" }
+        val north = board.single { it.direction == "inbound" }
+        val toZulu = RouteChoices.of(rail, south, board, RouteFocus.of(DepartureRows.destinationLines(south, 3).single()), first = "")
+        val toNovember = RouteChoices.of(rail, north, board, RouteFocus.of(DepartureRows.destinationLines(north, 3).single()), first = "")
+        assertEquals(listOf("Zulu", "Yankee", "November"), toZulu.choices.map(::label))
+        assertEquals(toZulu.choices.map { it.key }, toNovember.choices.map { it.key })
+        assertEquals(0, toZulu.current)
+        assertEquals(2, toNovember.current)
+    }
+
+    @Test
+    fun `a National Rail train to a place none of its line's patterns end at has a chip of its own`() {
+        // Short workings: to Bravo by the stops it calls at, and to Charlie, by either pattern, by its name.
+        val board = rows("A", rail("Charlie", 120), rail("Bravo", 240), rail("Zulu", 300))
+        val south = board.single()
+        val choices = RouteChoices.of(rail, south, board, null)
+        assertEquals(listOf("Zulu", "Yankee", "Bravo", "Charlie", "November"), choices.choices.map(::label))
+        assertEquals(listOf("A", "B"), choices.choices[2].path)
+        assertEquals(listOf("outbound|to|B", "outbound|to|name:charlie"), choices.choices.subList(2, 4).map { it.key })
+        assertTrue(choices.choices.subList(2, 4).all { it.live?.row === south })
+        // The soonest train's chip is the page's.
+        assertEquals(3, choices.current)
+    }
+
+    @Test
+    fun `a National Rail train its board names otherwise goes on its station's chip by TfL's id for it`() {
+        // A stopping and a fast pattern to St Albans City, which a board calls "St Albans" (Codex on #1095): which
+        // pattern its train runs can't be told, so it's placed by the station TfL's id for where it ends names.
+        val line = LineSequence(
+            routes = listOf(
+                LineRoute("November - St Albans", listOf("N", "A", "B", "SAC"), "outbound"),
+                LineRoute("November - St Albans (fast)", listOf("N", "A", "SAC"), "outbound"),
+            ),
+            stopNames = mapOf("N" to "November", "A" to "Alpha", "B" to "Bravo", "SAC" to "St Albans City"),
+        )
+        val board = rows("A", rail("St Albans", 120).copy(destinationId = "SAC"))
+        val choices = RouteChoices.of(line, board.single(), board, null)
+        assertEquals(listOf("outbound|to|SAC"), choices.choices.map { it.key })
+        assertSame(board.single(), choices.choices.single().live?.row)
     }
 
     private fun ride(from: String, to: String, mode: String = "tube", lineId: String = "northern") = TripLeg(

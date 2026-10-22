@@ -4343,8 +4343,10 @@ Builds on Phase 1's minimal line-status marking.
               the chips' look and the room held for them.
         - [x] **A favorite ride's page** where its ends are joined by more than one route (2026-10-21): a chip
               per way where its stops go (`RouteChoices.forRide`), none chosen, the one chosen listed.
-        - [ ] **National Rail lines**: none yet, as a line's routes are its stopping patterns, a dozen from
-              one platform. Chips there would want grouping by where they go first.
+        - [x] **National Rail lines** (maintainer, 2026-10-22): a chip per station the line's stopping patterns
+              from the stop end at, both ways, and one per place a train goes that none ends at; each follows its
+              place's soonest train, else lists its first pattern's stops. A ride's page still offers none, as its
+              patterns all join the ride's ends.
         - [x] **A journey card's page** (maintainer, 2026-10-21: "every way from that stop"): a chip per way on
               from the stop, as a list row's page, the ways calling at the ride's far end first in their way. The
               page keeps to the card's trains until another way is chosen. Needs a device check of the room held
