@@ -6779,6 +6779,7 @@ internal fun RouteDetailScreen(
                         now,
                         stringResource(R.string.countdown_canceled),
                         stringResource(R.string.countdown_delayed),
+                        rememberCountdownWords(),
                     ),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
@@ -7523,6 +7524,7 @@ internal fun CountdownLabel(
     val entries = Countdown.entries(departures, untimed)
     val canceled = stringResource(R.string.countdown_canceled)
     val delayed = stringResource(R.string.countdown_delayed)
+    val words = rememberCountdownWords()
     val gray = MaterialTheme.colorScheme.outline
     val early = grayBefore?.let { ready ->
         entries.map { (it as? Countdown.Entry.Timed)?.departure?.expectedArrival?.isBefore(ready) == true }
@@ -7530,7 +7532,7 @@ internal fun CountdownLabel(
     // A train that may not run is grayed too ([DoubtfulTrains]), one held ([HeldTrains]), and one just
     // past its time ([Countdown.onBoard]).
     val grayed = entries.map { (it as? Countdown.Entry.Timed)?.departure?.grayed == true }
-    // Each entry's own text, the "min" unit written once after the last number, as
+    // Each entry's own text, the "min" unit written once around the last number, as
     // [Countdown.mergedLabel] writes them.
     val last = entries.indexOfLast { it is Countdown.Entry.Timed }
     val parts = entries.map { entry ->
@@ -7548,9 +7550,10 @@ internal fun CountdownLabel(
             stale -> AnnotatedString(Countdown.staleLabel(departures))
             else -> buildAnnotatedString {
                 parts.forEachIndexed { i, part ->
-                    if (i > 0) append(" · ")
+                    if (i > 0) append(words.between)
+                    if (i == last) append(words.around.first)
                     if (early?.getOrNull(i) == true || grayed[i]) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
-                    if (i == last) append(" min")
+                    if (i == last) append(words.around.second)
                 }
             }
         },
@@ -7585,14 +7588,16 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
     val doubtful = stringResource(R.string.countdown_time_doubtful_description)
     val held = stringResource(R.string.countdown_time_held_description)
     val due = stringResource(R.string.countdown_time_due_description)
+    val words = rememberCountdownWords()
     // Built once per change of the times, not on every recomposition.
-    return remember(parts, gray, plain, doubtful, held, due) {
+    return remember(parts, gray, plain, doubtful, held, due, words) {
         val text = buildAnnotatedString {
+            if (parts.isNotEmpty()) append(words.around.first)
             parts.forEachIndexed { i, part ->
-                if (i > 0) append(" · ")
+                if (i > 0) append(words.between)
                 if (part.grayed) withStyle(SpanStyle(color = gray)) { append(part.minutes.toString()) } else append(part.minutes.toString())
             }
-            if (parts.isNotEmpty()) append(" min")
+            if (parts.isNotEmpty()) append(words.around.second)
         }
         val spoken = if (parts.none { it.grayed }) null
         else parts.joinToString(", ") {

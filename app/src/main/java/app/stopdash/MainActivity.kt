@@ -264,6 +264,7 @@ import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.ByIdentity
 import app.stopdash.ui.DISRUPTION_REUSE
 import app.stopdash.ui.collectByIdentityWithLifecycle
+import app.stopdash.ui.countdownWords
 import app.stopdash.ui.distanceText
 import app.stopdash.ui.DeparturesUiState
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
@@ -5149,6 +5150,8 @@ class MainActivity : ComponentActivity() {
                         arrivals = ArrivalsCache.SHARED,
                         sharedLines = LineStatusCache.SHARED,
                         linePulls = linePulls,
+                        // In the app's language, read from its resources at each look, off the main thread.
+                        countdownWords = { countdownWords(appContext.resources) },
                         warn = ::logDepartureWarning,
                     )
                 }

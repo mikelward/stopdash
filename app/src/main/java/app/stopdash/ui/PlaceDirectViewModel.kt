@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
@@ -79,6 +80,9 @@ class PlaceDirectViewModel(
     // The trip's surface in [sharedLines]' pulls ([TripViewModel.linePullsTo]), whose pull this section's is.
     private val linePulls: String = TripViewModel.linePullsTo(""),
     private val clock: () -> Instant = Instant::now,
+    // A countdown's words in the app's language ([countdownWords]), read at each look so a change of
+    // language reaches the rows by the next tick; English for a test.
+    private val countdownWords: () -> CountdownWords = { CountdownWords.ENGLISH },
     // Coarse facts only — a stop or line id, an error kind, never a coordinate (SPEC *Privacy*).
     private val warn: (String) -> Unit = {},
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -115,6 +119,7 @@ class PlaceDirectViewModel(
     // [toId] the one its ride is asked for to ([PlaceDirect.Row.rideTo]).
     data class ShownRow(
         val row: PlaceDirect.Row,
+        // Its trains' countdown, in the app's language ([countdownWords]), worked out with the row.
         val times: String,
         val disruption: String? = null,
         val notice: String? = null,
@@ -380,6 +385,8 @@ class PlaceDirectViewModel(
         // When shown: the fetches and route loads above may have taken a while, so ages, trains gone and
         // countdowns are worked out from now, never from when the look began.
         val now = clock()
+        // The countdowns' words as the app's language has them now, read here on [compute].
+        val words = countdownWords()
         // As of today in London: planned work that has started since a status was fetched counts now,
         // as every departure surface takes it ([LineStatus.asOf]).
         val statuses = LineStatus.asOf(held, now)
@@ -436,7 +443,7 @@ class PlaceDirectViewModel(
                     // closed, a ride getting off at a later one is still this row's (Codex on #861).
                     val ends = row.reaches.flatMapTo(HashSet()) { listOf(it.id, it.interchangeId) }.apply { remove("") }
                     ShownRow(
-                        row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now),
+                        row, Countdown.mergedLabel(row.departures, now, words), status?.description, closureNotice(row, closures.found, now),
                         ends, ends.sorted().joinToString(","), Countdown.parts(row.departures, now), row.departures.any { it.grayed },
                         row.rideTo?.id.orEmpty(),
                     )

@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.AvoidedLines
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DirectTrips
@@ -65,6 +66,7 @@ class PlaceDirectViewModelTest {
         ends: suspend (Int) -> List<DirectTrips.End> = { listOf(DirectTrips.End("BOT", "Bottom")) },
         sharedLines: LineStatusCache = LineStatusCache(),
         routes: RouteStopsRepository = this.routes,
+        countdownWords: () -> CountdownWords = { CountdownWords.ENGLISH },
     ) = PlaceDirectViewModel(
         ends = ends,
         client = client,
@@ -72,6 +74,7 @@ class PlaceDirectViewModelTest {
         arrivals = ArrivalsCache(),
         sharedLines = sharedLines,
         clock = { now },
+        countdownWords = countdownWords,
         io = Dispatchers.Unconfined,
         compute = Dispatchers.Unconfined,
     ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
@@ -88,6 +91,19 @@ class PlaceDirectViewModelTest {
         val row = ready.rows.single()
         assertEquals("TOP", row.row.fromId)
         assertEquals("1 · 5 min", row.times)
+    }
+
+    @Test
+    fun `a row's countdown is written in the words the app gives it, at each look`() = runBlocking {
+        // Worked out here, on the model's worker, never in the row's composition (Codex on #1108).
+        var words = CountdownWords(" | ") { "$it Min." }
+        val model = model(client { listOf(departure("Bottom", 300), departure("Bottom", 60)) }, countdownWords = { words })
+        model.refresh()
+        assertEquals("1 | 5 Min.", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().times)
+        // A change of language reaches the rows by the next look.
+        words = CountdownWords.ENGLISH
+        model.refresh()
+        assertEquals("1 · 5 min", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().times)
     }
 
     @Test
