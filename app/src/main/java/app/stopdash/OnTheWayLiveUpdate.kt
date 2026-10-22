@@ -19,6 +19,7 @@ import app.stopdash.domain.TripMeter
 import app.stopdash.domain.TripProgress
 import app.stopdash.ui.ARROW
 import app.stopdash.ui.ActiveTripTracker
+import app.stopdash.ui.HeaderWords
 import app.stopdash.ui.busPoleLabel
 import app.stopdash.ui.compassLetters
 import app.stopdash.ui.distanceText
@@ -145,6 +146,8 @@ internal object OnTheWayLiveUpdate {
         board: ActiveTripTracker.NextBoard?,
         now: Instant,
         placements: Placements = Placements(),
+        // The platform's or pole's words ("Platform 8", "Stop G"), in the app's language.
+        words: HeaderWords = HeaderWords.ENGLISH,
         route: (String) -> LineSequence? = { null },
     ): Boarding? {
         val leg = when (progress) {
@@ -187,12 +190,12 @@ internal object OnTheWayLiveUpdate {
             ?.let { DepartureLabels.destinationLabel(it, "") } ?: leg.toName.takeIf { it.isNotBlank() }
         val where = if (ActiveTripTracker.boardsAtPole(leg)) {
             // The pole the bus or tram followed calls at, else the ride's own, as the board heads it.
-            (followed?.second ?: read?.pole)?.let { busPoleLabel(it.stopLetter, it.towards, it.bearing) }
+            (followed?.second ?: read?.pole)?.let { busPoleLabel(it.stopLetter, it.towards, it.bearing, words) }
         } else {
             train?.platform?.let { platform ->
                 val direction = PlatformDirection.of(platform)
-                PlatformDirection.platformNumber(platform)?.let { groupHeaderLabel(StopQualifier.Platform(it, direction)) }
-                    ?: direction?.let { groupHeaderLabel(StopQualifier.Compass(it)) }
+                PlatformDirection.platformNumber(platform)?.let { groupHeaderLabel(StopQualifier.Platform(it, direction), words) }
+                    ?: direction?.let { groupHeaderLabel(StopQualifier.Compass(it), words) }
             }
         }
         return Boarding(heading?.takeIf { it.isNotBlank() }, where).takeIf { it.heading != null || it.where != null }

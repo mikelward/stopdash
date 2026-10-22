@@ -4969,7 +4969,10 @@ and these carry the rest as their own PRs:
       "Updated", weekday in the app's language, notes, empty states, titles and "Disrupted:"
       description, the app's own translated strings wherever it says the same thing; the stamp
       no longer parsed back for a narrow widget); stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
-      (`HeaderQualifier`); ~~countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
+      (`HeaderQualifier`; `HeaderWords` done for the app's stop headers, platform views, a ride's stop
+      heading's spoken form, the route page's "From", the line stop page and the trip notification; still English:
+      the widget's and the watch's headers via `BudgetedRows`, closure titles, a ride's stop headings with
+      their "Plat" short form (`RideStopForms`), and the pole labels the phone sends the watch); ~~countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
       in the UI~~ (done: the app's screens, the widget and the watch); ~~"N min ago" (`RelativeTime`)~~ (done: the top bar's age stamp); ~~distances' units and their "." decimal
       (`StopDistance`)~~ (done; the bug report keeps its English); mode names (`ModeIcon`; ~~search's group names and subtitles~~ done, with the count of hidden lines); the
       "<name> line" label; ~~the " to " join of a closure's stops~~ (done); ~~"via" in spoken branch labels~~ (done);
