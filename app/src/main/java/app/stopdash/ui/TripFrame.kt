@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
+import android.content.res.Resources
 import androidx.annotation.WorkerThread
+import app.stopdash.R
 import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
@@ -8,6 +10,7 @@ import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteStopsRepository
@@ -79,7 +82,8 @@ internal class TripListView(
 /**
  * A card as drawn: its modes and lines for its long press, its lines' alerts ([statuses]), the walk to
  * its first stop ([walk]), its stops' closure notices ([closures]), each ride's own in its ⚠
- * ([rideClosures], by ride, [cardClosures]) and its first ride's trains ([times]).
+ * ([rideClosures], by ride, [cardClosures]), its first ride's trains ([times]), and on a step-free trip
+ * where each ride has lost its way on or off to a lift out, in its ⚠ too ([rideStepFree], by ride).
  */
 internal class TripCardView(
     val card: List<TripTiming.Estimate>,
@@ -90,6 +94,7 @@ internal class TripCardView(
     val closures: Map<String, DepartureRow>,
     val rideClosures: List<List<DepartureRow>>,
     val times: CardTimes,
+    val rideStepFree: List<String?> = emptyList(),
 )
 
 /**
@@ -137,8 +142,13 @@ internal fun tripFrame(
     // The routes as drawn ([poled] among them, [ShownRoutes.state]): a tapped card opens from those as planned
     // ([ShownRoutes.of]), and a Start starts the route as planned ([ShownRoutes.plannedOf]).
     shown: ShownRoutes? = null,
+    // What a card's step-free notices are written with ([rideStepFree]).
+    resources: Resources,
 ): TripFrame {
-    val timed = tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
+    // On a step-free trip, the routes a lift out leaves with no step-free way on or off a ride, among them the trains
+    // through a change made since [shown] was worked out ([ShownRoutes.notStepFreeOf]).
+    val notStepFree = shown?.notStepFreeOf(state.routes.orEmpty()).orEmpty()
+    val timed = tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs, notStepFree = notStepFree)
     // Those whose trains through a change are predicted ([TripTiming.withoutUnvouchedLegs]).
     // By identity: an estimate's equality would go over its whole route.
     val vouched = timed.orEmpty().filterTo(java.util.Collections.newSetFromMap(java.util.IdentityHashMap())) {
@@ -171,7 +181,7 @@ internal fun tripFrame(
     val rides = estimates.orEmpty().flatMap { rideLines.endsOf(it.route) }.flatMap(rideLines::linesOf).distinct()
     val state = state.copy(legStatuses = legStatuses(state.statuses, rides, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
-    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, shown?.of ?: poled, stepFree, sequences, excluded, rideLines::endsOf), previousOrder) }
+    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, shown?.of ?: poled, stepFree, sequences, excluded, rideLines::endsOf), previousOrder, notStepFree, resources) }
     // A pole's letter, sign and bearing, from its stop area's poles where they're cached (no IO).
     val poleOf: (String, String) -> StopLocation? = { id, area ->
         area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
@@ -203,7 +213,15 @@ private fun listView(
     // What each card opens ([openRoutesOf]).
     opens: Map<String, OpenRoute>,
     previousOrder: CardOrder?,
+    // The routes, by key, a lift out leaves with no step-free way on or off a ride ([ShownRoutes.notStepFree]).
+    notStepFree: Map<String, List<RouteDisruption.Signal.NotStepFree>>,
+    // What the step-free notices are written with.
+    resources: Resources,
 ): TripListView {
+    // Said as On the way says it, the stop by name.
+    val notStepFreeText = { lost: RouteDisruption.Signal.NotStepFree ->
+        resources.getString(R.string.route_disruption_not_step_free, lost.stopName.ifBlank { lost.stopId })
+    }
     // The row over the cards is the list's own work ([rememberTripRow]), kept apart so it outlives an open route.
     val views = cards.map { card ->
         // Every route's on the card: another line's ride may use another pole of the pair.
@@ -218,10 +236,40 @@ private fun listView(
             closures = closures,
             rideClosures = card.first().route.rides.indices.map { cardClosures(card, it, closures, rideLines) },
             times = cardTimes(card, state, now, access, sequences, rideLines),
+            // Every route's on the card: another line's ride may have lost its way on where this one's hasn't.
+            rideStepFree = rideStepFree(card.map { it.route }, notStepFree, notStepFreeText),
         )
     }
     // The list takes every route's warnings.
     return TripListView(framing(cards.flatten(), state, now, sequences, rideLines), views, opens, listedCards(cards, previousOrder))
+}
+
+/**
+ * Where a card's [routes] have lost a way on or off ([ShownRoutes.notStepFree], by key, each by its leg's index among its
+ * route's legs) said by each of the card's rides in turn, as it draws them: every route's on the card, one notice a
+ * station ([RouteDisruption.Signal.NotStepFree.key]), each by [text], a ride's joined as its ⚠ joins its notices, null
+ * for a ride with none; empty where none is lost. Written here, on the worker, so the card only reads it.
+ */
+@WorkerThread
+internal fun rideStepFree(
+    routes: List<TripRoute>,
+    notStepFree: Map<String, List<RouteDisruption.Signal.NotStepFree>>,
+    text: (RouteDisruption.Signal.NotStepFree) -> String,
+): List<String?> {
+    val rides = routes.firstOrNull()?.rides?.size ?: return emptyList()
+    if (notStepFree.isEmpty()) return emptyList()
+    // Each ride's, by its place among the card's rides, a station once.
+    val byRide = HashMap<Int, LinkedHashMap<String, RouteDisruption.Signal.NotStepFree>>()
+    for (route in routes) {
+        val lost = notStepFree[routeKey(route)] ?: continue
+        val rideOf = route.legs.withIndex().filter { !it.value.isWalk }.withIndex().associate { (ride, leg) -> leg.index to ride }
+        for (signal in lost) {
+            val ride = rideOf[signal.legIndex]?.takeIf { it < rides } ?: continue
+            byRide.getOrPut(ride) { LinkedHashMap() }.putIfAbsent(signal.key, signal)
+        }
+    }
+    if (byRide.isEmpty()) return emptyList()
+    return (0 until rides).map { ride -> byRide[ride]?.values?.joinToString("; ", transform = text) }
 }
 
 private fun openView(

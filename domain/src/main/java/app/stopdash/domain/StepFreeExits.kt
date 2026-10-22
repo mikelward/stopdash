@@ -39,4 +39,25 @@ object StepFreeExits {
         fun meets(access: StepFreeAccess) = LegEnd.meets(stepFree, access.levels(at), ride.lineId, ride.mode)
         return meets(base) && !meets(today)
     }
+
+    /**
+     * Each place [route]'s rides have lost their way on ([boardingLost]) or every way off ([lost]) at [ends]' level
+     * ([RideEnds.stepFree]) to the lifts out today, each getting off where [ends] has it: by its leg's index among
+     * [route]'s legs and the stop, in route order. One warning a station ([RouteDisruption.Signal.NotStepFree.key]), so a
+     * change with no way off the ride before or on the next is said once, by getting off. For a trip page's routes,
+     * which no rider is on yet, so every ride's boarding counts. None at no level.
+     */
+    @WorkerThread
+    fun along(route: TripRoute, ends: RideEnds, base: StepFreeAccess, today: StepFreeAccess): List<RouteDisruption.Signal.NotStepFree> {
+        if (ends.stepFree.needs == null) return emptyList()
+        val rides = route.legs.withIndex().filter { !it.value.isWalk }
+        return ends.ends(route).zip(rides).flatMap { (ridden, leg) ->
+            val (ride, end) = ridden
+            listOfNotNull(
+                RouteDisruption.Signal.NotStepFree(leg.index, ride.fromId, ride.fromName)
+                    .takeIf { boardingLost(ride, ends.stepFree, base, today) },
+                RouteDisruption.Signal.NotStepFree(leg.index, ride.toId, ride.toName).takeIf { lost(ride, end, base, today) },
+            )
+        }.distinctBy { it.key }
+    }
 }

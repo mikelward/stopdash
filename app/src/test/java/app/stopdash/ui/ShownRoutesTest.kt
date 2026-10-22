@@ -6,6 +6,7 @@ import app.stopdash.domain.LiftMap
 import app.stopdash.domain.LiftStop
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RideEnds
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
@@ -139,6 +140,54 @@ class ShownRoutesTest {
         assertEquals(shown.ends, pending.ends)
         // No routes: nothing to wait for.
         assertFalse(ShownRoutes.pending(TripViewModel.State(), StepFree.ANY, null).pending)
+    }
+
+    @Test
+    fun `a step-free route a lift out leaves with no way on is marked by its key, only while the lift is out`() {
+        // M's blue platform, where the change boards, is reached through one lift.
+        val lift = StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("MEE", 1))
+        val table = StepFreeAccess(
+            mapOf("M" to mapOf("blue" to listOf(lift))),
+            mapOf("MEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val out = table.withLiftsOut(setOf("LIFT1"))
+        fun toHill(access: StepFreeAccess) = RideEnds.Destination(HillModel.hubs, HillModel.toHill.hubs, access)
+        val shown = ShownRoutes.of(planned, StepFree.STATION, toHill(out), setOf("LIFT1"), base = table)
+        assertEquals(mapOf(routeKey(changing) to listOf(RouteDisruption.Signal.NotStepFree(1, "M", "M"))), shown.notStepFree)
+        // With every lift working, with no table to tell by, or at no level: nothing.
+        val none = emptyMap<String, List<RouteDisruption.Signal.NotStepFree>>()
+        assertEquals(none, ShownRoutes.of(planned, StepFree.STATION, toHill(table), emptySet(), base = table).notStepFree)
+        assertEquals(none, ShownRoutes.of(planned, StepFree.STATION, toHill(out), setOf("LIFT1")).notStepFree)
+        assertEquals(none, ShownRoutes.of(planned, StepFree.ANY, toHill(out), setOf("LIFT1"), base = table).notStepFree)
+    }
+
+    @Test
+    fun `a route made since, as a train through a change is, is judged for a lift out as the routes drawn were`() {
+        // M's blue platform reached through one lift, out; a route boarding blue at M wasn't among those worked out.
+        val lift = StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("MEE", 1))
+        val table = StepFreeAccess(
+            mapOf("M" to mapOf("blue" to listOf(lift))),
+            mapOf("MEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val out = table.withLiftsOut(setOf("LIFT1"))
+        fun toHill(access: StepFreeAccess) = RideEnds.Destination(HillModel.hubs, HillModel.toHill.hubs, access)
+        val shown = ShownRoutes.of(planned, StepFree.STATION, toHill(out), setOf("LIFT1"), base = table)
+        val since = TripRoute(listOf(blue, walkOn))
+        val routes = shown.state.routes.orEmpty() + since
+        assertTrue(routeKey(since) != routeKey(changing))
+        assertEquals(
+            mapOf(
+                routeKey(changing) to listOf(RouteDisruption.Signal.NotStepFree(1, "M", "M")),
+                routeKey(since) to listOf(RouteDisruption.Signal.NotStepFree(0, "M", "M")),
+            ),
+            shown.notStepFreeOf(routes),
+        )
+        // The routes drawn alone: as they were judged.
+        assertEquals(shown.notStepFree, shown.notStepFreeOf(shown.state.routes.orEmpty()))
+        // With every lift working, or at no level: nothing, made since or not.
+        val none = emptyMap<String, List<RouteDisruption.Signal.NotStepFree>>()
+        assertEquals(none, ShownRoutes.of(planned, StepFree.STATION, toHill(table), emptySet(), base = table).notStepFreeOf(routes))
+        assertEquals(none, ShownRoutes.of(planned, StepFree.ANY, toHill(out), setOf("LIFT1"), base = table).notStepFreeOf(routes))
     }
 
     @Test

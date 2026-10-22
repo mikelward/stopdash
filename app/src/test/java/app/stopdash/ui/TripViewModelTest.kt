@@ -3708,6 +3708,37 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a step-free route a lift out leaves with no way on or off ranks below one that can be ridden, said by its ride`() {
+        val red = TripRoute(listOf(leg("red", "A", "C", 5, 25)))
+        val blue = TripRoute(listOf(leg("blue", "A", "C", 5, 30)))
+        fun good(id: String) = app.stopdash.domain.LineStatus(id, app.stopdash.domain.LineStatus.GOOD_SERVICE, "Good Service")
+        val state = TripViewModel.State(routes = listOf(red, blue), statuses = mapOf("red" to good("red"), "blue" to good("blue")))
+        // The faster, with every way working.
+        assertEquals(listOf(red, blue), tripEstimates(state, now, Duration.ZERO, emptyMap())?.map { it.route })
+        // Red's way on at A taken by a lift out: below blue, as a closed stop would rank it, still timed.
+        val lost = mapOf(routeKey(red) to listOf(app.stopdash.domain.RouteDisruption.Signal.NotStepFree(0, "A", "A")))
+        val estimates = tripEstimates(state, now, Duration.ZERO, emptyMap(), notStepFree = lost).orEmpty()
+        assertEquals(listOf(blue, red), estimates.map { it.route })
+        assertTrue(estimates.last().blocked)
+        assertFalse(estimates.first().blocked)
+        // Its card says so by the ride it's on, walks left out, a ride's places joined as its ⚠ joins its notices.
+        val walk = TripLeg(TripLeg.WALKING, "", "", "S", "S", "A", "A", now, now)
+        val walked = TripRoute(listOf(walk, leg("red", "A", "C", 5, 25), leg("blue", "C", "D", 27, 40)))
+        val atA = app.stopdash.domain.RouteDisruption.Signal.NotStepFree(1, "A", "A")
+        val atC = app.stopdash.domain.RouteDisruption.Signal.NotStepFree(2, "C", "C")
+        val atD = app.stopdash.domain.RouteDisruption.Signal.NotStepFree(2, "D", "D")
+        val text = { lost: app.stopdash.domain.RouteDisruption.Signal.NotStepFree -> "no way at ${lost.stopName}" }
+        assertEquals(listOf(null, "no way at C"), rideStepFree(listOf(walked), mapOf(routeKey(walked) to listOf(atC)), text))
+        assertEquals(listOf(null, "no way at C; no way at D"), rideStepFree(listOf(walked), mapOf(routeKey(walked) to listOf(atC, atD)), text))
+        assertEquals(emptyList<String?>(), rideStepFree(listOf(walked), emptyMap(), text))
+        // A card's every route: green from A, on the card with red, lost its way on at A, and both their way off at C,
+        // said once.
+        val green = TripRoute(listOf(walk, leg("green", "A", "C", 6, 26), leg("blue", "C", "D", 27, 40)))
+        val onCard = mapOf(routeKey(walked) to listOf(atC), routeKey(green) to listOf(atA, atC))
+        assertEquals(listOf("no way at A", "no way at C"), rideStepFree(listOf(walked, green), onCard, text))
+    }
+
+    @Test
     fun `a ride timed past its predictions on a good service fetches its timetable, and is timed by it`() = runTest(dispatcher) {
         val red = leg("red", "A", "C", 5, 25)
         val route = TripRoute(listOf(red))

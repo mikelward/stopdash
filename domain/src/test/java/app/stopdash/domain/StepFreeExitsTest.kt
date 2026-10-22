@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import java.time.Instant
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -71,6 +72,29 @@ class StepFreeExitsTest {
         assertFalse(StepFreeExits.boardingLost(fromPraed.copy(fromId = "940GZZLUXXX"), StepFree.FULLY, access, liftOut))
         assertFalse(StepFreeExits.boardingLost(fromPraed, StepFree.ANY, access, liftOut))
         assertFalse(StepFreeExits.boardingLost(fromPraed.copy(mode = "bus", lineId = "25"), StepFree.FULLY, access, liftOut))
+    }
+
+    @Test
+    fun `a route's rides each say where they've lost their way on or off, a change once`() {
+        // Praed's red and blue platforms both reached through LIFT1.
+        val lift = StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("PRA", 1))
+        val both = StepFreeAccess(
+            mapOf("940GZZLUPRA" to mapOf("red" to listOf(lift), "blue" to listOf(lift))),
+            mapOf("PRA" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val out = both.withLiftsOut(setOf("LIFT1"))
+        val walk = TripLeg(TripLeg.WALKING, "", "", "S", "S", "A", "A", t0.minusSeconds(120), t0)
+        val onBlue = TripLeg("tube", "blue", "Blue", "9400ZZLUPRA", "Praed", "E", "E", t0.plusSeconds(900), t0.plusSeconds(1200), path = listOf("E"))
+        val change = TripRoute(listOf(walk, toPraed, onBlue))
+        val ends = RideEnds.planned(StepFree.FULLY)
+        // Getting off the red at Praed and on the blue there: one warning, by getting off, at the red's leg.
+        assertEquals(listOf(RouteDisruption.Signal.NotStepFree(1, "940GZZLUPRA", "Praed")), StepFreeExits.along(change, ends, both, out))
+        // Boarding there alone: said by boarding.
+        val fromPraed = TripRoute(listOf(onBlue))
+        assertEquals(listOf(RouteDisruption.Signal.NotStepFree(0, "9400ZZLUPRA", "Praed")), StepFreeExits.along(fromPraed, ends, both, out))
+        // Every lift working, or no level: nothing.
+        assertEquals(emptyList<RouteDisruption.Signal>(), StepFreeExits.along(change, ends, both, both))
+        assertEquals(emptyList<RouteDisruption.Signal>(), StepFreeExits.along(change, RideEnds.planned(StepFree.ANY), both, out))
     }
 
     @Test

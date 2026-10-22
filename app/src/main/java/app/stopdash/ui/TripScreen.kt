@@ -98,6 +98,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -835,6 +836,9 @@ internal fun tripEstimates(
     // Every leg the Planner planned, when some routes ride one it didn't (a train through a change):
     // such a leg is timed only by a live train ([TripTiming.estimate]'s timetabled). Null: all are.
     planned: Set<TripLeg>? = null,
+    // On a step-free trip, the routes, by key, a lift out leaves with no step-free way on or off a ride
+    // ([ShownRoutes.notStepFree]).
+    notStepFree: Map<String, List<RouteDisruption.Signal.NotStepFree>> = emptyMap(),
 ): List<TripTiming.Estimate>? {
     // A route on a line with severe delays ranks, and is capped, lower ([TripTiming.DELAYED_BY]): judged on the
     // statuses as shown now, a planned alert begun since the last check among them (Codex, #703). On the worker
@@ -862,8 +866,13 @@ internal fun tripEstimates(
             timetabled = { index -> (planned == null || route.legs[index] in planned) && plannerVouched(state, route.legs[index], now, ridden[index]) },
             // A stop it boards or gets off at closed ranks it below every usable route, as a line
             // not running does; one not yet checked, with the unchecked (SPEC *Trips with a change*).
-            // A bus stop is judged at its pole once its line's route gives one ([endPole]).
-            stops = TripClosures.standing(route, state.closures, state.closuresUnknown, now) { end -> endPole(route, end, sequences) },
+            // A bus stop is judged at its pole once its line's route gives one ([endPole]). On a step-free
+            // trip, so does a ride a lift out leaves with no step-free way on or off ([notStepFree]).
+            stops = if (routeKey(route) in notStepFree) {
+                TripClosures.Standing.CLOSED
+            } else {
+                TripClosures.standing(route, state.closures, state.closuresUnknown, now) { end -> endPole(route, end, sequences) }
+            },
             // A ride another running line can take and time isn't sunk by its Planner line's status.
             otherLine = { index -> otherLineRuns(state, route.legs[index], now, ridden[index]) },
             delayed = delayed,
@@ -1252,11 +1261,11 @@ private fun mayStandIn(held: Inputs, wanted: Inputs): Boolean {
 
 // Where the frame's inputs (see the page's `Inputs`) hold its time, and what the rider chose or is told:
 // the trip, the walk, the routes left out, whether the origin is unconfirmed, the alerts dismissed, the
-// planning options, what has failed, the plan, and where its legs board and get off.
+// planning options, what has failed, the plan, where its legs board and get off, and what its words are written with.
 private const val FRAME_TIME = 2
 // And the route open, if any ([TripFrame.openKey]).
 private const val FRAME_OPEN = 9
-private val FRAME_CHOICES = intArrayOf(0, 3, 5, 6, 10, 13, 14, 15, 16, 17, 18, 20)
+private val FRAME_CHOICES = intArrayOf(0, 3, 5, 6, 10, 13, 14, 15, 16, 17, 18, 20, 24)
 
 /** Where [state]'s routes' legs board and get off, as one number: a leg moved, another number ([placed]'s). */
 @WorkerThread
@@ -1495,6 +1504,8 @@ private fun TripContent(
     // The lines loading key the frame by their version ([LineLoads.loadingVersion]), never their contents;
     // the frame reads the live set on the worker.
     val routeStops = LocalRouteStops.current
+    // What the frame's words are written with, read on the worker.
+    val resources = LocalContext.current.resources
     // Everything the page draws on a tick ([tripFrame]), worked out on the worker, never in composition
     // (AGENTS.md *Main thread*): the estimates, the cards and the open route, and what frames them. The
     // last frame stands in while the next is worked out; the page is drawn against the frame's own state,
@@ -1519,7 +1530,9 @@ private fun TripContent(
             topology,
             // The routes as drawn and as planned, for what a card opens and a Start starts ([TripFrame.starts]).
             shown,
-            openRef)
+            openRef,
+            // What the frame's words are written with (a card's step-free notices).
+            resources)
     // While the routes in hand aren't drawn yet ([ShownRoutes.pending]), no frame is worked out ([heldWhile]): the
     // last stands in if it may, or none does, never one of the routes as planned, whose last ride's end would move
     // a moment later. A frame under way still lands.
@@ -1529,7 +1542,7 @@ private fun TripContent(
         if (shown.pending) {
             null
         } else {
-            tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, drawn, stepFree, previousOrder, topology, shown)
+            tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, drawn, stepFree, previousOrder, topology, shown, resources)
         }
     }?.takeIf { !shown.pending || heldFrame == frameInputs || (heldFrame != null && mayStandIn(heldFrame, frameInputs)) }
     // What the page draws against: the frame's own state, time, routes and ride lines.
@@ -2517,7 +2530,7 @@ private fun RouteList(
                                 // shuffled sideways for the first few seconds. Measured by the trip screen before the
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
-                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } })
+                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.rideStepFree)
                             }
                         }
                         if (onHideMode != null) {
@@ -2870,6 +2883,9 @@ private fun RideStops(
     // Every row's pill column width, worked out on the worker; null until it is, when a lone pill's
     // ([linePillWidthPx]), the width of most pills.
     slotWidth: Dp? = null,
+    // On a step-free trip, where each ride has lost its way on or off to a lift out, said on the worker
+    // ([TripCardView.rideStepFree]): its ⚠ carries it too.
+    rideStepFree: List<String?> = emptyList(),
 ) {
     val rides = card.first().route.rides
     val density = LocalDensity.current
@@ -2933,7 +2949,8 @@ private fun RideStops(
                     val notice = cleanDisruptionBody(closure.stopDisruption.orEmpty(), stopName = closure.stopName, hubName = closure.hubName, aliases = closure.placeAliases)
                     stringResource(R.string.trip_line_status, closure.hubName.ifBlank { closure.stopName }, notice)
                 }
-                val warning = (listOfNotNull(linesWarning(lines, statuses)) + stopNotices).takeIf { it.isNotEmpty() }?.joinToString("; ")
+                // And a lift out leaving it no step-free way on or off, as On the way says it.
+                val warning = (listOfNotNull(linesWarning(lines, statuses)) + stopNotices + listOfNotNull(rideStepFree.getOrNull(index))).takeIf { it.isNotEmpty() }?.joinToString("; ")
                 // Work still to come, when nothing is disrupted now: the muted calendar in the ⚠'s place.
                 val planned = if (warning == null) linesPlanned(lines, statuses) else null
                 warning?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 12.dp)) }

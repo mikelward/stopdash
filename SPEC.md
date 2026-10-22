@@ -2153,7 +2153,8 @@ A notice shows as the list's closure card on the open route, where
 the ride boards or gets off, and as the ⚠ on the list card's ride. A failed check keeps the last known
 notice and claims nothing new. Routes sort
 in tiers: a route with a suspended or closed leg, or a stop it boards or gets off at that TfL says is
-closed (a moved stop doesn't count), sorts below every usable one, whether live or
+closed (a moved stop doesn't count), or on a step-free trip a ride a lift out leaves with no step-free
+way on or off (*Step-free*), sorts below every usable one, whether live or
 estimated (below), so a route that can't be ridden is never listed first while one that can exists.
 A route whose line status or closure check failed with nothing known yet ranks on its arrival like a
 checked one while a live train times any of its rides: the Planner offered it, and the train shows it
@@ -2389,7 +2390,11 @@ boarding and alighting call itself, on whichever line carries it, against the st
 today's lift outages (rechecked while the trip is open, at the platform where the call names one);
 a substitute train that fails isn't offered, and a ride whose stop no longer passes says it isn't
 step-free any more and offers to plan again, never sending the rider to a stop they can't use. On
-the way says so already (*Disruption ahead*, 2026-10-22); the trip page doesn't yet.
+the way says so already (*Disruption ahead*, 2026-10-22). So does the trip page's list (2026-10-22): a
+route a lift out leaves with no step-free way on or off a ride, though it has one with every lift
+working, says "Not step-free at Bank: a lift is out" in that ride's ⚠ on its card, one warning a
+station, and ranks below every route that can be ridden, as a closed stop ranks one, so a route that
+works is listed first; the open route doesn't say so yet.
 
 **Direct to a place** (maintainer, 2026-10-07). A trip to a place (a favorite, or a place or postcode
 picked in *To…*) shows a **Direct** section under its choices and over its routes, and so does a trip to a
