@@ -295,6 +295,10 @@
     <string name="line_map_no_service_one_way">No service one way</string>
     <!-- A screen reader's word for a station on the map with a closed track drawn to it, still served. -->
     <string name="line_map_beside_closure">Next to a closure</string>
+    <!-- A screen reader's words for a station on a route page's map where another route's track meets the
+         train's, drawn dashed with no stations of its own. -->
+    <!-- TODO: translate -->
+    <string name="line_map_other_routes" tools:ignore="MissingTranslation">Other routes meet here</string>
     <!-- Under the map's heading when a closure TfL places can't be put on the map. -->
     <string name="line_map_closure_not_placed">This closure isn\'t on the map</string>
     <!-- Under a station on a line's map that a closure still to come will shut, by the day it starts ("No service from 10 Oct"). -->

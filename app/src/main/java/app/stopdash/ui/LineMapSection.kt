@@ -584,6 +584,16 @@ private fun DrawScope.columnX(column: Int): Float = (COLUMN_INSET + COLUMN_PITCH
 // A closed track's dashes, in the error color: the closure the alert names, drawn where it is.
 private fun DrawScope.closedDashes() = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))
 
+// Another route's track on a route page's map, in the line's color: longer dashes than a closure's, a stub
+// half a row long still showing two of them.
+private fun DrawScope.otherRouteDashes() = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))
+
+private fun DrawScope.railDashes(closed: Boolean, offRoute: Boolean) = when {
+    closed -> closedDashes()
+    offRoute -> otherRouteDashes()
+    else -> null
+}
+
 private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railColor: Color, closedColor: Color, arrowColor: Color) {
     val middle = size.height / 2
     val y0 = if (top) 0f else middle
@@ -602,7 +612,7 @@ private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railCol
             }
         }
         val color = if (rail.closed) closedColor else railColor
-        drawPath(path, color, style = Stroke(RAIL_WIDTH.toPx(), pathEffect = if (rail.closed) closedDashes() else null))
+        drawPath(path, color, style = Stroke(RAIL_WIDTH.toPx(), pathEffect = railDashes(rail.closed, rail.offRoute)))
         // A track the line runs one way only: an arrow the way it runs, once, centered where it comes into the
         // row it ends at, so head and tail sit in the gap between the two stations, clear of both their dots.
         // Drawn on the rail carried on straight up into the row above (a rail always arrives upright), whose
@@ -733,6 +743,8 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
         stringResource(R.string.route_stop_in_alert).takeIf { row.marked },
         // A closed track drawn to it, where its own line says nothing (Codex, #606).
         stringResource(R.string.line_map_beside_closure).takeIf { row.besideClosure },
+        // A route page's other routes, dashed where they meet its train's, said as well as drawn.
+        stringResource(R.string.line_map_other_routes).takeIf { row.otherRoutes },
         // The arrows on one-way tracks into it, said as well as drawn (Codex, #665).
         stringResource(R.string.line_map_one_way_down).takeIf { row.oneWayDown },
         stringResource(R.string.line_map_one_way_up).takeIf { row.oneWayUp },
@@ -907,7 +919,7 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
                     )
                     else -> drawLine(
                         if (rail.closed) closedColor else railColor, Offset(x, y0), Offset(x, y1), RAIL_WIDTH.toPx(),
-                        pathEffect = if (rail.closed) closedDashes() else null,
+                        pathEffect = railDashes(rail.closed, rail.offRoute),
                     )
                 }
                 // One-way tracks folded in: their arrows on the fold's rail, as the rows they end at would draw

@@ -4298,15 +4298,15 @@ class MainScreenScreenshotTest {
         journeyScreen(forkedOrigin("West End" to 60), forkedSource, kingToNorthEnd)
         composeRule.onNodeWithText("West End").performClick()
         composeRule.waitForIdle()
-        // The West End train's page: its stops run to West End, open, and the north branch it doesn't take
-        // is folded to the end it leads to, as the line page draws it: only the rider's starred North Park
-        // stands out of the fold (the page's "Northern line" heading is the line, not the branch). Each way on
-        // from King is a chip too, as on any of a journey card's pages (maintainer, 2026-10-21).
+        // The West End train's page: its stops run to West End, open, and the north branch it doesn't take is
+        // another route, with no rows, the rider's starred North Park among them (maintainer, 2026-10-22): its
+        // chip alone names North End. Each way on from King is a chip, as on any of a journey card's pages
+        // (maintainer, 2026-10-21).
         composeRule.onNodeWithTag("routeChoice-0").assertTextEquals("West End").assertIsSelected()
         composeRule.onNodeWithTag("routeChoice-1").assertTextEquals("North End")
         composeRule.onAllNodesWithText("West End", substring = true).assertCountEquals(3)
-        composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(2)
-        composeRule.onAllNodesWithText("North Park ★", substring = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("North Park", substring = true).assertCountEquals(0)
     }
 
     @Test
