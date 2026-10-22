@@ -1,10 +1,9 @@
 # Syncing a rider's setup through their Google Drive
 
-**Status: exploration, not planned.** A developer-facing write-up of what syncing StopDash's
-saved setup between a rider's phones through their own Google Drive would take, so it isn't
-re-derived each time it comes up. It is not a commitment: see the *Sync settings across
-devices* item under *Beyond MVP* in `TODO.md`, which points here. Building any of it is the
-maintainer's call, with the Play Data Safety and privacy consequences below.
+**Status: planned, favorite rides first (maintainer, 2026-10-22); not built.** A
+developer-facing write-up of how StopDash syncs a rider's saved setup between their phones
+through their own Google Drive. The steps are the *Sync a rider's setup between their phones*
+item in Phase 2 of `TODO.md`; what syncs after rides waits on the open questions at the end.
 
 **Cost and reliability up front:** £0. The Drive API has no charge, and the data is a few KB
 of the rider's own Drive storage. It needs Google Play services and a Google account. With no
@@ -161,7 +160,9 @@ grant doesn't travel either, so a restored phone with sync on says "Sign in agai
   itself, so it doesn't help. Assume a declaration: location (places' positions) and app
   activity (rides, stops), collected, optional, not shared, encrypted in transit, deletable by
   the user. Confirm with Play policy support before shipping.
-- Off by default and opt-in, like crash reports and usage stats.
+- Off by default and opt-in, like crash reports and usage stats. Until the Data Safety form is
+  updated, release builds show no Settings row and send nothing to Drive (maintainer,
+  2026-10-22), so the steps before it ship without changing the Play declaration.
 
 ## Failure modes
 
@@ -181,10 +182,10 @@ grant doesn't travel either, so a restored phone with sync on says "Sign in agai
 
 - `play-services-auth` for `AuthorizationClient`. The Drive calls (list, download, create,
   update, delete) go over the existing Ktor client rather than Google's Java API client.
-- Phases: authorization, the Settings row and the sync engine with rides alone; then places,
-  watched stops, stars and dismissals; then settings. Each store gains a diff-and-apply adapter
-  for the engine; the engine is pure `:domain` and JVM-tested on recorded files, as the rest of
-  the domain is.
+- Phases (maintainer, 2026-10-22: rides first): authorization, the Settings row and the sync
+  engine with rides alone; then places, watched stops, stars and dismissals; then settings.
+  Each store gains a diff-and-apply adapter for the engine; the engine is pure `:domain` and
+  JVM-tested on recorded files, as the rest of the domain is.
 
 ## Open questions for the maintainer
 
@@ -193,5 +194,6 @@ grant doesn't travel either, so a restored phone with sync on says "Sign in agai
 3. Sync the Wi-Fi learned at places?
 4. Which settings belong to one phone?
 5. Accept the Play Data Safety declaration above?
-6. Use the Firebase project (it is already the app's Google Cloud project), keeping debug
-   builds apart by file name, or give debug builds a project of their own?
+
+Which Cloud project is settled: the Firebase project, already the app's Google Cloud project,
+with debug builds kept apart by file name (2026-10-22).

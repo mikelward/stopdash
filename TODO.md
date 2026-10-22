@@ -3976,6 +3976,49 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       the user's fix). No new dependency and $0; with no maps app a toast says so. The stop's
       position and name reach an app the user picked, only on their tap — user-initiated sharing,
       not collection by StopDash, so no Play Data Safety change.
+- [ ] **Sync a rider's setup between their phones through their Google Drive, favorite rides
+      first** (maintainer, 2026-10-22; "maybe not" on 2026-09-28, export and import rejected as not
+      useful). Rides saved on one phone are missing on another: Android backup restores only onto
+      a phone being set up, and replaces rather than merges. Design, cost (£0, no server, about one
+      request per app open, no new wakeup), failure modes and open questions:
+      `dev-docs/drive-sync.md`. Off by default, opt-in. In the Firebase project, already the app's
+      Google Cloud project; debug builds kept apart by file name. **Inert until the Data Safety
+      form is updated** (maintainer, 2026-10-22): release builds show no Settings row and send
+      nothing to Drive until the privacy step below lands, so each step ships without changing
+      the Play declaration.
+  - [ ] **Set up the Cloud project** (maintainer, in the console): turn on the Drive API, publish
+        the OAuth consent screen with the `drive.appdata` scope and the privacy policy link, and
+        add an Android OAuth client for the Play app-signing key and one for the `.debug` build.
+        A setup section in `dev-docs/drive-sync.md`, as `dev-docs/firebase.md` has, comes with it.
+  - [ ] **The sync engine** in `:domain`: one file per phone, never deleted by another phone; a
+        ledger of each entry's fingerprint and change time (hybrid logical clock, syncing only
+        while the phone's clock is within five minutes of Drive's); newest change wins, removals
+        kept for good, a first sync that only adds, and a newer file skipped rather than misread.
+        JVM-tested on recorded files.
+  - [ ] **The Drive client** over the existing Ktor client: list, download, create, update and
+        delete in the app data folder, with typed failures (offline, sign-in needed, Drive full,
+        rate limited). Tested on a mock engine.
+  - [ ] **Settings → Sync with Google Drive**: `AuthorizationClient` (`play-services-auth`), the
+        account it syncs with, and its status ("Synced 2 min ago", "Couldn't sync: offline",
+        "Sign in again", "Drive is full", "Set your phone's clock to sync", "Update StopDash to
+        sync with your other phone"). Not offered without Play services. Screenshot test, en-GB
+        strings.
+  - [ ] **Rides through the engine**: favorite rides with their hidden lines, grayed rides and ride
+        alert times, compared with the ledger and written back through the store's own edits under
+        `FavoriteJourneysWrites`; a ride removed on the other phone drops its widget pins, as
+        Settings' Remove does. A grayed ride's place end shows under its saved name until places
+        sync.
+  - [ ] **When it syncs**: when the app comes to the front, and a few seconds after a change (a
+        one-time WorkManager job waiting for a network). No periodic job; the widget and the watch
+        never sync.
+  - [ ] **Keep sync per phone in backups**: the install id and the ledger excluded from Auto Backup
+        and device-to-device transfer, so a restored phone never writes as the phone it came from.
+  - [ ] **Privacy before it ships**: SPEC *Privacy*, `docs/PRIVACY.md`, and the Play Data Safety
+        form for rides (app activity, optional, not shared, encrypted in transit, deletable),
+        confirmed with Play policy support.
+  - [ ] **Then**: favorite places (their positions go to Drive) and the Wi-Fi learned at them;
+        watched stops, starred rows and dismissed alerts; the settings that aren't one phone's own;
+        the TfL and National Rail keys. Each waits on its open question in `dev-docs/drive-sync.md`.
 
 ## Phase 3 — Full disruptions
 
@@ -5360,17 +5403,6 @@ and these carry the rest as their own PRs:
 
 Directions that would change what stopdash *is*, not steps in the London MVP. Recorded so
 they aren't re-derived; none is scheduled, and each needs the maintainer's go-ahead.
-
-- [ ] (Later, open call) **Sync settings across devices** (maintainer, 2026-09-28: "maybe not";
-      the phone stays the source of truth for now). Each setting (dismissals, stars, watched
-      stops) already lives in one store on the phone that every surface reads, so sync would be
-      those few sets, not copies spread through the widget's data. Dismissals merge easily (one
-      is only ever added, and a refresh drops it once TfL shows the alert ended); conflicts would
-      want a time on each entry (`dismissedAt`). Anything through a server is a privacy and Play
-      Data Safety decision: the stops someone watches say where they live and travel.
-      Export and import were rejected as not useful (maintainer, 2026-10-22); syncing through the
-      rider's own Google Drive (its hidden app folder, no server) is explored in
-      `dev-docs/drive-sync.md`, with its open questions.
 
 - [ ] (Later, open call) **Other cities beyond London** (recorded 2026-09-19 at the
       maintainer's request). StopDash is TfL-specific today: the data layer talks only to
