@@ -2530,7 +2530,7 @@ private fun RouteList(
                                 // shuffled sideways for the first few seconds. Measured by the trip screen before the
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
-                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.rideStepFree)
+                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.startForms, shown.stopForms, shown.rideStepFree)
                             }
                         }
                         if (onHideMode != null) {
@@ -2883,6 +2883,10 @@ private fun RideStops(
     // Every row's pill column width, worked out on the worker; null until it is, when a lone pill's
     // ([linePillWidthPx]), the width of most pills.
     slotWidth: Dp? = null,
+    // The stop the walk starts at and each ride's stop, in the forms each shortens through, worked out with
+    // the card ([TripCardView.startForms], [TripCardView.stopForms]); a name with none shows whole.
+    startForms: List<String>?,
+    stopForms: List<List<String>>,
     // On a step-free trip, where each ride has lost its way on or off to a lift out, said on the worker
     // ([TripCardView.rideStepFree]): its ⚠ carries it too.
     rideStepFree: List<String?> = emptyList(),
@@ -2916,7 +2920,7 @@ private fun RideStops(
                         modifier = Modifier.size(20.dp),
                     )
                 }
-                ShortenedName(start.fromName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
+                ShortenedText(startForms ?: listOf(start.fromName), MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
                 // In the times column, to set against the first train's; in parentheses, as how long
                 // the walk takes, not a time.
                 if (minutes > 0) {
@@ -2941,7 +2945,7 @@ private fun RideStops(
                     )
                 }
                 // Shortened as the main screen's destinations are, before any "…" (SPEC destination-label).
-                ShortenedName(ride.toName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
+                ShortenedText(stopForms.getOrNull(index) ?: listOf(ride.toName), MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
                 // A disrupted line's ⚠ just before the times, as on the main screen's rows (maintainer,
                 // 2026-09-28), so the stops line up down the card; for a cut pill, any of its lines.
                 // And a closure or moved stop where the ride boards or gets off, each by its stop.

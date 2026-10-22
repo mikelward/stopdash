@@ -2403,8 +2403,8 @@ class TripScreenScreenshotTest {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 androidx.compose.foundation.layout.Column {
-                    Box(Modifier.width(400.dp).testTag("wide")) { ShortenedName(name, androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
-                    Box(Modifier.width(160.dp).testTag("narrow")) { ShortenedName(name, androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+                    Box(Modifier.width(400.dp).testTag("wide")) { ShortenedText(app.stopdash.domain.DestinationAbbreviations.forms(name), androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+                    Box(Modifier.width(160.dp).testTag("narrow")) { ShortenedText(app.stopdash.domain.DestinationAbbreviations.forms(name), androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
                 }
             }
         }
@@ -2426,7 +2426,7 @@ class TripScreenScreenshotTest {
         val name = "Kensington / Hammersmith"
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                Box(Modifier.width(120.dp).testTag("narrow")) { ShortenedName(name, androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+                Box(Modifier.width(120.dp).testTag("narrow")) { ShortenedText(app.stopdash.domain.DestinationAbbreviations.forms(name), androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
             }
         }
         // Each place is its own text, so neither is lost behind the other's "…".

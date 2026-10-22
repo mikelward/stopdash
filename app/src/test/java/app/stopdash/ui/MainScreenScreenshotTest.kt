@@ -5800,7 +5800,7 @@ class MainScreenScreenshotTest {
                 ) {
                     Surface {
                         Box(Modifier.width(150.dp)) {
-                            DestinationLine(label = "North Finchley", times = emptyList(), stale = false, now = now)
+                            DestinationLine(label = app.stopdash.domain.DestinationAbbreviations.forms("North Finchley"), times = emptyList(), stale = false, now = now)
                         }
                     }
                 }

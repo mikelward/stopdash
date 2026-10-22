@@ -4,6 +4,7 @@ import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.StopArrivals
@@ -67,6 +68,9 @@ class RouteDetailWorkTest {
             val tapped = runBlocking { routeDetailWork(row, RouteFocus("Brixton", null), RouteTopology.EMPTY, worker) }
             assertEquals(listOf(120L, 360L), tapped.departures.map { it.expectedArrival.epochSecond - now.epochSecond })
             assertEquals(listOf("Brixton"), tapped.destinations)
+            // Its only terminus in the forms the title shortens it through, worked out with the rest; none for two.
+            assertEquals(DestinationAbbreviations.forms("Brixton"), tapped.titleForms)
+            assertEquals(null, work.titleForms)
             // Whether any train is grayed is found there too, so the page only walks them to gray one.
             assertEquals(false, work.grayed)
             val withDoubtful = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(doubtful = true) else d })
