@@ -6033,19 +6033,24 @@ class MainActivity : ComponentActivity() {
         onDepartures: (LineStopRef) -> Unit,
     ) {
         val appContext = applicationContext
-        // Its lines and the stations beside it, from the bundled index, worked out off the main thread; none where
-        // the index can't be read, said in the log.
+        // Its lines and the stations beside it, from the bundled index, worked out off the main thread. Where the
+        // index can't be read (read as one with no stations, [StationIndexStore]), said in the log and on the page.
         var linksAsked by remember { mutableStateOf<String?>(null) }
         val links by produceState<Pair<String, StopLinks>?>(null, linksAsked) {
             val id = linksAsked ?: return@produceState
             val links = try {
                 val index = withContext(Dispatchers.IO) { StationIndexStore.load(appContext) }
-                withContext(Workers.compute) { index.linksOf(id) }
+                if (index.stations.isEmpty()) {
+                    StopdashDebugLog.warning("lines: route stop links failed for %s: no station index", id)
+                    StopLinks.FAILED
+                } else {
+                    withContext(Workers.compute) { index.linksOf(id) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 StopdashDebugLog.warning("lines: route stop links failed for %s: %s", id, e::class.simpleName.orEmpty())
-                StopLinks.NONE
+                StopLinks.FAILED
             }
             value = id to links
         }

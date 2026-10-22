@@ -3386,9 +3386,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             through the same stop) is followed as if it ends at the first call there, since the trip on the way
             finds the alighting call by id (Codex on #730). Planned rides on such loops share it; following one
             means carrying which call it ends at through `OnTheWay`'s path checks.
-      - [ ] **A stop's details with an unreadable station index** show no lines here or around it, as
-            if the stop had none (Codex on #730): the Lines… page and the route page's details both treat a
-            failed read as no links. A typed failure the page says, with Retry, would be honest.
+      - [x] **A stop's details with an unreadable station index** showed no lines here or around it, as
+            if the stop had none (Codex on #730): the Lines… page and the route page's details both treated a
+            failed read as no links. Done (2026-10-22): `StopLinks.FAILED` (an index with no stations, as
+            `StationIndexStore` reads an unreadable bundle), said where the pills go as "Couldn't load the
+            lines here". No Retry: the bundle is read once per process (#1002), so it would only say it again.
   - [x] **Starred journeys in Settings** (maintainer, 2026-10-05): listed by their stops and line,
         each with Remove.
   - [x] **Call them favorite journeys** (maintainer, 2026-10-06; *favourite* in en-GB). The saved

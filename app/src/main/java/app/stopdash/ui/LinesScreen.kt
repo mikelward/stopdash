@@ -658,7 +658,12 @@ internal fun LineStopPage(
             }
             // The lines here and around it, under From and To and the cue, so those never move as they arrive
             // (Codex on #664). From the bundled index, they're in at once.
-            if (links != null && links.nearbyLines.isNotEmpty()) {
+            if (links != null && links.failed) {
+                // Not "no lines": the stop's lines couldn't be worked out, so said (SPEC principle 2). No Retry: the
+                // bundle is read once per process ([StationBundleStore][app.stopdash.data.StationBundleStore]), so
+                // asking again would only say it again.
+                item(key = "lines-failed") { ReadError(onRetry = null, message = R.string.line_stop_lines_error) }
+            } else if (links != null && links.nearbyLines.isNotEmpty()) {
                 item(key = "lines") { StopLines(links.nearbyLines, onOpenLine) }
             }
             // How step-free it is and its facilities, under the lines (maintainer, 2026-10-10). They wait on the

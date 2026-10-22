@@ -192,7 +192,9 @@ internal class LinesViewModel(
     /**
      * The details of the stop [stopId] came up: its lines and the stations beside it are worked out from
      * the bundled index, off the main thread. Already up for it, they're left be. A stop the index doesn't
-     * hold, or an index that couldn't be read, links nowhere ([StopLinks.NONE]): the page shows none.
+     * hold links nowhere ([StopLinks.NONE]): the page shows none. An index that couldn't be read, which reads
+     * as one with no stations ([StationIndexStore][app.stopdash.data.StationIndexStore] falls back to it), is
+     * [StopLinks.FAILED], which the page says.
      */
     fun stopLinks(stopId: String) {
         if (linksJob?.isActive == true && linksFor == stopId) return
@@ -206,12 +208,17 @@ internal class LinesViewModel(
         linksJob = viewModelScope.launch {
             val links = try {
                 val index = withContext(io) { loadIndex() }
-                withContext(compute) { index.linksOf(stopId) }
+                if (index.stations.isEmpty()) {
+                    warn("stop links failed for $stopId: no station index")
+                    StopLinks.FAILED
+                } else {
+                    withContext(compute) { index.linksOf(stopId) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 warn("stop links failed for $stopId: ${e::class.simpleName}")
-                StopLinks.NONE
+                StopLinks.FAILED
             }
             _links.value = Links(stopId, links)
         }

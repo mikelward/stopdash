@@ -132,6 +132,27 @@ class LineSearchScreenshotTest {
         assertEquals(1, to)
     }
 
+    @Test
+    fun line_stop_says_when_its_lines_couldnt_be_worked_out() {
+        // The bundled index couldn't be read: said where the pills go, not shown as a stop with no lines. No
+        // Retry: the bundle is read once per process, so asking again would only say it again.
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Oxford Circus",
+                    distance = "350 m",
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    links = app.stopdash.domain.StopLinks.FAILED,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't load the lines here").assertIsDisplayed()
+        composeRule.onNodeWithText("Retry").assertDoesNotExist()
+    }
+
     // The Victoria line from Victoria to Warren Street, public stations, as a route page's stop list opens it.
     private val victoriaLine = LineRef("victoria", "Victoria", "tube")
     private val toWarrenStreet = app.stopdash.domain.FavoriteJourney(
