@@ -1276,6 +1276,8 @@ class ActiveTripTracker(
         val noneDirect = answered?.let { RouteDisruption.noneDirect(trip, progress) }
         // Seen past where they got off a ride ([notePast]): said as long as that answer, as the worst there is.
         val missed = answered?.let { RouteDisruption.missed(trip, progress) }
+        // A step-free ride a lift out today leaves with no way off at the trip's level: said as long as that answer.
+        val noWayOff = if (answered != null) notStepFree(trip, progress) else emptyList()
         // Joined with what else is known there, and what the rider dismissed on the trip's screen
         // ([dismissDisruptions]) left out, neither shown nor alerted again: on [io], not the caller's (the
         // main) thread, as is keying what's new to hear (Codex on #519).
@@ -1283,7 +1285,7 @@ class ActiveTripTracker(
         // no longer than the trip's own answer: what's kept stands as long as the earliest of them, never
         // as long as one let go of (Codex on #519).
         val (checked, deadline) = withContext(io) {
-            val withChange = listOfNotNull(change, noneDirect, missed).fold(found) { all, signal ->
+            val withChange = (listOfNotNull(change, noneDirect, missed) + noWayOff).fold(found) { all, signal ->
                 if (answered != null) all.with(signal, answered.plus(CURRENT_FOR)) else all
             }
             val kept = withChange.copy(signals = withChange.signals.filter { it.dismissKey !in trip.disruptionsDismissed })
@@ -1315,6 +1317,18 @@ class ActiveTripTracker(
         val from = missedKept?.let { ReplanOrigin.Stop(it.atId, it.atName) } ?: replanStop(trip, progress, rider, asked)
         // With where the trip goes, worked out here so planning again from it only reads it.
         _replanFrom.value = from?.let { withContext(io) { it.copy(to = ToChoice.of(trip)) } }
+    }
+
+    // Each coming ride of a step-free [trip] that the lifts out today leave with no way off at its level
+    // ([RouteDisruption.notStepFree]), getting off where its cards have it ([endOf]): none at no level, or one not known,
+    // with no lifts out, or with no table or lifts to be had, when the rides get off where the Planner does.
+    private suspend fun notStepFree(trip: ActiveTrip, progress: TripProgress): List<RouteDisruption.Signal.NotStepFree> {
+        val today = accessFor(trip) ?: return emptyList()
+        val base = withContext(compute) { lifted.base() } ?: return emptyList()
+        // Every lift working: nothing a lift could have taken away.
+        if (today === base) return emptyList()
+        val ends = trip.route.legs.withIndex().filter { (i, leg) -> i >= trip.legIndex && !leg.isWalk }.associate { (i, leg) -> i to endOf(trip, leg) }
+        return withContext(compute) { RouteDisruption.notStepFree(trip, progress, ends, base, today) }
     }
 
     // No train of its line predicted for the ride at a change the rider is a few minutes from

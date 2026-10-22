@@ -68,6 +68,33 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a coming ride a lift out leaves with no step-free way off is said, as a closed stop is`() {
+        // C's red platform is reached by ramp through one lift; E isn't in TfL's table for blue.
+        val access = StepFreeAccess(
+            mapOf("C" to mapOf("red" to listOf(StepFreePlatform(StepFreeLevel.RAMP, byLift = LiftStop("CEE", 1))))),
+            mapOf("CEE" to LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        val out = access.withLiftsOut(setOf("LIFT1"))
+        val ends = mapOf(
+            0 to LegEnd(StepFree.FULLY, LegEnd.Level.STOP, setOf("C"), ids = setOf("C")),
+            2 to LegEnd(StepFree.FULLY, LegEnd.Level.STOP, setOf("E"), ids = setOf("E")),
+        )
+        val found = RouteDisruption.notStepFree(trip, waiting, ends, access, out)
+        assertEquals(listOf(Signal.NotStepFree(0, "C", "C")), found)
+        assertEquals(Tier.HIGH, found.single().tier)
+        assertEquals("stepfree/0/C", found.single().key)
+        // Shown as a card of its own.
+        assertEquals(found, RouteDisruption.cards(found))
+        // With the lift back, or every lift working, nothing.
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip, waiting, ends, access, access))
+        // Off that ride, walking to the next: it's behind the rider.
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(20)), ends, access, out))
+        // Arrived, or a ride the ends don't name: nothing.
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip, TripProgress.Arrived, ends, access, out))
+        assertEquals(emptyList<Signal>(), RouteDisruption.notStepFree(trip, waiting, ends - 0, access, out))
+    }
+
+    @Test
     fun `a coming line not running is high, severe delays or part of it closed is medium, minor delays nothing`() {
         val found = signals(statuses = mapOf("red" to status("red", 2, "Suspended"), "blue" to status("blue", 6, "Severe Delays")))
         assertEquals(listOf(Tier.HIGH, Tier.MEDIUM), found.map { it.tier })

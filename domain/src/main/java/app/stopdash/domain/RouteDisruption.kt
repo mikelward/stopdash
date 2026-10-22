@@ -144,6 +144,21 @@ object RouteDisruption {
             override val tier: Tier get() = Tier.HIGH
             override val key: String get() = missedKey(legIndex, stopId)
         }
+
+        /**
+         * On a step-free trip, the ride [legIndex] can no longer get the rider off at the trip's level: a lift out today
+         * leaves none of the calls it reaches where it gets off step-free, its own call [stopId] (named [stopName])
+         * included ([StepFreeExits.lost]). As blocking as a closed stop for a rider who needs it, so said as one is,
+         * never a call sent to that fails (dev-docs/station-resolution.md, *Getting off*).
+         */
+        data class NotStepFree(
+            override val legIndex: Int,
+            val stopId: String,
+            val stopName: String,
+        ) : Signal {
+            override val tier: Tier get() = Tier.HIGH
+            override val key: String get() = "stepfree/$legIndex/$stopId"
+        }
     }
 
     /**
@@ -217,6 +232,7 @@ object RouteDisruption {
             // Said under the trip's step, not as a card ([cards] leaves it out).
             is Signal.NoneDirect -> signal.key
             is Signal.Missed -> signal.key
+            is Signal.NotStepFree -> signal.key
         }
     }
 
@@ -267,6 +283,28 @@ object RouteDisruption {
         val index = trip.branchTakenLeg.takeIf { it >= trip.legIndex } ?: return null
         val ride = trip.route.legs.getOrNull(index)?.takeIf { !it.isWalk } ?: return null
         return Signal.NoneDirect(index, ride.lineId, ride.lineName, trip.branchTakenTo.ifBlank { ride.toName }, trip.branchTakenFork.ifBlank { ride.toName })
+    }
+
+    /**
+     * Each coming ride of a step-free [trip] left with no way off at its level by the lifts out today
+     * ([Signal.NotStepFree], [StepFreeExits.lost]), as the rider takes it ([rideAt]), getting off where [ends] has it (by
+     * leg index; a ride it doesn't name says nothing): one whose calls there meet the level with every lift working
+     * ([base]) and none with the lifts out now ([today]). None once arrived.
+     */
+    @WorkerThread
+    fun notStepFree(
+        trip: ActiveTrip,
+        progress: TripProgress?,
+        ends: Map<Int, LegEnd>,
+        base: StepFreeAccess,
+        today: StepFreeAccess,
+    ): List<Signal.NotStepFree> {
+        if (progress == TripProgress.Arrived) return emptyList()
+        return comingRides(trip).mapNotNull { (i, leg) ->
+            val ride = rideAt(trip, i, leg)
+            val end = ends[i] ?: return@mapNotNull null
+            Signal.NotStepFree(i, ride.toId, ride.toName).takeIf { StepFreeExits.lost(ride, end, base, today) }
+        }
     }
 
     /** [signals] worst first, then in route order, as they're said. */

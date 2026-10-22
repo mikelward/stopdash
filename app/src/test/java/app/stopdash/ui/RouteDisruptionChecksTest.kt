@@ -176,6 +176,7 @@ class RouteDisruptionChecksTest {
                     is RouteDisruption.Signal.Unpredicted -> "${it.lineId} none at ${it.stopId}"
                     is RouteDisruption.Signal.NoneDirect -> "${it.lineId} none direct to ${it.toName}"
                     is RouteDisruption.Signal.Missed -> "${it.lineId} missed ${it.stopId}"
+                    is RouteDisruption.Signal.NotStepFree -> "not step-free at ${it.stopId}"
                 }
             },
         )

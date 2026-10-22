@@ -241,6 +241,21 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_step_free_ride_with_no_way_off_says_so_and_offers_to_plan_again() {
+        // A step-free trip whose Jubilee ride a lift out leaves with no step-free way off at Canary Wharf: said as a
+        // closed stop is, with Plan again and Keep going under it. Made up for the test.
+        val signal = RouteDisruption.Signal.NotStepFree(2, "940GZZLUCYF", "Canary Wharf")
+        show(
+            trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal),
+            replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {}, onDismissDisruptions = {},
+        )
+        composeRule.onNodeWithText("Not step-free at Canary Wharf: a lift is out").assertIsDisplayed()
+        composeRule.onNodeWithText("Plan again from Highbury & Islington").assertIsDisplayed()
+        composeRule.onNodeWithText("Keep going").assertIsDisplayed()
+        captureSnapshot("on-the-way-not-step-free.png")
+    }
+
+    @Test
     fun keep_going_sits_beside_plan_again() {
         // Read and keeping going (maintainer, 2026-10-03): Keep going hands over every signal shown. Made-up words.
         val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")

@@ -1339,6 +1339,10 @@
     <!-- A line the rest of a trip changes onto, %1$s its name, with no train of it predicted at %2$s, the stop the rider changes at, a few minutes off: "Jubilee: none soon at Bond Street". -->
     <string name="route_disruption_unpredicted">%1$s: none soon at %2$s</string>
     <string name="route_disruption_missed">Missed %1$s</string>
+    <!-- TODO: translate -->
+    <!-- A step-free trip's ride that a lift out today leaves with no step-free way off: %1$s the station it was to get
+         off at, "Not step-free at Bank: a lift is out". -->
+    <string name="route_disruption_not_step_free" tools:ignore="MissingTranslation">Not step-free at %1$s: a lift is out</string>
     <string name="route_disruption_none_direct">None direct to %1$s · Change at %2$s</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
