@@ -416,6 +416,9 @@ dependencies {
     implementation(project(":shared"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
+    // The dispatcher every Back handler runs on, which activity-compose brings at 1.0. Declared to hold
+    // it at the version Navigation 3 needs (dev-docs/navigation3.md), so the app ships what its tests run on.
+    implementation(libs.androidx.navigationevent.compose)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material3)
