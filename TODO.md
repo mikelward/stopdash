@@ -4393,6 +4393,14 @@ Builds on Phase 1's minimal line-status marking.
       with no label"). Done (2026-10-22): the train's route is the rightmost rail, every station on it labeled;
       other routes have no rows, their tracks dashed where they meet it (a bypass, or a stub to the line's end),
       said "Other routes meet here" to a screen reader. Needs a device check of the dashes and stubs.
+- [x] **Lay out the route page's map with every track meeting the train's stations as the track it is**
+      (maintainer, 2026-10-22: "i already approved some zero height rows previously? So wouldn't it make sense to do
+      that properly?", then "ok do B"). Done (2026-10-22): laid out from the train's stations alone, another route's
+      way between two of them one dashed track whose half at each is the track it leaves or comes in by, and any
+      other track meeting them a stub, so their service reads as on the line's own map and no column is carried over
+      from the whole line. Laying out the whole line with every other route's station a row of no height was tried
+      first on #1127: its columns, re-fitted across those rows, drew four Codex findings (lanes, a stub's column,
+      stubs running out of columns, a fold dropping a track).
 - [x] **An All chip on the route page** (maintainer, 2026-10-22: "when viewing the whole line or when the All
       chip is selected it would keep the current view"): a last chip in the route chips row drawing the whole
       line's map as the line page does, every route labeled. Done (2026-10-22): the map is laid out as before
@@ -5380,13 +5388,16 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
-- [ ] **A route page's map lays out another route's way between two of its train's stations as a stand-in
+- [x] **A route page's map lays out another route's way between two of its train's stations as a stand-in
   stop** (autopilot, 2026-10-22; Codex's third finding on #1102, the second in how other routes are collapsed
   onto the train's). Each such way is laid out as a stop of its own, carrying the tracks it stands for, and its
   row is dropped once laid out (every rail runs straight through it), so it keeps a dashed track of its own
   beside any the two stations share (the Heathrow Terminal 4 loop beside a train to Terminal 5) and is drawn shut
   with its closures. Alternative: collapse each way to a track between its two ends, merged with one they
-  already share, as #1102 first did. Reversible: `LineMap.laidOut`'s `standIns` back to a filtered route.
+  already share, as #1102 first did. Replaced (maintainer, 2026-10-22: "i already approved some zero height rows
+  previously? So wouldn't it make sense to do that properly?"): another route's way between two of the train's
+  stations is one track of the layout, its half at each the track it is there, with no stand-in stops
+  (`LineMap.alone`).
 - [x] **A route page's fold behind the train opens a level even with an alert on the way ahead**
   (autopilot, 2026-10-21; Codex's third finding on #1062, the second where that fold meets the alert-aware
   folding; kept, maintainer, 2026-10-22: "Keep it", so the line behind reads and opens alike with or without

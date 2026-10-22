@@ -1000,7 +1000,11 @@ class LineMapTest {
         val map = LineMap.of(northern(), closures = shut, riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
         val names = map.rows.map { it.name }
         val bypass = map.rows.subList(names.indexOf("Euston"), names.indexOf("Kennington")).map { row -> row.top.single { it.offRoute } }
-        assertTrue(bypass.all { it.closedGoingDown && it.closedGoingUp })
+        assertTrue(bypass.all { it.closed && it.closedAlong })
+        // Drawn closed for what's shut along it, while Camden Town's own track on to Euston's Charing Cross platforms,
+        // which it is beside the Bank branch, stays open: Camden Town still has trains that way.
+        assertTrue(bypass.none { it.trackClosed })
+        assertFalse(map.row("Camden Town").unserved || map.row("Camden Town").servedOneWay)
         assertTrue(map.row("Kennington").bottom.single { it.offRoute }.closed)
         assertTrue(map.row("Oval").top.single { it.offRoute }.closed)
         // The Edgware branch, open, stays drawn open; the train's own route too.
@@ -1086,10 +1090,11 @@ class LineMapTest {
     }
 
     @Test
-    fun `a closure to come is read along another route's stub only the way each of its tracks is run`() {
+    fun `a closure to come is read along another route's stubs only the way each of its tracks is run`() {
         // Buses out by Bravo to Delta and back from Xray by Yankee, both beyond Bravo, one way each: the bus from Alpha
-        // to Bravo has them as one stub. A closure to come shutting Alpha to Charlie and Yankee to Alpha leaves Bravo no
-        // bus, as on the line's own map, though nothing runs Bravo to Yankee or Charlie to Bravo (Codex on #1102).
+        // to Bravo has them as two stubs, each the track it is. A closure to come shutting Alpha to Charlie and Yankee
+        // to Alpha leaves Bravo no bus, as on the line's own map, though nothing runs Bravo to Yankee or Charlie to
+        // Bravo (Codex on #1102).
         val stops = listOf("Alpha", "Bravo", "Charlie", "Delta", "Xray", "Yankee")
         val sequence = LineSequence(
             routes = listOf(
@@ -1108,12 +1113,140 @@ class LineMapTest {
         assertEquals(day, LineMap.of(sequence, upcoming = listOf(both))!!.row("Bravo").upcomingFrom)
         val map = page(both)
         assertEquals(ride, map.rows.map { it.name })
-        assertEquals(1, map.row("Bravo").bottom.count { it.offRoute })
+        assertEquals(2, map.row("Bravo").bottom.count { it.offRoute && it.from == map.row("Bravo").column })
         assertEquals(day, map.row("Bravo").upcomingFrom)
         // Shut going out alone, the buses back still call.
         val out = closing(listOf("Alpha", "Bravo", "Charlie"))
         assertNull(LineMap.of(sequence, upcoming = listOf(out))!!.row("Bravo").upcomingFrom)
         assertNull(page(out).row("Bravo").upcomingFrom)
+    }
+
+    @Test
+    fun `another route's branch to the line's end off one of its own stations is left off, its closure drawn on its way`() {
+        // The train from Alpha to Delta; another route round by Xray and Yankee to Delta, with a branch from Yankee to
+        // Zulu, the line's end. Laid out as the whole line, Xray and Yankee's rows of no height: the way round dashed
+        // beside the train's, the branch to Zulu not drawn beside it at all, and a closure on it drawn on the way round,
+        // still placed on the map (maintainer, 2026-10-22).
+        val ride = listOf("Alpha", "Bravo", "Charlie", "Delta")
+        val spur = listOf("Yankee", "Zulu")
+        val sequence = made(ride, listOf("Alpha", "Xray", "Yankee", "Delta"), listOf("Alpha", "Xray", "Yankee") + spur.drop(1))
+        val shut = listOf(spur, spur.asReversed())
+        val closure = PartClosure(3, "Part Closure", null, shut)
+        val map = LineMap.of(sequence, closures = shut, placed = listOf(closure), riding = setOf("Alpha"), rides = listOf(ride), ridesOpen = true)!!
+        assertEquals(ride, map.rows.map { it.name })
+        // One dashed track beside Bravo and Charlie, the way round, drawn closed for the closure along it.
+        for (name in listOf("Bravo", "Charlie")) {
+            val row = map.row(name)
+            assertEquals(1, row.top.count { it.offRoute })
+            assertEquals(1, row.bottom.count { it.offRoute })
+            assertTrue((row.top + row.bottom).filter { it.offRoute }.all { it.closed && !it.trackClosed })
+        }
+        assertTrue(map.row("Delta").bottom.none { it.offRoute })
+        assertTrue(map.closurePlaced)
+        // Alpha and Delta, the way round meeting them open, keep their trains.
+        assertTrue(listOf("Alpha", "Delta").none { map.row(it).unserved || map.row(it).servedOneWay || map.row(it).besideClosure })
+        // Open, nothing along the way round is drawn closed.
+        val open = LineMap.of(sequence, riding = setOf("Alpha"), rides = listOf(ride), ridesOpen = true)!!
+        assertTrue(open.rows.none { row -> (row.top + row.bottom).any { it.closed } })
+    }
+
+    @Test
+    fun `another route joined to the train's only through a line's end is a stub at each, never a track from nowhere`() {
+        // The train from Alpha to Hotel; other routes from Alpha to India and from Delta, another end, to Hotel and India.
+        // Delta and India have rows of no height, and no way runs down the map from Alpha to Hotel through them, so each
+        // is a stub where it meets the train's: none drawn from nowhere into Hotel, nor on past it (Codex on #1127).
+        val ride = listOf("Alpha", "Hotel")
+        val sequence = made(ride, listOf("Alpha", "India"), listOf("Delta", "Hotel"), listOf("Delta", "India"))
+        val map = LineMap.of(sequence, riding = setOf("Alpha"), rides = listOf(ride), ridesOpen = true)!!
+        assertEquals(ride, map.rows.map { it.name })
+        val alpha = map.row("Alpha")
+        val hotel = map.row("Hotel")
+        assertEquals(1, alpha.bottom.count { it.offRoute && it.from == alpha.column })
+        assertEquals(1, hotel.top.count { it.offRoute && it.to == hotel.column })
+        // Every rail into Hotel runs on from one out of Alpha, and nothing runs on below Hotel, the map's last row.
+        assertTrue(hotel.top.all { rail -> alpha.bottom.any { it.to == rail.from } })
+        assertEquals(emptyList<LineMap.Rail>(), hotel.bottom)
+        assertTrue(alpha.top.isEmpty())
+    }
+
+    @Test
+    fun `a stub runs on into the next row on a column of its own, never into another route's lane`() {
+        // The train from Alpha by Echo to Golf; other routes from Alpha by Bravo to Echo and to Golf, and from Alpha to
+        // Foxtrot, a line's end. On the whole line's map Bravo's lane to Golf takes the column Foxtrot's branch leaves,
+        // which, with their rows gone, was the stub to Foxtrot's in the row after Alpha's (Codex on #1127). Laid out from
+        // the train's stations alone, the stub has a column of its own, a row long like any other, joined to no other
+        // route's track.
+        val ride = listOf("Alpha", "Echo", "Golf")
+        val sequence = made(ride, listOf("Alpha", "Bravo", "Echo", "Golf"), listOf("Alpha", "Bravo", "Golf"), listOf("Alpha", "Foxtrot"))
+        val map = LineMap.of(sequence, riding = setOf("Alpha"), rides = listOf(ride), ridesOpen = true)!!
+        assertEquals(ride, map.rows.map { it.name })
+        val alpha = map.row("Alpha")
+        val echo = map.row("Echo")
+        // Bravo's ways to Echo and to Golf, a dashed track each, and the stub to Foxtrot leave Alpha, and each runs on
+        // into Echo's row.
+        val dashed = alpha.bottom.filter { it.offRoute }
+        assertEquals(3, dashed.size)
+        for (rail in dashed) assertTrue(rail.toString(), echo.top.any { it.from == rail.to })
+        // The stub's half there, ending in Echo's row: on a column no other rail of that row starts or ends at.
+        val stub = echo.top.single { rail -> rail.offRoute && rail.from == rail.to && echo.bottom.none { it.from == rail.from } }
+        assertFalse(stub.arrives)
+        assertEquals(listOf(stub), (echo.top + echo.bottom).filter { it.from == stub.from || it.to == stub.from })
+    }
+
+    @Test
+    fun `another route running on past the train's last station is drawn straight on down from it`() {
+        // The train from Alpha to Bravo, where the line runs on to Charlie: nothing of the train's leaves Bravo, so the
+        // stub on goes straight down from it, as the line itself goes on.
+        val ride = listOf("Alpha", "Bravo")
+        val map = LineMap.of(made(ride + "Charlie"), riding = setOf("Alpha"), rides = listOf(ride), ridesOpen = true)!!
+        assertEquals(ride, map.rows.map { it.name })
+        val bravo = map.row("Bravo")
+        val stub = bravo.bottom.single()
+        assertTrue(stub.offRoute)
+        assertEquals(listOf(bravo.column, bravo.column), listOf(stub.from, stub.to))
+        // One leaving a station the train goes on from curves off beside its track.
+        val on = LineMap.of(made(listOf("Alpha", "Bravo", "Charlie"), listOf("Alpha", "Xray")), riding = setOf("Alpha"), rides = listOf(listOf("Alpha", "Bravo", "Charlie")), ridesOpen = true)!!
+        val alpha = on.row("Alpha")
+        assertNotEquals(alpha.column, alpha.bottom.single { it.offRoute }.to)
+    }
+
+    @Test
+    fun `a stub into a station starts clear of every track into the row before`() {
+        // The train from Bravo by Charlie to Delta; another route from Alpha by Yankee comes into Charlie beside it, and
+        // one from Zulu, the line's end, into Delta. The stub from Zulu starts half way down Charlie's row, on a column
+        // no track comes into Charlie by, so it never seems to run on from the way by Yankee.
+        val ride = listOf("Bravo", "Charlie", "Delta")
+        val sequence = made(listOf("Alpha") + ride, listOf("Alpha", "Yankee", "Charlie", "Delta"), listOf("Zulu", "Delta"))
+        val map = LineMap.of(sequence, riding = setOf("Bravo"), rides = listOf(ride), ridesOpen = true)!!
+        assertEquals(listOf("Alpha") + ride, map.rows.map { it.name })
+        val charlie = map.row("Charlie")
+        val stub = charlie.bottom.single { it.offRoute }
+        assertEquals(stub.from, stub.to)
+        assertTrue(charlie.top.none { it.from == stub.from || it.to == stub.from })
+        assertTrue(map.row("Delta").top.any { it.offRoute && it.from == stub.to && it.arrives })
+    }
+
+    @Test
+    fun `stubs needing new columns at one station each get one, every dashed rail running on into the next row`() {
+        // The train from Echo to Foxtrot, which comes to Echo from Bravo or Delta. Two other routes leave Bravo for
+        // stations with no rows, Golf and Foxtrot by way of Golf's line, and the columns they had on the whole line are
+        // taken in Delta's row: each stub gets a new column of its own there, the second as well as the first, never
+        // left on Delta's own column (Codex on #1127).
+        val ride = listOf("Echo", "Foxtrot")
+        val sequence = made(
+            ride, listOf("Bravo", "Golf"), listOf("Bravo", "Echo", "Foxtrot"), listOf("Bravo", "Foxtrot", "Golf", "Hotel"),
+            listOf("Echo", "Hotel"), listOf("Delta", "Echo", "Hotel"),
+        )
+        val map = LineMap.of(sequence, riding = setOf("Echo"), rides = listOf(ride), ridesOpen = true)!!
+        assertEquals(listOf("Bravo", "Delta", "Echo", "Foxtrot"), map.rows.map { it.name })
+        val bravo = map.row("Bravo")
+        assertEquals(2, bravo.bottom.count { it.offRoute })
+        // Across every row's foot: each dashed rail out of one row runs on into the next, and each into a row comes
+        // from one out of the row before.
+        for ((upper, lower) in map.rows.zipWithNext()) {
+            for (rail in upper.bottom.filter { it.offRoute }) assertTrue("$rail out of ${upper.name}", lower.top.any { it.from == rail.to })
+            for (rail in lower.top.filter { it.offRoute }) assertTrue("$rail into ${lower.name}", upper.bottom.any { it.to == rail.from })
+        }
     }
 
     @Test
@@ -1170,6 +1303,48 @@ class LineMapTest {
         )!!
         assertTrue(spur.row("Bravo").otherRoutes)
         assertTrue((spur.folded(emptySet()).first() as LineMap.Item.Fold).rails.none { it.offRoute })
+    }
+
+    @Test
+    fun `another route's track by the train's past a run folded behind it is drawn through the fold`() {
+        // The train from Foxtrot to Golf, its trains coming from Bravo by Delta and Echo; another route from Bravo by
+        // Charlie, with no rows, to Golf. Opened behind the train, Delta and Echo fold into a run, and the dashed track
+        // to Golf runs through it into Foxtrot's row and on, never stopping at the fold (Codex on #1127).
+        val sequence = made(
+            listOf("Bravo", "Charlie", "Echo"), listOf("Bravo", "Charlie", "Golf"), listOf("Foxtrot", "Golf"),
+            listOf("Bravo", "Delta", "Echo", "Foxtrot", "Golf"),
+        )
+        val map = LineMap.of(sequence, riding = setOf("Foxtrot"), rides = listOf(listOf("Foxtrot", "Golf")), ridesOpen = true)!!
+        assertEquals(listOf("Bravo", "Delta", "Echo", "Foxtrot", "Golf"), map.rows.map { it.name })
+        val items = map.folded(setOf(map.behind!!.key))
+        val fold = items.filterIsInstance<LineMap.Item.Fold>().single()
+        assertEquals(listOf("Delta", "Echo"), listOf(fold.first, fold.last))
+        val dashed = fold.rails.single { it.offRoute }
+        assertTrue(dashed.fromTop && dashed.toBottom)
+        // And straight down every row between Bravo, where it leaves, and Golf, where it comes in.
+        for (name in listOf("Delta", "Echo", "Foxtrot")) {
+            val row = map.row(name)
+            assertTrue(name, row.top.any { it.offRoute && it.from == dashed.column && it.to == dashed.column })
+            assertTrue(name, row.bottom.any { it.offRoute && it.from == dashed.column && it.to == dashed.column })
+        }
+    }
+
+    @Test
+    fun `a stub ending in a run folded behind the train is drawn into the fold, not through it`() {
+        // Another route leaving Alpha for Xray, the line's end, behind a train from Delta: its stub ends half way down
+        // Bravo's row, so the run of Bravo and Charlie draws it in from the top and no further.
+        val map = LineMap.of(
+            made(listOf("Alpha", "Bravo", "Charlie", "Delta", "Echo"), listOf("Alpha", "Xray")),
+            riding = setOf("Delta"), rides = listOf(listOf("Delta", "Echo")), ridesOpen = true,
+        )!!
+        val fold = map.folded(setOf(map.behind!!.key)).filterIsInstance<LineMap.Item.Fold>().single()
+        assertEquals(listOf("Bravo", "Charlie"), listOf(fold.first, fold.last))
+        val stub = fold.rails.single { it.offRoute }
+        assertTrue(stub.fromTop)
+        assertFalse(stub.toBottom)
+        // The train's own rail runs through it whole.
+        val own = fold.rails.single { !it.offRoute }
+        assertTrue(own.fromTop && own.toBottom)
     }
 
     @Test

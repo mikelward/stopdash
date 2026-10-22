@@ -1351,7 +1351,10 @@ page still shows it); its track is drawn dashed, unlabeled (and shut where a clo
 where it meets the train's: one dashed track between two of the train's stations it runs between (the Charing
 Cross branch from Camden Town to Kennington beside a train by Bank), else a short stub where it runs on to the
 line's end (the Battersea branch out of Kennington). A screen reader hears "Other routes meet here" at each
-station one meets. A train going nowhere from the stop (one ending there), or whose route can't be told,
+station one meets. The map is laid out from the train's stations alone (maintainer, 2026-10-22), each dashed track
+meeting one of them as the track it is there, so a station of the train's route has trains, or none, by the tracks
+meeting it, as on the line's own map, however much of a dashed track is shut further along. A train going nowhere from the stop
+(one ending there), or whose route can't be told,
 leaves the whole line drawn; the line's own page keeps every route as before. The **All** chip, last among the route
 chips, draws the whole line on the route page too, every route's stations labeled and the train's path open, until
 a route's chip is tapped (maintainer, 2026-10-22: "when the All chip is selected it would keep the current view").
