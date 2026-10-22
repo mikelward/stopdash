@@ -5249,9 +5249,10 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
-- [ ] **A route page's fold behind the train opens a level even with an alert on the way ahead**
+- [x] **A route page's fold behind the train opens a level even with an alert on the way ahead**
   (autopilot, 2026-10-21; Codex's third finding on #1062, the second where that fold meets the alert-aware
-  folding). Opened, the stretch behind folds by its runs, its ends and junctions shown, whatever alert is
+  folding; kept, maintainer, 2026-10-22: "Keep it", so the line behind reads and opens alike with or without
+  an alert). Opened, the stretch behind folds by its runs, its ends and junctions shown, whatever alert is
   ahead, rather than as an alert has the rest of the line fold (by its sections, which swapped one line for
   another). Alternative, which deletes the class: with an alert on the rider, no fold of its own behind the
   train, the alert's own section fold standing for it, named by where its trains come from and opening every
