@@ -122,6 +122,8 @@ internal fun SearchRowMenu(
     // for Cancel; working them out takes the worker a moment.
     val known = facts ?: return
     val coordinate = known.coordinate
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {

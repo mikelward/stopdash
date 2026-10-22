@@ -4028,7 +4028,7 @@ Builds on Phase 1's minimal line-status marking.
             it's only a glimpse. Moving to Navigation 3 (maintainer, 2026-10-22), a PR a step
             (`dev-docs/navigation3.md`):
         - [x] 1. The spike: what the move relies on, confirmed on the app's own stack.
-        - [ ] 2. The near-me page's effects wait until it's on top of the stack.
+        - [x] 2. The near-me page's effects wait until it's on top of the stack.
         - [ ] 3. The overlays become a back stack.
         - [ ] 4. A route stop's windows become window entries.
         - [ ] 5. The station flow stacks.

@@ -33,7 +33,6 @@ import androidx.compose.material3.TimeInput
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,7 +85,8 @@ internal fun LaterTripScreen(
     val back = rememberBackFollow()
     PredictiveBack(back, onBack = onBack)
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(notice) {
+    // Only while the page is on top, so a glimpse of it under a back gesture spends no notice.
+    OnTopEffect(notice) {
         if (notice != null) {
             snackbarHostState.showSnackbar(notice)
             onNoticeShown()
@@ -280,6 +280,8 @@ private fun dayFormat(): DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun TripTimeDialog(initial: TripTime, now: Instant, onDismiss: () -> Unit, onDone: (TripTime) -> Unit) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     var kind by rememberSaveable { mutableStateOf(initial.kind) }
     val days = remember(now.atZone(AlertStart.ZONE).toLocalDate()) { TripTime.days(now) }
     var day by rememberSaveable { mutableStateOf(initial.at.toLocalDate().takeIf { it in days } ?: days.first()) }

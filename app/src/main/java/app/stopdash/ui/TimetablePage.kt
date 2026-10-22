@@ -308,6 +308,8 @@ internal fun TimetablePage(
     chips: (@Composable () -> Unit)? = null,
     notices: @Composable () -> Unit = {},
 ) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),

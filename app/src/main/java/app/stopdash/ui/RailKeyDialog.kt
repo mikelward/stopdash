@@ -29,6 +29,8 @@ internal const val RAIL_DATA_MARKETPLACE_URL =
  */
 @Composable
 internal fun RailKeyDialog(onAddKey: () -> Unit, onShowAnyway: () -> Unit, onDismiss: () -> Unit) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     val context = LocalContext.current
     val linkFailed = stringResource(R.string.rail_key_link_failed)
     AlertDialog(

@@ -253,13 +253,15 @@ internal fun <K : Any, T> rememberWorked(
  * (nothing worked out yet, or nothing to report now) reports nothing, and the same [Reported] as the
  * last one reported (the worker found the value unchanged, [Reported.of]) isn't reported again, told
  * apart by identity alone. What was reported is kept per [owner], the list's work: a new list has a new
- * model to tell, so it reports again, as does a return to the screen, as a keyed effect would.
+ * model to tell, so it reports again, as does a return to the screen, as a keyed effect would. Only while
+ * the page is on top ([LocalPageOnTop]): a glimpse of it under a back gesture tells its model nothing,
+ * and what it would have told is told as the page comes back on top.
  */
 @Composable
 internal fun <T> ReportChanges(reported: Reported<T>?, owner: Any, report: suspend (T) -> Unit) {
     val latest by rememberUpdatedState(report)
     val last = remember(owner) { arrayOfNulls<Reported<*>>(1) }
-    LaunchedEffect(owner, reported) {
+    OnTopEffect(owner, reported) {
         if (reported != null && reported !== last[0]) {
             // Noted once made: a report canceled partway (a newer value came) is made again.
             latest(reported.value)
