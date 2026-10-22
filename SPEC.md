@@ -2394,7 +2394,8 @@ the way says so already (*Disruption ahead*, 2026-10-22). So does the trip page'
 route a lift out leaves with no step-free way on or off a ride, though it has one with every lift
 working, says "Not step-free at Bank: a lift is out" in that ride's ⚠ on its card, one warning a
 station, and ranks below every route that can be ridden, as a closed stop ranks one, so a route that
-works is listed first; the open route doesn't say so yet.
+works is listed first. Opened, the route says so where that ride boards or gets off there, with *Try
+again* to plan the trip again, as a plan that failed offers.
 
 **Direct to a place** (maintainer, 2026-10-07). A trip to a place (a favorite, or a place or postcode
 picked in *To…*) shows a **Direct** section under its choices and over its routes, and so does a trip to a

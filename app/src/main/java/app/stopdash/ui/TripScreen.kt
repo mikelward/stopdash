@@ -2392,8 +2392,8 @@ private fun PlanIncomplete(planning: Boolean, onRetry: () -> Unit) =
     PlanNotice(stringResource(R.string.trip_routes_missed), planning, onRetry)
 
 @Composable
-private fun PlanNotice(text: String, planning: Boolean, onRetry: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+private fun PlanNotice(text: String, planning: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
         // As large as the routes it's over, as the main screen's notices are (maintainer, 2026-10-17).
         Text(
             text,
@@ -3244,6 +3244,12 @@ private fun RouteLegs(
             val card = view.closureCards[id]?.takeIf { carded.add(id) } ?: return
             item(key = "closure|$id") { StopClosureCard(card.row, onDismissAlert?.let { dismiss -> { dismiss(card.row) } }, card.title) }
         }
+        // On a step-free trip, where a lift out has taken a ride's way on or off ([TripOpenView.stepFree]): said where it
+        // boards or gets off there, with a plan asked for again, as a plan that failed offers one.
+        fun stepFreeNote(index: Int, id: String) {
+            val note = view.stepFree[openStepFreeKey(index, id)] ?: return
+            item(key = "stepFree|$index|$id") { PlanNotice(note, state.planning, onRetry, Modifier.testTag("openNotStepFree")) }
+        }
         estimate.route.legs.forEachIndexed { index, leg ->
             // A change on foot, as the trip decides them ([TripViewModel.State.changesOnFoot]), between two rides.
             if (leg in state.changesOnFoot && index > 0 && !estimate.route.legs[index - 1].isWalk &&
@@ -3269,12 +3275,14 @@ private fun RouteLegs(
                 val ride = rideLines.of(estimate.route, leg)
                 val shown = ride.legs
                 (listOf(leg) + shown).forEach { closureCard(it.fromId) }
+                stepFreeNote(index, leg.fromId)
                 // Its rows from the frame ([TripOpenView.rides]), worked out with the rest of the route.
                 val rideView = view.rides.getOrNull(index)
                 item(key = "leg$index") {
                     RideLeg(leg, ride, rideView, index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready)
                 }
                 (listOf(leg) + shown).forEach { closureCard(it.toId) }
+                stepFreeNote(index, leg.toId)
                 // A change the Planner allows time for after this ride (not a walk leg of its own):
                 // shown, since it decides which next train is in reach.
                 if (leg.changeAfter > Duration.ZERO && index < estimate.route.legs.lastIndex) {

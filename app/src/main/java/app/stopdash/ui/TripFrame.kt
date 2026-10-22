@@ -105,7 +105,8 @@ internal class TripCardView(
 /**
  * The open route as drawn: what frames it ([framing]), its stops' closure notices ([closures]), its
  * summary's alerts ([statuses]) and each ride's rows ([rides], by leg index; null for a walk), so an
- * open ride draws whole in the frame that opens it, never its stop count first and its rows after.
+ * open ride draws whole in the frame that opens it, never its stop count first and its rows after. On a
+ * step-free trip, where a lift out has taken a ride's way on or off, said there ([stepFree]).
  */
 internal class TripOpenView(
     val framing: TripFraming,
@@ -114,7 +115,13 @@ internal class TripOpenView(
     val closureCards: Map<String, TripClosureCard> = emptyMap(),
     val statuses: Map<String, LineStatus>,
     val rides: List<RideLegView?>,
+    // Where a lift out has taken a ride's step-free way on or off ([ShownRoutes.notStepFree]), said as the list's cards
+    // say it, by the ride's leg index and the stop ([openStepFreeKey]): drawn where the ride boards or gets off there.
+    val stepFree: Map<String, String> = emptyMap(),
 )
+
+/** The key of a ride's step-free note on the open route ([TripOpenView.stepFree]): its leg's index and the stop. */
+internal fun openStepFreeKey(legIndex: Int, stopId: String): String = "$legIndex|$stopId"
 
 /** [TripFrame] for [state] at [now]: off the main thread, on the page's worker. */
 @WorkerThread
@@ -191,7 +198,9 @@ internal fun tripFrame(
     val poleOf: (String, String) -> StopLocation? = { id, area ->
         area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
     }
-    val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology, poleOf) }
+    val openView = open?.let {
+        openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology, poleOf, notStepFree[routeKey(it.route)].orEmpty(), resources)
+    }
     val starts = open?.route?.let { route -> shown?.plannedOf(route) ?: route }
     return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView, timetablesWanted(timed.orEmpty(), state, now), starts)
 }
@@ -291,10 +300,18 @@ private fun openView(
     hubOf: (String) -> String?,
     topology: RouteTopology,
     poleOf: (String, String) -> StopLocation?,
+    // Where a lift out has taken the route's step-free way on or off a ride ([ShownRoutes.notStepFree]).
+    lost: List<RouteDisruption.Signal.NotStepFree>,
+    // What those are said with.
+    resources: Resources,
 ): TripOpenView {
     val rows = routeClosureRows(estimate.route, state, now, sequences, rideLines, hubOf, poleOf)
     val closures = foldedClosures(rows, dismissed)
     return TripOpenView(
+        // Said as the list's cards say it, the stop by name.
+        stepFree = lost.associate {
+            openStepFreeKey(it.legIndex, it.stopId) to resources.getString(R.string.route_disruption_not_step_free, it.stopName.ifBlank { it.stopId })
+        },
         // With a route open, only its own legs' warnings frame it.
         framing = framing(listOf(estimate), state, now, sequences, rideLines),
         closures = closures,
