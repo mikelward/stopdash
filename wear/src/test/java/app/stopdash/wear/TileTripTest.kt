@@ -37,13 +37,13 @@ class TileTripTest {
 
     @Test
     fun `no trip, or one past its time, leaves the tile to its departures`() {
-        assertNull(TileTrip.schedule(null, now, elapsedNow, null, departures))
-        assertNull(TileTrip.schedule(held(WatchTripState.GONE_AFTER.plusSeconds(1)), now, elapsedNow, null, departures))
+        assertNull(TileTrip.schedule(null, now, elapsedNow, null, after = departures))
+        assertNull(TileTrip.schedule(held(WatchTripState.GONE_AFTER.plusSeconds(1)), now, elapsedNow, null, after = departures))
     }
 
     @Test
     fun `it shows the step and the next ride's trains, as the watch app does`() {
-        val first = TileTrip.schedule(held(), now, elapsedNow, null, departures)!!.entries.first().frame as TileFrame.Trip
+        val first = TileTrip.schedule(held(), now, elapsedNow, null, after = departures)!!.entries.first().frame as TileFrame.Trip
         assertEquals("Walk to King's Cross St. Pancras", first.title)
         assertEquals("4 min", first.detail)
         assertFalse(first.stale)
@@ -54,7 +54,7 @@ class TileTripTest {
 
     @Test
     fun `its countdowns go down between updates, it reads out of date after two minutes, and goes at fifteen`() {
-        val schedule = TileTrip.schedule(held(), now, elapsedNow, null, departures)!!
+        val schedule = TileTrip.schedule(held(), now, elapsedNow, null, after = departures)!!
         assertEquals(now.plus(WatchTripState.GONE_AFTER), schedule.refreshAt)
         val goneAt = now.plus(WatchTripState.GONE_AFTER)
         // Once it goes the timeline runs on to the departures, whether or not the tile is asked
@@ -98,7 +98,7 @@ class TileTripTest {
     @Test
     fun `a train due far ahead, from a watch clock well behind, costs only the ticks inside the trip`() {
         val farAhead = trip.copy(departures = listOf(trip.departures.first().copy(dueAt = now.plus(Duration.ofDays(3650)).toEpochMilli())))
-        val schedule = TileTrip.schedule(HeldTrip(farAhead, elapsedNow), now, elapsedNow, null, departures)!!
+        val schedule = TileTrip.schedule(HeldTrip(farAhead, elapsedNow), now, elapsedNow, null, after = departures)!!
         assertTrue(schedule.entries.size <= TileTimeline.MAX_ENTRIES)
     }
 }

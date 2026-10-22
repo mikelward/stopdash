@@ -4,6 +4,7 @@ import app.stopdash.data.PersistedFoldChoice
 import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
@@ -215,6 +216,16 @@ class TileTimelineTest {
         assertEquals(listOf("2 min"), rows(TileTimeline.frame(folded, fetched)).map { it.countdown })
         // With no order (an older phone), every stop's copy still shows.
         assertEquals(2, rows(TileTimeline.frame(envelope(a, b), fetched)).size)
+    }
+
+    @Test
+    fun `a line's countdown is written in the watch's words, on the tile and through its schedule`() {
+        val env = envelope(stop("940GA", listOf(departure(60), departure(180))))
+        val german = CountdownWords(" | ") { "$it Min." }
+        assertEquals(listOf("1 | 3 Min."), rows(TileTimeline.frame(env, fetched, words = german)).map { it.countdown })
+        assertEquals(listOf("1 | 3 Min."), rows(TileTimeline.entries(env, fetched, words = german).at(fetched)).map { it.countdown })
+        // The default is the English the tile has always written.
+        assertEquals(listOf("1 · 3 min"), rows(TileTimeline.frame(env, fetched)).map { it.countdown })
     }
 
     @Test
