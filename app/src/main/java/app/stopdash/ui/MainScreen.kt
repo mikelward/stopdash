@@ -461,6 +461,9 @@ fun MainScreen(
     // the app's mark, and the overflow menu is left out — it belongs to the main list.
     stationTitle: String? = null,
     onCloseStation: () -> Unit = {},
+    // The station is its page ([app.stopdash.Page.Station]): its Back closes the page, which the back swipe draws
+    // closing ([RootBack]).
+    stationRootBack: Boolean = false,
     // A station's departures opened from a stop's details (their Departures), which start nothing: Back in the
     // bar where To… would be, and no crosshairs, as it's a look, not a place to move to.
     stationBrowse: Boolean = false,
@@ -1244,7 +1247,11 @@ fun MainScreen(
     val drawnState = (if (platformRows != null) platformView?.source else null) ?: drawnLoaded
     // A searched station's page closes back to the search; a drill-down inside it steps out first
     // (this one is off while a drill-down is open, so the handler above takes that back).
-    PredictiveBack(listBack, enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
+    if (stationRootBack) {
+        RootBack(listBack, enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
+    } else {
+        PredictiveBack(listBack, enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
+    }
 
     // The favorite journey whose own view is open (its key), from a tap on its heading, or null. It
     // resolves against the current cards each recomposition, so it follows a swap and its trains stay

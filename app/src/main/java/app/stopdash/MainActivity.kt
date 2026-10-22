@@ -1088,12 +1088,9 @@ class MainActivity : ComponentActivity() {
                 var placesFromStop by rememberSaveable { mutableStateOf(false) }
                 val openLicenses = { licensesOpen = true }
                 // "Find a station" (SPEC *Finding stops*): the search, and the station opened from it
-                // (its TfL id and name). Hosted as overlays like Settings, so the near-me departures
-                // stop polling while they're up; back from a station returns to the search.
-                // The station flow's page is open while its search or a station is ([Page.Stations]).
-                val stationSearchState = rememberSaveable { mutableStateOf(false) }
-                val openStationIdState = rememberSaveable { mutableStateOf<String?>(null) }
-                var stationSearchOpen by pages.kept(Page.Stations, stationSearchState, others = { openStationIdState.value != null }) { it }
+                // (its TfL id and name). Pages like Settings, so the near-me departures stop polling while
+                // they're up; a station picked in the search opens over it, so its Back returns there.
+                var stationSearchOpen by pages.kept(Page.StationSearch, rememberSaveable { mutableStateOf(false) }) { it }
                 // *Lines…* (SPEC *Finding a line*): the line search, and the page of a line picked there. Open while
                 // its page is on the stack, under the trip a stop's To planned from it too.
                 var linesOpen by pages.flag(Page.Lines)
@@ -1147,7 +1144,7 @@ class MainActivity : ComponentActivity() {
                 // The replan moved on to start from here (its From row's Here), so the near-me trip's
                 // Start takes the trip's place too (Codex, PR #479), until that trip closes.
                 var replanningHere by rememberSaveable { mutableStateOf(false) }
-                var openStationId by pages.kept(Page.Stations, openStationIdState, others = { stationSearchState.value }) { it != null }
+                var openStationId by pages.kept(Page.Station, rememberSaveable { mutableStateOf<String?>(null) }) { it != null }
                 var openStationName by rememberSaveable { mutableStateOf("") }
                 // The favorite ride a station was opened from (its Whole station): the station's id, the ride's
                 // key and the stop it was shown boarding from ([RideReturn]). Only that station's own Back reopens
@@ -1231,6 +1228,19 @@ class MainActivity : ComponentActivity() {
                 // station's Back doesn't find a search the rider never opened ([searchAfterChange]).
                 var searchForChange by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(stationSearchOpen) { if (!stationSearchOpen) searchForChange = false }
+                // A station's page closed by its Back: back from a ride's station to the ride it was opened from. The
+                // name goes with the id, so nothing about a station looked at is kept in the saved state once it's
+                // closed. Mid-change (the station still loading, or failed), the search it returns to still opens the
+                // next station at its To… search.
+                val closeStation = {
+                    rideToReopen = RideReturn.onBack(rideStation, openStationId)
+                    rideStation = null
+                    openStationId = null
+                    openStationName = ""
+                    openStationLead = null
+                    openStationLevel = null
+                    stationTo = OriginChange.toAfterStationClosed(originChange)
+                }
                 // "To…" from the near-me list (SPEC *Finding stops → From… To…*): whether it's open (its own
                 // page, [Page.HereTrip]), whether its destination search is up, and the destination picked. Its
                 // starting stops aren't kept: they're worked out from the current nearby set.
@@ -1996,14 +2006,14 @@ class MainActivity : ComponentActivity() {
                                 Page.FavoritePlaces -> favoritePlacesOpen = false
                                 Page.FavoriteJourneys -> favoriteJourneysOpen = false
                                 Page.Lines -> closeLines(null)
-                                Page.Stations -> {
+                                Page.StationSearch -> {
                                     stationSearchOpen = false
-                                    openStationId = null
-                                    openStationName = ""
-                                    openStationLead = null
-                                    openStationLevel = null
                                     stationTo = ToChoice.NONE
                                     originChange = null
+                                }
+                                Page.Station -> {
+                                    ViewModelProvider(this@MainActivity)["station-stores", NearbyDeparturesStores::class.java].clearAll()
+                                    closeStation()
                                 }
                                 // Its origin still being worked out, or the location gate in its place: ended as its
                                 // own Back would, its models with it.
@@ -2748,7 +2758,7 @@ class MainActivity : ComponentActivity() {
                                         onDepartures = openDepartures,
                                     )
                                 }
-                            } else if (page == Page.Stations) {
+                            } else if (page == Page.StationSearch || page == Page.Station) {
                                 // Closed last by an arrived trip's Done: the search opens empty, not on that query.
                                 if (stationSearchReset) {
                                     val search = fromSearchModel()
@@ -2763,16 +2773,17 @@ class MainActivity : ComponentActivity() {
                                 val leaveLines = { linesUnder?.let(closeLines) }
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
                                 val replanActions = replanActionsOr(LocalOnTheWay.current, replanning)
-                                // The search and each station keep their own pages, one page of the stack as they are
-                                // until they stack (step 5): the search as it was left under a station opened from it.
-                                KeptPages(stationFlowPage(openStationId), stationFlowPages(stationSearchOpen, openStationId)) {
+                                // The search, or the station on its page: each station keeps its own pages, so one opened
+                                // in another's place starts afresh, until stations stack (`dev-docs/navigation3.md`).
+                                val shownStation = if (page == Page.Station) openStationId else null
+                                KeptPages(stationFlowPage(shownStation), setOf(stationFlowPage(shownStation))) {
                                 CompositionLocalProvider(LocalOnTheWay provides replanActions) {
                                     StationSearchArea(
                                         onEditPlaces = {
                                             placesFromStation = true
                                             favoritePlacesOpen = true
                                         },
-                                        stationId = openStationId,
+                                        stationId = shownStation,
                                         stationName = openStationName,
                                         stationLead = openStationLead,
                                         // A change of start stays under way while the station loads: it's
@@ -2796,20 +2807,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             originChange = null
                                         },
-                                        // The name goes with the id, so nothing about a station looked at is
-                                        // kept in the saved state once it's closed.
-                                        // Mid-change (the station still loading, or failed), the search it
-                                        // returns to still opens the next station at its To… search.
-                                        onCloseStation = {
-                                            // Back from a ride's station: to the ride it was opened from.
-                                            rideToReopen = RideReturn.onBack(rideStation, openStationId)
-                                            rideStation = null
-                                            openStationId = null
-                                            openStationName = ""
-                                            openStationLead = null
-                                            openStationLevel = null
-                                            stationTo = OriginChange.toAfterStationClosed(originChange)
-                                        },
+                                        onCloseStation = closeStation,
                                         onCloseSearch = {
                                             leaveLines()
                                             stationSearchOpen = false
@@ -2891,6 +2889,9 @@ class MainActivity : ComponentActivity() {
                                             openStationLevel = null
                                             stationTo = kept
                                         },
+                                        // The station's Back is its page's, and the search's but where a station's From row
+                                        // opened it: Back from it reopens that station, which isn't under it.
+                                        rootBack = page == Page.Station || originChange !is OriginChange.Station,
                                     )
                                 }
                                 }
@@ -3817,6 +3818,8 @@ class MainActivity : ComponentActivity() {
         stationTitle: String? = null,
         stationLead: StationLead? = null,
         onCloseStation: () -> Unit = {},
+        // The station is its page: its Back is the page's ([MainScreen]'s stationRootBack).
+        stationRootBack: Boolean = false,
         // A stop's departures opened from its details: a look that starts nothing ([MainScreen]'s stationBrowse).
         stationBrowse: Boolean = false,
         // A precise fix that arrived after the set was shown from a coarse one and would move it
@@ -4462,6 +4465,7 @@ class MainActivity : ComponentActivity() {
                     onFindStation = onFindStation,
                     stationTitle = stationTitle,
                     onCloseStation = onCloseStation,
+                    stationRootBack = stationRootBack,
                     // Offered only while some nearby stop could start a trip (not every mode hidden), as
                     // worked out off the main thread; not offered for the moment that takes.
                     onPlanTo = if (hereOriginNow.isNullOrEmpty() || onPlanTo == null) {
@@ -4748,6 +4752,8 @@ class MainActivity : ComponentActivity() {
         // A change of start under way: the trip's To… it carries ([OriginChange.to]), for a station
         // with nothing to start from to open its trip at once there is. Null when none is.
         changeTo: ToChoice? = null,
+        // The search's, or the station's, Back closes its page, which the back swipe draws closing ([RootBack]).
+        rootBack: Boolean = false,
     ) {
         val search = fromSearchModel()
         val stores: NearbyDeparturesStores = viewModel(key = "station-stores")
@@ -4784,6 +4790,7 @@ class MainActivity : ComponentActivity() {
                     onOpenStation(match)
                 },
                 onBack = { leaveSearch(false) },
+                rootBack = rootBack,
                 // From…'s "Here": start from the rider's position again — the near-me list, or its
                 // To… search when a From row opened this one.
                 // None without a grant: the near-me list it returns to can't be shown.
@@ -4836,6 +4843,7 @@ class MainActivity : ComponentActivity() {
                     onStartReached = onStartReached,
                     changeTo = changeTo,
                     onChangeFrom = changeFrom,
+                    rootBack = rootBack,
                 )
                 return@CompositionLocalProvider
             }
@@ -4864,6 +4872,7 @@ class MainActivity : ComponentActivity() {
                         state = stops,
                         onRetry = stopsModel::retry,
                         onBack = closeStation,
+                        rootBack = rootBack,
                         onLocate = closeSearch,
                     )
                 } else {
@@ -4874,6 +4883,7 @@ class MainActivity : ComponentActivity() {
                         onClose = closeStation,
                         onLocate = closeSearch,
                         writeFailures = viewModel<WriteFailuresHolder>().failures,
+                        rootBack = rootBack,
                     )
                 }
                 return@CompositionLocalProvider
@@ -4891,6 +4901,7 @@ class MainActivity : ComponentActivity() {
                 onStartReached = onStartReached,
                 changeTo = changeTo,
                 onChangeFrom = changeFrom,
+                rootBack = rootBack,
             )
         }
     }
@@ -5000,6 +5011,9 @@ class MainActivity : ComponentActivity() {
         changeTo: ToChoice? = null,
         // A stop's departures opened from its details: the same page around it, with no To… ([DeparturesArea]).
         browse: Boolean = false,
+        // The station is its page ([Page.Station]): Back from the page itself, or from a trip that is all it has,
+        // closes the page, which the back swipe draws closing ([RootBack]).
+        rootBack: Boolean = false,
     ) {
         val fromNearby: NearbyStopsViewModel = viewModel(
             key = "from-nearby",
@@ -5102,6 +5116,7 @@ class MainActivity : ComponentActivity() {
                 keepSearchOnEmptyOrigin = changeTo != null,
                 here = planFrom,
                 noneNearby = noneNearby,
+                rootBack = rootBack && noneNearby,
             )
         }
         val ready = state as? NearbyStopsViewModel.State.Ready
@@ -5142,6 +5157,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onRetry = fromNearby::locate,
                 onBack = onClose,
+                rootBack = rootBack,
                 onLocate = onBackToNearMe,
                 onBrowseBack = if (browse) onClose else null,
             )
@@ -5190,6 +5206,7 @@ class MainActivity : ComponentActivity() {
                 stationTitle = stationName,
                 stationLead = stationLead,
                 onCloseStation = onClose,
+                stationRootBack = rootBack,
                 stationBrowse = browse,
                 onLocate = onBackToNearMe,
                 pendingTracker = listTracker,
@@ -5330,8 +5347,9 @@ class MainActivity : ComponentActivity() {
         // [here] alone, which needs none (Codex on #315), keyed by where it plans from in place of a
         // nearest stop. Otherwise an empty [origin] (every mode hidden) ends the trip, as before.
         noneNearby: Boolean = false,
-        // The trip is its page ([Page.HereTrip]): Back from its To… search with nothing picked yet, from the wait for
-        // where it goes, or from its routes closes the page, which the back swipe draws closing ([RootBack]).
+        // The trip is its page ([Page.HereTrip], or a station's page it's all there is of): Back from its To… search
+        // with nothing picked yet, from the wait for where it goes, or from its routes closes the page, which the back
+        // swipe draws closing ([RootBack]).
         rootBack: Boolean = false,
     ) {
         val appContext = applicationContext
@@ -6241,6 +6259,8 @@ class MainActivity : ComponentActivity() {
         stationLead: StationLead? = null,
         // A stop's departures opened from its details: a look, Back in To…'s place ([MainScreen]'s stationBrowse).
         browse: Boolean = false,
+        // The station is its page: its Back is the page's ([MainScreen]'s stationRootBack).
+        rootBack: Boolean = false,
     ) {
         val appContext = applicationContext
         val viewModel: MainViewModel = viewModel(
@@ -6310,6 +6330,7 @@ class MainActivity : ComponentActivity() {
                 onDismissWriteFailureShown = viewModel::dismissWriteFailureShown,
                 stationTitle = title,
                 onCloseStation = onClose,
+                stationRootBack = rootBack,
                 stationBrowse = browse,
                 stationLead = stationLead,
             )
@@ -7198,16 +7219,10 @@ internal fun tripOptionsLeft(from: String, openStationId: String?, hereTripOpen:
 internal fun searchAfterChange(open: Boolean, openedForChange: Boolean): Boolean = open && !openedForChange
 
 /**
- * The page of the station flow ([Page.Stations]) [KeptPages] keeps what [stationId]'s view saved under: its
- * station's, by that station, or its search's, so one station's pages are never given to another.
+ * What [KeptPages] keeps [stationId]'s view saved under ([Page.Station]): its station's, by that station, or the
+ * search's, so one station's pages are never given to another.
  */
 internal fun stationFlowPage(stationId: String?): String = if (stationId == null) "search" else "station:$stationId"
-
-/** The station flow's pages open now ([stationFlowPage]): the search stays open under a station opened from it. */
-internal fun stationFlowPages(search: Boolean, stationId: String?): Set<String> = buildSet {
-    if (search) add(stationFlowPage(null))
-    if (stationId != null) add(stationFlowPage(stationId))
-}
 
 /**
  * The near-me area: the back stack's pages ([Pages]), the near-me view ([body]) at the bottom and each screen

@@ -44,9 +44,13 @@ internal sealed interface Page : NavKey {
     @Serializable
     data object Lines : Page
 
-    /** The station flow: the From… search, a station's page and its trip, one page until they stack. */
+    /** The From… search: "Find a station", or a trip's From row. */
     @Serializable
-    data object Stations : Page
+    data object StationSearch : Page
+
+    /** A station's page (or a place's, to start from) and its trip, over the search it was picked in, if any. */
+    @Serializable
+    data object Station : Page
 
     /** A stop's details, tapped on a route page's stop list: a window over the page that route page is on. */
     @Serializable
@@ -70,7 +74,7 @@ internal val Page.isWindow: Boolean get() = this == Page.RouteStop || this == Pa
  * keeps working as it did, and what shows is what was opened last.
  *
  * Each page is on the stack at most once (opening one already open leaves it or brings it up), so it never holds
- * more than one of each kind of page, eleven: walking it is constant work, not work that grows with anything the
+ * more than one of each kind of page, twelve: walking it is constant work, not work that grows with anything the
  * rider has, and it's read in composition like any other state (AGENTS.md *Main thread*). A hop to a worker would
  * draw a frame of the stack as it was.
  */
@@ -158,24 +162,23 @@ internal class Pages(val stack: NavBackStack<Page>) {
     }
 
     /**
-     * A value kept in [state] whose page is open while [open] holds for it and any other the page's flags
-     * keep ([others]): the station flow, open while its search or a station is ([Page.Stations]).
+     * A value kept in [state] whose page is open while [open] holds for it: set, the page opens over whatever is
+     * on top, or stays where it is if it's open already ([setOpen]), as the From… search does under the station
+     * a change of start goes back to; cleared, it closes.
      */
-    fun <T> kept(page: Page, state: MutableState<T>, others: () -> Boolean = { false }, open: (T) -> Boolean): Kept<T> =
-        Kept(this, page, state, others, open)
+    fun <T> kept(page: Page, state: MutableState<T>, open: (T) -> Boolean): Kept<T> = Kept(this, page, state, open)
 
     class Kept<T>(
         private val pages: Pages,
         private val page: Page,
         private val state: MutableState<T>,
-        private val others: () -> Boolean,
         private val open: (T) -> Boolean,
     ) {
         operator fun getValue(thisRef: Any?, property: KProperty<*>): T = state.value
 
         operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
             state.value = value
-            pages.setOpen(page, open(value) || others())
+            pages.setOpen(page, open(value))
         }
     }
 }

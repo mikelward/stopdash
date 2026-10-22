@@ -55,8 +55,7 @@ class NearbyAreaTest {
     private val closed = ArrayList<String>()
     private val onTop = HashMap<String, Boolean>()
 
-    // The station flow's search and the station open on it, as one page of the stack ([Page.Stations]).
-    private var stationSearch by mutableStateOf(true)
+    // The station open on its page ([Page.Station]), over the search it was picked in ([Page.StationSearch]).
     private var stationId by mutableStateOf<String?>(null)
 
     // The near-me list's departures, as the activity holds them: each model the list builds, and when it was dropped.
@@ -100,10 +99,12 @@ class NearbyAreaTest {
                 pages = pages,
                 aboveOverlay = {},
                 overlayContent = { page ->
-                    if (page == Page.Stations) {
-                        KeptPages(stationFlowPage(stationId), stationFlowPages(stationSearch, stationId)) {
-                            Screen(stationId?.let { "Station $it" } ?: "Search", page)
+                    if (page == Page.Station) {
+                        KeptPages(stationFlowPage(stationId), setOf(stationFlowPage(stationId))) {
+                            Screen("Station $stationId", page)
                         }
+                    } else if (page == Page.StationSearch) {
+                        Screen("Search", page)
                     } else if (page == Page.OnTheWay) {
                         // A screen whose state is reset as it closes, as the trip from here's destination is.
                         Text(if (pages.isOpen(page)) "On the way" else RESET)
@@ -181,8 +182,8 @@ class NearbyAreaTest {
     @Test
     fun `a page covered by another keeps its pages for Back`() {
         show()
-        open(Page.Stations)
         composeRule.runOnIdle { stationId = "A" }
+        open(Page.Station)
         composeRule.onNodeWithText("Station A").performClick()
         // About → Licenses over the station's route page, and Back.
         open(Page.Licenses)
@@ -192,20 +193,44 @@ class NearbyAreaTest {
     }
 
     @Test
-    fun `the station flow keeps its search as it was left under a station, and each station's pages apart`() {
+    fun `a station keeps the search it was picked in under it, as it was left, and the swipe from it draws the search`() {
         show()
-        open(Page.Stations)
+        open(Page.StationSearch)
         composeRule.onNodeWithText("Search").performClick()
-        // A station opened from the search, and Back to it: the search as it was left (Codex on #1136).
         composeRule.runOnIdle { stationId = "A" }
-        composeRule.onNodeWithText("Station A").performClick()
-        composeRule.runOnIdle { stationId = null }
+        open(Page.Station)
+        // The swipe from the station draws the search under it, as it was left, and let go of leaves both as they were.
+        startSwipe()
+        composeRule.onNodeWithText("Search's route page").assertExists()
+        assertEquals(false, onTop["Search"])
+        assertEquals(true, onTop["Station A"])
+        letGo()
+        composeRule.onNodeWithText("Search's route page").assertDoesNotExist()
+        composeRule.onNodeWithText("Station A").assertIsDisplayed()
+        back()
+        assertEquals(listOf("Station A"), closed)
         composeRule.onNodeWithText("Search's route page").assertIsDisplayed()
-        // The station closed is forgotten: opened again, it starts afresh.
+        // A station closed is forgotten: opened again, it starts afresh.
+        open(Page.Station)
+        composeRule.onNodeWithText("Station A").performClick()
+        composeRule.runOnIdle { pages.close(Page.Station) }
+        composeRule.waitForIdle()
+        open(Page.Station)
+        composeRule.onNodeWithText("Station A").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a station opened in another's place starts afresh, its own pages apart`() {
+        show()
+        composeRule.runOnIdle { stationId = "A" }
+        open(Page.Station)
+        composeRule.onNodeWithText("Station A").performClick()
+        // A station beside a route page's stop opens in its place, until stations stack: not with A's pages.
+        composeRule.runOnIdle { stationId = "B" }
+        composeRule.onNodeWithText("Station B").assertIsDisplayed()
+        // And A's went with it.
         composeRule.runOnIdle { stationId = "A" }
         composeRule.onNodeWithText("Station A").assertIsDisplayed()
-        assertEquals(setOf("search", "station:A"), stationFlowPages(search = true, stationId = "A"))
-        assertEquals(setOf("station:A"), stationFlowPages(search = false, stationId = "A"))
     }
 
     @Test

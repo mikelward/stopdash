@@ -19,10 +19,8 @@ class PagesTest {
     private var onTheWayOpen by pages.flag(Page.OnTheWay)
     private var favoritePlacesOpen by pages.flag(Page.FavoritePlaces)
     private var favoriteJourneysOpen by pages.flag(Page.FavoriteJourneys)
-    private val stationSearchState = mutableStateOf(false)
-    private val openStationIdState = mutableStateOf<String?>(null)
-    private var stationSearchOpen by pages.kept(Page.Stations, stationSearchState, others = { openStationIdState.value != null }) { it }
-    private var openStationId by pages.kept(Page.Stations, openStationIdState, others = { stationSearchState.value }) { it != null }
+    private var stationSearchOpen by pages.kept(Page.StationSearch, mutableStateOf(false)) { it }
+    private var openStationId by pages.kept(Page.Station, mutableStateOf<String?>(null)) { it != null }
     private var linesOpen by pages.flag(Page.Lines)
     private var hereTripOpen by pages::tripOpen
     private var routeStopTrail by pages.kept(Page.RouteStop, mutableStateOf<String?>(null)) { it != null }
@@ -63,7 +61,7 @@ class PagesTest {
         settingsOpen = false
         // A stop's From opens its station page over Lines….
         openStationId = "940GZZLUKSX"
-        shown(Page.Lines, Page.Stations)
+        shown(Page.Lines, Page.Station)
         openStationId = null
         assertEquals(Page.Lines, pages.top)
     }
@@ -82,22 +80,49 @@ class PagesTest {
     }
 
     @Test
-    fun `the station flow is open while its search or a station is`() {
+    fun `a station picked in the search opens over it, and its Back returns to the search`() {
         stationSearchOpen = true
-        shown(Page.Stations)
-        // A station opened from the search, then its Back to the search: the flow stays where it is.
+        shown(Page.StationSearch)
         openStationId = "940GZZLUKSX"
+        shown(Page.StationSearch, Page.Station)
+        // Settings over the station, then the station's Back: the search, as it was, under Settings.
         settingsOpen = true
         openStationId = null
-        shown(Page.Stations, Page.Settings)
+        shown(Page.StationSearch, Page.Settings)
         settingsOpen = false
         stationSearchOpen = false
         shown()
         // A station opened on its own (a route page's stop), closed with nothing under it.
         openStationId = "940GZZLUKSX"
-        shown(Page.Stations)
+        shown(Page.Station)
         openStationId = null
         shown()
+    }
+
+    @Test
+    fun `a change of start from a station leaves the search where it was, and Back to the station goes over it`() {
+        // A station picked in the search, then its From row: the search under it again, the station closed.
+        stationSearchOpen = true
+        openStationId = "940GZZLUKSX"
+        stationSearchOpen = true
+        openStationId = null
+        shown(Page.StationSearch)
+        // Back to the station: over the search, which stays for its Back ([searchAfterChange]).
+        openStationId = "940GZZLUKSX"
+        stationSearchOpen = searchAfterChange(stationSearchOpen, openedForChange = false)
+        shown(Page.StationSearch, Page.Station)
+        openStationId = null
+        stationSearchOpen = false
+        // A station opened over Lines…, whose From row opens a search the rider never had: over the station, and
+        // closed again as the change goes back to it.
+        linesOpen = true
+        openStationId = "940GZZLUKSX"
+        stationSearchOpen = true
+        openStationId = null
+        shown(Page.Lines, Page.StationSearch)
+        openStationId = "940GZZLUKSX"
+        stationSearchOpen = searchAfterChange(stationSearchOpen, openedForChange = true)
+        shown(Page.Lines, Page.Station)
     }
 
     @Test
