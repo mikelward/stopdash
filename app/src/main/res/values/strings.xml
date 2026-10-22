@@ -81,6 +81,14 @@
          tells it apart, its branch ("Bank") or the first station it calls at that the other doesn't. -->
     <string name="route_choice_by" tools:ignore="MissingTranslation">via %1$s</string>
     <!-- TODO: translate -->
+    <!-- What a screen reader hears for a branching line's destination when its branch shows
+         shortened ("Newbury Pk"): the branch in full, "via Newbury Park". -->
+    <string name="branch_spoken" tools:ignore="MissingTranslation">via %1$s</string>
+    <!-- TODO: translate -->
+    <!-- The same when the branch shows alone, or on the widget: %1$s is the terminus, %2$s the branch,
+         both in full ("Hainault via Newbury Park"). -->
+    <string name="branch_spoken_with_terminus" tools:ignore="MissingTranslation">%1$s via %2$s</string>
+    <!-- TODO: translate -->
     <!-- In a route page's countdown's place, on a route chosen from its chips with no train at the stop. -->
     <string name="route_detail_no_live_times" tools:ignore="MissingTranslation">No live times</string>
     <!-- TODO: translate -->

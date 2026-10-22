@@ -96,6 +96,8 @@ import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.lineCode
 import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
+import app.stopdash.ui.spokenText
+import app.stopdash.ui.BranchSpoken
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
 import app.stopdash.ui.GroupHeader
@@ -1411,13 +1413,14 @@ internal fun widgetLineLabel(row: DepartureRow, group: DestinationGroup): String
 /**
  * What a screen reader hears for [widgetLineLabel] when its branch is shortened — the full branch,
  * "Hainault via Newbury Park" for "Hainault/Newbury Pk" — so the full name stays the accessible
- * label (SPEC destination-label); null when the label already shows it in full.
+ * label (SPEC destination-label); null when the label already shows it in full. Its words are the
+ * app's, put together where the line is drawn ([spokenText]).
  */
-internal fun widgetLineSpoken(row: DepartureRow, group: DestinationGroup): String? {
+internal fun widgetLineSpoken(row: DepartureRow, group: DestinationGroup): BranchSpoken? {
     val branch = group.branch ?: return null
     if (abbreviateBranch(branch) == branch) return null
     val base = DepartureLabels.destinationLabel(group.destination, row.directionKey) ?: return null
-    return "$base via $branch"
+    return BranchSpoken(branch, terminus = base)
 }
 
 @androidx.compose.runtime.Composable
@@ -1477,7 +1480,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float) 
         rowModel.groups.forEachIndexed { index, group ->
             if (index > 0) Spacer(GlanceModifier.height(4.dp))
             val label = widgetLineLabel(row, group)
-            val spoken = widgetLineSpoken(row, group)
+            val spoken = widgetLineSpoken(row, group)?.spokenText(LocalContext.current.resources)
             val countdown = if (stale) Countdown.staleLabel(group.times) else Countdown.mergedLabel(group.times, now)
             val calendar = planned?.takeIf { index == 0 }
             if (rowModel.stackedLines.getOrElse(index) { false }) {

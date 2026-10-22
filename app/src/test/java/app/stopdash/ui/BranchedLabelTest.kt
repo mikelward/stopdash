@@ -79,7 +79,7 @@ class BranchedLabelTest {
         assertEquals("/Newbury Pk", r.branch)
         assertEquals("South Harrow Road", r.contentDescription)
         // The shortened branch keeps its full name for a screen reader.
-        assertEquals("via Newbury Park", r.branchDescription)
+        assertEquals(BranchSpoken("Newbury Park"), r.branchDescription)
     }
 
     @Test
@@ -170,7 +170,7 @@ class BranchedLabelTest {
         assertEquals("Charing X", r.branch)
         assertFalse("no leading slash when the branch stands alone", r.branch.startsWith("/"))
         assertEquals("High Barnet", r.contentDescription)
-        assertEquals("High Barnet via Charing Cross", r.branchDescription)
+        assertEquals(BranchSpoken("Charing Cross", terminus = "High Barnet"), r.branchDescription)
     }
 
     @Test

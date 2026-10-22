@@ -1,21 +1,36 @@
 package app.stopdash.ui
 
+import android.content.res.Resources
+import app.stopdash.R
+
 /**
  * The two strings the destination line renders for a branching row — the [terminus] and the
  * [branch] (slash included). The composable lays the branch out at its natural width and gives the
  * terminus the leftover (ellipsized), so these strings are already chosen to fit that split. The
  * full-name [contentDescription] is kept for a screen reader when the visible terminus is shortened
  * or hidden, and is null when the terminus shows in full. [branchDescription] does the same for the
- * branch: the full branch ("via Newbury Park") when a shortened one shows beside the terminus, or
- * the whole route ("Hainault via Newbury Park") when the branch stands alone; null when the branch
- * shows in full.
+ * branch ([BranchSpoken]): the full branch ("via Newbury Park") when a shortened one shows beside the
+ * terminus, or the whole route ("Hainault via Newbury Park") when the branch stands alone; null when
+ * the branch shows in full.
  */
 internal data class BranchedLabel(
     val terminus: String,
     val branch: String,
     val contentDescription: String?,
-    val branchDescription: String? = null,
+    val branchDescription: BranchSpoken? = null,
 )
+
+/**
+ * What a screen reader hears for a branch shown shortened or alone: its full [branch], after the full
+ * [terminus] when there is one to name ("Hainault via Newbury Park"), else on its own ("via Newbury
+ * Park"). Kept as its parts so the words joining them are the app's, in its language ([spokenText]).
+ */
+internal data class BranchSpoken(val branch: String, val terminus: String? = null)
+
+/** [BranchSpoken]'s words, in the app's language: "via Newbury Park", "Hainault via Newbury Park". */
+internal fun BranchSpoken.spokenText(resources: Resources): String =
+    terminus?.let { resources.getString(R.string.branch_spoken_with_terminus, it, branch) }
+        ?: resources.getString(R.string.branch_spoken, branch)
 
 /**
  * Chooses the destination-line strings for a branching row from the glyph widths the caller
@@ -74,7 +89,7 @@ internal fun branchedLabel(
         contentDescription = if (terminusStr != label) label else null,
         // A screen reader hears the full branch whenever a shortened one shows (SPEC: the full name
         // stays the accessible label).
-        branchDescription = if (branchStr != "/$branch") "via $branch" else null,
+        branchDescription = if (branchStr != "/$branch") BranchSpoken(branch) else null,
     )
     // Both sides are abbreviated before either is cut: the full branch stays while the terminus in
     // full or word-abbreviated form fits beside it (the terminus yields first)...
@@ -91,7 +106,7 @@ internal fun branchedLabel(
             terminus = "",
             branch = abbreviatedBranch,
             contentDescription = label,
-            branchDescription = "$label via $branch",
+            branchDescription = BranchSpoken(branch, terminus = label),
         )
     }
     return kept("/$abbreviatedBranch", terminusFor(budget))
