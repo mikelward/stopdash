@@ -4961,7 +4961,7 @@ and these carry the rest as their own PRs:
       in the UI; "N min ago" (`RelativeTime`); distances' units and their "." decimal
       (`StopDistance`); mode names (`ModeIcon`, search's group names and subtitles); the
       "<name> line" label; the " to " join of a closure's stops; "via" in spoken branch labels;
-      the Live Update chip's compass letters; the watch's "Disrupted:". Two places parse that
+      the Live Update chip's compass letters; ~~the watch's "Disrupted:"~~ (done). Two places parse that
       English back (`removeSuffix(" min")`, capitalizing `formatAge`'s output) and must change
       with it, and hidden lines are saved by their English
       label, so a language switch would leave them English.
