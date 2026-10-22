@@ -2662,6 +2662,87 @@ class MainViewModelTest {
     }
 
     /**
+     * A cold load of [lined] whose second stop's arrivals fail and whose own closure check gives
+     * [ownClosure], so the merge leaves it out, while the first stop's arrivals are held until [settle]
+     * has run: what another screen does meanwhile. The second stop's line, the Circle, has severe delays.
+     */
+    private fun TestScope.droppedLoad(
+        cache: StopClosureCache,
+        ownClosure: () -> List<StopDisruption>,
+        settle: (String) -> Unit,
+    ): DeparturesUiState.Loaded {
+        val (held, dropped) = lined.map { it.id }
+        val gate = CompletableDeferred<Unit>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> {
+                if (stopId == dropped) throw TflException.RateLimited(null)
+                gate.await()
+                return listOf(departure("victoria", "Victoria", 120))
+            }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = lineIds.map {
+                if (it == "circle") status(it, 6, "Severe Delays") else status(it, LineStatus.GOOD_SERVICE, "Good Service")
+            }
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
+                if (stopId == dropped) ownClosure() else emptyList()
+        }
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher, disruptionCache = cache)
+        testScheduler.advanceUntilIdle()
+        settle(dropped)
+        gate.complete(Unit)
+        testScheduler.advanceUntilIdle()
+        return vm.state.value as DeparturesUiState.Loaded
+    }
+
+    @Test
+    fun `a stop left out for its failures shows a closure another screen finds before the refresh publishes`() = runTest(dispatcher) {
+        val cache = StopClosureCache()
+        val (held, dropped) = lined.map { it.id }
+        val closed = StopDisruption("Station closed")
+        val loaded = droppedLoad(cache, ownClosure = { throw TflException.RateLimited(null) }) {
+            assertNull(cache[it])
+            cache.keep(it, cache.ask(now), listOf(closed))
+        }
+
+        // In its place among the stops, with the closure, checked, and its line's status as the batch had it.
+        assertEquals(listOf(held, dropped), loaded.stops.map { it.stopId })
+        assertEquals(listOf(closed), loaded.stops.single { it.stopId == dropped }.disruptions)
+        assertFalse(dropped in loaded.stopsDisruptionUnknown)
+        assertFalse(dropped in loaded.unavailableStopIds)
+        assertTrue("circle" in loaded.determinedLineIds)
+        assertEquals("Severe Delays", loaded.lineStatuses["circle"]?.description)
+        assertNotNull(loaded.lineCheckedAt["circle"])
+    }
+
+    @Test
+    fun `a stop left out after its own clear check shows a closure another screen finds after it`() = runTest(dispatcher) {
+        val cache = StopClosureCache()
+        val dropped = lined[1].id
+        val closed = StopDisruption("Station closed")
+        val loaded = droppedLoad(cache, ownClosure = { emptyList() }) {
+            assertEquals(emptyList<StopDisruption>(), cache[it]?.notices)
+            cache.keep(it, cache.ask(now), listOf(closed))
+        }
+
+        assertEquals(listOf(closed), loaded.stops.single { it.stopId == dropped }.disruptions)
+        assertFalse(dropped in loaded.unavailableStopIds)
+    }
+
+    @Test
+    fun `a stop left out stays out when another screen finds it clear`() = runTest(dispatcher) {
+        val cache = StopClosureCache()
+        val dropped = lined[1].id
+        val loaded = droppedLoad(cache, ownClosure = { throw TflException.RateLimited(null) }) {
+            cache.keep(it, cache.ask(now), emptyList())
+        }
+
+        assertFalse(loaded.stops.any { it.stopId == dropped })
+        assertTrue(dropped in loaded.unavailableStopIds)
+        // Its line isn't shown, so it isn't checked either.
+        assertFalse("circle" in loaded.determinedLineIds)
+        assertNull(loaded.lineStatuses["circle"])
+    }
+
+    /**
      * A cold load of [seeds] whose second stop's arrivals fail but whose closure check finds it closed,
      * so it's kept for that closure alone, while the first stop's arrivals are held until [settle] has
      * run: what another screen does meanwhile.

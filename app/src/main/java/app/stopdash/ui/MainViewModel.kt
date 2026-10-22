@@ -1080,7 +1080,22 @@ class MainViewModel(
         val closureOnly: Set<String> = emptySet(),
         // Each of [determinedLineIds]' verdict stamps ([heldLines]), so a line's check ages on its own.
         val lineCheckedAt: Map<String, Instant> = emptyMap(),
+        // The stops the merge left out ([Snapshot.mergeStop]): their arrivals failed, none was shown before,
+        // and their own closure check found none or failed. One another screen finds closed before the batch
+        // is published is added back for that closure ([asPublished]).
+        val dropped: List<DroppedStop> = emptyList(),
+        // The verdicts this batch had for the lines only [dropped] stops declare, with each one's stamp
+        // ([heldLines]): [lineStatuses] keeps only the lines the stops it kept show, and a stop added back
+        // shows its declared lines' status as a stop kept for its closure would.
+        val droppedLines: List<LineStatus> = emptyList(),
+        val droppedLineCheckedAt: Map<String, Instant> = emptyMap(),
     )
+
+    /**
+     * A stop [fetchBatch] left out ([FetchBatch.dropped]): how many of the stops it kept come before it,
+     * its fetch stamp, and the closure lookup its own check found, null when that check failed.
+     */
+    private class DroppedStop(val ref: StopRef, val at: Int, val fetchedAt: Instant, val ask: StopClosureCache.Ask?)
 
     /**
      * What a refresh publishes, worked out in one pass on the worker: the list, what the widget is given
@@ -1204,7 +1219,9 @@ class MainViewModel(
      * known ([hubNames]); one that failed, or
      * that the cache no longer holds, leaves its closure unknown, as a failed lookup of its own would.
      * A stop kept only for its closure ([FetchBatch.closureOnly]) goes when that closure is gone, cleared
-     * or now unknown, as the merge itself would have left it out ([Snapshot.mergeStop]). And each stop's
+     * or now unknown, as the merge itself would have left it out ([Snapshot.mergeStop]); one the merge left
+     * out ([FetchBatch.dropped]) is added back, in its place, when a newer lookup finds it closed, as the
+     * merge would have kept it, with its declared lines' status as the batch had it. And each stop's
      * nearer places ([Terminating.nearer]) are worked out from [places], as the rider stands now, so a
      * [remeasure] the batch ran past isn't undone by it. Walks every stop, so it's worked out on the
      * worker.
@@ -1224,7 +1241,7 @@ class MainViewModel(
                 placeAliases = hub?.aliases ?: stop.placeAliases,
             )
         }
-        val merged = batch.merged.mapNotNull { stop ->
+        val kept = batch.merged.map { stop ->
             val id = stop.stopId
             val nearer = Terminating.nearer(id, places)
             val latest = if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
@@ -1245,7 +1262,66 @@ class MainViewModel(
             }
             published.takeUnless { id in batch.closureOnly && it.disruptions.isEmpty() }
         }
-        return batch.copy(merged = merged, closureAsks = asks, stopsDisruptionUnknown = unknown)
+        if (batch.dropped.isEmpty()) {
+            return batch.copy(merged = kept.filterNotNull(), closureAsks = asks, stopsDisruptionUnknown = unknown)
+        }
+        val closureOnly = HashSet(batch.closureOnly)
+        val lineStatuses = HashMap(batch.lineStatuses)
+        val determined = HashSet(batch.determinedLineIds)
+        val checkedAt = HashMap(batch.lineCheckedAt)
+        val droppedLines = batch.droppedLines.associateBy { it.lineId }
+        // Each dropped stop a newer lookup finds closed, by where it goes among the stops kept. Its own check
+        // failed, so any lookup the cache answers with now was asked after it ([StopClosureCache.get]), or
+        // found none, so any other is newer.
+        val added = batch.dropped.mapNotNull { dropped ->
+            val ref = dropped.ref
+            val lookup = disruptionCache[ref.id]?.takeIf { it.ask !== dropped.ask && it.notices.isNotEmpty() }
+                ?: return@mapNotNull null
+            val hub = hubNames[ref.interchangeId]
+            val stop = Snapshot.mergeStop(
+                stopId = ref.id,
+                stopName = ref.name,
+                clusterId = ref.clusterId,
+                lines = ref.lines,
+                freshDepartures = null,
+                freshDisruptions = lookup.notices,
+                prior = null,
+                now = dropped.fetchedAt,
+                interchangeId = ref.interchangeId,
+                hubName = hub?.name.orEmpty(),
+                placeAliases = hub?.aliases.orEmpty(),
+                stopLetter = ref.stopLetter,
+                bearing = ref.bearing,
+                towards = ref.towards,
+                nearer = Terminating.nearer(ref.id, places),
+            ) ?: return@mapNotNull null
+            asks[ref.id] = lookup.ask
+            unknown -= ref.id
+            closureOnly += ref.id
+            for (line in ref.lines) {
+                val status = droppedLines[line.id] ?: continue
+                determined += line.id
+                if (status.hasAlerts) lineStatuses[line.id] = status
+                batch.droppedLineCheckedAt[line.id]?.let { checkedAt[line.id] = it }
+            }
+            dropped.at to stop
+        }
+        val merged = ArrayList<StopArrivals>(kept.size + added.size)
+        var next = 0
+        kept.forEachIndexed { i, stop ->
+            while (next < added.size && added[next].first == i) merged += added[next++].second
+            stop?.let { merged += it }
+        }
+        while (next < added.size) merged += added[next++].second
+        return batch.copy(
+            merged = merged,
+            closureAsks = asks,
+            stopsDisruptionUnknown = unknown,
+            closureOnly = closureOnly,
+            lineStatuses = lineStatuses,
+            determinedLineIds = determined,
+            lineCheckedAt = checkedAt,
+        )
     }
 
     /**
@@ -1321,6 +1397,7 @@ class MainViewModel(
         val freshArrivalStopIds = mutableSetOf<String>()
         val closureAsks = HashMap<String, StopClosureCache.Ask>()
         val closureOnly = HashSet<String>()
+        val dropped = mutableListOf<DroppedStop>()
         // Stop ids whose OWN stop-level disruption request failed this batch (a closure/move was
         // never checked) — an axis independent of line status, carried out so a per-stop surface
         // says "couldn't check" for it even when its line was determined (SPEC principle 1).
@@ -1735,6 +1812,9 @@ class MainViewModel(
             }
             if (departures != null || (disruptions != null && !disruptionFromCache[i])) anyFreshData = true
             if (departures == null && prior[stop.id] == null && mergedStop.stop != null) closureOnly += stop.id
+            // Left out by the merge, it's kept aside in case another screen finds it closed before this is
+            // published ([asPublished]).
+            if (mergedStop.stop == null) dropped += DroppedStop(stop, merged.size, checkNotNull(mergedStop.fetchedAt), closure?.ask)
             mergedStop.stop?.let { merged += it }
         }
 
@@ -1750,6 +1830,8 @@ class MainViewModel(
         var lineStatuses = emptyMap<String, LineStatus>()
         // The lines TfL returned a status for (good or disrupted).
         var determinedLineIds = emptySet<String>()
+        // The lines the kept stops show, declared or predicted.
+        var shownLineIds = emptySet<String>()
         var lateLines: LineCheck? = null
         if (merged.isNotEmpty()) {
             // Gathered off the main thread, as the merge is: every stop's departures and lines. Nothing
@@ -1770,6 +1852,7 @@ class MainViewModel(
                 // disruptions" is diagnosable — a count of unidentifiable predictions, no user data.
                 warn("disruption status unknown: $blankLineIdCount prediction(s) had no line id to check")
             }
+            shownLineIds = lineIds
             val rest = lineIds - earlyLines?.asked.orEmpty()
             if (rest.isNotEmpty()) lateLines = checkLines(rest)
             // Only the lines shown: the early check can have covered a stop that then showed nothing.
@@ -1780,9 +1863,16 @@ class MainViewModel(
         val statusAnswered = listOfNotNull(earlyLines, lateLines).any { it.answered }
         val lineStatusRequests = listOfNotNull(earlyLines, lateLines).sumOf { it.requests }
         // When each determined line's verdict was had, a reused one's included: a line's check ages on its
-        // own, not with the arrivals of the stop showing it (Codex, #623). Off the main thread.
-        val lineCheckedAt = withContext(compute) {
-            determinedLineIds.mapNotNull { id -> (heldLines[id] as? LineStatusCache.Held.Verdict)?.at?.let { id to it } }.toMap()
+        // own, not with the arrivals of the stop showing it (Codex, #623). And the verdicts the early check
+        // had for the lines only a dropped stop declares, for one [asPublished] adds back: none is asked for
+        // here, as the stop may never show. Off the main thread.
+        val (lineCheckedAt, droppedLines, droppedLineCheckedAt) = withContext(compute) {
+            fun checkedAt(ids: Iterable<String>) =
+                ids.mapNotNull { id -> (heldLines[id] as? LineStatusCache.Held.Verdict)?.at?.let { id to it } }.toMap()
+            val droppedIds = dropped.flatMap { d -> d.ref.lines.map { it.id } }
+                .filterTo(HashSet()) { it.isNotBlank() && it !in shownLineIds }
+            val droppedStatuses = earlyLines?.statuses.orEmpty().filter { it.lineId in droppedIds }
+            Triple(checkedAt(determinedLineIds), droppedStatuses, checkedAt(droppedStatuses.map { it.lineId }))
         }
 
         logStats(
@@ -1818,6 +1908,9 @@ class MainViewModel(
             // stop shows a line to check, so none is needed.
             unknownLineIds = (lateLines ?: earlyLines)?.unknown.orEmpty(),
             lineCheckedAt = lineCheckedAt,
+            dropped = dropped,
+            droppedLines = droppedLines,
+            droppedLineCheckedAt = droppedLineCheckedAt,
         )
     }
 
@@ -2344,8 +2437,6 @@ class MainViewModel(
             val firstError = batch.firstError
             val anyArrivalsFailed = batch.anyArrivalsFailed
             val anyFreshData = batch.anyFreshData
-            val lineStatuses = batch.lineStatuses
-            val determinedLineIds = batch.determinedLineIds
             val partial = if (anyFreshData) anyArrivalsFailed else priorPartial
             // The list worked out off the main thread ([compute]), from what this fetch was for: the stops
             // it asked for ([toFetch]), how far each is, and the lines TfL doesn't know as its line
@@ -2363,6 +2454,9 @@ class MainViewModel(
                 val published = asPublished(batch, nearbyPlacesOf(eager0, more0, distances))
                 val merged = published.merged
                 val stopsDisruptionUnknown = published.stopsDisruptionUnknown
+                // With the lines of any stop it added back.
+                val lineStatuses = published.lineStatuses
+                val determinedLineIds = published.determinedLineIds
                 val newState = when {
                     merged.isNotEmpty() ->
                         // Grouping into rows is the screen's job, recomputed from the live
@@ -2401,7 +2495,7 @@ class MainViewModel(
                             // provenance ([disruptionUnknownOf]).
                             disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknown),
                             determinedLineIds = determinedLineIds,
-                            lineCheckedAt = batch.lineCheckedAt,
+                            lineCheckedAt = published.lineCheckedAt,
                             stopsDisruptionUnknown = stopsDisruptionUnknown,
                             unavailableStopIds = toFetch.mapTo(HashSet()) { it.id } - merged.mapTo(HashSet()) { it.stopId },
                         )
@@ -2542,7 +2636,7 @@ class MainViewModel(
             // Each place and line as old as its own answer, a reused lookup or line status perhaps: a
             // dismissal counted after stays.
             reconcileDismissals(
-                toFetch, published.merged, lineStatuses, determinedLineIds, published.stopsDisruptionUnknown, since,
+                toFetch, published.merged, published.lineStatuses, published.determinedLineIds, published.stopsDisruptionUnknown, since,
                 refreshSettles,
                 stopAsks = published.closureAsks,
                 lineMarks = batch.lineDismissals,

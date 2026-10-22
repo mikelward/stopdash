@@ -4856,8 +4856,10 @@ surface.)
   only; a failed request is never reused, nor is a closure answer asked before a check of that
   stop that has failed since, so the stop is asked again. Every screen that checks stops shares these
   closure answers, and the list shows each stop's **newest answer as of when it's shown**, whichever
-  screen asked: one another screen finds while a refresh is still out is shown with it, and one that
-  fails meanwhile leaves the stop unchecked, rather than the refresh showing the answer it read first.
+  screen asked: one another screen finds while a refresh is still out is shown with it, even for a
+  stop the refresh would have left out because its own departures and closure answer had nothing to
+  show, and one that fails meanwhile leaves the stop unchecked, rather than the refresh showing the
+  answer it read first.
   **One closure request per stop is out at a time**: a check needing a stop already
   being asked about waits for that answer, failed or not, rather than send its own. A junction's **bus poles share one closure request**
   (TfL takes several stop ids at once); each pole gets only its own notices, so an open pole
