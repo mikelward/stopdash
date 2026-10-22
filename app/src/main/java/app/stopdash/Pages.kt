@@ -47,20 +47,54 @@ internal sealed interface Page : NavKey {
     /** The station flow: the From… search, a station's page and its trip, one page until they stack. */
     @Serializable
     data object Stations : Page
+
+    /** A stop's details, tapped on a route page's stop list: a window over the page that route page is on. */
+    @Serializable
+    data object RouteStop : Page
+
+    /** A stop's Departures, opened from its details or Lines…: a window over them. */
+    @Serializable
+    data object StopDepartures : Page
 }
+
+/**
+ * A window over the page under it ([Page.RouteStop], [Page.StopDepartures]): on the stack, so a page opened over it
+ * covers it until that page's Back, but drawn over the pages, which stay as they were under it, rather than among
+ * them ([Pages.pages]).
+ */
+internal val Page.isWindow: Boolean get() = this == Page.RouteStop || this == Page.StopDepartures
 
 /**
  * What's open, asked of the back stack: a screen is open while its page is on it, and opens over whatever is
  * on top. The flags the screens were opened and closed by read and write it ([flag]), so every way in and out
  * keeps working as it did, and what shows is what was opened last.
+ *
+ * Each page is on the stack at most once (opening one already open leaves it or brings it up), so it never holds
+ * more than one of each kind of page, eleven: walking it is constant work, not work that grows with anything the
+ * rider has, and it's read in composition like any other state (AGENTS.md *Main thread*). A hop to a worker would
+ * draw a frame of the stack as it was.
  */
 internal class Pages(val stack: NavBackStack<Page>) {
     init {
         require(stack.firstOrNull() is Page.NearMe) { "the near-me view is the stack's bottom" }
     }
 
-    /** The page showing. */
+    /** What was opened last: the page showing, or a window over it. */
     val top: Page get() = stack.last()
+
+    /** The page showing, under any windows over it ([isWindow]). */
+    val topPage: Page get() = stack.last { !it.isWindow }
+
+    /** The stack's pages, its windows aside: what the pages are drawn from. */
+    val pages: List<Page> get() = stack.filterNot { it.isWindow }
+
+    /** Whether [window] shows: it's open with nothing over it but other windows, which show over it. */
+    fun shows(window: Page): Boolean {
+        val at = stack.indexOf(window)
+        if (at < 0) return false
+        for (i in at + 1 until stack.size) if (!stack[i].isWindow) return false
+        return true
+    }
 
     fun isOpen(page: Page): Boolean = page in stack
 

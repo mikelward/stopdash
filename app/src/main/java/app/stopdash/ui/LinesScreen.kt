@@ -342,7 +342,7 @@ internal fun LinesOverlay(
 
 /**
  * A stop's details over the page it was opened from (SPEC *Finding a line*), a window of their own: Lines…'s
- * line map, or a route page's stop list ([RouteStopWindow]). Back steps through the stations opened from
+ * line map, or a route page's stop list ([app.stopdash.Page.RouteStop]). Back steps through the stations opened from
  * one another ([LineStopRef.previous]), then to [onStopClosed], else to no stop ([onStop] null). Its lines and
  * the stations beside it ([links]) are the caller's, asked for by [loadLinks]; null while they're worked out.
  */

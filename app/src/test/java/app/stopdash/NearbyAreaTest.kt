@@ -280,6 +280,26 @@ class NearbyAreaTest {
     }
 
     @Test
+    fun `a window over a page leaves it drawn and on top, and a page opened over the window returns to it`() {
+        show()
+        composeRule.onNodeWithText(LIST).performClick()
+        // A route stop's details over the list's route page: a window drawn over the pages, not one of them.
+        composeRule.runOnIdle { pages.open(Page.RouteStop) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("$LIST's route page").assertIsDisplayed()
+        composeRule.onNodeWithText(Page.RouteStop.toString()).assertDoesNotExist()
+        assertEquals(true, onTop[LIST])
+        // Settings from the details' menu covers them; its Back returns to the page under them, as it was.
+        open(Page.Settings)
+        composeRule.onNodeWithText("Settings").assertIsDisplayed()
+        back()
+        assertEquals(listOf("Settings"), closed)
+        assertEquals(listOf(Page.NearMe(0), Page.RouteStop), pages.stack.toList())
+        composeRule.onNodeWithText("$LIST's route page").assertIsDisplayed()
+        assertEquals(true, onTop[LIST])
+    }
+
+    @Test
     fun `a page opens over the one under it in a quarter of a second`() {
         show()
         composeRule.mainClock.autoAdvance = false

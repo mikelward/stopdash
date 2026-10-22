@@ -4523,9 +4523,11 @@ lands on the near-me list (*On the way*), as a place shared into the app does (*
 
 The screens opened over the near-me view are a back stack, the one opened last on top: Settings,
 Licenses, Lines…, the station flow, the saved places and favorite rides, the trip on the way's screen, and
-the trip from here, over the page it was opened from (the near-me list, or Lines… for a stop's To). Each opens over the page it was opened from in a quarter of a second, sliding in a little as it fades in,
-and closes the same way a little faster (maintainer, 2026-10-22: Navigation 3's 700 ms default is too
-long).
+the trip from here, over the page it was opened from (the near-me list, or Lines… for a stop's To). Each
+opens over the page it was opened from in a quarter of a second, sliding in a little as it fades in, and
+closes the same way a little faster (maintainer, 2026-10-22: Navigation 3's 700 ms default is too long). A
+stop's details and its Departures, windows over the page they were opened from, are on the stack too:
+whatever opens after them covers them until its Back, which finds them as they were.
 
 The back gesture is predictive. Swiping back from Settings, Licenses, Lines…'s search, the saved places,
 the favorite rides, the trip on the way's screen or the trip from here (its routes, or its To… search with
