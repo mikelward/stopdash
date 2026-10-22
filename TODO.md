@@ -3990,19 +3990,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         the OAuth consent screen with the `drive.appdata` scope and the privacy policy link, and
         add an Android OAuth client for the Play app-signing key and one for the `.debug` build.
         A setup section in `dev-docs/drive-sync.md`, as `dev-docs/firebase.md` has, comes with it.
-  - [ ] **The sync engine** in `:domain`: one file per phone, never deleted by another phone; a
-        ledger of each entry's fingerprint and change time (hybrid logical clock, syncing only
-        while the phone's clock is within five minutes of Drive's); newest change wins, removals
-        kept for good, a first sync that only adds, and a newer file skipped rather than misread.
-        JVM-tested on recorded files.
+  - [x] **The sync engine** in `:domain`: one file per phone, never deleted by another phone; a
+        ledger of each entry's value and change time (hybrid logical clock on Drive's time, never
+        the phone's); newest change wins, removals kept for good, a first sync that only adds,
+        and a newer file skipped rather than misread.
+        JVM-tested on recorded files. *Done: `Sync` and `SyncFile`, unused until the steps below;
+        nothing leaves the phone.*
   - [ ] **The Drive client** over the existing Ktor client: list, download, create, update and
         delete in the app data folder, with typed failures (offline, sign-in needed, Drive full,
-        rate limited). Tested on a mock engine.
+        rate limited), and the `Date` on the listing's answer for `DriveClock`. Tested on a mock
+        engine.
   - [ ] **Settings → Sync with Google Drive**: `AuthorizationClient` (`play-services-auth`), the
         account it syncs with, and its status ("Synced 2 min ago", "Couldn't sync: offline",
-        "Sign in again", "Drive is full", "Set your phone's clock to sync", "Update StopDash to
-        sync with your other phone"). Not offered without Play services. Screenshot test, en-GB
-        strings.
+        "Sign in again", "Drive is full", "Update StopDash to sync with your other phone"). Not
+        offered without Play services. Screenshot test, en-GB strings.
   - [ ] **Rides through the engine**: favorite rides with their hidden lines, grayed rides and ride
         alert times, compared with the ledger and written back through the store's own edits under
         `FavoriteJourneysWrites`; a ride removed on the other phone drops its widget pins, as
