@@ -209,10 +209,35 @@ class BundledStopsTest {
             }
         }
         val warnings = mutableListOf<String>()
-        BundledStopFinder(tfl, bundled = { BundledStops.EMPTY }).nearbyStops(51.5, -0.12, 500)
+        BundledStopFinder(tfl, bundled = { BundledStops.EMPTY }, warn = { warnings += it }).nearbyStops(51.5, -0.12, 500)
         BundledStopFinder(tfl, bundled = { error("unreadable") }, warn = { warnings += it }).nearbyStops(51.5, -0.12, 500)
         assertEquals(2, asked)
-        assertEquals(listOf("bundled stops unavailable: IllegalStateException; asking TfL"), warnings)
+        assertEquals(
+            listOf("nearby: no bundled stops; asking TfL", "nearby: bundled stops unavailable: IllegalStateException; asking TfL"),
+            warnings,
+        )
+    }
+
+    @Test
+    fun `each lookup says which source answered it, and why TfL did, under its finder's label`() = runBlocking {
+        val tfl = object : StopFinder {
+            override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>) =
+                listOf(StopLocation("tfl", "From TfL", latitude, longitude))
+        }
+        val warnings = mutableListOf<String>()
+        val bundle = read()
+        val finder = BundledStopFinder(tfl, bundled = { bundle }, warn = { warnings += it }, label = "place stops")
+        finder.nearbyStops(51.5, -0.12, 500)
+        finder.nearbyStops(53.48, -2.24, 500)
+        finder.nearbyStops(51.5, -0.12, 500, listOf("NaptanCoachBay"))
+        assertEquals(
+            listOf(
+                "place stops: 4 stops from the bundled stops",
+                "place stops: outside the bundled stops; asking TfL",
+                "place stops: a stop type the bundled stops don't hold; asking TfL",
+            ),
+            warnings,
+        )
     }
 
     @Test

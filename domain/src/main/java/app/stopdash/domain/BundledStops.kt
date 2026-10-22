@@ -323,13 +323,16 @@ data class StopMembership(
  * A [StopFinder] that answers from the bundled stops ([BundledStops]) when they cover the search,
  * and asks [delegate] (TfL, through its cache) when they don't: outside the bundle's area, for a
  * stop type it doesn't hold, or when the bundle couldn't be read. The search over the bundle runs
- * on [compute], never the caller's thread.
+ * on [compute], never the caller's thread. Each lookup says to the debug log which answered, and why
+ * TfL did, under [label] (which lookup this finder serves), so a report about a missing stop says
+ * whether the list came from the phone or from TfL.
  */
 class BundledStopFinder(
     private val delegate: StopFinder,
     private val bundled: suspend () -> BundledStops,
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
+    private val label: String = "nearby",
 ) : StopFinder {
     override suspend fun nearbyStops(
         latitude: Double,
@@ -337,22 +340,26 @@ class BundledStopFinder(
         radiusMeters: Int,
         stopTypes: List<String>,
     ): List<StopLocation> {
+        // No coordinate in the log (SPEC Privacy): only that TfL was asked, and why.
+        suspend fun askTfl(why: String): List<StopLocation> {
+            warn("$label: $why; asking TfL")
+            return delegate.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
+        }
         val stops = try {
             bundled()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // Static public data: naming the failure carries nothing about the user.
-            warn("bundled stops unavailable: ${e::class.simpleName}; asking TfL")
-            BundledStops.EMPTY
+            return askTfl("bundled stops unavailable: ${e::class.simpleName}")
         }
-        // No coordinate in the log (SPEC Privacy): only that TfL was asked.
-        if (stops.size == 0) return delegate.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
-        if (!stops.holds(stopTypes) || !stops.covers(latitude, longitude, radiusMeters)) {
-            warn("nearby: outside the bundled stops; asking TfL")
-            return delegate.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
-        }
-        return withContext(compute) { stops.nearby(latitude, longitude, radiusMeters, stopTypes) }
+        if (stops.size == 0) return askTfl("no bundled stops")
+        if (!stops.holds(stopTypes)) return askTfl("a stop type the bundled stops don't hold")
+        if (!stops.covers(latitude, longitude, radiusMeters)) return askTfl("outside the bundled stops")
+        val found = withContext(compute) { stops.nearby(latitude, longitude, radiusMeters, stopTypes) }
+        // A count only: the stops themselves, with their distances, would place the rider.
+        warn("$label: ${found.size} stops from the bundled stops")
+        return found
     }
 }
 
