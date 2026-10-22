@@ -762,11 +762,12 @@ internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (()
     // and ellipsizes only what's left. The modes are bounded and single-line, so a many-mode station
     // (Stratford's five modes) can't grow to squeeze the name to nothing or wrap at large text scales.
     // The stop's postcode district leads its modes ("EC4M · Bus"), so same-named stops read apart.
-    // Read from the match, which worked the label out off the main thread (AGENTS *Main thread*).
+    // The modes in the app's language: a station's few, said where the row draws ([modesSpoken]).
+    val modesSpoken = rememberModesSpoken(match.modes)
     val modes = when {
-        area == null -> match.modesSpoken
-        match.modesSpoken.isEmpty() -> area
-        else -> "$area · ${match.modesSpoken}"
+        area == null -> modesSpoken
+        modesSpoken.isEmpty() -> area
+        else -> "$area · $modesSpoken"
     }
     // The clickable merges its children, so TalkBack reads one label for the whole row: give it the
     // FULL station name (not the visual "Intl" abbreviation) plus the modes. A per-child description
@@ -830,7 +831,7 @@ internal fun Message(text: String) {
 
 /** A hiding group's display name ("tube" → "Underground"), else its mode's name. */
 internal fun groupName(group: ModeGroups.Group, resources: Resources): String =
-    GROUP_NAMES[group.key]?.let { resources.getString(it) } ?: modeName(group.key)
+    GROUP_NAMES[group.key]?.let { resources.getString(it) } ?: modeName(group.key, resources)
 
 /**
  * What a hidden item is called where it's named alone (the Undo snackbar, Settings' Hidden list): a
@@ -885,9 +886,6 @@ private val GROUP_NAMES = mapOf(
     "tram" to R.string.mode_group_tram,
     "boat" to R.string.mode_group_boat,
 )
-
-/** A mode's display name ("national-rail" → "National Rail"), or its id tidied for one we don't know. */
-internal fun modeName(mode: String): String = app.stopdash.domain.modeName(mode)
 
 /**
  * The station page while its stops are still being looked up, or when that failed or found none:

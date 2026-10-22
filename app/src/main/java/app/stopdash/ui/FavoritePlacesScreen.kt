@@ -677,7 +677,8 @@ private fun MatchResultRow(
                     // The postcode district leads them ("EC4M · Bus"), as on the station search's rows.
                     // Its modes as icons after the district ([RowTag]); the row says them for a screen reader.
                     if (area != null || match.modes.isNotEmpty()) {
-                        val spoken = if (area == null) match.modesSpoken else if (match.modesSpoken.isEmpty()) area else "$area, ${match.modesSpoken}"
+                        val modesSpoken = rememberModesSpoken(match.modes)
+                        val spoken = if (area == null) modesSpoken else if (modesSpoken.isEmpty()) area else "$area, $modesSpoken"
                         RowTag(
                             area,
                             Modifier.semantics { contentDescription = spoken },

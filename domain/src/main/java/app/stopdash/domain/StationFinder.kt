@@ -24,13 +24,13 @@ data class StationMatch(
     // can tell (an interchange's station name, a stop the app has shown), read
     // then through [Hubs.picked]. Saved with the pick; nothing reads it yet.
     val level: Pick.Level? = null,
-    // What the row shows and says for [modes], worked out once, where the match is first made (off the
-    // main thread). Constructor parameters, not body properties, so a copy carries them rather than
-    // working them out again: a click handler that copies a match ("Add favorite" on a positionless
-    // stop) does no list work. A copy that changes [modes] goes through [withModes] instead.
+    // What the row shows for [modes], worked out once, where the match is first made (off the main
+    // thread). Constructor parameters, not body properties, so a copy carries them rather than working
+    // them out again: a click handler that copies a match ("Add favorite" on a positionless stop) does
+    // no list work. A copy that changes [modes] goes through [withModes] instead. What a screen reader
+    // hears for the modes is said by the row, in the app's language (`modesSpoken` in the app).
     val modeIcons: List<ModeIcon> = ModeIcon.of(modes),
     val otherModesLabel: String? = ModeIcon.others(modes).takeIf { it.isNotEmpty() }?.let { modesLabel(it) },
-    val modesSpoken: String = modesLabel(modes),
 ) {
     /**
      * This row's identity in a list: the [id], or for an interchange's station name, the id and

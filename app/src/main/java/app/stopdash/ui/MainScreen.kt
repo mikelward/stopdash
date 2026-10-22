@@ -4489,7 +4489,7 @@ private fun headerModes(group: StopGroup, placeModes: Map<String, Set<String>>):
             if (row.stopDisruption == null && row.mode.isNotBlank()) served + row.mode else served
         }
         .distinctBy { it.lowercase() }
-        .sortedBy(::modeName)
+        .sortedBy { app.stopdash.domain.modeName(it) }
         .toList()
 
 /**

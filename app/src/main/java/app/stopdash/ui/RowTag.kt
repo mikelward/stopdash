@@ -25,7 +25,7 @@ import app.stopdash.domain.PlaceType
  * A result row's tag (maintainer, 2026-10-13): the postcode district where it always was, then icons
  * for what the row is, a place's type ("SE1 · [gallery]") or a stop's modes ("EC4M · [tube][rail]"),
  * in place of the words that used to follow it. The icons are decorative: the row's own semantics say
- * the words ([placeTypeLabel], [app.stopdash.domain.StationMatch.modesSpoken]). [extra] names a mode with no icon (one this build doesn't
+ * the words ([placeTypeLabel], [modesSpoken]). [extra] names a mode with no icon (one this build doesn't
  * know), after the icons.
  */
 @Composable

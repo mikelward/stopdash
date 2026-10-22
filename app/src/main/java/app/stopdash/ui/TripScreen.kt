@@ -2714,7 +2714,7 @@ internal fun cardModes(card: List<TripTiming.Estimate>): List<String> =
         .flatMap { estimate -> estimate.route.rides.asSequence().map { it.mode } }
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase() }
-        .sortedBy(::modeName)
+        .sortedBy { app.stopdash.domain.modeName(it) }
         .toList()
 
 /**

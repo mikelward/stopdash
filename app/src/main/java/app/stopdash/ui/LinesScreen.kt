@@ -939,7 +939,7 @@ private fun LineRow(line: LineRef, onClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(line.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                modeName(line.mode),
+                modeName(line.mode, LocalResources.current),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
