@@ -200,7 +200,7 @@ class BundledStopsTest {
     }
 
     @Test
-    fun `an empty or unreadable bundle leaves the search to TfL`() = runBlocking {
+    fun `an empty or unreadable bundle leaves a search around a place to TfL`() = runBlocking {
         var asked = 0
         val tfl = object : StopFinder {
             override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
@@ -214,6 +214,38 @@ class BundledStopsTest {
         assertEquals(2, asked)
         assertEquals(
             listOf("nearby: no bundled stops; asking TfL", "nearby: bundled stops unavailable: IllegalStateException; asking TfL"),
+            warnings,
+        )
+    }
+
+    @Test
+    fun `an empty or unreadable bundle fails a search around the rider rather than send their position to TfL`() = runBlocking {
+        var asked = 0
+        val tfl = object : StopFinder {
+            override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
+                asked++
+                return emptyList()
+            }
+        }
+        val warnings = mutableListOf<String>()
+        fun finder(bundled: suspend () -> BundledStops) = BundledStopFinder(tfl, bundled, warn = { warnings += it }, aroundRider = true)
+        assertThrows(BundledStopsUnavailableException::class.java) {
+            runBlocking { finder { BundledStops.EMPTY }.nearbyStops(51.5, -0.12, 500) }
+        }
+        assertThrows(BundledStopsUnavailableException::class.java) {
+            runBlocking { finder { error("unreadable") }.nearbyStops(51.5, -0.12, 500) }
+        }
+        assertEquals(0, asked)
+        // Past the bundle's edge TfL is still asked: the bundle has no answer there to give.
+        val bundle = read()
+        finder { bundle }.nearbyStops(53.48, -2.24, 500)
+        assertEquals(1, asked)
+        assertEquals(
+            listOf(
+                "nearby: no bundled stops",
+                "nearby: bundled stops unavailable: IllegalStateException",
+                "nearby: outside the bundled stops; asking TfL",
+            ),
             warnings,
         )
     }

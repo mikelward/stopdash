@@ -1890,15 +1890,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
                   read (~22,000 stops, once per process, now started in the background as the app's screen opens)
                   and search are measured only on a desktop JVM.
-              - [ ] **Stop asking TfL when the bundled stops can't be read** (maintainer, 2026-10-13):
-                  `BundledStopFinder` falls back to TfL's nearby search, with the rider's position,
-                  when the bundle fails to load, even in the middle of London. Fail on the phone
-                  instead, as the widget's `OnDeviceStopFinder` does (it throws, so its caller keeps
-                  what it had): the near-me list keeps its last stops or says they couldn't be
-                  loaded, with a Retry, and TfL is asked only near or past the bundle's edge. Then
-                  drop the "if that built-in list can't be read" clause from
-                  `docs/play-store/listing.md` and `docs/PRIVACY.md`, and "or a bundle that can't be
-                  read" from SPEC *Finding stops → Near me now*.
+              - [x] **Stop asking TfL when the bundled stops can't be read** (maintainer, 2026-10-13):
+                  `BundledStopFinder` fell back to TfL's nearby search, with the rider's position,
+                  when the bundle failed to load, even in the middle of London. Done (2026-10-22):
+                  the near-me lookup throws instead, as the widget's `OnDeviceStopFinder` does, and
+                  the list says *Couldn't load the stop list* with a **Try again**; TfL is asked only
+                  near or past the bundle's edge. Lookups around a station, a journey's end or a
+                  trip's place still fall back to TfL, as they send it nothing it isn't told anyway.
               - [x] **Log which source answered a nearby lookup**: the bundled stops, or TfL and why
                   (outside the bundle's area, a stop type it doesn't hold, the bundle unreadable). Today
                   only the fallbacks are logged, so a bug report about a missing stop can't say whether

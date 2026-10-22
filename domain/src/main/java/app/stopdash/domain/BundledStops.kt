@@ -322,10 +322,15 @@ data class StopMembership(
 /**
  * A [StopFinder] that answers from the bundled stops ([BundledStops]) when they cover the search,
  * and asks [delegate] (TfL, through its cache) when they don't: outside the bundle's area, for a
- * stop type it doesn't hold, or when the bundle couldn't be read. The search over the bundle runs
- * on [compute], never the caller's thread. Each lookup says to the debug log which answered, and why
- * TfL did, under [label] (which lookup this finder serves), so a report about a missing stop says
- * whether the list came from the phone or from TfL.
+ * stop type it doesn't hold, or when the bundle couldn't be read. Searches [aroundRider] (the
+ * near-me list's) are the exception to the last: the rider's position goes to TfL only near or past
+ * the bundle's edge (maintainer, 2026-10-13), so an unreadable or empty bundle throws
+ * [BundledStopsUnavailableException] instead, wherever the rider is, and the list says it couldn't
+ * load. A search around a station, a journey's end or a trip's place sends no more than TfL is
+ * told anyway, so it still asks TfL then. The search over the bundle runs on [compute], never the
+ * caller's thread. Each lookup says to the debug log which answered, and why TfL did, under [label]
+ * (which lookup this finder serves), so a report about a missing stop says whether the list came
+ * from the phone or from TfL.
  */
 class BundledStopFinder(
     private val delegate: StopFinder,
@@ -333,6 +338,7 @@ class BundledStopFinder(
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
     private val label: String = "nearby",
+    private val aroundRider: Boolean = false,
 ) : StopFinder {
     override suspend fun nearbyStops(
         latitude: Double,
@@ -345,15 +351,20 @@ class BundledStopFinder(
             warn("$label: $why; asking TfL")
             return delegate.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
         }
+        // Static public data: naming the failure carries nothing about the user.
+        suspend fun unreadable(why: String): List<StopLocation> {
+            if (!aroundRider) return askTfl(why)
+            warn("$label: $why")
+            throw BundledStopsUnavailableException(why)
+        }
         val stops = try {
             bundled()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Static public data: naming the failure carries nothing about the user.
-            return askTfl("bundled stops unavailable: ${e::class.simpleName}")
+            return unreadable("bundled stops unavailable: ${e::class.simpleName}")
         }
-        if (stops.size == 0) return askTfl("no bundled stops")
+        if (stops.size == 0) return unreadable("no bundled stops")
         if (!stops.holds(stopTypes)) return askTfl("a stop type the bundled stops don't hold")
         if (!stops.covers(latitude, longitude, radiusMeters)) return askTfl("outside the bundled stops")
         val found = withContext(compute) { stops.nearby(latitude, longitude, radiusMeters, stopTypes) }
@@ -363,7 +374,10 @@ class BundledStopFinder(
     }
 }
 
-/** The bundled stops couldn't be read, or don't hold a stop type asked for: [OnDeviceStopFinder] has no answer. */
+/**
+ * The bundled stops couldn't be read, or (for [OnDeviceStopFinder]) don't hold a stop type asked for:
+ * the lookup has no answer it can give without sending the rider's position to TfL.
+ */
 class BundledStopsUnavailableException(message: String) : Exception(message)
 
 /**

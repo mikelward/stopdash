@@ -440,6 +440,25 @@ class LocationGateScreenshotTest {
     }
 
     @Test
+    fun `a stop list that couldn't be read says so, not that TfL is unreachable`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    LocationGate(
+                        NearbyStopsViewModel.State.Failed(DeparturesUiState.Error.Kind.STOPS_UNREADABLE, FIX),
+                        onAllow = {},
+                        onRetry = {},
+                        onOpenSettings = {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Couldn't load the stop list").assertExists()
+        composeRule.onNodeWithText("Try again").assertExists()
+        composeRule.onNodeWithText("Can't reach TfL").assertDoesNotExist()
+    }
+
+    @Test
     fun `a stuck state offers the bug report action and reports the tap`() {
         var sent = false
         composeRule.setContent {

@@ -86,8 +86,8 @@ Why:
 
 - **Location:** in and around London, the stops near you are found on the phone, from a list
   of TfL's stops built into the app, so near me sends your position nowhere. Your position
-  goes to TfL only for the near-me list near or past the edge of that area (or anywhere, if
-  that built-in list can't be read), and with a trip you plan. Either end of a trip goes as
+  goes to TfL only for the near-me list near or past the edge of that area, and with a trip
+  you plan. Either end of a trip goes as
   a position when it's a place rather than a stop: where you are, precise if you grant
   precise location, otherwise approximate, or a place you chose (a saved place, a place you
   searched for, or a point or Google Maps place you shared in). It's Optional
@@ -121,8 +121,8 @@ Why:
     of which goes as a position when it's a place rather than a stop (where you are, or a
     place you chose: saved, searched for or shared in), re-planned while it's on screen and
     never once you leave it;
-    or the near-me list while it's open, near or past London's edge or if the built-in stop
-    list can't be read. The widget, the watch and journey alerts never send it.
+    or the near-me list while it's open, near or past London's edge. The widget, the watch
+    and journey alerts never send it.
   - **Search history** goes to TfL only when you tap *Search outside London* or type a
     postcode the app doesn't hold. A Maps short link goes back to Google only when you
     share it into StopDash, usually from Google Maps itself: you started that hand-off, and

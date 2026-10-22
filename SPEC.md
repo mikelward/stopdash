@@ -288,8 +288,11 @@ The app finds stops two ways:
   cluster, interchange, pole letter, compass, "towards", lines), built from TfL's own stop lists and
   refreshed weekly with the station index. TfL's search took 10–25 s in central London when it hadn't
   cached the area, and the near-me list waited on it with nothing else to show; the bundle answers as
-  soon as there's a fix, offline, and sends TfL no position; it is read in the background as the app's screen opens, so the first lookup finds it in memory. A search reaching past the bundle's area,
-  or a bundle that can't be read, is still TfL's. The cost is that a stop or route change reaches the
+  soon as there's a fix, offline, and sends TfL no position; it is read in the background as the app's screen opens, so the first lookup finds it in memory. A search reaching past the bundle's area
+  is still TfL's. A bundle that can't be read fails the lookup — the list says it couldn't load the
+  stops, with a **Try again** — rather than send the rider's position to TfL from anywhere
+  (maintainer, 2026-10-13); a lookup around a station, a journey's end or a trip's place, which sends
+  TfL nothing it isn't told anyway, still asks TfL then. The cost is that a stop or route change reaches the
   list only with the next weekly refresh and app update; the departures themselves are always live.
   TfL's lists drop a stop, a route or a stop's direction from one read and bring it back on the
   next, so each rebuild keeps what the last one had until TfL has left it out for **30 days**: a

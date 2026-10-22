@@ -462,6 +462,9 @@
     <!-- After "Couldn't plan the trip:" when TfL's every route rides a bus or train TfL gives no line or stops for (outside London). -->
     <!-- TODO: translate -->
     <string name="error_unfollowable" tools:ignore="MissingTranslation">Its routes need services outside TfL</string>
+    <!-- The stop list built into the app couldn't be read, so the stops near the rider weren't looked up (their position is never sent to TfL instead). -->
+    <!-- TODO: translate -->
+    <string name="error_stops_unreadable" tools:ignore="MissingTranslation">Couldn\'t load the stop list</string>
     <!-- TfL refused the user's own key (SPEC D7): the action clears it and the app goes on keyless. -->
     <string name="error_key_rejected">TfL rejected your API key</string>
     <string name="clear_api_key">Clear key</string>

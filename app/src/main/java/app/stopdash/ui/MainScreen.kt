@@ -7795,6 +7795,7 @@ internal fun errorMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind)
     DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.error_unreachable
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.error_key_rejected
     DeparturesUiState.Error.Kind.UNFOLLOWABLE -> R.string.error_unfollowable
+    DeparturesUiState.Error.Kind.STOPS_UNREADABLE -> R.string.error_stops_unreadable
 }
 
 /**
@@ -7822,7 +7823,10 @@ internal fun partialReason(kind: DeparturesUiState.Error.Kind): Int = when (kind
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.partial_reason_rate_limited
     DeparturesUiState.Error.Kind.NETWORK -> R.string.partial_reason_network
     // Only a trip's plan fails so; anywhere else it's TfL's side, as a server error is.
-    DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE -> R.string.partial_reason_server
+    // Only the near-me lookup fails for want of the bundled stops, never a stop's refresh or a journey's add.
+    DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE,
+    DeparturesUiState.Error.Kind.STOPS_UNREADABLE,
+    -> R.string.partial_reason_server
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.partial_reason_key_rejected
 }
 
@@ -7830,7 +7834,10 @@ internal fun refreshFailureMessage(kind: DeparturesUiState.Error.Kind): Int = wh
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.refresh_failed_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.refresh_failed_rate_limited
     DeparturesUiState.Error.Kind.NETWORK -> R.string.refresh_failed_network
-    DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE -> R.string.refresh_failed_server
+    // Only a trip's plan or the near-me lookup fails the last two ways, never a departures refresh.
+    DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE,
+    DeparturesUiState.Error.Kind.STOPS_UNREADABLE,
+    -> R.string.refresh_failed_server
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.refresh_failed_key_rejected
 }
 

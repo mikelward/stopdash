@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.ArrivalsReuse
+import app.stopdash.domain.BundledStopsUnavailableException
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.NearbyLayout
@@ -3312,6 +3313,7 @@ class MainViewModel(
 /**
  * The user-facing error a failed TfL call maps to: offline, rate-limited, a network error, the user's
  * key rejected, a trip's routes all on services TfL names no line or stop for, or else a server one.
+ * A near-me lookup the bundled stops couldn't answer says so, as it never reached TfL.
  */
 internal fun errorKindOf(e: Throwable?): DeparturesUiState.Error.Kind = when (e) {
     is TflException.Offline -> DeparturesUiState.Error.Kind.OFFLINE
@@ -3319,6 +3321,7 @@ internal fun errorKindOf(e: Throwable?): DeparturesUiState.Error.Kind = when (e)
     is TflException.Network -> DeparturesUiState.Error.Kind.NETWORK
     is TflException.KeyRejected -> DeparturesUiState.Error.Kind.KEY_REJECTED
     is TflException.Unfollowable -> DeparturesUiState.Error.Kind.UNFOLLOWABLE
+    is BundledStopsUnavailableException -> DeparturesUiState.Error.Kind.STOPS_UNREADABLE
     else -> DeparturesUiState.Error.Kind.SERVER
 }
 
