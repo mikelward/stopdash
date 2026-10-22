@@ -3,6 +3,7 @@ package app.stopdash.telemetry
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.stopdash.domain.UsageEvent
 
@@ -12,7 +13,8 @@ import app.stopdash.domain.UsageEvent
  * [UsageEvents], so nothing here waits on the SDK.
  *
  * A screen reported again before the app has left the front, with no other between, is the same visit
- * ([ScreenReports]): a station's page reported while it loads isn't counted again once its list shows.
+ * ([ScreenReports]): a station's page reported while it loads isn't counted again once its list shows, nor a
+ * page that paused for a back swipe let go of (its page's lifecycle, not the app's).
  */
 @Composable
 fun ReportScreen(screen: UsageEvent.Screen) {
@@ -20,10 +22,11 @@ fun ReportScreen(screen: UsageEvent.Screen) {
     LifecycleResumeEffect(screen) {
         ScreenReports.shown(screen)
         // Left the front: the next screen up counts afresh, the same one included. Merely leaving
-        // composition (the page that takes over from a placeholder), or the activity being made again
-        // for a rotation, keeps the last one.
+        // composition (the page that takes over from a placeholder), a page pausing while the app stays at
+        // the front (a back swipe under way), or the activity being made again for a rotation, keeps the last one.
+        val app = (activity as? LifecycleOwner)?.lifecycle ?: lifecycle
         onPauseOrDispose {
-            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && activity?.isChangingConfigurations != true) {
+            if (!app.currentState.isAtLeast(Lifecycle.State.RESUMED) && activity?.isChangingConfigurations != true) {
                 ScreenReports.left()
             }
         }

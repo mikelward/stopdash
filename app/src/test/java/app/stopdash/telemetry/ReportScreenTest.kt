@@ -1,9 +1,14 @@
 package app.stopdash.telemetry
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.stopdash.domain.UsageEvent
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -64,5 +69,26 @@ class ReportScreenTest {
         screen = UsageEvent.Screen.STATION
         composeRule.waitForIdle()
         assertEquals(listOf("station", "route", "station"), sent.map { it.params["screen_name"] })
+    }
+
+    @Test
+    fun `a page paused while the app stays at the front is the same visit, counted once`() {
+        UsageEvents.consent = { true }
+        UsageEvents.install { sent += it }
+        // A page of the back stack, with a lifecycle of its own: a back swipe let go of pauses it and resumes it.
+        val page = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this)
+            override val lifecycle: Lifecycle get() = registry
+        }
+        composeRule.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides page) { ReportScreen(UsageEvent.Screen.SETTINGS) }
+        }
+        composeRule.runOnIdle { page.registry.currentState = Lifecycle.State.RESUMED }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { page.registry.currentState = Lifecycle.State.STARTED }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { page.registry.currentState = Lifecycle.State.RESUMED }
+        composeRule.waitForIdle()
+        assertEquals(listOf("settings"), sent.map { it.params["screen_name"] })
     }
 }
