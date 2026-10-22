@@ -3704,6 +3704,14 @@ class TripScreenScreenshotTest {
     private fun inRow(text: String) =
         composeRule.onNode(hasTestTag("tripDisruptions") and hasContentDescription(text, substring = true))
 
+    // What the trip page shows where its disruptions row isn't: its list or not, and which of its waits.
+    private fun screenSays(): String {
+        val waits = listOf(R.string.trip_checking, R.string.trip_planning, R.string.trip_no_routes).map { composeRule.activity.getString(it) }
+            .filter { composeRule.onAllNodes(hasText(it), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        val list = composeRule.onAllNodes(hasTestTag("tripRoutes")).fetchSemanticsNodes().size
+        return "list $list, waits $waits"
+    }
+
     @Test
     fun a_route_list_says_it_couldnt_check_only_for_a_line_a_route_shown_rides() {
         val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
@@ -4493,10 +4501,11 @@ class TripScreenScreenshotTest {
                 val now = composeRule.onAllNodes(hasTestTag("tripDisruptions")).fetchSemanticsNodes()
                     .flatMap { it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() } }
                     .joinToString(" ")
+                    .ifEmpty { "no row: ${screenSays()}" }
                 if (said.lastOrNull() != now) said += now
                 "Jubilee" in now && "Checking" !in now
             }
-            assertTrue("only checking on its way to the pill: $said", said.dropLast(1).all { "Checking" in it })
+            assertTrue("only checking on its way to the pill: $said", said.dropLast(1).all { !it.startsWith("no row") && "Checking" in it })
             inRow("No disruptions").assertDoesNotExist()
 
             // Back to running with the worker held again: the Jubilee's pill is for the cards before, so
