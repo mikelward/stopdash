@@ -58,7 +58,6 @@ class StationViewModelsTest {
     ) : StationFinder {
         // Each batched lookup ([StationFinder.stationStops] of a list), as it was asked.
         val batches = mutableListOf<List<String>>()
-        override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
         override suspend fun stationStops(ids: List<String>): List<StopLocation> {
             batches += ids

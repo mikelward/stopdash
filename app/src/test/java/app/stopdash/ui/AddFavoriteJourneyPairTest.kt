@@ -51,7 +51,6 @@ class AddFavoriteJourneyPairTest {
         val failOn: Set<String> = emptySet(),
     ) : StationFinder {
         val asked = mutableListOf<String>()
-        override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> {
             asked += id
             fail?.let { throw it }

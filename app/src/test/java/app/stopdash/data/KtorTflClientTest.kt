@@ -1835,33 +1835,6 @@ class KtorTflClientTest {
         assertEquals(1, scripted.calls)
     }
 
-    // A trimmed /StopPoint/Search response: public station names only. The second match repeats the
-    // first's id (TfL can list one hub under two spellings) and the third has no id.
-    private val searchJson =
-        """
-        {
-          "query": "oxford",
-          "total": 3,
-          "matches": [
-            { "id": "940GZZLUOXC", "name": "Oxford Circus Underground Station", "modes": ["tube", "bus"], "zone": "1" },
-            { "id": "940GZZLUOXC", "name": "Oxford Circus", "modes": ["tube"] },
-            { "id": "", "name": "Nowhere" }
-          ]
-        }
-        """.trimIndent()
-
-    @Test
-    fun `station search sends the typed query and maps cleaned, deduped matches`() = runTest {
-        var captured: HttpRequestData? = null
-        val matches = client(searchJson, capture = { captured = it }).searchStations("oxford ci")
-        val url = captured!!.url
-        assertEquals("/StopPoint/Search", url.encodedPath)
-        assertEquals("oxford ci", url.parameters["query"])
-        assertEquals("interchanges are asked for", "true", url.parameters["includeHubs"])
-        assertEquals(listOf("Oxford Circus"), matches.map { it.name })
-        assertEquals(listOf("tube", "bus"), matches.single().modes)
-    }
-
     // A trimmed /StopPoint/{interchangeId} tree: an interchange holding a tube station (whose platform child
     // must not become a stop of its own), a bus stop area with one line-serving pole and one
     // line-less pole, and an entrance. Public names and ids only.

@@ -76,16 +76,10 @@ class FavoritePlacesViewModelTest {
         }
     }
 
+    // A pick's stops: a stop search is on the device, so a finder has no search to send.
     private class FakeFinder(
-        val search: suspend (String) -> List<StationMatch> = { emptyList() },
         val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
-        // Every stop search sent to TfL: none, now the search is on the device.
-        val queries = mutableListOf<String>()
-        override suspend fun searchStations(query: String): List<StationMatch> {
-            queries += query
-            return search(query)
-        }
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
@@ -113,8 +107,8 @@ class FavoritePlacesViewModelTest {
         FavoritePlacesViewModel(store, finder, io = dispatcher, compute = dispatcher, loadIndex = { stations }, debounceMillis = 300, newId = { "id-1" })
 
     @Test
-    fun `a stop search finds stations and bus stops with nothing sent to TfL`() = runTest {
-        // Synthetic stop (AGENTS.md *Privacy*). The finder stays for picks; a search must not touch it.
+    fun `a stop search finds stations and bus stops on the device`() = runTest {
+        // Synthetic stop (AGENTS.md *Privacy*). The finder stays for picks.
         val finder = FakeFinder()
         val buses = BusStopIndex.of(listOf(StopLocation("4900A", "Oxford Lane", 51.5, -0.12, lines = listOf(LineRef("1", "1", "bus")))))
         val model = FavoritePlacesViewModel(
@@ -128,7 +122,6 @@ class FavoritePlacesViewModelTest {
         val editor = model.state.value.editor!!
         assertEquals(listOf(oxford, StationMatch("4900A", "Oxford Lane", listOf("bus"), 51.5, -0.12, level = Pick.Level.STOP)), editor.results)
         assertFalse(editor.searching)
-        assertEquals(emptyList<String>(), finder.queries)
     }
 
     @Test
