@@ -4482,12 +4482,22 @@ class TripScreenScreenshotTest {
             inRow("Checking").assertExists()
             inRow("No disruptions").assertDoesNotExist()
 
-            // Released, the worker catches up: the Jubilee's pill, and no "No disruptions".
+            // Released, the worker catches up: the Jubilee's pill, and nothing but "Checking" on the way to it. Waited
+            // for by the pill itself, every row seen until then read and named if it fails: "Checking" going doesn't
+            // mean the pill's is the next row the test sees (CI on #1081, where it wasn't, and the row between went
+            // unrecorded).
             gate.countDown()
             composeRule.mainClock.autoAdvance = true
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("Checking", substring = true)).fetchSemanticsNodes().isEmpty() }
+            val said = mutableListOf<String>()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                val now = composeRule.onAllNodes(hasTestTag("tripDisruptions")).fetchSemanticsNodes()
+                    .flatMap { it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() } }
+                    .joinToString(" ")
+                if (said.lastOrNull() != now) said += now
+                "Jubilee" in now && "Checking" !in now
+            }
+            assertTrue("only checking on its way to the pill: $said", said.dropLast(1).all { "Checking" in it })
             inRow("No disruptions").assertDoesNotExist()
-            inRow("Jubilee").assertExists()
 
             // Back to running with the worker held again: the Jubilee's pill is for the cards before, so
             // once the row says it's checking, the pill goes with it.
