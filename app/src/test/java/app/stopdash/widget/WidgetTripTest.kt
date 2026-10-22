@@ -3,7 +3,9 @@ package app.stopdash.widget
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.data.WatchTrip
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.SteadyClock
+import app.stopdash.ui.countdownWords
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +59,15 @@ class WidgetTripTest {
         assertEquals("3 · 7 min", model.trains.first().countdown)
         // Redrawn when it would go out of date, unless a train is due sooner.
         assertEquals(now.plus(WIDGET_TRIP_STALE_AFTER), model.redrawAt)
+    }
+
+    @Test
+    fun `a trip's countdowns are written in the app's words`() {
+        val german = CountdownWords(" | ") { "$it Min." }
+        assertEquals("3 | 7 Min.", widgetTripModel(trip(), now, countdownWords = german)!!.trains.first().countdown)
+        // The app's own words, from its string resources, read as the English always has.
+        val resources = ApplicationProvider.getApplicationContext<Context>().resources
+        assertEquals("3 · 7 min", widgetTripModel(trip(), now, countdownWords = countdownWords(resources))!!.trains.first().countdown)
     }
 
     @Test

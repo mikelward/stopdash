@@ -718,7 +718,7 @@
     <string name="countdown_time_due_description" tools:ignore="MissingTranslation">%1$s min, due</string>
     <!-- TODO: translate -->
     <!-- A countdown's minutes: %1$s is one or more numbers already joined ("3 · 7"), the unit written
-         once after them ("3 · 7 min"). On every board, trip and route page. -->
+         once after them ("3 · 7 min"). On every board, trip and route page, and the widget. -->
     <string name="countdown_minutes" tools:ignore="MissingTranslation">%1$s min</string>
     <!-- TODO: translate -->
     <!-- What goes between a countdown's times ("3 · 7 min"), spaces included. -->
