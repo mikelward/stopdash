@@ -1,10 +1,10 @@
 # Moving the app's pages onto Navigation 3
 
 **Status: under way, on Navigation 3** (maintainer, 2026-10-22: "ship option 1 and write the plan", then
-Navigation 3 over Navigation Compose 2.x). Predictive back shipped as "shrink only": every page follows
-the back gesture over a scrim, and only windows over a page show the page under them (SPEC *Back*).
-Drawing the real page under every page is the payoff this plan works toward. The other gain is a
-navigation model that can't skip pages.
+Navigation 3 over Navigation Compose 2.x). Step 1 is done (*Step 1: what the spike found*). Predictive
+back shipped as "shrink only": every page follows the back gesture over a scrim, and only windows over a
+page show the page under them (SPEC *Back*). Drawing the real page under every page is the payoff this
+plan works toward. The other gain is a navigation model that can't skip pages.
 
 ## Why
 
@@ -80,32 +80,35 @@ Read from the published sources on 2026-10-22:
 
 **Cost and reliability:**
 - No money, no network and no new failure mode at run time.
-- A Google first-party dependency of a few hundred KB before R8, kept current by the weekly Gradle
-  batch.
+- A Google first-party dependency, about 113 KB in the release APK with R8 on (*Step 1*), kept
+  current by the weekly Gradle batch.
 - The risk is in the migration itself: it re-touches every Back path #1064 just fixed.
 
 ## What the gesture would start, and how to hold it off
 
 With the page under drawn during the gesture, whatever that page does on entering composition runs,
 even for a swipe the rider lets go of. The near-me page is the costly one. Navigation 3 helps here: the
-revealed entry stays at STARTED until the pop completes. So effects that should only run for the page
-the rider is on move to RESUMED, each with a test that a canceled swipe doesn't fire it:
+stack doesn't change until the swipe finishes, so the page being revealed isn't on top of it yet. So
+effects that should only run for the page the rider is on wait until the page is **on top of the
+stack, windows aside, and at least STARTED**, each with a test that a canceled swipe doesn't fire it.
+RESUMED alone won't do: a window entry holds the page under it at STARTED, so a route stop's details
+would pause the location fix, which they don't today (*Step 1*). In the list, "on top" means that gate:
 - The location fix: `resumeRefining()` runs in a `LifecycleStartEffect` today, so a canceled swipe
-  would start and stop the GPS follow. It moves to `LifecycleResumeEffect`.
+  would start and stop the GPS follow. It runs only while the page is on top.
 - The refresh on coming back to the app: `ConsumeForegroundReturn` reads and clears
-  `returnLatch.pending` as it composes, so a glimpse would spend it. It reads it only at RESUMED.
+  `returnLatch.pending` as it composes, so a glimpse would spend it. It reads it only on top.
 - A refinement on offer being applied, and the near-me trip's Direct lookups (`direct.run()`, already
   on RESUMED) and its auto-close when no origin is found.
-- Write-failure snackbars, which clear their flag as they show: shown only at RESUMED, so a glimpse
-  can't spend one.
+- Write-failure snackbars, which clear their flag as they show: shown only on top, so a glimpse can't
+  spend one.
 - `ReportScreen(HOME)`, so analytics doesn't count a glimpse as a visit.
 - `ReportChanges`' reports to the view model (`setJourneyStops`, which can refresh, and
-  `screenLines`, which checks lines): reported at RESUMED.
+  `screenLines`, which checks lines): reported only on top.
 - Dialogs a page had open when it was covered (a disruption card's, the route page's View line): these
   are windows of their own, so drawn during a glimpse they'd open **over** the page being swiped. They
-  show only at RESUMED.
-- Lines…'s reopening and its status checks, which can ask TfL, and Settings' permission reads: at
-  RESUMED.
+  show only on top.
+- Lines…'s reopening and its status checks, which can ask TfL, and Settings' permission reads: only on
+  top.
 
 Cheap work can stay as it is: the near-me page's cached route lookups, its rows worked out again on the
 worker, the station index read, `AutoRefresh`'s first tick (60 s out).
@@ -123,8 +126,10 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
    - process-death restore of the stack;
    - `FontSizePinch`, `TapPause` and `KeyRejectedFrame` still wrapping what shows;
    - the APK size change.
-2. **The near-me page's effects move to RESUMED** (the list above), before anything draws it during a
-   gesture. Visible behavior is unchanged: today the page is never composed but on top.
+
+   Done: *Step 1: what the spike found*.
+2. **The near-me page's effects wait until it's on top** (the list above), before anything draws it
+   during a gesture. Visible behavior is unchanged: today the page is never composed but on top.
 3. **The overlays become a back stack.** Keys: `NearMe(generation)` at the root, and `Settings`,
    `Licenses`, `OnTheWay`, `FavoritePlaces`, `FavoriteJourneys`, `Lines`, `StationSearch` and
    `Station(id)` above it.
@@ -154,6 +159,46 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
 **Size:** about 6–10 PRs. Step 3 is the largest: `MainActivity`'s content is about 8,000 lines, and
 many of its 94 `rememberSaveable`s are navigation state. The plan runs step by step, each merged before
 the next, with a device check of the Back flows after steps 3, 5 and 6.
+
+## Step 1: what the spike found
+
+`Navigation3SpikeTest` runs a `NavDisplay` set up as the app would set it up, on the app's own versions:
+sealed keys, both entry decorators, `DialogSceneStrategy`, no push or pop transition. Each test holds one
+of the claims above, so a library update that breaks one fails the build. Navigation 3 is a test
+dependency only until step 3. The spike found:
+
+- **Lifecycle during a gesture: as above.** Both pages are at STARTED while the rider swipes. A finished
+  swipe resumes the page under, and a canceled one drops it from composition without ever resuming it.
+  The stack itself doesn't change until the swipe finishes.
+- **A window entry holds the page under it at STARTED, not RESUMED,** as *The library* says. The first
+  draft of this plan gated the near-me page's effects on RESUMED, which this rules out: once step 4 makes
+  a route stop's details a window entry, they'd pause the location fix, and today they pause nothing. So
+  the gate is the page being on top of the stack, windows aside, and at least STARTED (*What the gesture
+  would start*). During a gesture the stack hasn't moved yet, so the page being revealed isn't on top:
+  only a glimpse is held off.
+- **Saved state:** a covered page leaves composition. Its `rememberSaveable` state comes back, its
+  `remember` state doesn't, and a popped page's state goes with it. A page's `ViewModel` lasts while the
+  page is covered and is cleared when the page is popped.
+- **Back handlers:** they share one dispatcher with the app's. A page's own `PredictiveBack` or
+  `BackHandler` goes first, and the stack draws nothing under it. With one page left, Back goes past
+  the stack to the system's back-to-home. A window entry's Back is its own window's, as today.
+- **Process death:** the stack and every covered page's saved state come back. The keys are saved by
+  their own sealed serializer (`NavBackStackSerializer(Page.serializer())` through
+  `rememberSerializable`), not `rememberNavBackStack()`'s, which finds each key's class by name. Nothing
+  is looked up by name, so R8's renaming can't break a restore.
+- **Opening a page with no transition:** the page is drawn on the second frame and settled (resumed,
+  the page under out of composition) by the fourth, about 67 ms. A flag's swap today draws on the first
+  frame. That's one frame later, which keeps "pages appear at once" open to answer either way.
+- **The wrappers, by construction rather than a test:** `NavDisplay` goes inside `StopDashAppRoot`'s
+  content, so the text size, its pinch, `TapPause` and `KeyRejectedFrame` wrap every page as they do
+  today. A window entry is a window of its own, so it re-applies `FontSizePinchWindow` inside, as today's
+  dialogs do.
+- **Size:** a `NavDisplay` like the spike's, built into a throwaway release build, adds about 113 KB to
+  the APK with R8 on: 16,601,784 to 16,717,242 bytes, 0.7%.
+- **navigationevent:** Navigation 3 needs 1.1 or later, and the app had 1.0.0 through activity-compose.
+  The app now declares 1.2.0 itself, in a commit of its own ahead of the spike, so it ships the version
+  its unit tests run on and a Back regression from the bump is that commit's alone. The whole suite
+  passes on it.
 
 ## Open questions for the maintainer
 

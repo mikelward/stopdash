@@ -479,6 +479,11 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver3)
     // Drives the widget staleness-redraw scheduler test on an in-memory WorkManager.
     testImplementation(libs.androidx.work.testing)
+    // Navigation 3, for its spike alone so far (Navigation3SpikeTest): confirms on this app's stack
+    // what the move onto it relies on (dev-docs/navigation3.md) before any page depends on it.
+    testImplementation(libs.androidx.navigation3.runtime)
+    testImplementation(libs.androidx.navigation3.ui)
+    testImplementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
     // Robolectric + Roborazzi drive the Compose screenshot tests (SPEC *Testing*):
     // they render MainScreen in each state to a PNG on the JVM, no emulator.
