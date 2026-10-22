@@ -6417,6 +6417,8 @@ internal fun RouteDetailScreen(
     // last one's ⚠s or places while its own are read; a stop list refreshed under the same alert keeps
     // them, so an ordinary refresh doesn't make them blink.
     val alertWorker = LocalWorker.current
+    // A stretch's ends joined in the app's language ("Moorgate to Bank"), worked out with the marks.
+    val resources = LocalResources.current
     val readAlert by produceState<Pair<Any?, AlertMarks>>(null to AlertMarks.NONE, alertText, statusText, hasStatus, trainStops, trainSequence, lineStops, alertWorker) {
         val alert = Triple(alertText, statusText, hasStatus)
         if (value.first != alert) value = alert to AlertMarks.NONE
@@ -6427,7 +6429,7 @@ internal fun RouteDetailScreen(
         }
         value = alert to AlertMarks.of(alertText, statusText, hasStatus, trainStops, lineStops, wholeRoute, shortName = { stop ->
             stop.name.substringBefore("/").trim().ifBlank { stop.name.ifBlank { stop.id } }
-        }, worker = alertWorker)
+        }, between = { from, to -> resources.getString(R.string.alert_stretch, from, to) }, worker = alertWorker)
     }
     val alertMarks = readAlert.second
     val alertStretchIds = alertMarks.stretch
