@@ -1444,6 +1444,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Regroup the trains as Underground, Overground, National Rail** (maintainer, 2026-10-08):
         Underground is the Tube, the DLR and the Elizabeth line; Eurostar goes with National Rail;
         the menu says what a name doesn't in a short subtitle. The Disruptions page's chips follow.
+  - [x] **A National Rail train's own stops, past the board with details** (maintainer, 2026-10-22: "Ask
+        national rail"): TfL's routes for EMR list a stop out of St Pancras its trains don't call at, so a trip
+        offered one to get there. A trip now asks its boarding station's board of the trains calling where each
+        National Rail ride gets off, and judges a train past the board with details by it.
+    - [ ] **A National Rail route page lists its train's own stops**, not its line's TfL pattern (which
+          showed that stop on an EMR train): the train's calls from National Rail, asked when
+          the page opens (`RailBoardSource.runs` toward its terminus, as a followed train's are), or the
+          calling points a trip's board already carries.
   - [x] **National Rail station messages as station notices** (maintainer, 2026-10-17): TfL's status for
         a National Rail line is often only a link; the board's `nrccMessages` now join the stop's notices.
     - [ ] **Check the `nrccMessages` shape against a live board**: the fixture is hand-written in the

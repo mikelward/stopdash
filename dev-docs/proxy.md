@@ -60,7 +60,7 @@ clock).
 | `/v1/incidents` | `POST …/disruptions/incidents/search` `{startDate, endDate}` = today in London | Served from the prefetched copy only. |
 | `/v1/board/{crs}` | `GetDepartureBoard/{crs}?numRows=20` | The plain board every screen shares. |
 | `/v1/board/{crs}/details` | `GetDepBoardWithDetails/{crs}?numRows=10` | A trip's calling points. |
-| `/v1/board/{crs}/details?to={crs}&offset={m}` | same, `filterCrs`, `filterType=to`, `timeOffset` | Following a train (`RailBoardSource.runs`). |
+| `/v1/board/{crs}/details?to={crs}&offset={m}` | same, `filterCrs`, `filterType=to`, `timeOffset` | Following a train (`RailBoardSource.runs`); without `offset`, also a trip's trains calling where a ride gets off. |
 | `/v1/board/{crs}/timetable?from={0\|120}[&to={crs}]` | `GetDepartureBoard/{crs}?numRows=150&timeWindow=120`, `timeOffset=119` for `from=120`, `filterCrs`/`filterType=to` with `to` | A route page's timetable, the next four hours in two parts (`RailBoardSource.timetable`, maintainer, 2026-10-22). |
 | `/v1/health` | none | The incident list's `fetchedAt` and the cron job's last attempt and status. No user data. |
 
@@ -118,7 +118,7 @@ fetch, not from the app's ask.
 
 **What reaches it.** For `/v1/incidents`, nothing about the rider: the request has no
 parameters. For boards, the path names a station (and for a followed train, its terminus and a
-quarter-hour offset), which says roughly where the rider is or is going. Every request also
+quarter-hour offset; for a trip's ride, where it gets off), which says roughly where the rider is or is going. Every request also
 arrives with the phone's **IP address** and **User-Agent**, which Cloudflare's edge needs to
 answer it.
 

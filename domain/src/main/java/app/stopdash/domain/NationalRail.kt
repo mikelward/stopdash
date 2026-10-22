@@ -32,6 +32,13 @@ interface RailBoardSource {
     suspend fun boardWithDetails(crs: String): RailBoard? = null
 
     /**
+     * [crs]'s next few trains that call at [towards] (both station codes), with their calling points and service
+     * ids as [boardWithDetails] gives them, and how far on it lists every one ([RailBoard.coversUntil]): a train
+     * on [board] it leaves out before then doesn't call there ([withCallsAt]). Null when this source has none to give.
+     */
+    suspend fun boardWithDetails(crs: String, towards: String): RailBoard? = null
+
+    /**
      * [crs]'s next trains that call at [towards] (both station codes), each with its stops before and
      * after this one and their times ([RailRun]): what a followed train's calls are read from
      * ([RailVehicles]). From [offsetMinutes] on (Darwin's `timeOffset`), for a train further out than a
@@ -75,6 +82,9 @@ data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
  * handed to every asker of the one fetch, so each says the key is why ([RailFeed.KEY_REJECTED]).
  * [age] is how old it already was when it arrived (stopdash's proxy serves one from its cache), so it
  * is dated by when National Rail gave it, not when it was asked for (SPEC D4).
+ * [coversUntil], on a board of the trains calling somewhere ([RailBoardSource.boardWithDetails] towards a
+ * station), is the time before which it lists every train scheduled to leave: its window's end, or, listing as
+ * many as it can, the last one's schedule. Null where it can't say, and on every other board.
  */
 data class RailBoard(
     val departures: List<Departure>,
@@ -83,6 +93,7 @@ data class RailBoard(
     val suppressed: Boolean = false,
     val age: Duration = Duration.ZERO,
     val keyRejected: Boolean = false,
+    val coversUntil: Instant? = null,
 )
 
 /**
@@ -242,6 +253,8 @@ class RailAwareTflClient(
     private val clock: () -> Instant = Instant::now,
     // A trip asks for each train's stopping pattern too ([RailBoardSource.boardWithDetails]).
     private val callingPoints: Boolean = false,
+    // Where the trip's National Rail rides get off, for the trains calling there ([towardEnds]); none for a list.
+    private val rideEnds: RailRideEnds? = null,
 ) : TflClient by tfl {
     // Each station code's owner: the one stop its board is fetched for and shown under, and when it
     // last asked. Two TfL stops can share a code (St Pancras's two National Rail ids, side by side in
@@ -406,12 +419,38 @@ class RailAwareTflClient(
         // A suppressed or refused one has no calling points to give.
         val withDetails = details?.await()?.takeUnless { it.suppressed || it.keyRejected }
         val calling = withDetails?.departures.orEmpty()
-        if (plain == null || plain.suppressed || plain.keyRejected || withDetails == null || calling.isEmpty()) {
+        val board = if (plain == null || plain.suppressed || plain.keyRejected || withDetails == null || calling.isEmpty()) {
             plain
         } else {
             // As old as its older half: calling points kept from before stand for no fresher a board (Codex, #650).
             plain.copy(departures = withCallingPoints(plain.departures, calling), fetchedAt = minOf(plain.fetchedAt, withDetails.fetchedAt))
         }
+        if (!callingPoints || board == null || board.suppressed || board.keyRejected) board else towardEnds(crs, stopId, board)
+    }
+
+    /**
+     * [board] ([crs]'s, for [stopId]) with what the station's boards of the trains calling where each of the trip's
+     * National Rail rides from it gets off ([rideEnds]) say of its trains with no calling points ([withCallsAt]): a
+     * train past the board with details' few, which its line's route can't tell from a fast one (maintainer,
+     * 2026-10-22). Asked only while one has none, each kept as a board is. As old as its oldest part, as the calling
+     * points are. One that fails is logged and its trains judged on their routes, as before.
+     */
+    private suspend fun towardEnds(crs: String, stopId: String, board: ArrivalsCache.Entry): ArrivalsCache.Entry = coroutineScope {
+        val codes = codes()
+        val ends = rideEnds?.all().orEmpty().filter { (from, _) -> codes.crsFor(from) == crs }
+            .mapNotNull { (_, to) -> codes.crsFor(to) }.filter { it != crs }.distinct()
+        if (ends.isEmpty() || board.departures.none { it.railServiceId.isNotBlank() && it.callingAt == null }) return@coroutineScope board
+        val asked = ends.map { end ->
+            end to async { fetchOne(crs, stopId, "$TOWARDS_KEY$end:", "calling points toward a ride's end") { rail.boardWithDetails(crs, end) } }
+        }
+        var departures = board.departures
+        var at = board.fetchedAt
+        for ((end, ask) in asked) {
+            val towards = ask.await()?.takeUnless { it.suppressed || it.keyRejected } ?: continue
+            departures = withCallsAt(departures, RailBoard(towards.departures, towards.untimed, coversUntil = towards.coversUntil), codes.stopIdsFor(end))
+            at = minOf(at, towards.fetchedAt)
+        }
+        board.copy(departures = departures, fetchedAt = at)
     }
 
     // One of [crs]'s boards from [request], kept under [key] and asked for once however many screens and
@@ -434,7 +473,10 @@ class RailAwareTflClient(
                 }
             }
         val cache = boards ?: return asked()?.let {
-            ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()).minus(it.age), untimed = it.untimed, messages = it.messages, suppressed = it.suppressed, keyRejected = it.keyRejected)
+            ArrivalsCache.Entry(
+                it.departures, SteadyClock.stamp(clock()).minus(it.age), untimed = it.untimed, messages = it.messages,
+                suppressed = it.suppressed, keyRejected = it.keyRejected, coversUntil = it.coversUntil,
+            )
         }
         return cache.fetchBoardOnce(key + crs, clock(), BOARD_SOURCE) { asked() }
     }
@@ -473,6 +515,8 @@ class RailAwareTflClient(
         // A board's key in [boards], beside the stops' ids: no stop id has a colon.
         private const val BOARD_KEY = "national-rail:"
         private const val DETAILS_KEY = "national-rail-details:"
+        // Followed by the ride's end's code and a colon: a board of the trains calling there ([towardEnds]).
+        private const val TOWARDS_KEY = "national-rail-to:"
 
         // What a kept board was fetched from: a board, whatever key asked for it.
         private val BOARD_SOURCE = Any()
@@ -488,6 +532,53 @@ class RailAwareTflClient(
 fun withCallingPoints(plain: List<Departure>, details: List<Departure>): List<Departure> {
     val calling = details.mapNotNull { train -> train.callingAt?.let { train.railServiceId.ifBlank { null }?.to(it) } }.toMap()
     return plain.map { train -> calling[train.railServiceId.ifBlank { null }]?.let { train.copy(callingAt = it) } ?: train }
+}
+
+/**
+ * [plain]'s trains with what [towards] says of them: the same station's board of the trains calling at [end] (every
+ * TfL id of that station), with their calling points ([RailBoardSource.boardWithDetails] towards it). A train with no
+ * calling points of its own takes those it lists for it, paired by Darwin's service id; one it leaves out, scheduled
+ * to leave before it lists every train to ([RailBoard.coversUntil]), doesn't call there ([Departure.missesStops]).
+ * Its schedule is the one a trip follows it by ([RailFollow.keyOf]), so one with none (a train that divides) is left
+ * as it is, as is every train where [towards] can't say how far on it lists them all.
+ */
+@WorkerThread
+fun withCallsAt(plain: List<Departure>, towards: RailBoard, end: Set<String>): List<Departure> {
+    val until = towards.coversUntil
+    // Every train it lists, with a time or without: one "Delayed" there since the plain board was read is still listed.
+    val listed = (towards.departures + towards.untimed.map { it.train }).filter { it.railServiceId.isNotBlank() }
+        .associate { it.railServiceId to it.callingAt }
+    return plain.map { train ->
+        when {
+            train.callingAt != null || train.railServiceId.isBlank() -> train
+            train.railServiceId in listed -> listed[train.railServiceId]?.let { train.copy(callingAt = it) } ?: train
+            end.isEmpty() || until == null -> train
+            else -> {
+                val scheduled = RailFollow.keyOf(train.vehicleId)?.scheduled
+                if (scheduled != null && scheduled.isBefore(until)) train.copy(missesStops = train.missesStops + end) else train
+            }
+        }
+    }
+}
+
+/**
+ * Where a trip's National Rail rides get off, by where each boards, as TfL stop ids: a [RailAwareTflClient] asking for
+ * a station's calling points asks for the trains calling at each of those too ([withCallsAt]). [set] by the trip as
+ * its rides change, read on the request path; both off the main thread.
+ */
+class RailRideEnds {
+    @Volatile
+    private var ends: List<Pair<String, String>> = emptyList()
+
+    /** Each National Rail ride of [rides] from now on, by its boarding stop and where it gets off. */
+    @WorkerThread
+    fun set(rides: List<TripLeg>) {
+        ends = rides.filter { it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) && it.fromId.isNotBlank() && it.toId.isNotBlank() }
+            .map { it.fromId to it.toId }.distinct()
+    }
+
+    /** Each ride's boarding stop and where it gets off. */
+    fun all(): List<Pair<String, String>> = ends
 }
 
 /** TfL's mode id for National Rail lines, which a Darwin departure carries too. */

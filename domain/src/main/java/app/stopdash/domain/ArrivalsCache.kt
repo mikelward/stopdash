@@ -34,6 +34,8 @@ class ArrivalsCache {
         // A board refused for the user's key ([RailBoard.keyRejected]): no trains, handed to every asker of
         // the one fetch, never kept.
         val keyRejected: Boolean = false,
+        // A board of the trains calling somewhere: how far on it lists every one ([RailBoard.coversUntil]).
+        val coversUntil: Instant? = null,
     )
 
     private val entries = LinkedHashMap<String, Entry>()
@@ -76,12 +78,13 @@ class ArrivalsCache {
         source: Any? = null,
         untimed: List<UntimedTrain> = emptyList(),
         messages: List<String> = emptyList(),
+        coversUntil: Instant? = null,
     ) {
         if (generation != this.generation) return
         val held = entries[stopId]
         if (held != null && held.source == source && held.fetchedAt.isAfter(at)) return
         entries.remove(stopId)
-        entries[stopId] = Entry(departures, at, railFeed, source, untimed, messages)
+        entries[stopId] = Entry(departures, at, railFeed, source, untimed, messages, coversUntil = coversUntil)
         while (entries.size > MAX) entries.remove(entries.keys.first())
     }
 
@@ -137,9 +140,14 @@ class ArrivalsCache {
             // ([RailBoard.age]), so a proxy's cached board is dated by when National Rail gave it.
             val askedAt = SteadyClock.stamp(now)
             val entry = fetch()?.let {
-                Entry(it.departures, askedAt.minus(it.age), source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed, keyRejected = it.keyRejected)
+                Entry(
+                    it.departures, askedAt.minus(it.age), source = source, untimed = it.untimed, messages = it.messages,
+                    suppressed = it.suppressed, keyRejected = it.keyRejected, coversUntil = it.coversUntil,
+                )
             }
-            if (entry != null && !entry.suppressed && !entry.keyRejected) put(key, entry.departures, entry.fetchedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages)
+            if (entry != null && !entry.suppressed && !entry.keyRejected) {
+                put(key, entry.departures, entry.fetchedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages, coversUntil = entry.coversUntil)
+            }
             outcome = Fetch.Done(entry)
             return entry
         } finally {

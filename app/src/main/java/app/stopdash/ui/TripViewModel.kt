@@ -29,6 +29,7 @@ import app.stopdash.domain.BundledStops
 import app.stopdash.domain.FinalStop
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TowardStops
+import app.stopdash.domain.RailRideEnds
 import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.RideEnds
 import app.stopdash.domain.NearestStops
@@ -173,6 +174,9 @@ class TripViewModel(
     // answers merged, so every route passes one of them. Null for a trip that goes any way. Part of what the
     // trip is, so another via is another trip: [TripPlans] keys its plans by its key, worked out with the stops.
     val via: ViaStops? = null,
+    // Where the routes' National Rail rides get off, which [client] asks its stations' trains calling at too
+    // ([RailRideEnds]), so a train past its board with details is still judged by its own stops. Null for none.
+    private val railRideEnds: RailRideEnds? = null,
     // Where the Planner plans from, read at each plan: from here the rider's latest fix, so TfL walks
     // from where they are to whichever stop serves the trip best (SPEC *Trips with a change*); from a
     // *From…* station, its stop. The stop [fromId] by default. The screen replaces it ([origin]) each
@@ -1889,6 +1893,7 @@ class TripViewModel(
             val poles = _state.value.areaPoles
             // Where the routes board and get off too, for a closure or a moved stop (SPEC *Trips with a change*).
             val (stops, asked) = withContext(compute) {
+                railRideEnds?.set(routes.flatMap { it.legs })
                 stopsOf(routes, poles, placed).filter { needsFetch(it, now, since, hidden) } to (closureStops(routes, poles) + shown).distinct()
             }
             // And the other lines at the rides' boarding stops ([rideLineIds]), in the same request: one

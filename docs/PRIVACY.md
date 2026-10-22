@@ -38,7 +38,10 @@ off at, app open or closed, and never sent (see *On the way*, below).
 **National Rail times.** With a National Rail API key of your own (from the Rail Data
 Marketplace, pasted in Settings), or through stopdash's own proxy without one (below), stopdash also asks **National Rail's live departure boards** for the
 departures at a railway station you're looking at. That request carries only the station's
-three-letter National Rail code (e.g. `WAT` for Waterloo) and your key, never your location. While a
+three-letter National Rail code (e.g. `WAT` for Waterloo) and your key, never your location. A trip
+with a National Rail ride, planned or on the way, also asks the board where the ride boards for its
+trains that call where you get off, so it can tell one that stops there from one that doesn't: that
+request carries the station you get off at's code too. While a
 trip on the way has a National Rail ride, it also asks, about every 30 seconds, for the boards at
 stations on your train's way from where you board, some listing only trains to one terminus: those
 stations' codes and the termini of trains there, which their departures already show, with your key

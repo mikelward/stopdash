@@ -57,11 +57,11 @@ internal object TripVerdicts {
 
     /**
      * Whether [train]'s own calling points settle [ride] ([DirectTrips.settledByStops]), as worked out
-     * ([warmStops]): [ByStops.OPEN] for a train with none, [ByStops.UNJUDGED] while one with some
-     * hasn't been. A lookup only.
+     * ([warmStops]): [ByStops.OPEN] for a train with none and no stops known missed ([Departure.missesStops]),
+     * [ByStops.UNJUDGED] while one with either hasn't been. A lookup only.
      */
     fun byStops(ride: Pair<TripLeg, LegEnd>, train: Departure): ByStops {
-        if (train.callingAt == null) return ByStops.OPEN
+        if (!knowsStops(train)) return ByStops.OPEN
         stops[stopsKey(ride, train)]?.let { return it }
         return onStopsMiss?.invoke(ride, train) ?: ByStops.UNJUDGED
     }
@@ -72,11 +72,15 @@ internal object TripVerdicts {
         if (stops.size > MAX_STOPS) stops.clear()
         var warmed = false
         for (train in trains) {
-            if (train.callingAt == null) continue
+            if (!knowsStops(train)) continue
             if (stops.putIfAbsent(stopsKey(ride, train), judgeStops(ride, train)) == null) warmed = true
         }
         return warmed
     }
+
+    // Whether [train] says anything of its own stops: its calling points, or stops a board of the trains calling
+    // there left it out of, which settle it with no route needed too (Codex, #1138).
+    private fun knowsStops(train: Departure): Boolean = train.callingAt != null || train.missesStops.isNotEmpty()
 
     /** Answers [byStops] in place when it hasn't been warmed: for tests calling the trip page's helpers directly, as [onMiss]. */
     @VisibleForTesting

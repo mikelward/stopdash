@@ -88,6 +88,20 @@ class KtorDarwinClient(
     }
 
     /**
+     * [crs]'s next trains that call at [towards] with their calling points (`GetDepBoardWithDetails`, filtered to
+     * [towards]), as [boardWithDetails] gives them, with how far on it lists every one ([RailBoard.coversUntil]): the
+     * same request as [runs] from now, so the proxy keeps one board for both. Failures as [board]'s.
+     */
+    override suspend fun boardWithDetails(crs: String, towards: String): RailBoard? {
+        val route = route() ?: return null
+        val filter = mapOf("filterCrs" to towards, "filterType" to "to")
+        return fetch(route, DETAILS, crs, DETAIL_ROWS, filter, "/v1/board/$crs/details", mapOf("to" to towards)) { board, age ->
+            val read = board.toBoard(stopIdFor, stopIdsFor, warn)
+            read.copy(age = age, coversUntil = board.coversUntilRead(read, DETAIL_ROWS, COVERED_WINDOW, warn))
+        }
+    }
+
+    /**
      * [crs]'s next trains that call at [towards] with their calling points and times
      * (`GetDepBoardWithDetails`, filtered to [towards]), from [offsetMinutes] on (`timeOffset`), for
      * following one: filtered, and asked from near its time, the train followed is among the [DETAIL_ROWS]
@@ -241,6 +255,12 @@ class KtorDarwinClient(
 
         /** How many a board with calling points lists: Darwin's most for one with details. */
         const val DETAIL_ROWS = 10
+
+        /**
+         * How far on a board listing fewer than it was asked for is taken to list every train ([RailBoard.coversUntil]):
+         * well inside Darwin's default window (two hours), which the proxy's request leaves as it is.
+         */
+        val COVERED_WINDOW: Duration = Duration.ofMinutes(60)
 
         /** How many trains a timetable's part asks for: Darwin's most for a plain board. */
         const val TIMETABLE_ROWS = 150

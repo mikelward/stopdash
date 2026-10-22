@@ -246,6 +246,44 @@ fun DarwinBoardDto.toBoard(
 }
 
 /**
+ * How far on this board, asked for [rows] trains, lists every train scheduled to leave ([RailBoard.coversUntil]): for
+ * [window] from when it was made where it lists fewer, else to the latest schedule among them, past which more may have
+ * been cut off. Null where that can't be read: no time it was made at (reported by [warn]), or a full board with a
+ * schedule it can't read.
+ */
+@WorkerThread
+fun DarwinBoardDto.coversUntil(rows: Int, window: Duration, warn: (String) -> Unit = {}): Instant? {
+    val made = generatedAt?.let {
+        try {
+            OffsetDateTime.parse(it)
+        } catch (e: DateTimeParseException) {
+            // No claim from it: its trains are judged on their routes, as with no board.
+            warn("national rail board: unreadable generatedAt, coverage unknown: ${e::class.simpleName}")
+            null
+        }
+    } ?: return null
+    val services = trainServices.orEmpty()
+    if (services.size < rows) return made.toInstant().plus(window)
+    val now = made.atZoneSameInstant(UK)
+    return services.maxOfOrNull { service -> service.std?.let(::parseClock)?.let { scheduleNear(now, it) } ?: return null }
+}
+
+/**
+ * [coversUntil] for this board as [toBoard] read it ([read]), only where that kept every train it lists that a board
+ * shows (any but a TfL-run one or one with no operator): one it couldn't read (a garbled time) may be on another board
+ * with one, so nothing can be said of the trains it leaves out (Codex, #1138).
+ */
+@WorkerThread
+fun DarwinBoardDto.coversUntilRead(read: RailBoard, rows: Int, window: Duration, warn: (String) -> Unit = {}): Instant? {
+    val kept = (read.departures + read.untimed.map { it.train }).mapTo(HashSet()) { it.railServiceId }
+    val dropped = trainServices.orEmpty().any { service ->
+        val id = service.serviceID?.trim().orEmpty()
+        id.isNotEmpty() && id !in kept && service.operatorCode?.uppercase() !in TFL_RUN_OPERATORS && !service.operator.isNullOrBlank()
+    }
+    return if (dropped) null else coversUntil(rows, window, warn)
+}
+
+/**
  * The board's trains as a route page's timetable lists them ([RailTimetable], maintainer, 2026-10-22): each by its
  * schedule here, with its estimate where that's another time, or as canceled, or "Delayed" with none, and where it
  * ends. Left out, as [toBoard] leaves them: a TfL-run train and one with no operator. A train whose schedule or
