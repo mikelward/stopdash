@@ -3991,7 +3991,7 @@ class MainActivity : ComponentActivity() {
             val shownJourneys = journeysShown?.journeys.orEmpty()
             val farJourneyMeters = journeysShown?.farMeters.orEmpty()
             val journeyScope = rememberCoroutineScope()
-            var journeyWriteFailed by rememberSaveable { mutableStateOf(false) }
+            val journeyWriteFailed by JourneyStars.failed.collectAsStateWithLifecycle()
             val rideLineWriteFailed by RideLineWrites.failed.collectAsStateWithLifecycle()
             // The route page's journey tip: hidden (true) until the setting is read, so it never
             // flashes up for someone who already dismissed it.
@@ -4305,16 +4305,12 @@ class MainActivity : ComponentActivity() {
                                     if (savedJourneys.any { it.key == journey.key }) UsageEvent.Tap.UNSTAR else UsageEvent.Tap.STAR,
                                 ),
                             )
-                            journeyScope.launch {
-                                try {
-                                    journeyStore.toggle(journey)
-                                } catch (e: IOException) {
-                                    // Logged without the stations, and surfaced so the tap isn't
-                                    // silently lost (SPEC principle 2).
-                                    logStarWarning("journey star not saved: ${e::class.simpleName}")
-                                    journeyWriteFailed = true
-                                }
-                            }
+                            // On the application scope: a rotation right after the tap disposes this
+                            // composition's scope, which would cancel the save with nothing said.
+                            JourneyStars.attempt(
+                                (application as? StopdashApp)?.applicationScope ?: journeyScope,
+                                warn = ::logStarWarning,
+                            ) { journeyStore.toggle(journey) }
                         }
                     },
                     // Null while the saved journeys are unreadable, as starring is: the file is preserved untouched.
@@ -4339,7 +4335,7 @@ class MainActivity : ComponentActivity() {
                     rideLineWriteFailed = rideLineWriteFailed,
                     onRideLineWriteFailureShown = RideLineWrites::shown,
                     journeyWriteFailed = journeyWriteFailed,
-                    onJourneyWriteFailureShown = { journeyWriteFailed = false },
+                    onJourneyWriteFailureShown = JourneyStars::shown,
                     onDismissJourneyTip = if (journeyTipDismissed) {
                         null
                     } else {
@@ -8122,6 +8118,31 @@ internal object RideLineWrites {
     @Synchronized
     fun shown() {
         failing.clear()
+        _failed.value = false
+    }
+}
+
+/**
+ * A station's journey star or unstar (SPEC *Journeys*), saved on the scope it's given, the application's
+ * so a rotation can't cancel it. A failed save is logged without the stations and stands in [failed],
+ * process-wide so a screen recreated meanwhile still says it, until that screen has ([shown]).
+ */
+internal object JourneyStars {
+    private val _failed = MutableStateFlow(false)
+    val failed: StateFlow<Boolean> = _failed
+
+    fun attempt(scope: CoroutineScope, warn: (String) -> Unit = {}, toggle: suspend () -> Unit): Job = scope.launch {
+        try {
+            toggle()
+        } catch (e: IOException) {
+            // Surfaced so the tap isn't silently lost (SPEC principle 2).
+            warn("journey star not saved: ${e::class.simpleName}")
+            _failed.value = true
+        }
+    }
+
+    /** The screen has said the star didn't save. */
+    fun shown() {
         _failed.value = false
     }
 }
