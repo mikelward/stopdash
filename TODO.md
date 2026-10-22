@@ -4040,7 +4040,7 @@ Builds on Phase 1's minimal line-status marking.
         - [x] 2. The near-me page's effects wait until it's on top of the stack.
         - [x] 3. The overlays become a back stack.
         - [x] 3b. The trip from here becomes a page of its own, Lines… under it on the stack.
-        - [ ] 4. A route stop's windows become window entries.
+        - [x] 4. A route stop's windows become window entries.
         - [ ] 5. The station flow stacks.
         - [ ] 6. The in-screen views become entries, a family per PR.
         - [ ] 7. Cleanup: the flag rules the stack replaces go.

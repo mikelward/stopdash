@@ -25,6 +25,8 @@ class PagesTest {
     private var openStationId by pages.kept(Page.Stations, openStationIdState, others = { stationSearchState.value }) { it != null }
     private var linesOpen by pages.flag(Page.Lines)
     private var hereTripOpen by pages::tripOpen
+    private var routeStopTrail by pages.kept(Page.RouteStop, mutableStateOf<String?>(null)) { it != null }
+    private var departuresStationId by pages.kept(Page.StopDepartures, mutableStateOf<String?>(null)) { it != null }
 
     private fun shown(vararg page: Page) = assertEquals(listOf(Page.NearMe(0), *page), pages.stack.toList())
 
@@ -148,38 +150,86 @@ class PagesTest {
     }
 
     @Test
-    fun `a route stop's details step aside for a screen opened over them, and only then`() {
-        assertEquals(false, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false))
-        // Its menu's Licenses and Settings, and the screens that take over the app.
-        assertEquals(true, routeStopCovered(licenses = true, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false))
-        assertEquals(true, routeStopCovered(licenses = false, settings = true, onTheWay = false, favoritePlaces = false, favoriteJourneys = false))
-        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = true, favoritePlaces = false, favoriteJourneys = false))
-        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = true, favoriteJourneys = false))
-        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = true))
-        // Its own Departures, whose Back finds it again.
-        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false, departures = true))
-        // Lines… opened from its own line pill, whose Back finds it again rather than the route page under it.
-        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false, lines = true))
+    fun `a route stop's details show over the page while only windows are over them`() {
+        routeStopTrail = "stop"
+        assertTrue(pages.shows(Page.RouteStop))
+        // Drawn over the near-me page, which stays the page showing, on top, under them.
+        assertEquals(Page.NearMe(0), pages.topPage)
+        assertEquals(listOf(Page.NearMe(0)), pages.pages)
+        // Its menu's Licenses and Settings, and the screens that take over the app, cover them until their Back.
+        settingsOpen = true
+        assertFalse(pages.shows(Page.RouteStop))
+        assertEquals(Page.Settings, pages.topPage)
+        licensesOpen = true
+        licensesOpen = false
+        settingsOpen = false
+        assertTrue(pages.shows(Page.RouteStop))
+        onTheWayOpen = true
+        assertFalse(pages.shows(Page.RouteStop))
+        onTheWayOpen = false
+        // Its Favorite's editor too, and a trip from here its place routes to stays over them until its Back.
+        favoritePlacesOpen = true
+        hereTripOpen = true
+        favoritePlacesOpen = false
+        assertFalse(pages.shows(Page.RouteStop))
+        hereTripOpen = false
+        assertTrue(pages.shows(Page.RouteStop))
+        routeStopTrail = null
+        shown()
     }
 
     @Test
-    fun `a stop's Departures opened from Lines over the details shows over it`() {
-        // Lines… covers the details alone: Departures picked within it is the window asked for (Codex on #1064).
-        assertEquals(
-            false,
-            routeStopCovered(
-                licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false,
-                lines = true, window = RouteStopWindow.DEPARTURES,
-            ),
-        )
-        // It still steps aside for what takes over the app.
-        assertEquals(
-            true,
-            routeStopCovered(
-                licenses = false, settings = true, onTheWay = false, favoritePlaces = false, favoriteJourneys = false,
-                lines = true, window = RouteStopWindow.DEPARTURES,
-            ),
-        )
+    fun `a stop's Departures show over its details, or over Lines opened from them, which they cover`() {
+        routeStopTrail = "stop"
+        // Departures from the details: both shown, the Departures on top.
+        departuresStationId = "940GZZLUKSX"
+        assertTrue(pages.shows(Page.RouteStop))
+        assertTrue(pages.shows(Page.StopDepartures))
+        assertEquals(Page.StopDepartures, pages.top)
+        departuresStationId = null
+        assertEquals(Page.RouteStop, pages.top)
+        // Lines… from the details' line pill covers them, and a stop's Departures picked there shows over it (Codex on
+        // #1064): not under the details.
+        linesOpen = true
+        assertFalse(pages.shows(Page.RouteStop))
+        departuresStationId = "940GZZLUKSX"
+        assertTrue(pages.shows(Page.StopDepartures))
+        assertFalse(pages.shows(Page.RouteStop))
+        shown(Page.RouteStop, Page.Lines, Page.StopDepartures)
+        // Back from each in turn: Lines…, then the details.
+        departuresStationId = null
+        linesOpen = false
+        assertTrue(pages.shows(Page.RouteStop))
+    }
+
+    @Test
+    fun `the stack holds each page once, however often it's opened`() {
+        // Its walks in composition are bounded by the kinds of page ([Pages]), not by how the rider got there.
+        repeat(3) {
+            settingsOpen = true
+            licensesOpen = true
+            hereTripOpen = true
+            linesOpen = true
+            openStationId = "940GZZLUKSX"
+            routeStopTrail = "stop"
+            departuresStationId = "940GZZLUKSX"
+            pages.show(Page.RouteStop)
+            pages.generation++
+        }
+        val stack = pages.stack.toList()
+        assertEquals(stack.size, stack.toSet().size)
+        assertEquals(stack.size, stack.map { it::class }.toSet().size)
+    }
+
+    @Test
+    fun `a window opened again shows over what was opened since`() {
+        departuresStationId = "940GZZLUKSX"
+        settingsOpen = true
+        assertFalse(pages.shows(Page.StopDepartures))
+        // Shown again over Settings, as opening it asks.
+        pages.show(Page.StopDepartures)
+        shown(Page.Settings, Page.StopDepartures)
+        assertTrue(pages.shows(Page.StopDepartures))
     }
 
     @Test

@@ -1,9 +1,10 @@
 # Moving the app's pages onto Navigation 3
 
 **Status: under way, on Navigation 3** (maintainer, 2026-10-22: "ship option 1 and write the plan", then
-Navigation 3 over Navigation Compose 2.x). Steps 1 to 3b are done (*Step 1: what the spike found*, *Step 2:
-what changed*, *Step 3: what changed*, *Step 3b: what changed*): the screens over the near-me view, the trip
-from here among them, are a back stack, and the back gesture draws the real page under them. Predictive back first shipped as "shrink only", every page following
+Navigation 3 over Navigation Compose 2.x). Steps 1 to 4 are done (*Step 1: what the spike found*, *Step 2:
+what changed*, *Step 3: what changed*, *Step 3b: what changed*, *Step 4: what changed*): the screens over the
+near-me view, the trip from here among them, are a back stack with a route stop's windows on it, and the back
+gesture draws the real page under them. Predictive back first shipped as "shrink only", every page following
 the gesture over a scrim, and pages inside a screen still do (SPEC *Back*). Drawing the real page under every
 page is the payoff this plan works toward. The other gain is a navigation model that can't skip pages.
 
@@ -145,9 +146,9 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
      departures model again, which the trip's opening drops so that it stops fetching (`listStores`), and
      fetch for a glimpse. It needs to keep the model paused under the trip, or draw what it last showed,
      first.
-4. **A route stop's windows become dialog entries.** The details and the Departures opened from them
-   become `DialogSceneStrategy` entries. Anything pushed after them covers them by stack order, so
-   `routeStopCovered` goes.
+4. **Done:** **a route stop's windows go on the stack.** The details and the Departures opened from them
+   become entries. Anything pushed after them covers them by stack order, so `routeStopCovered` goes.
+   They're drawn over the pages rather than as `DialogSceneStrategy` entries (*Step 4: what changed*).
    - The page under a window entry stays on top (`LocalPageOnTop`) but drops to STARTED, so what step 2
      left on RESUMED pauses under a window: `ReportScreen` would count the page again as the window
      closes, and the near-me trip's Direct lookups and Lines…'s status checks stop while it's open.
@@ -161,7 +162,7 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
    Disruptions page; the favorite rides' alerts and picker. Each family gets the real page underneath
    and loses its option 1 handler. Editors and inline pickers (a saved place's editor, the trip's
    To… and Via pickers) can stay in-entry, following the gesture over a scrim as today.
-7. **Cleanup.** Retire `routeStopCovered`, the flags the stack now answers for (`Pages.flag`,
+7. **Cleanup.** Retire the flags the stack now answers for (`Pages.flag`,
    `Pages.kept`), `RideReturn`'s bookkeeping where the stack now holds it, and `PredictiveBack` where
    nothing uses it. SPEC *Back* then says what the stack does.
 
@@ -228,7 +229,7 @@ the timetable, the boarding route, the rail key, a search row's menu, and the ot
 dialogs) returns early when its page isn't on top, so a glimpse can't open one over the page being
 swiped. The bug report consent and the Departures opened over a route stop stay as they are: the first
 belongs to the app, not a page, and the second is the activity's, covered by `routeStopCovered` until
-step 4.
+step 4 put it on the stack.
 
 What already waits for RESUMED was left alone: a revealed page is never resumed, so a glimpse can't
 start it. That's `ReportScreen`, the near-me trip's Direct lookups (`direct.run()`), Lines…'s status
@@ -304,6 +305,29 @@ shared in) is a page of its own, `HereTrip`, over the page it was opened from. T
 `NearbyAreaTest` drives the list under the trip: drawn as the trip opens, dropped once covered, a placeholder
 under a swipe, built again on Back with its route page, and dropped at once under a trip opened over Lines…,
 whose Back returns there. `PagesTest` follows the stack.
+
+## Step 4: what changed
+
+A route stop's details (`Page.RouteStop`) and the Departures opened from them or Lines… (`Page.StopDepartures`)
+are on the back stack, in the order they were opened, so whatever opens after one covers it until its Back:
+Licenses and Settings from their menu, the saved places' editor, Lines… from a line pill, the trip on the way's
+screen, and now a trip from here a place in that editor routes to, which used to leave the details over it.
+`routeStopCovered`, the list of screens they stepped aside for, went.
+
+- **They stay windows drawn over the pages, not `DialogSceneStrategy` entries.** A dialog entry holds the page
+  under it at STARTED, so the near-me list's refresh and clock, the near-me trip's Direct lookups, Lines…'s
+  status checks and `ReportScreen` would pause under the details and come back as they closed, where today they
+  carry on; and the back gesture from a page over a window would reveal that window's dialog over the page being
+  swiped. So `NavDisplay` draws the stack's pages alone (`Pages.pages`), and each window shows while only windows
+  are over it (`Pages.shows`), made after the pages in stack order, so the one opened last is on top, a rotation
+  included. A window's Back is its own window's, as before.
+- **The page under a window is on top** (`Pages.topPage`, `LocalPageOnTop`), as it always was.
+- **Opening one again brings it up** from under whatever was opened since (`Pages.show`), as the other screens'
+  flags do.
+
+`PagesTest` holds the windows to the stack's order: shown over the page, covered by each screen opened over them
+until its Back, Departures over the details or over Lines… opened from them. `NearbyAreaTest` checks a window
+leaves the page under it drawn and on top, and is found again under Settings' Back.
 
 ## Decided (maintainer, 2026-10-22)
 
