@@ -1,7 +1,9 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopGroup
@@ -10,7 +12,9 @@ import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TripVia
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** What a platform or station view's buttons open ([platformViewOf]'s station, map stop and via, SPEC D8). */
@@ -27,6 +31,7 @@ class PlatformViewTest {
         station: Boolean = false,
         meters: Map<String, Double> = emptyMap(),
         words: HeaderWords = HeaderWords.ENGLISH,
+        drawn: List<DepartureRow> = emptyList(),
     ): PlatformView = platformViewOf(
         source = DeparturesUiState.Loaded(stops, now),
         now = now,
@@ -36,7 +41,7 @@ class PlatformViewTest {
         stationTitle = "Example Cross",
         starred = emptySet(),
         dismissed = emptySet(),
-        rows = emptyList(),
+        rows = drawn,
         hiddenModes = emptySet(),
         alertSequences = emptyMap(),
         stopDistanceMeters = meters,
@@ -51,6 +56,33 @@ class PlatformViewTest {
         listOf(dep("victoria", "North End", "Northbound - Platform 1"), dep("piccadilly", "East End", "Eastbound - Platform 3")),
         fetchedAt = now,
     )
+
+    @Test
+    fun `a "?" row the list shows at the view's stops is shown there too, one elsewhere isn't`() {
+        // The near-me list's "?" rows ([DepartureRow.quiet]) come in its drawn rows, worked out with them.
+        fun quiet(stopId: String, line: String) = DepartureRow(
+            stopId = stopId, stopName = "Example Cross", lineId = line, lineName = line, direction = "",
+            directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = now,
+            quiet = true,
+        )
+        val here = quiet("HUB", "northern")
+        val elsewhere = quiet("OTHER", "central")
+        val drawn = listOf(here, elsewhere)
+        val platform = groups(listOf(hub)).first { it.qualifier != null }
+        // A platform's view, and the whole station's: a "?" row names no platform, so every view of the stop shows it.
+        val onPlatform = view(listOf(hub), setOf("HUB"), platform.splitKey, drawn = drawn).rows
+        val atStation = view(listOf(hub), setOf(stationClusterOf("", "HUB")), "", station = true, drawn = drawn).rows
+        for (rows in listOf(onPlatform, atStation)) {
+            assertTrue(here in rows)
+            assertFalse(elsewhere in rows)
+        }
+        // Still the platform's own trains beside it, and only those on the station's.
+        assertEquals(listOf("northern"), onPlatform.filter { it.quiet }.map { it.lineId })
+        assertTrue(onPlatform.any { it.upcoming.isNotEmpty() })
+        assertEquals(setOf("victoria", "piccadilly", "northern"), atStation.mapTo(HashSet()) { it.lineId })
+        // With none in the list, none in the view.
+        assertTrue(view(listOf(hub), setOf("HUB"), platform.splitKey).rows.none { it.quiet })
+    }
 
     @Test
     fun `a platform whose station holds more offers it, and its measured stop on the map`() {

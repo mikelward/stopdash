@@ -1071,7 +1071,8 @@ now; giving it the same marks is planned. On a bank holiday, and from Christmas 
 TfL runs another day type's timetable on some ("Saturday (also Good Friday)"), and its weekday's
 could say "none" while trains run.
 
-A line on **good service** (as TfL confirmed, not merely unchecked) with no live times gets a row too, in the near-me list (maintainer,
+A line on **good service** (as TfL confirmed, not merely unchecked) with no live times gets a row too, in the near-me list, and on
+a station's or platform's own page opened from it where the row's stop is one of the page's (maintainer,
 2026-10-03): TfL's live feed for a whole line can go quiet while its status still reads Good Service,
 and the line then vanished from a station with nothing to say why. Its row reads **"?"**, and appears
 only when the line's timetable has a train due within the 30 minutes; a line whose timetable has none

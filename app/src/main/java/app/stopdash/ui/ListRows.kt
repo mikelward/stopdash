@@ -498,7 +498,8 @@ private fun platformRowsOf(
  * WITHOUT the near-me fold: the fold keeps a line only at its nearest stop, which would drop services
  * from a farther platform — the drill-down shows all of them. The stop ids alone aren't the platform:
  * a station's platforms all come from one TfL stop, so the rows are regrouped and only the tapped
- * group is kept, with any closure alert for its stops (Codex). It is matched on [StopGroup.splitKey]
+ * group is kept, with any closure alert for its stops (Codex) and the "?" rows the drawn list ([rows])
+ * gives them (maintainer, 2026-10-03). It is matched on [StopGroup.splitKey]
  * — the platform, pole letter, bearing or compass — not [StopGroup.key], whose place part switches to
  * a per-stop key while the stop carries a line-status row (Codex). The saved stop ids already pin the
  * place. Dismissals and stars still apply, as on the full list. The title is resolved from the
@@ -533,9 +534,13 @@ internal fun platformViewOf(
     val platformStops =
         if (station) stops.filter { stationClusterOf(it.clusterId, it.stopId) in ids }
         else stops.filter { it.stopId in ids }
+    // With the near-me list's "?" rows at those stops ([DepartureRow.quiet]): a line it shows as times unknown
+    // reads so here too, taken from the drawn list's own rows, so the two never disagree (SPEC *Departures*).
+    val stopIds = platformStops.mapTo(HashSet()) { it.stopId }
+    val quiet = rows.filter { it.quiet && it.stopId in stopIds }
     val stopRows = DepartureRows.pinStarred(
         DepartureRows.withAlertsBehind(
-            DepartureRows.withoutDismissed(HiddenModes.rows(platformRowsOf(platformStops, board, now, lineStatuses, alertSequences), hiddenModes), dismissed),
+            DepartureRows.withoutDismissed(HiddenModes.rows(platformRowsOf(platformStops, board, now, lineStatuses, alertSequences) + quiet, hiddenModes), dismissed),
             alertSequences,
         ),
         starred,
