@@ -974,7 +974,7 @@ private fun DrawScope.drawNoEntry(center: Offset, color: Color, bar: Color, surf
 private fun lineMapFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.line_map_failed_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.line_map_failed_rate_limited
-    DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.line_map_failed_unreachable
+    DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE -> R.string.line_map_failed_unreachable
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.line_map_failed_key_rejected
 }
 

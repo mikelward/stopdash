@@ -441,9 +441,11 @@ class KtorTflClient(
             }
             // A later trip's times read about its own time, not now ([TripTime.readFrom]), for the hour the clocks go back.
             val routes = dto.toRoutes(now = at?.readFrom ?: Instant.now(), stationOf = stationOf)
-            // Journeys offered but none readable: a decode failure, not "no routes" (which would be
-            // reused as a real answer for the plan's lifetime).
+            // Journeys offered but none readable: not "no routes" (which would be reused as a real answer
+            // for the plan's lifetime). Each riding a service TfL names no line or stop for is the
+            // Planner's answer, said as that; else a decode failure.
             if (routes.isEmpty() && dto.journeys.isNotEmpty()) {
+                if (dto.journeys.all { it.unfollowable(stationOf) }) throw TflException.Unfollowable(dto.journeys.size)
                 throw TflException.Unreachable("${dto.journeys.size} routes, none readable", null)
             }
             if (routes.size < dto.journeys.size) {

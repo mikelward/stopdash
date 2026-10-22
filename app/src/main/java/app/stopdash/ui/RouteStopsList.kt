@@ -760,7 +760,7 @@ internal fun routeStopsFailureMessage(kind: DeparturesUiState.Error.Kind): Int =
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.route_stops_failed_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.route_stops_failed_rate_limited
     // Wording not split yet: both still read "can't reach TfL" here.
-    DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.route_stops_failed_unreachable
+    DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE -> R.string.route_stops_failed_unreachable
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.route_stops_failed_key_rejected
 }
 

@@ -7004,6 +7004,14 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-plan-failed.png")
     }
 
+    @Test
+    fun trip_plan_unfollowable() {
+        // TfL answered, but every route rides a service it names no line or stop for: said as that,
+        // never "Can't reach TfL".
+        show(TripViewModel.State(planError = DeparturesUiState.Error.Kind.UNFOLLOWABLE))
+        composeRule.onNodeWithText("Couldn't plan the trip: Its routes need services outside TfL").assertIsDisplayed()
+    }
+
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {
         if (!capturing()) return
         val root = composeRule.activity.window.decorView.rootView

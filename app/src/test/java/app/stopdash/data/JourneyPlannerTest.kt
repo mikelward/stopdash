@@ -482,6 +482,19 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `routes all on services TfL names no line for are said as that, not as a failure to reach TfL`() {
+        // Each ride without its line, as TfL answers a bus outside London.
+        val unnamed = fixture.replace("\"lineIdentifier\"", "\"lineIdentifierGone\"")
+        assertTrue("the fixture has lines to drop", unnamed != fixture)
+        val warnings = mutableListOf<String>()
+        assertThrows(TflException.Unfollowable::class.java) {
+            kotlinx.coroutines.runBlocking { client(unnamed, warn = { synchronized(warnings) { warnings += it } }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF")) }
+        }
+        val line = warnings.single { it.startsWith("journey planner: ") }
+        assertEquals("journey planner: Unfollowable (3 routes, none on lines TfL names)", line.substringBefore(" in "))
+    }
+
+    @Test
     fun `an answer that won't decode says where, never what it held`() {
         // A time where an object stands, holding a place the rider might have chosen: the path is
         // logged, the value never.

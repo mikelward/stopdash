@@ -2035,7 +2035,10 @@ predicted, and the route could never be placed and so never checked. A train the
 its platform alone, with no station (Thameslink from St Pancras's low-level platforms, the Elizabeth
 line from Liverpool Street), boards at the station TfL lists that platform under, from the bundled
 station list, since only the station has live trains and a National Rail board; such a route was
-once dropped as unreadable, so the trip lost it (found 2026-09-30). A route that is all walking (two stops close
+once dropped as unreadable, so the trip lost it (found 2026-09-30). A ride TfL names no line or no
+stop for (a bus outside London) can't be timed from live data or checked, so its route is left out;
+when every route TfL offers is such, the trip says **Couldn't plan the trip: Its routes need services
+outside TfL**, never that TfL couldn't be reached (2026-10-22). A route that is all walking (two stops close
 together) shows "Walk" where the pills go and its minutes, with no live row and no arrivals request.
 
 **Routing from the near-me list** (maintainer, 2026-09-27): the saved places lead the near-me list
