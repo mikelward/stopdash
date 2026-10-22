@@ -11,9 +11,11 @@ import app.stopdash.domain.LegEnd
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.RideEnds
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeExits
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripModes
@@ -147,6 +149,9 @@ class LaterTripViewModel(
         val toName: String,
         val minutes: Int,
         val end: LegEnd? = null,
+        // On a step-free trip, where a lift out now has taken the ride's step-free way on or off, by the stop's name
+        // ([StepFreeExits.along]): said under the ride, as the trip for now says it on its card. Empty for a walk.
+        val notStepFree: List<String> = emptyList(),
     )
 
     data class State(
@@ -262,7 +267,7 @@ class LaterTripViewModel(
                 val routes = raw
                 val cards = if (changed && routes != null) {
                     listedOut = out
-                    listed(routes, request, leftOut, destinationStops.await(), destination(request.stepFree, out))
+                    listed(routes, request, leftOut, destinationStops.await(), destination(request.stepFree, out), base(request.stepFree, out))
                 } else {
                     held.cards
                 }
@@ -317,7 +322,7 @@ class LaterTripViewModel(
                 listedOut = out
                 _state.value = State(
                     request = latest ?: request,
-                    cards = listed(routes, request, excluded.orEmpty(), destinationStops.await(), destination(request.stepFree, out)),
+                    cards = listed(routes, request, excluded.orEmpty(), destinationStops.await(), destination(request.stepFree, out), base(request.stepFree, out)),
                     incomplete = stationsMissed,
                     routesMissed = routesMissed,
                 )
@@ -335,23 +340,44 @@ class LaterTripViewModel(
     private suspend fun destination(stepFree: StepFree, out: Set<String>): RideEnds.Destination? =
         arrivingAt.awaitDestination(warn, "later trip ride ends")?.let { lifted.destination(it, stepFree, out) }
 
+    // The step-free table with every lift working, which tells what the lifts in [out] have taken from a listing at
+    // [stepFree] ([StepFreeExits.along]); null at no level, or with no lift out, where nothing's been taken. On [compute].
+    @WorkerThread
+    private suspend fun base(stepFree: StepFree, out: Set<String>): StepFreeAccess? =
+        if (stepFree == StepFree.ANY || out.isEmpty()) null else lifted.base()
+
     // On [compute]: the routes keeping to [request]'s time and not riding what's [leftOut], in order, as cards, each as
     // the trip for now draws it: its last ride arriving by hub cut and named at its first call there, and a route
     // riding on through the destination cut where it first gets there ([RideEnds.cut]), each ride getting off where
     // [RideEnds] has it at [request]'s step-free level through [destination]. Less the detours the rest beat, of those
     // not cut ([withoutDetours]), in [TripTime.ordered]'s order as drawn; one cut at a call the Planner gave no time for
-    // ([TripRoute.untimed]) is listed after the timed, its arrival unknown. The routes as planned are never changed.
+    // ([TripRoute.untimed]) is listed after the timed, its arrival unknown. On a step-free trip, each ride a lift out has
+    // taken its way on or off from, though it has one by [base] with every lift working, says where
+    // ([StepFreeExits.along]), as the trip for now's cards do; its place in the list is the timetable's still. The
+    // routes as planned are never changed.
     @WorkerThread
-    private fun listed(routes: List<TripRoute>, request: Request, leftOut: Set<String>, stops: Map<String, String>, destination: RideEnds.Destination?): List<Card> {
+    private fun listed(
+        routes: List<TripRoute>,
+        request: Request,
+        leftOut: Set<String>,
+        stops: Map<String, String>,
+        destination: RideEnds.Destination?,
+        base: StepFreeAccess?,
+    ): List<Card> {
         val time = request.time
         val keeping = routes.filter { it.legs.isNotEmpty() && time.keeps(it) && !AvoidedLines.drops(it, leftOut) }
         val drawn = withoutDetours(RideEnds.cut(TripTime.ordered(keeping, time), request.stepFree, destination), stops.keys, stops)
         // In order as drawn: a route cut at a change in the destination's hub gets there when it changes there.
         val ordered = TripTime.ordered(drawn.filterNot { it.untimed }, time) + drawn.filter { it.untimed }
         val ends = RideEnds.of(ordered, request.stepFree, destination)
+        // The tables with every lift working and with the lifts out now. Only a lift going out takes a way on or off: with
+        // every lift working, or no table, there's nothing to say.
+        val tables = base?.let { all -> destination?.access?.takeIf { it !== all }?.let { today -> all to today } }
         // A route the same as another in every leg's times is one card: the list's keys stay unique. Two plans the cut
         // draws alike are two cards, each opening its own plan ([routeKey]).
-        return ordered.map { cardOf(it, ends) }.distinctBy { it.listKey }
+        return ordered.map { route ->
+            cardOf(route, ends, tables?.let { (all, today) -> StepFreeExits.along(route, ends, all, today) }.orEmpty())
+        }.distinctBy { it.listKey }
     }
 
     // One destination's routes, and whether its request via the last stop failed (they stand, in part).
@@ -405,16 +431,23 @@ class LaterTripViewModel(
     companion object {
         /**
          * [route] as its card draws it: its times in London, its keys and a row per leg, each ride's with where
-         * it gets off as [ends] has it (by default where the Planner gets it off). A route drawn cut ([RideEnds.cut])
+         * it gets off as [ends] has it (by default where the Planner gets it off), and where a lift out has taken its
+         * step-free way on or off ([lost], by leg index; [StepFreeExits.along]). A route drawn cut ([RideEnds.cut])
          * is keyed as the route as planned it's drawn from ([routeKey]).
          */
         @WorkerThread
-        internal fun cardOf(route: TripRoute, ends: RideEnds = RideEnds.planned(StepFree.DEFAULT)): Card {
+        internal fun cardOf(
+            route: TripRoute,
+            ends: RideEnds = RideEnds.planned(StepFree.DEFAULT),
+            lost: List<RouteDisruption.Signal.NotStepFree> = emptyList(),
+        ): Card {
             val first = route.legs.first()
             val last = route.legs.last()
             val key = routeKey(route)
             // Each ride's end, in order: the legs that aren't walks take them in turn.
             val rideEnds = ends.ends(route).iterator()
+            // Each ride's lost ways on and off, by its leg's index, said by the stop's name.
+            val lostAt = lost.groupBy({ it.legIndex }) { it.stopName.ifBlank { it.stopId } }
             return Card(
                 route = route,
                 routeKey = key,
@@ -424,7 +457,7 @@ class LaterTripViewModel(
                 departs = clockOf(first.departure),
                 arrives = if (route.untimed) null else clockOf(last.arrival),
                 minutes = if (route.untimed) null else Duration.between(first.departure, last.arrival).toMinutes().toInt(),
-                rows = route.legs.map { leg ->
+                rows = route.legs.mapIndexed { index, leg ->
                     Row(
                         walk = leg.isWalk,
                         time = clockOf(leg.departure),
@@ -434,6 +467,7 @@ class LaterTripViewModel(
                         toName = leg.toName,
                         minutes = leg.run.toMinutes().toInt().coerceAtLeast(1),
                         end = if (leg.isWalk) null else rideEnds.next().second,
+                        notStepFree = lostAt[index].orEmpty(),
                     )
                 },
             )

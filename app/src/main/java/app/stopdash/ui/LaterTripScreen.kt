@@ -224,8 +224,10 @@ private fun LaterCard(card: LaterTripViewModel.Card, onClick: () -> Unit) {
 }
 
 /**
- * A ride: when it leaves, its line, and where it gets off. A walk: where to, and how long. The size of
- * the trip for now's rows (maintainer, 2026-10-16: a size smaller, they read as small beside them).
+ * A ride: when it leaves, its line, and where it gets off, then on a step-free trip each stop a lift out has taken
+ * its step-free way on or off at, as the trip for now says it ([LaterTripViewModel.Row.notStepFree]). A walk: where
+ * to, and how long. The size of the trip for now's rows (maintainer, 2026-10-16: a size smaller, they read as small
+ * beside them).
  */
 @Composable
 private fun LaterRow(row: LaterTripViewModel.Row) {
@@ -237,10 +239,21 @@ private fun LaterRow(row: LaterTripViewModel.Row) {
         )
         return
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(row.time, style = MaterialTheme.typography.bodyLarge)
-        LinePill(row.lineName, row.lineId, row.mode)
-        Text(row.toName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(row.time, style = MaterialTheme.typography.bodyLarge)
+            LinePill(row.lineName, row.lineId, row.mode)
+            Text(row.toName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        // In the error color, as a later trip's other notices are.
+        row.notStepFree.forEach { stop ->
+            Text(
+                stringResource(R.string.route_disruption_not_step_free, stop),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("laterNotStepFree"),
+            )
+        }
     }
 }
 

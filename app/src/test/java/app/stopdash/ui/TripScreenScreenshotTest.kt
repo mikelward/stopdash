@@ -6788,6 +6788,21 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_later_ride_a_lift_out_leaves_with_no_step_free_way_on_says_so_under_it() {
+        // A step-free trip whose Elizabeth line ride can't be boarded step-free at Whitechapel while a lift is out
+        // ([LaterTripViewModel.Row.notStepFree]): said under that ride, as the trip for now says it.
+        val lost = listOf(app.stopdash.domain.RouteDisruption.Signal.NotStepFree(1, whitechapelXr.first, "Whitechapel"))
+        val card = LaterTripViewModel.cardOf(dayOn(viaWhitechapel), lost = lost)
+        showLater(mutableStateOf(LaterTripViewModel.State(request = sundayRequest, cards = listOf(card))))
+        composeRule.onNodeWithTag("laterNotStepFree", useUnmergedTree = true).assertTextEquals("Not step-free at Whitechapel: a lift is out")
+        // Under the Elizabeth line's ride, not the Windrush's before it.
+        val notice = composeRule.onNodeWithTag("laterNotStepFree", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val ride = composeRule.onNodeWithText("Canary Wharf", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("notice at $notice under the ride at $ride", notice.top >= ride.bottom)
+        captureSnapshot("trip-later-not-step-free.png")
+    }
+
+    @Test
     fun a_later_trips_walk_is_as_large_as_its_rides() {
         // A walk between rides is as large as the ride rows beside it (maintainer, 2026-10-16), at its own weight.
         val walkFirst = TripRoute(
