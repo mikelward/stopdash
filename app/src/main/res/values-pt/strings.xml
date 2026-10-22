@@ -368,7 +368,6 @@
     <string name="settings_favorite_places_title">Locais favoritos</string>
     <string name="settings_favorite_places_summary">Guarde locais para onde ir, como Casa e Trabalho</string>
     <string name="settings_favorite_journeys_title">Trajetos favoritos</string>
-    <string name="settings_favorite_journeys_summary">Guarde trajetos entre dois locais</string>
     <string name="favorite_journeys_title">Trajetos favoritos</string>
     <string name="favorite_journeys_loading">A carregar…</string>
     <string name="favorite_journeys_empty">Ainda nenhum. Toque em Adicionar e escolha duas estações ou locais.</string>

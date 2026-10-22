@@ -368,7 +368,6 @@
     <string name="settings_favorite_places_title">Lieux favoris</string>
     <string name="settings_favorite_places_summary">Enregistrez des lieux où aller, comme Domicile et Travail</string>
     <string name="settings_favorite_journeys_title">Trajets favoris</string>
-    <string name="settings_favorite_journeys_summary">Enregistrez des trajets entre deux lieux</string>
     <string name="favorite_journeys_title">Trajets favoris</string>
     <string name="favorite_journeys_loading">Chargement…</string>
     <string name="favorite_journeys_empty">Aucun trajet pour l’instant. Appuyez sur Ajouter et choisissez deux stations ou lieux.</string>
