@@ -337,7 +337,10 @@ open class StopDashWidget internal constructor(
             logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
             emptyList()
         }
-        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle, locale = widgetLocale(context))
+        val models = widgetModels(
+            shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle, locale = widgetLocale(context),
+            hiddenLabel = { hiddenGroupsLabel(it, context.resources) },
+        )
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
             models.all.minOf { it.rows.size },
@@ -419,6 +422,8 @@ internal suspend fun widgetModels(
     rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
     // The language the stamp's weekday is said in ([widgetStamp]): the app's.
     locale: Locale = Locale.UK,
+    // Names hidden modes for the empty widget ([widgetModel]), on the worker with the rest.
+    hiddenLabel: (Set<String>) -> String = { it.joinToString(", ") },
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
@@ -428,6 +433,7 @@ internal suspend fun widgetModels(
             geometry = WidgetGeometry(size.width, size.height, fontScale, bare),
             topology = topology,
             hiddenModes = hiddenModes,
+            hiddenLabel = hiddenLabel,
             tap = tap,
             rideTitle = rideTitle,
             locale = locale,
@@ -535,7 +541,8 @@ internal data class WidgetModel(
     // WidgetContent says so rather than show a departure missing its line or its destination.
     val tooSmall: Boolean = false,
     // The hidden modes' names ("Bus, Tram") when every departure left is one of theirs, so the
-    // empty widget says they're hidden rather than that none are due; null otherwise.
+    // empty widget says they're hidden rather than that none are due; null otherwise. Named on the
+    // worker, in the app's language ([widgetModel]'s hiddenLabel).
     val onlyHidden: String? = null,
     // A fresh row shown whose line has no live status check (never checked, the lookup failed, or
     // the check aged out): the widget says so rather than let its countdown read as verified-clean
@@ -616,6 +623,9 @@ internal fun widgetModel(
     topology: RouteTopology = RouteTopology.EMPTY,
     // Modes hidden from the near-me list: left out here too, except on a journey's own rows.
     hiddenModes: Set<String> = emptySet(),
+    // Names hidden modes for the empty widget ("Bus, Tram"): the widget passes the app's names, in its
+    // language ([hiddenGroupsLabel]); the default joins the stored keys, for a caller hiding nothing.
+    hiddenLabel: (Set<String>) -> String = { it.joinToString(", ") },
     // The last tap's refresh ([WidgetTapRefresh.note]), said in the note line.
     tap: WidgetTapNote? = null,
     // Two columns where the cell is wide enough ([WIDGET_TWO_COLUMN_WIDTH]); false lays out one.
@@ -717,7 +727,7 @@ internal fun widgetModel(
     }
     val shownNearby = HiddenModes.rows(nearby, hiddenModes)
     val pinned = journeyRows + DepartureRows.pinStarred(shownNearby, starred)
-    val onlyHidden = hiddenModes.takeIf { pinned.isEmpty() && nearby.isNotEmpty() }?.let(::hiddenGroupsLabel)
+    val onlyHidden = hiddenModes.takeIf { pinned.isEmpty() && nearby.isNotEmpty() }?.let(hiddenLabel)
     // The journeys stay a band of their own at the top: grouping by place runs within each band, so
     // another row at a journey's origin can't pull ahead of a later journey.
     val journeyBand = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<DepartureRow, Boolean>())
@@ -867,7 +877,7 @@ internal fun widgetModel(
     // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
     // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
     if (twoColumns && columnBreak == null) {
-        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, tap, columns = false, rideTitle = rideTitle, locale = locale)
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, locale = locale)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.

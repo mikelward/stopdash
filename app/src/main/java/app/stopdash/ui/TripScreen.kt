@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.compose.ui.platform.LocalResources
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.StopdashProxy
 import kotlinx.coroutines.delay
@@ -2172,7 +2173,7 @@ private fun TripBanners(
     // went over the list (maintainer, 2026-10-04).
     if (hiddenModes.isNotEmpty()) {
         ActionBanner(
-            text = stringResource(R.string.modes_hidden, hiddenGroupsLabel(hiddenModes)),
+            text = stringResource(R.string.modes_hidden, hiddenGroupsLabel(hiddenModes, LocalResources.current)),
             actionLabel = stringResource(R.string.modes_show_all),
             onAction = onShowAllModes,
         )

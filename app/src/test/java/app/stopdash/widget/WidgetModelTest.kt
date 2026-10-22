@@ -148,9 +148,10 @@ class WidgetModelTest {
             stops = listOf(stop("490000001A", listOf(bus), now.minusSeconds(30))),
             fetchedAt = now.minusSeconds(30),
         )
-        val model = widgetModel(snapshot, now, hiddenModes = setOf("bus"))
+        // Named on the worker by the labeler it's given (the widget passes the app's names).
+        val model = widgetModel(snapshot, now, hiddenModes = setOf("bus"), hiddenLabel = { hidden -> "Named: " + hidden.sorted().joinToString() })
         assertTrue(model.rows.isEmpty())
-        assertEquals("Bus", model.onlyHidden)
+        assertEquals("Named: bus", model.onlyHidden)
         // Nothing hidden: no such note.
         assertNull(widgetModel(snapshot, now).onlyHidden)
     }

@@ -50,7 +50,7 @@ internal fun rememberHideWithUndo(
             carrier?.hold(entry)
             offer.job = scope.launch {
                 val result = host.showSnackbar(
-                    message = resources.getString(R.string.modes_hidden, hiddenItemName(ModeGroups.of(entry))),
+                    message = resources.getString(R.string.modes_hidden, hiddenItemName(ModeGroups.of(entry), resources)),
                     actionLabel = resources.getString(R.string.action_undo),
                     duration = SnackbarDuration.Short,
                 )

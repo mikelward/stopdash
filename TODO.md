@@ -4961,7 +4961,7 @@ and these carry the rest as their own PRs:
       no longer parsed back for a narrow widget); stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
       (`HeaderQualifier`); countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
       in the UI; ~~"N min ago" (`RelativeTime`)~~ (done: the top bar's age stamp); distances' units and their "." decimal
-      (`StopDistance`); mode names (`ModeIcon`, search's group names and subtitles); the
+      (`StopDistance`); mode names (`ModeIcon`; ~~search's group names and subtitles~~ done, with the count of hidden lines); the
       "<name> line" label; the " to " join of a closure's stops; "via" in spoken branch labels;
       the Live Update chip's compass letters; ~~the watch's "Disrupted:"~~ (done). One place parses that
       English back (`removeSuffix(" min")`) and must change with it, and hidden lines are saved by their English
