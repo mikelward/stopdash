@@ -176,6 +176,8 @@ private fun LibraryDetailsDialog(
     onOpenLicenseUrl: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     val authors = remember(library) { library.authorsOrEmpty() }
     // A dialog opens its own window, which doesn't inherit the theme's scaled density or pinch
     // handler — FontSizeWindow re-applies the chosen text size to each slot and pinchFontSizeHost

@@ -1440,13 +1440,14 @@ fun MainScreen(
     // A hidden-modes change that didn't save holds only until the app restarts: say so, the same way
     // (SPEC principle 2).
     val hiddenModesWriteFailedMessage = stringResource(R.string.hidden_modes_write_failed)
-    LaunchedEffect(hiddenModesWriteFailed, detailRow == null) {
+    // Each only while the page is on top, so a glimpse of it under a back gesture spends no flag.
+    OnTopEffect(hiddenModesWriteFailed, detailRow == null) {
         if (hiddenModesWriteFailed && detailRow == null) {
             onHiddenModesWriteFailureShown()
             snackbarHostState.showSnackbar(hiddenModesWriteFailedMessage)
         }
     }
-    LaunchedEffect(starWriteFailed, detailRow == null) {
+    OnTopEffect(starWriteFailed, detailRow == null) {
         if (starWriteFailed && detailRow == null) {
             onStarWriteFailureShown()
             snackbarHostState.showSnackbar(starWriteFailedMessage)
@@ -1454,7 +1455,7 @@ fun MainScreen(
     }
     // A failed journey-star write, surfaced like a failed row star (and gated the same way, since
     // the snackbar host lives in the departures Scaffold, not the route page the tap came from).
-    LaunchedEffect(journeyWriteFailed, detailRow == null) {
+    OnTopEffect(journeyWriteFailed, detailRow == null) {
         if (journeyWriteFailed && detailRow == null) {
             onJourneyWriteFailureShown()
             snackbarHostState.showSnackbar(starWriteFailedMessage)
@@ -1462,7 +1463,7 @@ fun MainScreen(
     }
     // A ride's line hidden or shown and not saved: it comes back, or stays hidden, so say so.
     val rideLineWriteFailedMessage = stringResource(R.string.journey_alerts_write_failed)
-    LaunchedEffect(rideLineWriteFailed, detailRow == null) {
+    OnTopEffect(rideLineWriteFailed, detailRow == null) {
         if (rideLineWriteFailed && detailRow == null) {
             onRideLineWriteFailureShown()
             snackbarHostState.showSnackbar(rideLineWriteFailedMessage)
@@ -1474,7 +1475,7 @@ fun MainScreen(
     val dismissWriteFailedMessage = stringResource(R.string.dismiss_write_failed)
     // And held while a lines page is open over the list, which says it itself (Codex, #603).
     val linesOpen = LocalDismissLineAlert.current?.pagesOpen?.intValue ?: 0
-    LaunchedEffect(dismissWriteFailed, detailRow == null && linesOpen == 0) {
+    OnTopEffect(dismissWriteFailed, detailRow == null && linesOpen == 0) {
         if (dismissWriteFailed && detailRow == null && linesOpen == 0) {
             // Clear-then-show, same reasoning as the star-write snackbar above.
             onDismissWriteFailureShown()

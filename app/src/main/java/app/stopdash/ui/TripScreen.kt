@@ -1744,7 +1744,8 @@ private fun TripContent(
     val dismissWriteFailedMessage = stringResource(R.string.dismiss_write_failed)
     // Held while a lines page is open over the trip: that page says it, where it can be seen (Codex, #603).
     val linesOpen = LocalDismissLineAlert.current?.pagesOpen?.intValue ?: 0
-    LaunchedEffect(alerts.writeFailed, linesOpen == 0) {
+    // Each only while the page is on top, so a glimpse of it under a back gesture spends no flag.
+    OnTopEffect(alerts.writeFailed, linesOpen == 0) {
         if (alerts.writeFailed && linesOpen == 0) {
             alerts.onWriteFailureShown()
             snackbarHostState.showSnackbar(dismissWriteFailedMessage)
@@ -1753,7 +1754,7 @@ private fun TripContent(
     // A mode hidden (or shown) from here that didn't save: it's hidden for now but won't last, so
     // say so, as the list does, then acknowledge it so it isn't said again.
     val hiddenModesWriteFailedMessage = stringResource(R.string.hidden_modes_write_failed)
-    LaunchedEffect(hiddenModesWriteFailed) {
+    OnTopEffect(hiddenModesWriteFailed) {
         if (hiddenModesWriteFailed) {
             onHiddenModesWriteFailureShown()
             snackbarHostState.showSnackbar(hiddenModesWriteFailedMessage)
@@ -1761,7 +1762,7 @@ private fun TripContent(
     }
     // A walking speed picked here that didn't save: the trip is planned at it, but it won't last.
     val walkingSpeedWriteFailedMessage = stringResource(R.string.settings_walking_speed_write_failed)
-    LaunchedEffect(walkingSpeedWriteFailed) {
+    OnTopEffect(walkingSpeedWriteFailed) {
         if (walkingSpeedWriteFailed) {
             onWalkingSpeedWriteFailureShown()
             snackbarHostState.showSnackbar(walkingSpeedWriteFailedMessage)
@@ -1769,7 +1770,7 @@ private fun TripContent(
     }
     // A walk limit picked here that didn't save, likewise.
     val maxWalkWriteFailedMessage = stringResource(R.string.max_walk_write_failed)
-    LaunchedEffect(maxWalkWriteFailed) {
+    OnTopEffect(maxWalkWriteFailed) {
         if (maxWalkWriteFailed) {
             onMaxWalkWriteFailureShown()
             snackbarHostState.showSnackbar(maxWalkWriteFailedMessage)
@@ -1777,7 +1778,7 @@ private fun TripContent(
     }
     // A step-free level picked here that didn't save, likewise.
     val stepFreeWriteFailedMessage = stringResource(R.string.step_free_write_failed)
-    LaunchedEffect(stepFreeWriteFailed) {
+    OnTopEffect(stepFreeWriteFailed) {
         if (stepFreeWriteFailed) {
             onStepFreeWriteFailureShown()
             snackbarHostState.showSnackbar(stepFreeWriteFailedMessage)
@@ -1785,7 +1786,7 @@ private fun TripContent(
     }
     // A line avoided here, or no longer, that didn't save, likewise.
     val avoidedWriteFailedMessage = stringResource(R.string.hidden_modes_write_failed)
-    LaunchedEffect(avoided.writeFailed) {
+    OnTopEffect(avoided.writeFailed) {
         if (avoided.writeFailed) {
             avoided.onWriteFailureShown()
             snackbarHostState.showSnackbar(avoidedWriteFailedMessage)
@@ -1793,7 +1794,7 @@ private fun TripContent(
     }
     // A mode turned on or off here that didn't save, likewise.
     val tripModesWriteFailedMessage = stringResource(R.string.trip_modes_write_failed)
-    LaunchedEffect(tripModesWriteFailed) {
+    OnTopEffect(tripModesWriteFailed) {
         if (tripModesWriteFailed) {
             onTripModesWriteFailureShown()
             snackbarHostState.showSnackbar(tripModesWriteFailedMessage)
@@ -1819,7 +1820,8 @@ private fun TripContent(
     // Only a route known not to be followable drops Start: one not worked out yet keeps its place.
     val cantFollow = startCheck?.canFollow == false
     val replacement = starts?.takeIf { onReplaceTrip != null && confirmReplace != null && confirmReplace == openKey }
-    if (replacement != null) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (replacement != null && LocalPageOnTop.current) {
         AlertDialog(
             onDismissRequest = { confirmReplace = null },
             title = { Text(stringResource(R.string.on_the_way_replace_title)) },
@@ -4317,6 +4319,8 @@ internal fun TripLinesPage(
     // The home screen's page only: watching a line on a long press, and a watch that didn't save ([LineWatch]).
     watch: LineWatch? = null,
 ) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     val onDismiss = dismissal?.dismiss
     // Open: the screen under it holds its word on a dismiss that didn't save, which this page says.
     if (dismissal != null) {

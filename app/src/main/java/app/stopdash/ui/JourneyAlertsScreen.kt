@@ -347,6 +347,8 @@ private fun WindowChip(window: TimeWindow, onEdit: () -> Unit, onRemove: (() -> 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WindowDialog(initial: TimeWindow, taken: Set<TimeWindow>, onDismiss: () -> Unit, onSave: (TimeWindow) -> Unit) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     val start = rememberTimePickerState(initial.start.hour, initial.start.minute, is24Hour = true)
     val end = rememberTimePickerState(initial.end.hour, initial.end.minute, is24Hour = true)
     val window = TimeWindow(LocalTime.of(start.hour, start.minute), LocalTime.of(end.hour, end.minute))

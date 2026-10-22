@@ -588,6 +588,8 @@ private fun YourStopsList(
 /** Asks before a long-pressed Recent row ([name]) comes off the list: Remove or Cancel. */
 @Composable
 private fun RemoveRecentDialog(name: String, onRemove: () -> Unit, onDismiss: () -> Unit) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.station_search_remove_recent_title)) },

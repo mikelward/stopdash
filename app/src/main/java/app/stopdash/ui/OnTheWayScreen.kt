@@ -314,7 +314,8 @@ internal fun OnTheWayScreen(
     val linePagesOpen = lineDismissal?.pagesOpen?.intValue ?: 0
     // Nor while a train's route page is open over the trip: a dismiss there is said once it's closed.
     val routeClosed = boardRoute == null
-    LaunchedEffect(dismissFailed, linePagesOpen == 0 && routeClosed) {
+    // Only while the page is on top, so a glimpse of it under a back gesture spends no flag.
+    OnTopEffect(dismissFailed, linePagesOpen == 0 && routeClosed) {
         if (dismissFailed && linePagesOpen == 0 && routeClosed) {
             // Cleared, then shown, so a second failure while this one shows is said too.
             lineDismissal?.onFailureShown?.invoke()
@@ -1310,6 +1311,8 @@ private fun BoardRoutePage(
     now: Instant,
     onClose: () -> Unit,
 ) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),

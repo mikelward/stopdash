@@ -23,6 +23,8 @@ import app.stopdash.R
  */
 @Composable
 internal fun AboutDialog(onOpenLicenses: () -> Unit, onDismiss: () -> Unit) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     // A dialog opens its own window, which does not inherit the theme's scaled density or its
     // pinch handler (SPEC *Display size*): [FontSizeWindow] re-applies the chosen size to each
     // slot, and [pinchFontSizeHost] lets a pinch resize while the dialog is up, so "pinch anywhere"

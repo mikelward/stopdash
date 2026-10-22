@@ -818,6 +818,8 @@ internal fun LocationRationaleDialog(
     // the time", and the last paragraph names both steps so the next screen is the one it describes.
     foregroundGranted: Boolean = true,
 ) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     val steps = stringResource(
         if (foregroundGranted) R.string.journey_alerts_location_rationale_steps else R.string.journey_alerts_location_rationale_steps_foreground,
     )

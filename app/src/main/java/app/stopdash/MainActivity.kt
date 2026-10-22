@@ -194,6 +194,9 @@ import app.stopdash.ui.LocalOpenLineStop
 import app.stopdash.ui.LocalOpenLines
 import app.stopdash.ui.RevealsAfterLoading
 import app.stopdash.ui.KeptPages
+import app.stopdash.ui.LocalPageOnTop
+import app.stopdash.ui.OnTopEffect
+import app.stopdash.ui.StartedWhileOnTop
 import app.stopdash.ui.LocalTapPause
 import app.stopdash.ui.TapPause
 import app.stopdash.ui.ignoresPausedTaps
@@ -3000,11 +3003,9 @@ class MainActivity : ComponentActivity() {
                         body = {
                             // The precise-fix follow-up is foreground-only: it stops when the nearby
                             // surface leaves (an overlay replaces it) or the app goes to the background,
-                            // and asks again on return if the outcome is still flagged coarse.
-                            LifecycleStartEffect(Unit) {
-                                nearbyViewModel.resumeRefining()
-                                onStopOrDispose { nearbyViewModel.pauseRefining() }
-                            }
+                            // and asks again on return if the outcome is still flagged coarse. Only while the
+                            // page is on top, so a glimpse of it under a back gesture starts no fix.
+                            StartedWhileOnTop(nearbyViewModel::resumeRefining, nearbyViewModel::pauseRefining)
                             // The near-me trip, over the list or over "No stops found nearby": the same trip
                             // either way, from the stops in range when there are any, else from the
                             // rider's position alone ([noneNearby]).
@@ -3021,7 +3022,7 @@ class MainActivity : ComponentActivity() {
                                 // A precise fix that moves the set moves the trip too, as its own
                                 // re-locate does: the origins are worked out from the set shown.
                                 val refinementNow by nearbyViewModel.refinement.collectAsStateWithLifecycle()
-                                LaunchedEffect(refinementNow?.id) {
+                                OnTopEffect(refinementNow?.id) {
                                     refinementNow?.let { nearbyViewModel.applyRefinement(it) }
                                 }
                                 // Planning the trip on the way again from here: Start takes its place ([replanningHere]).
@@ -4180,8 +4181,8 @@ class MainActivity : ComponentActivity() {
             // A precise fix that moves the set: re-picked like a refresh, so the shown set's fetch is
             // canceled first and a same-place re-pick reconciles in place.
             val refinementNow by refinement.collectAsStateWithLifecycle()
-            LaunchedEffect(refinementNow?.id) {
-                val pending = refinementNow ?: return@LaunchedEffect
+            OnTopEffect(refinementNow?.id) {
+                val pending = refinementNow ?: return@OnTopEffect
                 relocateAction(
                     cancelFetch = viewModel::cancelFetch,
                     relocate = { onSameSet -> applyRefinement(pending, onSameSet) },
@@ -5172,6 +5173,7 @@ class MainActivity : ComponentActivity() {
             },
         )
         SideEffect { direct.setInputs(inputs) }
+        // Only while resumed, which a page under a back gesture never is, so a glimpse of it asks nothing.
         LaunchedEffect(lifecycleOwner, direct) {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { direct.run() }
         }
@@ -5339,7 +5341,8 @@ class MainActivity : ComponentActivity() {
         SideEffect { anchorHolder.anchor = hereAnchor }
         val nearestId = tripStartId(origin, anchors, fromStopIds, distanceMeters, noneNearby, hereAnchor)
         if (nearestId == null) {
-            LaunchedEffect(Unit) {
+            // Only while the trip's page is on top: a glimpse of it under a back gesture closes nothing.
+            OnTopEffect(Unit) {
                 if (keepSearchOnEmptyOrigin) {
                     stores.clearAll()
                     toStores.clearAll()
@@ -6120,8 +6123,9 @@ class MainActivity : ComponentActivity() {
                 ),
             )
         }
-        // A trip already on the way is replaced only once the rider says so, as a planned trip's Start asks.
-        confirmReplace?.let { route ->
+        // A trip already on the way is replaced only once the rider says so, as a planned trip's Start asks. A window
+        // of its own: only while the page is on top, or it would cover the page a back gesture is swiping.
+        confirmReplace?.takeIf { LocalPageOnTop.current }?.let { route ->
             AlertDialog(
                 onDismissRequest = { confirmReplace = null },
                 title = { Text(stringResource(R.string.on_the_way_replace_title)) },
@@ -7307,7 +7311,8 @@ internal fun ForegroundReturnLatcher(
  * [isBusy] — an in-flight relocate already covers it) and clear the latch via [onConsumed]. Composed
  * inside the departures view, so a latch set by [ForegroundReturnLatcher] while this view was out of
  * composition (an overlay) fires the moment it re-enters. [onRelocate] is read latest so a moved-to
- * set's fresh action is used.
+ * set's fresh action is used. Only while the view's page is on top ([LocalPageOnTop]): a glimpse of it
+ * under a back gesture leaves the latch for the page the rider lands on.
  */
 @Composable
 internal fun ConsumeForegroundReturn(
@@ -7318,7 +7323,7 @@ internal fun ConsumeForegroundReturn(
 ) {
     val currentIsBusy = rememberUpdatedState(isBusy)
     val currentOnRelocate = rememberUpdatedState(onRelocate)
-    LaunchedEffect(pending) {
+    OnTopEffect(pending) {
         if (pending) {
             if (!currentIsBusy.value()) currentOnRelocate.value()
             onConsumed()

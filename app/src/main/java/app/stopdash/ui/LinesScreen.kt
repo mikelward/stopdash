@@ -225,7 +225,8 @@ internal fun LinesOverlay(
     lineWork: LinePageWorkHolder = remember { LinePageWorkHolder() },
 ) {
     // Each time the overlay comes up: TfL's list is asked for again if its day is up, or after a failure.
-    LaunchedEffect(Unit) { viewModel.reopened() }
+    // Only on top, so a glimpse of it under a back gesture asks nothing.
+    OnTopEffect(Unit) { viewModel.reopened() }
     // [saveable] keeps the search's scroll while a line's page is over it, so Back returns to the line
     // picked, not to the top of the list.
     val line = open
@@ -369,6 +370,8 @@ internal fun LineStopWindow(
     // forgets the stops' saved pages as it sees fit.
     linesOpenable: Boolean = true,
 ) {
+    // A window of its own: drawn over a glimpse of the page it's over, it would cover the page being swiped.
+    if (!LocalPageOnTop.current) return
     // Back to the station this one was opened from, else to the line, or to the page whose map it was
     // tapped on ([onStopClosed]); the page left forgets its scroll, so opening it again starts at its top.
     val back = {

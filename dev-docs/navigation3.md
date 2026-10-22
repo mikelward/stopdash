@@ -130,6 +130,8 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
    Done: *Step 1: what the spike found*.
 2. **The near-me page's effects wait until it's on top** (the list above), before anything draws it
    during a gesture. Visible behavior is unchanged: today the page is never composed but on top.
+
+   Done: *Step 2: what changed*.
 3. **The overlays become a back stack.** Keys: `NearMe(generation)` at the root, and `Settings`,
    `Licenses`, `OnTheWay`, `FavoritePlaces`, `FavoriteJourneys`, `Lines`, `StationSearch` and
    `Station(id)` above it.
@@ -141,9 +143,23 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
      Each `topOverlay` rule is checked against the open order it stands in for.
    - This is the step that gives overlays the real page underneath during the gesture. Their option 1
      handlers go.
+   - The trip from here becomes an entry of its own above `NearMe`, so Lines… opened over it sits
+     above it on the stack and `LinesPresence.UNDER_TRIP` goes (maintainer, 2026-10-22).
+   - `NavDisplay` provides `LocalPageOnTop` per entry: true for the top entry, false for the one a
+     gesture reveals.
+   - Pages open and close with a short slide and fade, about 250 ms to open and 200 ms to close, and the
+     back swipe drives the close (maintainer, 2026-10-22). Both durations are a starting point, tuned on
+     a device.
+   - During a gesture the top page drops to STARTED too, so a swipe let go of pauses and resumes it.
+     `ReportScreen` counts each resume, so a canceled swipe would count the page twice; it needs the
+     on-top gate or a check that the page didn't change.
 4. **A route stop's windows become dialog entries.** The details and the Departures opened from them
    become `DialogSceneStrategy` entries. Anything pushed after them covers them by stack order, so
    `routeStopCovered` goes.
+   - The page under a window entry stays on top (`LocalPageOnTop`) but drops to STARTED, so what step 2
+     left on RESUMED pauses under a window: `ReportScreen` would count the page again as the window
+     closes, and the near-me trip's Direct lookups and Lines…'s status checks stop while it's open.
+     Each is checked against what the window does today, which is pause nothing.
 5. **The station flow stacks.** Search, `Station(id)`, then the station's trip. A station opened from a
    route stop's details now goes on top of the station under it instead of replacing it, which is
    `TODO.md`'s "takes the place of the station under it".
@@ -188,7 +204,8 @@ dependency only until step 3. The spike found:
   is looked up by name, so R8's renaming can't break a restore.
 - **Opening a page with no transition:** the page is drawn on the second frame and settled (resumed,
   the page under out of composition) by the fourth, about 67 ms. A flag's swap today draws on the first
-  frame. That's one frame later, which keeps "pages appear at once" open to answer either way.
+  frame. That's one frame later, so a page opened with no transition would still appear at once; pages
+  get a short animation instead (*Decided*).
 - **The wrappers, by construction rather than a test:** `NavDisplay` goes inside `StopDashAppRoot`'s
   content, so the text size, its pinch, `TapPause` and `KeyRejectedFrame` wrap every page as they do
   today. A window entry is a window of its own, so it re-applies `FontSizePinchWindow` inside, as today's
@@ -200,12 +217,40 @@ dependency only until step 3. The spike found:
   its unit tests run on and a Back regression from the bump is that commit's alone. The whole suite
   passes on it.
 
-## Open questions for the maintainer
+## Step 2: what changed
 
-Both are needed by step 3, not before it.
+Pages now read `LocalPageOnTop` (`ui/PageOnTop.kt`): whether the page composing is the one the rider is
+on, a window over it aside. Nothing provides it yet, so it's true everywhere and nothing a rider sees
+changes; step 3's `NavDisplay` provides it per entry. Two helpers read it:
 
-- **Does the trip from here become its own entry in step 3?** Lines… can sit hidden under the trip
-  today (`LinesPresence.UNDER_TRIP`), which a stack can't express while the trip is part of the near-me
-  entry. I'd make it an entry in step 3.
-- **Opening a page:** Navigation 3's default push and pop fade over 700 ms, and pages appear at once
-  today. I'd keep them instant and animate only the predictive pop.
+- `OnTopEffect` is a `LaunchedEffect` that runs only on top, and again each time the page comes back on
+  top, as a page re-entering composition does today. It holds the refinement on offer (the near-me trip's
+  and the departures view's), the near-me trip's auto-close, `ConsumeForegroundReturn`,
+  `ReportChanges`, Lines…'s reopening and every write-failure snackbar.
+- `StartedWhileOnTop` is a `LifecycleStartEffect` that starts only on top. It holds the location fix
+  (`resumeRefining` and `pauseRefining`).
+
+Every window a page opens of its own (About, a disruption card's, the trip's lines and replace dialog,
+the timetable, the boarding route, the rail key, a search row's menu, and the other confirm and picker
+dialogs) returns early when its page isn't on top, so a glimpse can't open one over the page being
+swiped. The bug report consent and the Departures opened over a route stop stay as they are: the first
+belongs to the app, not a page, and the second is the activity's, covered by `routeStopCovered` until
+step 4.
+
+What already waits for RESUMED was left alone: a revealed page is never resumed, so a glimpse can't
+start it. That's `ReportScreen`, the near-me trip's Direct lookups (`direct.run()`), Lines…'s status
+checks and Settings' permission reads. Steps 3 and 4 each note where RESUMED alone stops being enough.
+
+`PageOnTopTest` holds each helper, `ConsumeForegroundReturn`, `ReportChanges` and a window both ways: off
+while the page isn't on top, and run once it is.
+
+## Decided (maintainer, 2026-10-22)
+
+Both apply from step 3.
+
+- **The trip from here becomes its own entry in step 3.** Lines… can sit hidden under the trip today
+  (`LinesPresence.UNDER_TRIP`), which a stack can't express while the trip is part of the near-me
+  entry.
+- **Pages open and close with a short animation**, not Navigation 3's default 700 ms fade and not at
+  once as today: about 250 ms to open and 200 ms to close, a slide and fade, with the back swipe
+  driving the close. The durations get tuned on a device.
