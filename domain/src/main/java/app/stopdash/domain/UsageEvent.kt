@@ -129,6 +129,9 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
 
         /** A stop's details, tapped on a line's map. */
         LINE_STOP("line_stop"),
+
+        /** A route page's timetable. */
+        TIMETABLE("timetable"),
     }
 
     /**

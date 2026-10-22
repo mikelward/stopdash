@@ -131,7 +131,14 @@ internal const val TIMETABLED_TRAINS = 3
  * its timetable's next few trains ([rememberTimetabledTrains]). Drawn against [loaded], the list's fetch, at [now].
  */
 @Composable
-internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Instant, onBack: () -> Unit, lineOpen: MutableState<Boolean>) {
+internal fun RidePage(
+    view: RideView,
+    loaded: DeparturesUiState.Loaded,
+    now: Instant,
+    onBack: () -> Unit,
+    lineOpen: MutableState<Boolean>,
+    timetableOpen: MutableState<Boolean>,
+) {
     val row = view.row
     val disruptionUnknown = loaded.lineUncheckedFor(row) || row.stopId in loaded.stopsDisruptionUnknown
     val disruptionChecking = loaded.checkingDisruptionsFor(row)
@@ -144,6 +151,7 @@ internal fun RidePage(view: RideView, loaded: DeparturesUiState.Loaded, now: Ins
     val nextTrains = rememberTimetabledTrains(placed?.takeIf { view.timetableSpeaks(loaded, now) }, now, view.plannedFrom)
     RouteDetailScreen(
         lineOpen = lineOpen,
+        timetableOpen = timetableOpen,
         row = row,
         isStarred = false,
         starrable = false,

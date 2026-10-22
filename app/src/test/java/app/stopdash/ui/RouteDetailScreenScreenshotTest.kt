@@ -11,6 +11,8 @@ import androidx.compose.runtime.getValue
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -2526,6 +2528,288 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("09:03 · 09:11 · 09:19").assertIsDisplayed()
         composeRule.onNodeWithText("09:08 · 09:15 · 09:24").assertIsDisplayed()
         captureSnapshot("route-detail-quiet-row.png")
+    }
+
+    // The Northern line at Highgate (synthetic routes and timetable), for its timetable page: south to Morden by Bank or
+    // by Charing Cross, or north.
+    private val highgateNames = mapOf(
+        "940GZZLUHBT" to "High Barnet", "940GZZLUHGT" to "Highgate", "940GZZLUCTN" to "Camden Town",
+        "940GZZLUMTC" to "Mornington Crescent", "940GZZLUEUS" to "Euston", "940GZZLUBNK" to "Bank",
+        "940GZZLUCHX" to "Charing Cross", "940GZZLUKNG" to "Kennington", "940GZZLUMDN" to "Morden",
+    )
+    private val viaBank = listOf("940GZZLUCTN", "940GZZLUEUS", "940GZZLUBNK", "940GZZLUKNG", "940GZZLUMDN")
+    private val viaCharing = listOf("940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS", "940GZZLUCHX", "940GZZLUKNG", "940GZZLUMDN")
+
+    private fun highgateRoutes(): RouteStopsRepository {
+        val south = listOf(
+            LineRoute("High Barnet &harr; Morden via Bank", listOf("940GZZLUHBT", "940GZZLUHGT") + viaBank, "outbound"),
+            LineRoute("High Barnet &harr; Morden via Charing Cross", listOf("940GZZLUHBT", "940GZZLUHGT") + viaCharing, "outbound"),
+        )
+        return RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = LineSequence(
+                    if (direction == "outbound") south else south.map { it.copy(stopIds = it.stopIds.asReversed(), direction = "inbound") },
+                    highgateNames,
+                )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+    }
+
+    // Fridays: via Bank, three early trains, every 5 minutes 06:30–09:30, and a few late ones past midnight; via
+    // Charing Cross, every 15 minutes 07:02–08:02, too few and far between to sum up. Saturdays, only via Charing Cross.
+    private fun highgateTimetable(): StopTimetable {
+        val early = listOf(5 * 60 + 41, 5 * 60 + 58, 6 * 60 + 15)
+        val peak = (6 * 60 + 30..9 * 60 + 30 step 5).toList()
+        val late = listOf(23 * 60 + 10, 23 * 60 + 40, 24 * 60 + 10)
+        val bank = early + peak + late
+        val charing = (7 * 60 + 2..8 * 60 + 2 step 15).toList()
+        val friday = (bank.map { it to viaBank } + charing.map { it to viaCharing }).sortedBy { it.first }
+        return StopTimetable(
+            listOf(
+                StopTimetable.DaySchedule(setOf(java.time.DayOfWeek.FRIDAY), friday.map { it.first }, calls = friday.map { it.second }),
+                StopTimetable.DaySchedule(setOf(java.time.DayOfWeek.SATURDAY), charing, calls = charing.map { viaCharing }),
+            ),
+        )
+    }
+
+    private fun highgateTimes() = EmptyTimesState(
+        kotlinx.coroutines.flow.MutableStateFlow(emptyMap()),
+        now,
+        lookups = kotlinx.coroutines.flow.MutableStateFlow(mapOf(EmptyTimes.Key("940GZZLUHGT", "northern") to EmptyTimes.Lookup.Found(highgateTimetable()))),
+    ) { _, _ -> }
+
+    @Test
+    fun theTimetable_opensWhateverTheLinesStatus_withItsNoticesFirst_andSumsUpEachStretch() {
+        // Severe delays on the line: the timetable is still a tap away, the alert heading it.
+        val stop = StopArrivals(
+            stopId = "940GZZLUHGT",
+            stopName = "Highgate",
+            departures = listOf(
+                Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(120), "tube", "Bank"),
+            ),
+            fetchedAt = now,
+        )
+        val statuses = mapOf("northern" to LineStatus("northern", 6, "Severe Delays", "Northern line: Severe delays while we fix a signal failure."))
+        val row = DepartureRows.across(listOf(stop), now, statuses).first { it.upcoming.isNotEmpty() }
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides highgateRoutes(), LocalEmptyTimes provides highgateTimes()) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        focus = RouteFocus("Morden", "Bank"),
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Timetable").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("timetablePage").assertExists()
+        composeRule.onNodeWithText("Scheduled").assertExists()
+        // The alert heads the times.
+        composeRule.onNode(hasText("Severe Delays") and hasAnyAncestor(hasTestTag("timetablePage"))).assertExists()
+        // Via Bank, the way the page shows: its stretch every 5 minutes, and its sparse trains by time.
+        composeRule.onNodeWithText("06:30–09:30").assertExists()
+        composeRule.onNodeWithText("every 5 min").assertExists()
+        composeRule.onNodeWithText("05:41").assertExists()
+        composeRule.onNodeWithText("00:10").assertExists()
+        // Not via Charing Cross's trains.
+        composeRule.onNodeWithText("07:02").assertDoesNotExist()
+
+        // The other way, chosen on the timetable: its own trains, listed.
+        composeRule.onAllNodesWithText("Morden/Charing X").onLast().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("07:02").assertExists()
+        composeRule.onNodeWithText("06:30–09:30").assertDoesNotExist()
+
+        // Tomorrow, a Saturday.
+        composeRule.onNodeWithText("Tomorrow").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("07:02").assertExists()
+    }
+
+    @Test
+    fun theTimetable_asksAWayFirst_whereTheLineRunsSeveralAndNoneIsChosen() {
+        val row = DepartureRow(
+            stopId = "940GZZLUHGT", stopName = "Highgate", lineId = "northern", lineName = "Northern",
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now, quiet = true,
+        )
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides highgateRoutes(), LocalEmptyTimes provides highgateTimes()) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        siblings = listOf(row),
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Timetable").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Choose a route").assertExists()
+        composeRule.onAllNodesWithText("Morden/Bank").onLast().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Choose a route").assertDoesNotExist()
+        composeRule.onNodeWithText("06:30–09:30").assertExists()
+    }
+
+    @Test
+    fun aNationalRailPage_offersNoTimetable_whichTfLDoesntKeep() {
+        val stop = StopArrivals(
+            stopId = "910GEXAMPLE",
+            stopName = "Example",
+            departures = listOf(Departure("great-example", "Great Example", "", "Cambridge", "Platform 4", now.plusSeconds(600), "national-rail")),
+            fetchedAt = now,
+        )
+        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Timetable").assertDoesNotExist()
+    }
+
+    @Test
+    fun aRidesTimetable_isItsTrainsFromWhereItBoardsToWhereItGetsOff() {
+        val key = app.stopdash.domain.LegTimetables.Key("northern", "940GZZLUHGT", "940GZZLUBNK")
+        val timetables = app.stopdash.domain.LegTimetables(
+            object : app.stopdash.domain.LegTimetableSource {
+                override suspend fun legTimetable(lineId: String, fromId: String, toId: String): StopTimetable =
+                    StopTimetable(listOf(StopTimetable.DaySchedule(setOf(java.time.DayOfWeek.FRIDAY), listOf(10 * 60 + 4, 10 * 60 + 34))))
+            },
+            clock = { now },
+        )
+        val ride = TripLeg("tube", key.lineId, "Northern", key.fromId, "Highgate", key.toId, "Bank", Instant.EPOCH, Instant.EPOCH)
+        val row = DepartureRow(
+            stopId = "940GZZLUHGT", stopName = "Highgate", lineId = "northern", lineName = "Northern",
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now,
+        )
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalLegTimetables provides timetables) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        ride = ride,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Timetable").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("10:04").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("To Bank").assertExists()
+        composeRule.onNodeWithText("10:34").assertExists()
+    }
+
+    @Test
+    fun aTimetableMovedToAnotherStop_neverShowsTheLastStopsTimesForIt() {
+        // Highgate's timetable is in, Euston's isn't: moved on to Euston, the page waits for its own, not for a frame of
+        // Highgate's (Codex on #1081).
+        var source by mutableStateOf<TimetableSource>(TimetableSource.Stop("940GZZLUHGT", "northern", null))
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalEmptyTimes provides highgateTimes()) {
+                    TimetableScreen(
+                        lineId = "northern",
+                        lineName = "Northern",
+                        mode = "tube",
+                        place = (source as TimetableSource.Stop).stopId,
+                        ask = TimetableAsk.Of(source, null),
+                        now = now,
+                        onClose = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("05:41").assertExists()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnIdle {
+            source = TimetableSource.Stop("940GZZLUEUS", "northern", null)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        // The first frame drawn for Euston, before its own lookup is collected.
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("From 940GZZLUEUS").assertExists()
+        composeRule.onNodeWithText("05:41").assertDoesNotExist()
+        composeRule.onNodeWithText("Loading timetable…").assertExists()
+        composeRule.mainClock.autoAdvance = true
+    }
+
+    @Test
+    fun theTimetablePage_graysTrainsGone_andSaysWhatItsUpAgainst() {
+        // Its own screen, as its window shows it (a dialog's window isn't in the activity's capture).
+        val row = DepartureRow(
+            stopId = "940GZZLUHGT", stopName = "Highgate", lineId = "northern", lineName = "Northern",
+            direction = "outbound", directionKey = "outbound", destination = "Morden", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now,
+            status = LineStatus("northern", 20, "Service Closed", "Northern line: No service between Camden Town and Morden while we carry out engineering work."),
+        )
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalEmptyTimes provides highgateTimes()) {
+                    TimetableScreen(
+                        lineId = "northern",
+                        lineName = "Northern",
+                        mode = "tube",
+                        place = "Highgate",
+                        ask = TimetableAsk.Of(TimetableSource.Stop("940GZZLUHGT", "northern", listOf("940GZZLUHGT") + viaBank), "To Morden via Bank"),
+                        // 09:00 in London: the early trains and the morning's frequency so far are gone.
+                        now = now,
+                        onClose = {},
+                        notices = {
+                            RouteNotices(
+                                row, row, emptyList(), dismissAlert = null, dismissPlanned = null, closures = emptyList(), uncheckedEnd = null,
+                                checking = false, disruptionUnknown = false, stale = false, stopNotice = true,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Service Closed").assertExists()
+        composeRule.onNodeWithText("06:30–09:30").assertExists()
+        captureSnapshot("route-detail-timetable.png")
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 2400) {

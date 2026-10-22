@@ -86,6 +86,48 @@
     <!-- TODO: translate -->
     <!-- Heading over each way's next trains by the timetable, on a "?" row's route page. -->
     <string name="route_detail_timetable_heading" tools:ignore="MissingTranslation">Timetable</string>
+    <!-- TODO: translate -->
+    <!-- On a route page's timetable, over the day's trains: they're the timetable's, not live. -->
+    <string name="timetable_scheduled" tools:ignore="MissingTranslation">Scheduled</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable: a stretch of the day, from its first train to its last, e.g. "06:00–10:00". -->
+    <string name="timetable_stretch" tools:ignore="MissingTranslation">%1$s–%2$s</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable: how often trains run over a stretch, e.g. "every 4 min". -->
+    <string name="timetable_every" tools:ignore="MissingTranslation">every %1$d min</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable: how often trains run over a stretch whose gap varies, e.g. "every 3–5 min". -->
+    <string name="timetable_every_range" tools:ignore="MissingTranslation">every %1$d–%2$d min</string>
+    <!-- TODO: translate -->
+    <!-- Spoken for a stretch whose gap varies: "06:00 to 10:00, every 3 to 5 minutes". -->
+    <string name="timetable_every_range_spoken" tools:ignore="MissingTranslation">%1$s to %2$s, every %3$d to %4$d minutes</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable, while it's fetched. -->
+    <string name="timetable_loading" tools:ignore="MissingTranslation">Loading timetable…</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable that couldn't be fetched; it's asked for again shortly. -->
+    <string name="timetable_failed" tools:ignore="MissingTranslation">Couldn\'t load the timetable</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable for a day the line runs nothing from here. -->
+    <string name="timetable_none" tools:ignore="MissingTranslation">None scheduled</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable where TfL has none for the line at the stop. -->
+    <string name="timetable_unavailable" tools:ignore="MissingTranslation">TfL has no timetable here</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable with a train it couldn't read. -->
+    <string name="timetable_partial" tools:ignore="MissingTranslation">Some times may be missing</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable on a public holiday, when TfL may run another day's timetable. -->
+    <string name="timetable_holiday" tools:ignore="MissingTranslation">May differ on a public holiday</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable where its line runs several ways from the stop and none is chosen: the chips above choose one. -->
+    <string name="timetable_choose_route" tools:ignore="MissingTranslation">Choose a route</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable for a way only a live train names, which the timetable can't tell apart. -->
+    <string name="timetable_route_unknown" tools:ignore="MissingTranslation">No timetable for this route</string>
+    <!-- TODO: translate -->
+    <!-- A route page's timetable where its ways couldn't be told apart: every route's trains from the stop. -->
+    <string name="timetable_all_routes" tools:ignore="MissingTranslation">All routes from here</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
          bare. %1$s is the line's name, e.g. "Victoria" → "Victoria line". -->
     <string name="route_detail_line_name">%1$s line</string>
@@ -223,6 +265,12 @@
     <!-- The same, with how far the rider is from it: "Nearest · 300 m". -->
     <string name="line_map_nearest_at">Nearest · %1$s</string>
     <!-- Under a fold on the map: how many stations it holds. -->
+    <!-- TODO: translate -->
+    <!-- Spoken for a stretch of a route page's timetable: "06:00 to 10:00, every 4 minutes". -->
+    <plurals name="timetable_every_spoken" tools:ignore="MissingTranslation">
+        <item quantity="one">%1$s to %2$s, every minute</item>
+        <item quantity="other">%1$s to %2$s, every %3$d minutes</item>
+    </plurals>
     <plurals name="line_map_stations">
         <item quantity="one">%d station</item>
         <item quantity="other">%d stations</item>

@@ -65,7 +65,7 @@ register the final one.
 
 | Event | Parameters | When |
 |---|---|---|
-| `screen_view` | `screen_name`: `home`, `route`, `station`, `search`, `trip_to`, `trip`, `on_the_way`, `settings`, `favorite_places`, `favorite_journeys`, `licenses`, `lines`, `line`, `line_stop` | A screen comes up, or the app returns to it (`ReportScreen`) |
+| `screen_view` | `screen_name`: `home`, `route`, `station`, `search`, `trip_to`, `trip`, `on_the_way`, `settings`, `favorite_places`, `favorite_journeys`, `licenses`, `lines`, `line`, `line_stop`, `timetable` | A screen comes up, or the app returns to it (`ReportScreen`) |
 | `open` | `from`: `launcher`, `widget`, `notification`, `shortcut`, `other` | A cold start from the icon, or a tap that brings the app up. A return to the app already running (Recents, or the icon) names no source and isn't counted here: its `screen_view` and Analytics' `session_start` count it |
 | `tap` | `kind`: `journey_card`, `stop_row`, `change_card`, `swap`, `star`, `unstar`, `search`, `settings`, `widget_refresh` | Those taps |
 | `reveal` | `what`, `mode` | A farther place or the faraway favorites opened |
