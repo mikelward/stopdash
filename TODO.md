@@ -4963,7 +4963,7 @@ and these carry the rest as their own PRs:
       in the UI; ~~"N min ago" (`RelativeTime`)~~ (done: the top bar's age stamp); ~~distances' units and their "." decimal
       (`StopDistance`)~~ (done; the bug report keeps its English); mode names (`ModeIcon`; ~~search's group names and subtitles~~ done, with the count of hidden lines); the
       "<name> line" label; ~~the " to " join of a closure's stops~~ (done); ~~"via" in spoken branch labels~~ (done);
-      the Live Update chip's compass letters; ~~the watch's "Disrupted:"~~ (done). One place parses that
+      ~~the Live Update chip's compass letters~~ (done, and the walk row's); ~~the watch's "Disrupted:"~~ (done). One place parses that
       English back (`removeSuffix(" min")`) and must change with it, and hidden lines are saved by their English
       label, so a language switch would leave them English.
 

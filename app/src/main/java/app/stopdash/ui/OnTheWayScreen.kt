@@ -1637,7 +1637,7 @@ internal fun NextStep(
     // The way to the walk's end beside how far it is, as a compass point ("450 m NE"; maintainer, 2026-10-11).
     val walkSpoken = walkLabel?.let { label -> point?.let { stringResource(R.string.on_the_way_walk_left_spoken, label, stringResource(compassWord(it))) } }
     val words = if (walkLabel != null) {
-        point?.let { stringResource(R.string.on_the_way_walk_left_direction, walkLabel, it.name) } ?: walkLabel
+        point?.let { stringResource(R.string.on_the_way_walk_left_direction, walkLabel, stringResource(compassLetters(it))) } ?: walkLabel
     } else if (at == null) {
         detail
     } else if (checking) {
@@ -1729,6 +1729,18 @@ private fun compassWord(point: Compass.Point): Int = when (point) {
     Compass.Point.SW -> R.string.compass_sw
     Compass.Point.W -> R.string.compass_w
     Compass.Point.NW -> R.string.compass_nw
+}
+
+/** A compass point in letters, as a walk's row and its Live Update chip write the way ("NE"). */
+internal fun compassLetters(point: Compass.Point): Int = when (point) {
+    Compass.Point.N -> R.string.compass_n_letters
+    Compass.Point.NE -> R.string.compass_ne_letters
+    Compass.Point.E -> R.string.compass_e_letters
+    Compass.Point.SE -> R.string.compass_se_letters
+    Compass.Point.S -> R.string.compass_s_letters
+    Compass.Point.SW -> R.string.compass_sw_letters
+    Compass.Point.W -> R.string.compass_w_letters
+    Compass.Point.NW -> R.string.compass_nw_letters
 }
 
 // A row of the card: the first of [start]'s forms (longest first) that fits on the left, and [ends]'

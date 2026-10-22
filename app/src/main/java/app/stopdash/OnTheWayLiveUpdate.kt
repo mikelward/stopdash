@@ -20,6 +20,7 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.ui.ARROW
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.busPoleLabel
+import app.stopdash.ui.compassLetters
 import app.stopdash.ui.distanceText
 import app.stopdash.ui.groupHeaderLabel
 import app.stopdash.ui.localeDistanceSystem
@@ -91,11 +92,11 @@ internal object OnTheWayLiveUpdate {
         // Not until the rider's units are known: never a moment in the wrong ones.
         val label = distanceText(meters, system ?: return null, resources)
             .let { if (walking.estimated) resources.getString(R.string.on_the_way_walk_left_estimated, it) else it }
-        val point = walking.point ?: return label
+        val point = walking.point?.let { resources.getString(compassLetters(it)) } ?: return label
         val closed = label.replace(" ", "")
-        return resources.getString(R.string.on_the_way_chip_walk_direction, point.name, closed)
+        return resources.getString(R.string.on_the_way_chip_walk_direction, point, closed)
             .takeIf { it.length <= CHIP_CHARS }
-            ?: resources.getString(R.string.on_the_way_chip_walk_direction_tight, point.name, closed)
+            ?: resources.getString(R.string.on_the_way_chip_walk_direction_tight, point, closed)
     }
 
     /** The most characters Android suggests for a Live Update's chip; more may be cut off. */

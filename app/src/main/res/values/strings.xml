@@ -1439,6 +1439,24 @@
     <string name="compass_sw">southwest</string>
     <string name="compass_w">west</string>
     <string name="compass_nw">northwest</string>
+    <!-- TODO: translate -->
+    <!-- The compass points in letters, as a walk's row and its Live Update chip write the way its end
+         lies ("450 m NE", "NE 450m"); the chip holds about seven characters in all. -->
+    <string name="compass_n_letters" tools:ignore="MissingTranslation">N</string>
+    <!-- TODO: translate -->
+    <string name="compass_ne_letters" tools:ignore="MissingTranslation">NE</string>
+    <!-- TODO: translate -->
+    <string name="compass_e_letters" tools:ignore="MissingTranslation">E</string>
+    <!-- TODO: translate -->
+    <string name="compass_se_letters" tools:ignore="MissingTranslation">SE</string>
+    <!-- TODO: translate -->
+    <string name="compass_s_letters" tools:ignore="MissingTranslation">S</string>
+    <!-- TODO: translate -->
+    <string name="compass_sw_letters" tools:ignore="MissingTranslation">SW</string>
+    <!-- TODO: translate -->
+    <string name="compass_w_letters" tools:ignore="MissingTranslation">W</string>
+    <!-- TODO: translate -->
+    <string name="compass_nw_letters" tools:ignore="MissingTranslation">NW</string>
     <string name="on_the_way_next_stop_timed">Next stop (~%1$d min)</string>
     <!-- A change between two rides with no walk of its own: to the line, at the stop. -->
     <string name="on_the_way_change">Change to %1$s at %2$s</string>
