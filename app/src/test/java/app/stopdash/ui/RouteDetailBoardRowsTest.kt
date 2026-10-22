@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
  * A route page opened from the list shows the list's own row's trains ([RouteDetailScreen]'s `boardRows`):
  * a Tube train just past its time stays, grayed at "0", as on the list, and nothing is filtered in
  * composition, the trains coming from the page's work on its worker. A trip's page, from rows built at
- * another time, still drops a train at its time.
+ * another time, still drops a train at its time, worked out on the worker too.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
@@ -74,8 +74,13 @@ class RouteDetailBoardRowsTest {
     @Test
     fun a_trip_s_page_drops_a_train_at_its_time() {
         val scheduler = show(boardRows = false)
-        scheduler.advanceUntilIdle()
-        composeRule.waitForIdle()
+        // The train past its time is left out on the worker, after the page's trains are, never in composition
+        // (Codex on #1105): the countdown holds its line blank until then, never showing it.
+        repeat(2) {
+            composeRule.onAllNodesWithText("4 min", substring = true).assertCountEquals(0)
+            scheduler.advanceUntilIdle()
+            composeRule.waitForIdle()
+        }
         composeRule.onAllNodesWithText("0 · 4 min").assertCountEquals(0)
         composeRule.onAllNodesWithText("4 min").assertCountEquals(1)
     }

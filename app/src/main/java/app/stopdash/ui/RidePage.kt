@@ -138,6 +138,9 @@ internal fun RidePage(
     onBack: () -> Unit,
     lineOpen: MutableState<Boolean>,
     timetableOpen: MutableState<Boolean>,
+    // Held as last drawn, its card gone from the list ([MainScreen]): nothing it shows is current any more, so it's
+    // said as out of date and its timetable's trains, which need every check current, are left out.
+    held: Boolean = false,
 ) {
     val row = view.row
     val disruptionUnknown = loaded.lineUncheckedFor(row) || row.stopId in loaded.stopsDisruptionUnknown
@@ -146,9 +149,9 @@ internal fun RidePage(
     val lineChecking = loaded.checkingLineFor(row)
     // Its ends where its bus really stops, for its timetable and its line's page alike (Codex on #1036).
     val placed = rememberPlacedRide(view.ride)
-    val stale = Staleness.isStale(row.fetchedAt, now)
+    val stale = held || Staleness.isStale(row.fetchedAt, now)
     // Nor a train on or after a day its line's planned work starts, which the timetable knows nothing of (Codex on #1036).
-    val nextTrains = rememberTimetabledTrains(placed?.takeIf { view.timetableSpeaks(loaded, now) }, now, view.plannedFrom)
+    val nextTrains = rememberTimetabledTrains(placed?.takeIf { !held && view.timetableSpeaks(loaded, now) }, now, view.plannedFrom)
     RouteDetailScreen(
         lineOpen = lineOpen,
         timetableOpen = timetableOpen,

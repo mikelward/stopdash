@@ -1133,8 +1133,15 @@ way for is told apart by its platforms alone, so keeps its own) (maintainer, 202
 running the soonest's "via"). **The page is the route's, not the platform's** (maintainer,
 2026-10-15): it follows the route's soonest train from any platform, its stop list and "From" with it,
 so a train moved to another platform is still followed. Its row gone (that platform's last train left,
-or the train moved), it moves to the platform that still has a train on the route, and closes only once
-none does; a row still listed falls back as above. **Under the title, a chip per way the line runs on from the
+or the train moved), it moves to the platform that still has a train on the route; a row TfL gave no way for
+this time (or one, where the page's had none) holds the route's train too, unless two such rows do, as a loop's
+two ways to one place can, which would be a guess. **A refresh never closes the page; only the rider does**
+(maintainer, 2026-10-22: it went back to the list, which they didn't like even when it worked as meant). With no
+platform holding the route, the page stays on it with no train (below), until a train comes on it again. While
+the list is still loading (a new set of nearby stops loads afresh, its stops coming in one by one), the page waits
+as it was, judging nothing gone. Once its stop is no longer in the list at all (the rider moved on), it holds as
+it was last drawn, said to be out of date, its times withheld, until the stop is back. A row still listed falls
+back as above. **Under the title, a chip per way the line runs on from the
 stop** (maintainer, 2026-10-21), both ways: each of its routes from the stop through its end, routes calling at
 the same stops from here one chip, and a way its trains take that no route ends at (a short working) its own.
 A chip is named by where it goes, with its via where two go to one place ("Morden/Bank", "Morden/Charing X"),
@@ -1147,9 +1154,9 @@ on it, whichever platform's the page follows. TfL's own words stay on
 the page's title; where its way isn't known, or its routes part at once, the chip keeps them. The tapped row's route is chosen. A route with a train at the stop
 moves the page to it, as a tap on its row would; one with none lists its stops from the line's routes, with
 "No live times" in the countdown's place and no star (the star pins a row it isn't), until a train comes on it.
-Chosen, it stays open once the row it opened on runs out of trains, while the stop is still in the list (Codex on
-#1038): drawn as of the stop's latest fetch, not the row's last, and with the line's alerts for that way as they
-are now, never saying TfL gave the row no times.
+Chosen or not, it stays open once the row it opened on runs out of trains, while the stop is still in the list
+(Codex on #1038; maintainer, 2026-10-22): drawn as of the stop's latest fetch, not the row's last, and with the
+line's alerts for that way as they are now, never saying TfL gave the row no times.
 A way a train at the stop runs that its row groups with another train to the same place by the same via (a bus
 route's variants, told apart only by their stops; a loop's trains on platforms of opposite bounds) moves the page
 to that train too, which the page then follows on its own way, and back to the place's soonest once that way has
@@ -1586,7 +1593,9 @@ spinner, as it has no answer to fade. With no train due, that row stays,
 a dash for its time, heard as "No trains to … soon"; a suspension's status row gives way to it in
 place, and it to the first train, so through the night the card never moves. Tapped, that row opens
 the **ride's page** (maintainer, 2026-10-21): the route page for the ride itself, its stops from where
-the card boards to the far end, the direction and branch it takes (so no guess at the line's). Where its ends
+the card boards to the far end, the direction and branch it takes (so no guess at the line's). Like any route
+page, a refresh never closes it: its card gone from the list, it holds as last drawn, said to be out of date and
+without its timetable's trains (maintainer, 2026-10-22). Where its ends
 are joined by more than one way (Camden Town to Kennington by either Northern line branch), the ride alone can't
 say which, so a chip per way stands where its stops go ("via Bank", "via Charing X"; else by the first station
 that tells them apart), none chosen, and the way chosen is listed (Codex on #1036); a way calling at either
@@ -2139,7 +2148,9 @@ the station ("Cannon Street"), never the street repeated. Line status and stop c
 the ⚠ on a disrupted row, the status chip on a line with no trains, the closure card at a closed
 stop. **Tapping a leg's row opens its line's page**, as a row on the list does: the line's full
 service alert, with the list's × to dismiss it line-wide (*Disruptions*), and its stops (maintainer,
-2026-09-26); back returns to the route. The page says "No disruptions reported" only once both the
+2026-09-26); back returns to the route. A refresh never closes it (maintainer, 2026-10-22): its trains gone, it
+stands on the leg's row with no train, and moves to the leg's trains when they come; it closes with its leg only
+when a new plan drops the leg. The page says "No disruptions reported" only once both the
 line's status and its stop's closure check are known and current, as the list's does: neither may
 be as old as a stale countdown (D4), as the checks a trip shown again holds are while it checks
 again. The route is still ranked by them meanwhile. **Every stop a route boards
@@ -2985,8 +2996,11 @@ as it was.
   it was. It opened the line's page from 2026-10-06, which answered "is the line OK?" but not "when
   are the next ones?", the question a rider looking at the board is asking. The line's page (*Line
   page*) is now a **View line** away, its map marking the ride's stretch where it's the ride's line
-  (the ride it was tapped for), else the board's stop. The route page closes once the board no longer
-  lists the route (its last train gone, or the rider past that board), as the main screen's does. Both
+  (the ride it was tapped for), else the board's stop. A refresh never closes the route page, as the main
+  screen's never does (maintainer, 2026-10-22): the board listing no train on the route, it stays on the route
+  with none, and shows the next when one comes; the board another stop's (the rider has boarded) or gone, it
+  holds as last drawn, said to be out of date. Only Back closes it, or the trip ending, or, after a
+  rotation, having nothing left to draw (the row last drawn isn't kept across one), as the main screen's. Both
   pages honor and make the near-me list's dismissals as every line page does (maintainer, 2026-10-08):
   an alert dismissed there is named dismissed, its work to come dismissed is left out, and a dismiss
   there lands in the same store. Their line status is the trip's own disruption check's, which asks about the board's lines (of the

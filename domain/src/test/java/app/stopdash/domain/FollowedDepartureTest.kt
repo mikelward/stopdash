@@ -257,7 +257,7 @@ class FollowedDepartureTest {
     }
 
     @Test
-    fun `a route's page moves to the platform it still leaves from, and closes once none does`() {
+    fun `a route's page moves to the platform it still leaves from, and finds none once none does`() {
         fun rail(destination: String, platform: String, inSeconds: Long) =
             Departure("great-example", "Great Example", "", destination, platform, now.plusSeconds(inSeconds), "national-rail")
         // Platform 1's row is gone; Far still leaves from Platforms 3 and 4.
@@ -271,7 +271,7 @@ class FollowedDepartureTest {
         val far = RouteFocus("Far", null)
         // The platform with its soonest train, at its own stop, never another stop's.
         assertEquals("3", routeAnchor(rows, "910GEXAMPLE", "great-example", "", far)?.platform)
-        // Its trains all gone: none, so the page closes.
+        // Its trains all gone: none, so the page stays on its way with no train.
         assertEquals(null, routeAnchor(rows, "910GEXAMPLE", "great-example", "", RouteFocus("Gone", null)))
         // Another line's or another way's rows are never it.
         assertEquals(null, routeAnchor(rows, "910GEXAMPLE", "other-line", "", far))
@@ -289,6 +289,38 @@ class FollowedDepartureTest {
             now,
         )
         assertEquals(null, routeAnchor(circle, "940GZZLUBST", "circle", "", RouteFocus("Edgware Road (Circle Line)", null)))
+    }
+
+    @Test
+    fun `a route's page finds its train once TfL leaves its way off, or names it`() {
+        fun victoria(direction: String, inSeconds: Long) =
+            Departure("victoria", "Victoria", direction, "Brixton", "Southbound - Platform 5", now.plusSeconds(inSeconds), "tube")
+        fun rows(vararg trains: Departure) = DepartureRows.across(listOf(StopArrivals("940GZZLUKSX", "King's Cross", trains.toList(), now)), now)
+        val brixton = RouteFocus("Brixton", null)
+        // Opened on the southbound row; the next fetch names no way, so the train's row is keyed afresh, by its platform.
+        val wayless = rows(victoria("", 120))
+        assertEquals("", wayless.single().direction)
+        assertEquals(wayless.single(), routeAnchor(wayless, "940GZZLUKSX", "victoria", "southbound", brixton))
+        // And the other way round: opened where TfL named none, the next fetch naming it.
+        val named = rows(victoria("southbound", 120))
+        assertEquals(named.single(), routeAnchor(named, "940GZZLUKSX", "victoria", "", brixton))
+        // Never a row another way TfL does name, nor one with none of the route's trains.
+        assertEquals(null, routeAnchor(rows(victoria("northbound", 120)), "940GZZLUKSX", "victoria", "southbound", brixton))
+        assertEquals(null, routeAnchor(wayless, "940GZZLUKSX", "victoria", "southbound", RouteFocus("Walthamstow Central", null)))
+    }
+
+    @Test
+    fun `a loop's two ways to one place, both named by none, are a guess the page doesn't make`() {
+        fun circle(platform: String, inSeconds: Long) =
+            Departure("circle", "Circle", "", "Edgware Road (Circle Line)", platform, now.plusSeconds(inSeconds), "tube")
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("940GZZLUBST", "Baker Street", listOf(circle("Westbound - Platform 5", 120), circle("Eastbound - Platform 6", 60)), now)),
+            now,
+        )
+        assertEquals(2, rows.size)
+        assertEquals(null, routeAnchor(rows, "940GZZLUBST", "circle", "inbound", RouteFocus("Edgware Road (Circle Line)", null)))
+        // One of them alone is the page's.
+        assertEquals(rows.single { it.upcoming.first().platform == "Eastbound - Platform 6" }, routeAnchor(rows.filter { it.upcoming.first().platform == "Eastbound - Platform 6" }, "940GZZLUBST", "circle", "inbound", RouteFocus("Edgware Road (Circle Line)", null)))
     }
 
     @Test

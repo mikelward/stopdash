@@ -1382,7 +1382,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a route's page follows its train to another platform, and closes once no platform has the route`() {
+    fun `a route's page follows its train to another platform, and stays on the route once no platform has it`() {
         fun train(destination: String, platform: String, minutes: Long) = Departure(
             "great-northern", "Great Northern", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail",
         )
@@ -1414,11 +1414,18 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("From Example – Platform 3").assertExists()
         composeRule.onNodeWithText("5 min").assertExists()
-        // No platform has the route any more: the page closes, back to the list.
+        // No platform has the route any more: the page stays on it, with no train, rather than closing on the
+        // refresh (maintainer, 2026-10-22).
         state = board(train("Near", "Platform 2", 6))
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("From Example", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Near").assertExists()
+        composeRule.onNodeWithText("Great Northern").assertExists()
+        composeRule.onNodeWithText("5 min").assertDoesNotExist()
+        composeRule.onNodeWithText("6 min").assertDoesNotExist()
+        // A train back on the route: the page follows it again.
+        state = board(train("Far", "Platform 4", 7), train("Near", "Platform 2", 6))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example – Platform 4").assertExists()
+        composeRule.onNodeWithText("7 min").assertExists()
     }
 
     @Test
@@ -5210,6 +5217,67 @@ class MainScreenScreenshotTest {
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("09:12").fetchSemanticsNodes().isEmpty() }
         composeRule.onAllNodesWithContentDescription("Next train 09:12 (timetable)").assertCountEquals(0)
         composeRule.onNodeWithText("Severe Delays").assertExists()
+    }
+
+    @Test
+    fun `a ride's page stays open, out of date, once its card is gone from the list`() {
+        // A refresh never closes a page the rider opened (maintainer, 2026-10-22): its card gone (the list moved on),
+        // the ride's page holds as it was, said out of date, with none of its timetable's trains.
+        val quiet = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            departures = emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val journey = victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")
+        val timetables = app.stopdash.domain.LegTimetables(
+            object : app.stopdash.domain.LegTimetableSource {
+                override suspend fun legTimetable(lineId: String, fromId: String, toId: String) = app.stopdash.domain.StopTimetable(
+                    listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(9 * 60 + 12))),
+                )
+            },
+            clock = { now },
+        )
+        val statuses = mapOf("victoria" to LineStatus("victoria", severity = 10, description = "Good Service"))
+        var journeys by mutableStateOf(listOf(journey))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                        LocalLegTimetables provides timetables,
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(
+                                listOf(manorHouse(), quiet), now.minusSeconds(60), lineStatuses = statuses,
+                                determinedLineIds = setOf("victoria"),
+                            ),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = journeys,
+                            rideGrouping = RideGrouping.RIDE,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("09:12").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("09:12").performTouchInput { click() }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Next train 09:12 (timetable)").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Status may be out of date").assertDoesNotExist()
+
+        // The card goes: the page stays, said out of date, its timetable's train left out.
+        journeys = emptyList()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onNodeWithText("Status may be out of date").assertExists()
+        composeRule.onAllNodesWithText("Next train 09:12 (timetable)").assertCountEquals(0)
     }
 
     @Test

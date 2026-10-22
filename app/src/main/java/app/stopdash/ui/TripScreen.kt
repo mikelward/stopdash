@@ -1605,13 +1605,17 @@ private fun TripContent(
     PredictiveBack(follow, onBack = back)
     // A leg's row tapped on an open route: its line's page, as a row on the main screen opens it,
     // with the line's full service alert and its stops (SPEC *Trips with a change*). Found again among
-    // the open route's rows on every refresh, so it stays live; gone with them, it closes.
+    // the open route's rows on every refresh, so it stays live; its row gone, it moves to the leg's row now,
+    // and closes only with its leg, which the plan dropped.
     var detailKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Which leg the page belongs to ([tripLegKey]): two of the list's routes can board the same line
     // at the same stop and get off at different places, so the tapped one is remembered, not guessed.
     var detailLegKey by rememberSaveable { mutableStateOf<String?>(null) }
     var detailDestination by rememberSaveable { mutableStateOf<String?>(null) }
     var detailBranch by rememberSaveable { mutableStateOf<String?>(null) }
+    // Counts each opening, so what's kept with the page (its line page) goes with that opening, not with
+    // [detailKey], which moves with its row.
+    var detailOpened by rememberSaveable { mutableIntStateOf(0) }
     // The legs a line page opens from: the open route's, else every route the list shows (a card's
     // line row opens its page too, as a row on the main screen does).
     val detailLegs = remember(open, estimates, rideLines) {
@@ -1627,7 +1631,7 @@ private fun TripContent(
     } else {
         val (leg, foundEnd) = detailEnded
         // A leg's no-trains row only while it has no live rows, as the list's status row: once trains
-        // come, the page opened from it closes (below) rather than stay on it with no times.
+        // come, the page opened from it moves to them (below) rather than stay on it with no times.
         // Dismissed alerts apply as on the list's page: a timed row keeps its times, marked dismissed.
         // A no-trains row is kept too, marked the same: unlike the list's, it's how the leg opens its
         // line's stops, not only its alert.
@@ -1651,6 +1655,10 @@ private fun TripContent(
             else -> DepartureRows.withoutDismissed(live, alerts.dismissed)
         }
         rows.firstOrNull { tripDetailKey(leg, it) == detailKey }
+            // Its row gone (its last train passed, the train moved platform, TfL keyed it afresh, or trains came to
+            // a leg that had none): the leg's row now, its soonest train or its no-trains row, so a refresh never
+            // closes the page (maintainer, 2026-10-22). Every row here is this leg's ride.
+            ?: rows.firstOrNull()
     }
     // A line row tapped, on the open route or a list card: its line's page, for that leg's row.
     fun openDetail(leg: TripLeg, row: DepartureRow, focus: RouteFocus?) {
@@ -1658,16 +1666,21 @@ private fun TripContent(
         detailKey = tripDetailKey(leg, row)
         detailDestination = focus?.destination
         detailBranch = focus?.branch
+        detailOpened++
     }
-    // Its row gone (its last train passed, or the route closed): the page stays closed rather than
-    // reopening by itself should a later refresh bring the same row back, as the list's does.
-    // Not while the page waits for its frame (a re-locate, a new walk): the page is judged gone only
-    // against a frame that lacks it.
-    LaunchedEffect(detailKey, detailRow == null, frame == null) {
-        if (detailKey != null && detailRow == null && frame != null) detailKey = null
+    // Moved to the leg's row now, it stays there. Its leg gone from the plan, the page goes with it, staying
+    // closed rather than reopening by itself should a later plan bring the leg back. Not while the page waits for
+    // its frame (a re-locate, a new walk): the leg is judged gone only against a frame that lacks it.
+    val detailRowKey = detailRow?.let { row -> detailLeg?.let { tripDetailKey(it, row) } }
+    LaunchedEffect(detailKey, detailRowKey, frame == null) {
+        if (detailKey != null && detailRowKey != null && detailRowKey != detailKey) {
+            detailKey = detailRowKey
+        } else if (detailKey != null && detailRow == null && frame != null) {
+            detailKey = null
+        }
     }
     // The route page's line page ("View line") open over it, kept with the page it's for.
-    val routeLineOpen = rememberSaveable(detailKey) { mutableStateOf(false) }
+    val routeLineOpen = rememberSaveable(detailOpened) { mutableStateOf(false) }
     // For the usage stats, the trip's routes (an open one included), a line's page opened from them, or
     // its own line's page over that. A page still open while its frame is worked out again (a rotation,
     // a re-locate) is still that page.

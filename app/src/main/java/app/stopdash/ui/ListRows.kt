@@ -86,6 +86,9 @@ internal class ListRows(
     // The journeys' far ends with a notice in force, dismissed or not: a dismissal hides a notice, it doesn't open the
     // stop, so a ride's page still holds its timetable back for one (Codex on #1036).
     val destinationsDisrupted: Set<String> = emptySet(),
+    // The stops whose departures are still loading ([DeparturesUiState.Loaded.pendingStops], an opened farther card's
+    // [DeparturesUiState.Loaded.openedLoadingStopIds]): an open route page at one isn't judged gone until it's in.
+    val loadingStopIds: Set<String> = emptySet(),
 )
 
 /**
@@ -426,6 +429,7 @@ internal fun listRowsOf(
         cardsByKey = RowsByKey.of(forCards),
         byLine = byLineOf(stops, now, lineStatuses, dismissed, alertSequences),
         destinationsDisrupted = destinationNotices.filter { it.stopDisruption != null }.mapTo(HashSet()) { it.stopId },
+        loadingStopIds = source.pendingStops.mapTo(HashSet()) { it.id } + source.openedLoadingStopIds,
     )
 }
 

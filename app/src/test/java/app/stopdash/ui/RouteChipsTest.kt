@@ -268,6 +268,57 @@ class RouteChipsTest {
     }
 
     @Test
+    fun a_tapped_routes_page_stays_on_its_route_once_its_row_is_gone_at_a_stop_with_several_ways_on() {
+        // A train's row tapped, no way chosen on the chips, and the row then gone, its train by Bank left with no other:
+        // the page stays on the route it was on, its stops listed with no live times, rather than on none of the stop's
+        // three ways (Codex on #1105).
+        val scheduler = TestCoroutineScheduler()
+        val stop = highgate.copy(lines = listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
+        var clock by mutableStateOf(now)
+        var state by mutableStateOf(DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now))
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides routes) {
+                    MainScreen(state = state, now = clock, onRefresh = {})
+                }
+            }
+        }
+        settle(scheduler)
+        composeRule.onNodeWithText("Morden", substring = true).performTouchInput { click() }
+        settle(scheduler)
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+
+        val later = now.plusSeconds(360)
+        val north = Departure("northern", "Northern", "inbound", "High Barnet", "Northbound - Platform 1", later.plusSeconds(300), "tube")
+        composeRule.runOnIdle {
+            clock = later
+            state = DeparturesUiState.Loaded(stops = listOf(stop.copy(departures = listOf(north), fetchedAt = later)), fetchedAt = later)
+        }
+        settle(scheduler, rounds = 10)
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Bank").assertCountEquals(1)
+        composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(0)
+
+        // Still so after a rotation.
+        restoration.emulateSavedInstanceStateRestore()
+        settle(scheduler, rounds = 10)
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+
+        // A train by Bank comes: the page follows it.
+        val bank = Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", later.plusSeconds(240), "tube", "Bank")
+        composeRule.runOnIdle {
+            state = DeparturesUiState.Loaded(stops = listOf(stop.copy(departures = listOf(north, bank), fetchedAt = later)), fetchedAt = later)
+        }
+        settle(scheduler, rounds = 10)
+        composeRule.onNodeWithText("No live times").assertDoesNotExist()
+        composeRule.onNodeWithText("4 min").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+    }
+
+    @Test
     fun a_page_kept_on_a_way_chosen_with_no_train_closes_on_back() {
         val scheduler = TestCoroutineScheduler()
         val stop = highgate.copy(lines = listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
@@ -302,7 +353,7 @@ class RouteChipsTest {
     }
 
     @Test
-    fun a_way_chosen_with_no_train_closes_with_its_stop() {
+    fun a_way_chosen_with_no_train_holds_once_its_stop_is_gone() {
         val scheduler = TestCoroutineScheduler()
         val stop = highgate.copy(lines = listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
         var state by mutableStateOf(DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now))
@@ -320,11 +371,12 @@ class RouteChipsTest {
         settle(scheduler)
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
 
-        // The stop itself gone from the list: nothing to stand the page on, so it closes, as a row's page does.
+        // The stop itself gone from the list: the page holds as last drawn, on the way chosen, said to be out of date,
+        // rather than close, as a row's page does (maintainer, 2026-10-22).
         composeRule.runOnIdle { state = DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = now) }
         settle(scheduler)
-        composeRule.onNodeWithText("No live times").assertDoesNotExist()
-        composeRule.onNodeWithTag("routeChoice-1").assertDoesNotExist()
+        composeRule.onNodeWithText("Status may be out of date").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
     }
 
     @Test

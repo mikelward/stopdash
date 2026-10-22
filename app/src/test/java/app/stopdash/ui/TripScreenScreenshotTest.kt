@@ -4295,8 +4295,10 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun a_no_trains_page_closes_once_trains_come() {
-        val trip = androidx.compose.runtime.mutableStateOf(planned.copy(live = planned.live - canadaWaterTube.first))
+    fun a_line_page_stays_open_as_its_trains_go_and_come() {
+        // A refresh never closes a page the rider opened (maintainer, 2026-10-22): its trains gone, it stands on the
+        // leg's no-trains row; they're back, it's on them again, as the list's page does.
+        val trip = androidx.compose.runtime.mutableStateOf(planned)
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
@@ -4311,10 +4313,19 @@ class TripScreenScreenshotTest {
         composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Jubilee"))).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
-        // Its trains come: the page opened from the no-trains row closes, back to the route.
+        composeRule.onNodeWithText("25 min").assertExists()
+
+        // Its last train gone from the fetch: the page stays, with no train, never back to the route.
+        trip.value = planned.copy(live = planned.live - canadaWaterTube.first)
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+        composeRule.onNodeWithText("25 min").assertDoesNotExist()
+
+        // Its trains come again: the page shows them.
         trip.value = planned
         composeRule.waitForIdle()
-        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(1)
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+        composeRule.onNodeWithText("25 min").assertExists()
     }
 
     @Test
