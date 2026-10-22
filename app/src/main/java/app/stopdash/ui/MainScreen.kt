@@ -7364,7 +7364,8 @@ private fun RowScope.DestinationLabelContent(forms: List<String>, branch: String
                     // and a branch standing alone (no terminus shown) carries BOTH the full terminus
                     // and the full branch, so two otherwise-identical Bank and Charing Cross rows
                     // stay distinguishable (Codex P2).
-                    modifier = resolved.branchDescription?.let { spoken ->
+                    modifier = resolved.branchDescription?.let { branchSpoken ->
+                        val spoken = branchSpoken.spokenText(LocalResources.current)
                         Modifier.semantics { contentDescription = spoken }
                     } ?: Modifier,
                 )

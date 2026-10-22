@@ -4,6 +4,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.StopArrivals
+import app.stopdash.ui.BranchSpoken
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -27,7 +28,7 @@ class WidgetLineLabelTest {
     fun `a shortened branch shows short and is spoken in full`() {
         val group = DestinationGroup("Hainault", "Newbury Park", listOf(departure))
         assertEquals("Hainault/Newbury Pk", widgetLineLabel(row, group))
-        assertEquals("Hainault via Newbury Park", widgetLineSpoken(row, group))
+        assertEquals(BranchSpoken("Newbury Park", terminus = "Hainault"), widgetLineSpoken(row, group))
     }
 
     @Test
