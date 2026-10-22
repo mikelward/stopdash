@@ -143,7 +143,8 @@ internal fun AvoidedLineChips(
     onStopAvoiding: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val lines = remember(avoided) { AvoidedLines.labeled(avoided) }
+    val line = rememberLineWord()
+    val lines = remember(avoided, line) { AvoidedLines.labeled(avoided, line) }
     if (lines.isEmpty()) return
     Row(
         modifier = modifier

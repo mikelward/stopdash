@@ -20,7 +20,7 @@ import androidx.annotation.WorkerThread
 object AvoidedLines {
     const val STOP_PREFIX = "stop:"
 
-    /** The entry avoiding line [lineId], named [label] ("Northern line"). */
+    /** The entry avoiding line [lineId], named [label] ("Northern line", [lineLabel]'s English). */
     fun key(lineId: String, label: String): String = HiddenModes.lineKey(lineId, label)
 
     /**
@@ -56,15 +56,15 @@ object AvoidedLines {
     fun avoids(lineId: String, avoided: Set<String>): Boolean = HiddenModes.isLineHidden(lineId, avoided)
 
     /**
-     * Each of [avoided] with the label it's named by, in the order avoided: a line renamed on the way back
-     * in, like any saved name ([riderLineName]), so a line avoided before a rename isn't named the old
-     * way; a stop by its name. An entry that's neither is left out.
+     * Each of [avoided] with the label it's named by, in the order avoided: a line in [line]'s words and
+     * renamed on the way back in ([savedLineLabel]), so a line avoided before a rename or a language switch
+     * isn't named the old way; a stop by its name. An entry that's neither is left out.
      */
-    fun labeled(avoided: Set<String>): List<Pair<String, String>> =
+    fun labeled(avoided: Set<String>, line: (name: String) -> String = ENGLISH_LINE): List<Pair<String, String>> =
         avoided.mapNotNull { entry ->
             when {
                 HiddenModes.isLineKey(entry) ->
-                    entry to riderLineName(entry.substringAfter('=', entry.removePrefix(HiddenModes.LINE_PREFIX)), mode = "")
+                    entry to savedLineLabel(entry.substringAfter('=', entry.removePrefix(HiddenModes.LINE_PREFIX)), line)
                 isStopKey(entry) -> entry to entry.substringAfter('=', entry.removePrefix(STOP_PREFIX))
                 else -> null
             }

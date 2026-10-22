@@ -838,7 +838,7 @@ internal fun groupName(group: ModeGroups.Group, resources: Resources): String =
  * hidden line by its own label ("Northern line"), a group by [groupName].
  */
 internal fun hiddenItemName(group: ModeGroups.Group, resources: Resources): String =
-    if (HiddenModes.isLineKey(group.key)) HiddenModes.hiddenLineLabels(setOf(group.key)).single() else groupName(group, resources)
+    if (HiddenModes.isLineKey(group.key)) HiddenModes.hiddenLineLabels(setOf(group.key), lineWord(resources)).single() else groupName(group, resources)
 
 /**
  * A group's name as it reads mid-sentence ("Hide all bus services"): the common nouns lowercase,
@@ -857,7 +857,7 @@ private val GROUP_NAMES_IN_SENTENCE = mapOf(
 internal fun hiddenGroupsLabel(hidden: Set<String>, resources: Resources): String {
     // Hidden lines follow the groups: one by its name ("Northern line"), more by their count, so the
     // banner stays one line however many are hidden.
-    val lines = HiddenModes.hiddenLineLabels(hidden)
+    val lines = HiddenModes.hiddenLineLabels(hidden, lineWord(resources))
     val linesPart = when (lines.size) {
         0 -> emptyList()
         1 -> lines

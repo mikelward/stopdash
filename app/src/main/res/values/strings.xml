@@ -404,6 +404,12 @@
     <!-- TODO: translate -->
     <string name="mode_name_cable_car" tools:ignore="MissingTranslation">Cable car</string>
     <!-- TODO: translate -->
+    <!-- A tube or named Overground line as it's named alone or mid-sentence: "Hide Northern line",
+         "Northern line closed", the hidden lines' banner and Settings' lists. %1$s is TfL's name for
+         the line, kept as TfL spells it and never translated: only "line" is, e.g. "Northern" →
+         "Northern line". The route page's title is route_detail_line_name. -->
+    <string name="line_label" tools:ignore="MissingTranslation">%1$s line</string>
+    <!-- TODO: translate -->
     <!-- The mode groups' names, in the near-me list's overflow menu, Settings and the trip's mode
          chips: "Underground" holds the Tube, the DLR and the Elizabeth line. -->
     <string name="mode_group_tube" tools:ignore="MissingTranslation">Underground</string>

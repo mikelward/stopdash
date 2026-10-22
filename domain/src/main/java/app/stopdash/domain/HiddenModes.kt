@@ -21,7 +21,9 @@ object HiddenModes {
 
     /**
      * The set entry hiding line [lineId]: `line:<id>=<label>`, carrying the [label] the banner names
-     * it by ("Northern line"), since the banner has no line data of its own to look it up in.
+     * it by ("Northern line"), since the banner has no line data of its own to look it up in. The label
+     * is [lineLabel]'s English, whatever the app's language, and read back in the app's words
+     * ([hiddenLineLabels]).
      */
     fun lineKey(lineId: String, label: String): String = "$LINE_PREFIX${lineId.lowercase()}=$label"
 
@@ -29,12 +31,12 @@ object HiddenModes {
     fun isLineKey(entry: String): Boolean = entry.startsWith(LINE_PREFIX)
 
     /**
-     * The hidden lines' labels, in the order they were hidden. Renamed on the way back in, like any
-     * saved name ([riderLineName]; the entry keeps no mode), so a line hidden before a rename isn't
-     * named the old way in the banner.
+     * The hidden lines' labels, in the order they were hidden, in [line]'s words ([savedLineLabel]): kept
+     * in English, so a language switch names them its own way, and renamed on the way back in, so a line
+     * hidden before a rename isn't named the old way in the banner.
      */
-    fun hiddenLineLabels(hidden: Set<String>): List<String> =
-        hidden.filter(::isLineKey).map { riderLineName(it.substringAfter('=', it.removePrefix(LINE_PREFIX)), mode = "") }
+    fun hiddenLineLabels(hidden: Set<String>, line: (name: String) -> String = ENGLISH_LINE): List<String> =
+        hidden.filter(::isLineKey).map { savedLineLabel(it.substringAfter('=', it.removePrefix(LINE_PREFIX)), line) }
 
     /** Whether [mode] is one of [hidden]. */
     fun isHidden(mode: String, hidden: Set<String>): Boolean = hidden.any { it.equals(mode, ignoreCase = true) }

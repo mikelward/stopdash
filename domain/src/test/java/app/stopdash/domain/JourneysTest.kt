@@ -343,6 +343,12 @@ class JourneysTest {
         // Another ride is untouched.
         assertEquals(other, hidden[1])
         assertEquals(listOf(b2 to "B2", b3 to "B3"), Journeys.hiddenLines(hidden[0]))
+        // Each in the app's words, saved in English: a tube line takes its word for "line", a bus route none.
+        val central = HiddenModes.lineKey("central", "Central line")
+        assertEquals(
+            listOf(b2 to "B2", central to "ligne Central"),
+            Journeys.hiddenLines(parkToHill.copy(hiddenLines = linkedSetOf(b2, central)), line = { "ligne $it" }),
+        )
         // Shown again by its line, whatever label it was hidden under.
         val shown = Journeys.withLineHidden(hidden, parkToHill, HiddenModes.lineKey("B2", "Renamed"), false)
         assertEquals(setOf(b3), shown[0].hiddenLines)

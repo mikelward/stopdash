@@ -373,7 +373,8 @@ fun SettingsScreen(
                     )
                 }
                 // The lines trips avoid, under what's hidden: like it, only while there are any.
-                val avoided = remember(avoidedLines) { AvoidedLines.labeled(avoidedLines) }
+                val line = rememberLineWord()
+                val avoided = remember(avoidedLines, line) { AvoidedLines.labeled(avoidedLines, line) }
                 if (avoided.isNotEmpty()) AvoidedRow(avoided, onStopAvoiding)
                 if (avoidedWriteFailed) {
                     SettingErrorRow(

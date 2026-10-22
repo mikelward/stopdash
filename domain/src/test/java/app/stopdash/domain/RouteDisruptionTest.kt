@@ -1121,7 +1121,8 @@ class RouteDisruptionTest {
         assertEquals(second, RouteDisruption.missedOnward(past, missed))
         assertEquals(second, missed.onward)
         // Named as the line reads alone, worked out with the signal so the card only reads it.
-        assertEquals(lineLabel("Blue", "tube"), missed.onwardLabel)
+        assertEquals(LineLabel("Blue", takesLine = true), missed.onwardLabel)
+        assertEquals(lineLabel("Blue", "tube"), missed.onwardLabel?.text())
         // And the entry that avoids it, likewise, so the button's tap only reads it.
         assertEquals(AvoidedLines.key(second.lineId, lineLabel("Blue", "tube")), missed.onwardAvoid)
         // And the stop gone past, should it be closed: by the ride's own stop id, as the route names it.
@@ -1137,7 +1138,7 @@ class RouteDisruptionTest {
         val past = trip.copy(legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X")
         val walking = TripProgress.Walking(walk, at(20))
         val missed = RouteDisruption.missed(past, walking)
-        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X", onward = second, onwardLabel = lineLabel("Blue", "tube"), onwardAvoid = AvoidedLines.key(second.lineId, lineLabel("Blue", "tube")), stopAvoid = AvoidedLines.stopKey("C", "C")), missed)
+        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X", onward = second, onwardLabel = LineLabel.of("Blue", "tube"), onwardAvoid = AvoidedLines.key(second.lineId, lineLabel("Blue", "tube")), stopAvoid = AvoidedLines.stopKey("C", "C")), missed)
         assertEquals(Tier.HIGH, missed?.tier)
         assertEquals("missed/0/C", missed?.key)
         // A card, with the ride it's on, and a plan again from where they are.

@@ -78,4 +78,36 @@ class ServiceNameTest {
         assertEquals("Elizabeth", lineLabel("Elizabeth line", "elizabeth-line"))
         assertEquals("134", lineLabel("134", "bus"))
     }
+
+    // A language that puts its word for "line" first, as the app's strings may.
+    private val first: (String) -> String = { "ligne $it" }
+
+    @Test
+    fun `a line is named in the app's words, a name that takes none as it is`() {
+        assertEquals("ligne Northern", lineLabel("Northern", "tube", first))
+        assertEquals("ligne Mildmay", lineLabel("Mildmay", "overground", first))
+        assertEquals("Elizabeth", lineLabel("Elizabeth line", "elizabeth-line", first))
+        assertEquals("134", lineLabel("134", "bus", first))
+        // Kept apart for a surface to say later: TfL's name as it is, and whether it takes the word.
+        assertEquals(LineLabel("Northern", takesLine = true), LineLabel.of("Northern", "tube"))
+        assertEquals(LineLabel("Elizabeth", takesLine = false), LineLabel.of("Elizabeth line", "elizabeth-line"))
+        assertEquals("ligne Northern", LineLabel.of("Northern", "tube").text(first))
+        assertEquals("134", LineLabel.of("134", "bus").text(first))
+    }
+
+    @Test
+    fun `a saved line label reads in the app's words, and as it was saved in English`() {
+        // Saved as the English label, whatever the app's language; read back in its words.
+        assertEquals("ligne Northern", savedLineLabel(lineLabel("Northern", "tube"), first))
+        assertEquals("134", savedLineLabel(lineLabel("134", "bus"), first))
+        assertEquals("Thameslink", savedLineLabel(lineLabel("Thameslink", "national-rail"), first))
+        // Every label English writes reads back the same in English, so nothing saved changes there.
+        listOf("Northern" to "tube", "Mildmay" to "overground", "134" to "bus", "Elizabeth line" to "elizabeth-line", "Thameslink" to "national-rail")
+            .forEach { (name, mode) -> assertEquals(lineLabel(name, mode), savedLineLabel(lineLabel(name, mode))) }
+        // Renamed on the way in: the Elizabeth line saved before it was named alone, and West Midlands Trains.
+        assertEquals("Elizabeth", savedLineLabel("Elizabeth line", first))
+        assertEquals("London Northwestern Railway", savedLineLabel("West Midlands Trains", first))
+        // Nothing to name but the word is left as saved.
+        assertEquals(" line", savedLineLabel(" line", first))
+    }
 }

@@ -144,6 +144,12 @@ exercises the whole spine the widget later renders from.
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker; so are `MainActivity`'s saved
       journeys oriented and measured, `rememberShownJourneys`.)
+- [ ] **Line names tidied where they come in, not where they're shown** (Codex on #1128). `riderLineName`
+      says it's applied where names come into the app, but several surfaces still apply it as they draw,
+      one name at a time on the main thread: a long-press menu's "Hide ‹line›" items and a ride's row menu
+      (through `lineLabel`), a pill's spoken name, the trip's "either" lines. Tidying each name once where
+      it's read in (TfL, the rail feed, a saved copy) would leave those surfaces only reading; a design
+      change across the stores, so the maintainer's call.
 - [ ] **Shortened names measured off the main thread** (Codex on #862): each shortened name picks the form
       that fits by measuring its text as it composes, the first time and when its width, style or font
       scale changes: `ShortenedText` (a departure's destination), `ShortenedLines` (a trip step's title),
@@ -4989,8 +4995,10 @@ and these carry the rest as their own PRs:
       (offline, or after a failed fetch), so the animation never stands for work that isn't happening.
 - [ ] **Translations pass** (standing): once the maintainer has confirmed them on a device,
       translate the strings marked `TODO: translate` into every language (terms from
-      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*).
-- [ ] **Move the English the app builds in code into string resources**, English-only and marked
+      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*). With `line_label`,
+      recheck the strings it fills, some of which say "line" themselves in a translation
+      (`on_the_way_line_closed`'s "%1$s : ligne fermée").
+- [x] **Move the English the app builds in code into string resources**, English-only and marked
       for the translations pass. Found by a sweep: ~~the widget's own text~~ (done: its stamp's
       "Updated", weekday in the app's language, notes, empty states, titles and "Disrupted:"
       description, the app's own translated strings wherever it says the same thing; the stamp
@@ -5000,11 +5008,13 @@ and these carry the rest as their own PRs:
       trip notification, the pole labels the phone sends the watch, and the widget's and the watch's own
       headers); ~~countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
       in the UI~~ (done: the app's screens, the widget and the watch); ~~"N min ago" (`RelativeTime`)~~ (done: the top bar's age stamp); ~~distances' units and their "." decimal
-      (`StopDistance`)~~ (done; the bug report keeps its English); ~~mode names (`ModeIcon`)~~ (done: search's group names and subtitles, with the count of hidden lines, what a screen reader hears for a search or favorite place's modes, and a line's mode on the line list); the
-      "<name> line" label; ~~the " to " join of a closure's stops~~ (done); ~~"via" in spoken branch labels~~ (done);
+      (`StopDistance`)~~ (done; the bug report keeps its English); ~~mode names (`ModeIcon`)~~ (done: search's group names and subtitles, with the count of hidden lines, what a screen reader hears for a search or favorite place's modes, and a line's mode on the line list); ~~the
+      "<name> line" label~~ (done: hiding and avoiding a line, a missed change's "closed", and every hidden
+      or avoided line where it's named); ~~the " to " join of a closure's stops~~ (done); ~~"via" in spoken branch labels~~ (done);
       ~~the Live Update chip's compass letters~~ (done, and the walk row's); ~~the watch's "Disrupted:"~~ (done). ~~One place parses that
-      English back (`removeSuffix(" min")`)~~ (gone with the app's countdowns), and hidden lines are saved by their English
-      label, so a language switch would leave them English.
+      English back (`removeSuffix(" min")`)~~ (gone with the app's countdowns), and ~~hidden lines are saved by their English
+      label, so a language switch would leave them English~~ (still saved so, one form whatever the
+      language, and named in the app's words as they're shown).
 
 - [ ] **Audit where content changes under the rider and should animate** (maintainer, 2026-10-09). Hold
       still comes first, but where something must appear, go or move while the rider is looking (a card

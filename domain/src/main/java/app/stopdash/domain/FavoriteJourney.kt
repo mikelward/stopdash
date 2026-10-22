@@ -158,14 +158,14 @@ object Journeys {
     }
 
     /**
-     * Each line hidden from [journey], as its entry and the label it's named by, in the order hidden: a
-     * line renamed on the way back in, as a hidden line is ([HiddenModes.hiddenLineLabels]).
+     * Each line hidden from [journey], as its entry and the label it's named by, in the order hidden: in
+     * [line]'s words and renamed on the way back in, as a hidden line is ([HiddenModes.hiddenLineLabels]).
      */
     @WorkerThread
-    fun hiddenLines(journey: FavoriteJourney): List<Pair<String, String>> =
+    fun hiddenLines(journey: FavoriteJourney, line: (name: String) -> String = ENGLISH_LINE): List<Pair<String, String>> =
         journey.hiddenLines
             .filter { HiddenModes.isLineKey(it) && journey.hides(lineIdOf(it)) }
-            .map { it to riderLineName(it.substringAfter('=', it.removePrefix(HiddenModes.LINE_PREFIX)), mode = "") }
+            .map { it to savedLineLabel(it.substringAfter('=', it.removePrefix(HiddenModes.LINE_PREFIX)), line) }
 
     /** The ids, lowercased, of the lines [journey] hides from itself ([FavoriteJourney.hides]). */
     @WorkerThread
