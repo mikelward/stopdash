@@ -18,6 +18,7 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.lineCode
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
+import app.stopdash.ui.HeaderWords
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -193,6 +194,8 @@ object TileTimeline {
         budget: Int? = null,
         // The countdowns' words, in the watch's language ([countdownWords]); English for a test.
         words: CountdownWords = CountdownWords.ENGLISH,
+        // The stop headers' words ("Platform 2", "Stop D"), in the watch's language; English for a test.
+        headers: HeaderWords = HeaderWords.ENGLISH,
     ): TileFrame {
         envelope ?: return TileFrame.NeverSynced
         if (envelope.stops.isEmpty()) {
@@ -236,10 +239,10 @@ object TileTimeline {
             c.groups.isNotEmpty() && staleStop[c.row.stopId] != true && !envelope.statusKnown(c.row.lineId, now)
         }
         var budget = budgetFor(baseNotes)
-        var selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology)
+        var selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology, words = headers)
         if (uncheckedIn(selected)) {
             budget = budgetFor(baseNotes + statusNote)
-            selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology)
+            selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology, words = headers)
         }
         val statusUnknown = uncheckedIn(selected)
         val lines = buildList {
@@ -304,7 +307,8 @@ object TileTimeline {
         now: Instant,
         topology: RouteTopology = RouteTopology.EMPTY,
         words: CountdownWords = CountdownWords.ENGLISH,
-    ): List<TileEntry> = schedule(envelope, now, topology, words = words).entries
+        headers: HeaderWords = HeaderWords.ENGLISH,
+    ): List<TileEntry> = schedule(envelope, now, topology, words = words, headers = headers).entries
 
     /**
      * The entries from [now]: a new one at each instant the frame can change — every countdown
@@ -326,30 +330,31 @@ object TileTimeline {
         screen: TileScreen? = null,
         // The most entries to make: fewer where they follow others in one timeline ([TileTrip]).
         maxScheduled: Int = MAX_SCHEDULED,
-        // The countdowns' words, every entry's ([frame]).
+        // The countdowns' and stop headers' words, every entry's ([frame]).
         words: CountdownWords = CountdownWords.ENGLISH,
+        headers: HeaderWords = HeaderWords.ENGLISH,
     ): TileSchedule {
         // A check or a stop dated after [now] (the clock moved back) is never trusted, and it stays
         // untrusted for the whole timeline: dropped or restamped stale here once, so a later frame
         // can't start showing it once its instant passes, with no break to take it away again.
         val envelope = received?.distrustingFuture(now)
         if (envelope == null || envelope.stops.isEmpty()) {
-            return TileSchedule(listOf(TileEntry(now, null, frame(envelope, now, topology, screen = screen, words = words))), refreshAt = null)
+            return TileSchedule(listOf(TileEntry(now, null, frame(envelope, now, topology, screen = screen, words = words, headers = headers))), refreshAt = null)
         }
         val (breaks, horizon) = breaks(envelope, now)
         // A break opens an entry only where the frame actually changes: a departure's tick that
         // moves no shown countdown, or a row that can't make the five lines, spends nothing.
         val closed = mutableListOf<TileEntry>()
         var start = now
-        var current = frame(envelope, now, topology, screen = screen, words = words)
+        var current = frame(envelope, now, topology, screen = screen, words = words, headers = headers)
         for ((evaluated, at) in breaks.withIndex()) {
-            val next = if (evaluated < MAX_CANDIDATES) frame(envelope, at, topology, screen = screen, words = words) else null
+            val next = if (evaluated < MAX_CANDIDATES) frame(envelope, at, topology, screen = screen, words = words, headers = headers) else null
             if (next == current) continue
             // Room is kept for the horizon's two entries; when a change doesn't fit (or the scan's
             // bound is reached), the timeline stops here with every countdown withheld.
             if (next == null || closed.size + 1 > maxScheduled - 2) {
                 closed += TileEntry(start, at, current)
-                val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen, words = words))
+                val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen, words = words, headers = headers))
                 return TileSchedule(closed + tail, refreshAt = at)
             }
             closed += TileEntry(start, at, current)
@@ -363,14 +368,14 @@ object TileTimeline {
         if (horizon > now) {
             closed += TileEntry(start, horizon, current)
             start = horizon
-            current = frame(envelope, horizon, topology, screen = screen, words = words)
+            current = frame(envelope, horizon, topology, screen = screen, words = words, headers = headers)
         }
         for ((evaluated, at) in after.withIndex()) {
-            val next = if (evaluated < MAX_CANDIDATES) frame(envelope, at, topology, screen = screen, words = words) else null
+            val next = if (evaluated < MAX_CANDIDATES) frame(envelope, at, topology, screen = screen, words = words, headers = headers) else null
             if (next == current) continue
             if (next == null || closed.size + 1 > maxScheduled - 2) {
                 closed += TileEntry(start, at, current)
-                val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen, words = words))
+                val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen, words = words, headers = headers))
                 return TileSchedule(closed + tail, refreshAt = at)
             }
             closed += TileEntry(start, at, current)

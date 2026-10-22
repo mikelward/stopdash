@@ -98,6 +98,8 @@ import app.stopdash.domain.lineCode
 import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
 import app.stopdash.ui.countdownWords
+import app.stopdash.ui.HeaderWords
+import app.stopdash.ui.headerWords
 import app.stopdash.ui.spokenText
 import app.stopdash.ui.BranchSpoken
 import app.stopdash.ui.BudgetedRow
@@ -345,6 +347,7 @@ open class StopDashWidget internal constructor(
             shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle, locale = widgetLocale(context),
             hiddenLabel = { hiddenGroupsLabel(it, context.resources) },
             countdownWords = countdownWords(context.resources),
+            headerWords = headerWords(context.resources),
         )
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
@@ -431,6 +434,8 @@ internal suspend fun widgetModels(
     hiddenLabel: (Set<String>) -> String = { it.joinToString(", ") },
     // The countdowns' words, in the app's language ([widgetModel]).
     countdownWords: CountdownWords = CountdownWords.ENGLISH,
+    // The stop headers' words ("Platform 2", "Stop D"), in the app's language ([widgetModel]).
+    headerWords: HeaderWords = HeaderWords.ENGLISH,
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
@@ -445,6 +450,7 @@ internal suspend fun widgetModels(
             rideTitle = rideTitle,
             locale = locale,
             countdownWords = countdownWords,
+            headerWords = headerWords,
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
@@ -646,6 +652,8 @@ internal fun widgetModel(
     locale: Locale = Locale.UK,
     // The countdowns' words, in the app's language: a line's stacking is decided from the countdown it draws.
     countdownWords: CountdownWords = CountdownWords.ENGLISH,
+    // The stop headers' words ("Platform 2", "Stop D"), in the app's language ([BudgetedRows.select]).
+    headerWords: HeaderWords = HeaderWords.ENGLISH,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -839,11 +847,11 @@ internal fun widgetModel(
         // by the least a departure costs instead, or the loop would never end (Codex on #759).
         val step = if (costs.header > 0) costs.header else oneLine.coerceAtLeast(1)
         while (room > budget) {
-            val rows = BudgetedRows.select(pinned, room, WIDGET_MAX_TIMES, topology, ::grouped, costs)
+            val rows = BudgetedRows.select(pinned, room, WIDGET_MAX_TIMES, topology, ::grouped, costs, headerWords)
             if (rows.size >= 2) widgetColumns(rows, budget, costs.header, ::cost)?.let { return it }
             room -= step
         }
-        return BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs) to null
+        return BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs, headerWords) to null
     }
     var columnBreak: Int? = null
     fun layout(withNote: Boolean): Triple<Boolean, Int, List<BudgetedRow>> {
@@ -866,7 +874,7 @@ internal fun widgetModel(
             return Triple(false, budget, rows)
         }
         columnBreak = null
-        return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs))
+        return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs, headerWords))
     }
     // A failed tap is said only while what it couldn't replace is out of date (in place of "Tap to
     // refresh" or "Some stops out of date"); over current data it has nothing to warn about.
@@ -887,7 +895,7 @@ internal fun widgetModel(
     // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
     // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
     if (twoColumns && columnBreak == null) {
-        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, locale = locale, countdownWords = countdownWords)
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, locale = locale, countdownWords = countdownWords, headerWords = headerWords)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.

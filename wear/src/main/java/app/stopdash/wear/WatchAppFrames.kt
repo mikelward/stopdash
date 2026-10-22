@@ -3,6 +3,7 @@ package app.stopdash.wear
 import app.stopdash.data.WatchEnvelope
 import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.RouteTopology
+import app.stopdash.ui.HeaderWords
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.delay
@@ -21,11 +22,13 @@ object WatchAppFrames {
         topology: RouteTopology = RouteTopology.EMPTY,
         // The countdowns' words, in the watch's language ([countdownWords]); English for a test.
         words: CountdownWords = CountdownWords.ENGLISH,
+        // The stop headers' words ("Platform 2", "Stop D"), in the watch's language; English for a test.
+        headers: HeaderWords = HeaderWords.ENGLISH,
     ): TileFrame? =
         when (received) {
             WatchReceived.Loading -> null
             WatchReceived.NeverSynced -> TileFrame.NeverSynced
-            is WatchReceived.Received -> TileTimeline.frame(received.envelope, now, topology, budget = TileTimeline.UNBOUNDED, words = words)
+            is WatchReceived.Received -> TileTimeline.frame(received.envelope, now, topology, budget = TileTimeline.UNBOUNDED, words = words, headers = headers)
         }
 
     /**
@@ -43,6 +46,7 @@ object WatchAppFrames {
         // ticker last judged.
         current: (WatchReceived.Received) -> WatchEnvelope = { it.envelope },
         words: CountdownWords = CountdownWords.ENGLISH,
+        headers: HeaderWords = HeaderWords.ENGLISH,
         emit: (TileFrame?) -> Unit,
     ) {
         var received = stored
@@ -58,7 +62,7 @@ object WatchAppFrames {
             received = (received as? WatchReceived.Received)
                 ?.let { it.copy(envelope = current(it).distrustingFuture(now), arrivedIn = null) }
                 ?: received
-            emit(at(received, now, topology, words))
+            emit(at(received, now, topology, words, headers))
             val next = TileTimeline.nextChange((received as? WatchReceived.Received)?.envelope, now) ?: return
             delay(Duration.between(clock(), next).toMillis().coerceAtLeast(0))
         }

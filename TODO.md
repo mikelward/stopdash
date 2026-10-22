@@ -4968,11 +4968,11 @@ and these carry the rest as their own PRs:
       for the translations pass. Found by a sweep: ~~the widget's own text~~ (done: its stamp's
       "Updated", weekday in the app's language, notes, empty states, titles and "Disrupted:"
       description, the app's own translated strings wherever it says the same thing; the stamp
-      no longer parsed back for a narrow widget); stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
-      (`HeaderQualifier`; `HeaderWords` done for the app's stop headers, platform views, a ride's stop
+      no longer parsed back for a narrow widget); ~~stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
+      (`HeaderQualifier`)~~ (done, through `HeaderWords`: the app's stop headers, platform views, a ride's stop
       headings with their "Plat" short form, the route page's "From", the line stop page, closure titles, the
-      trip notification and the pole labels the phone sends the watch; still English: the widget's and the
-      watch's own headers via `BudgetedRows`); ~~countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
+      trip notification, the pole labels the phone sends the watch, and the widget's and the watch's own
+      headers); ~~countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
       in the UI~~ (done: the app's screens, the widget and the watch); ~~"N min ago" (`RelativeTime`)~~ (done: the top bar's age stamp); ~~distances' units and their "." decimal
       (`StopDistance`)~~ (done; the bug report keeps its English); mode names (`ModeIcon`; ~~search's group names and subtitles~~ done, with the count of hidden lines); the
       "<name> line" label; ~~the " to " join of a closure's stops~~ (done); ~~"via" in spoken branch labels~~ (done);

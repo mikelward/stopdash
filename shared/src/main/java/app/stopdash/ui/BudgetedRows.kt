@@ -58,7 +58,8 @@ object BudgetedRows {
      * destination lines of it that fit (at most [maxTimes] times each) and, on the first row of
      * each place group that shows one, its stop header. [grouped] groups rows by place for
      * display; the widget passes its own to keep the journeys a band of their own, and to name a
-     * station even when it is the only one.
+     * station even when it is the only one. A header's "Platform 2" or "Stop D" is in [words], the
+     * surface's language.
      */
     fun select(
         pinned: List<DepartureRow>,
@@ -67,6 +68,7 @@ object BudgetedRows {
         topology: RouteTopology,
         grouped: (List<DepartureRow>) -> List<StopGroup> = { StopGrouping.groupByStop(it, warningsLead = false) },
         costs: LineCosts = LineCosts.UNIT,
+        words: HeaderWords = HeaderWords.ENGLISH,
     ): List<BudgetedRow> {
         // Choose which rows fit in PRIORITY order (fresh before stale, starred first — `pinned`),
         // counting the headers the chosen set will draw; only then group the chosen rows by place
@@ -107,8 +109,8 @@ object BudgetedRows {
         fun headerOf(group: StopGroup): GroupHeader? = if (headed(group)) {
             val full = context(group)
             GroupHeader(
-                text = groupHeaderTitle(full.stopName, full.qualifier),
-                spoken = full.spokenName.ifEmpty { groupHeaderSpoken(full.qualifier)?.let { "${full.stopName}, $it" } ?: full.stopName },
+                text = groupHeaderTitle(full.stopName, full.qualifier, words),
+                spoken = full.spokenName.ifEmpty { groupHeaderSpoken(full.qualifier, words)?.let { "${full.stopName}, $it" } ?: full.stopName },
             )
         } else {
             null
