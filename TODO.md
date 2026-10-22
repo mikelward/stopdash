@@ -35,6 +35,12 @@ exercises the whole spine the widget later renders from.
         worker by hand and rely on effects running at once) and hung two classes. Move only the
         real-thread tests into sibling classes with `effectContext = StandardTestDispatcher()` and the
         state-write thread check `LicensesOffMainTest` has; deferred until one of them flakes.
+    - [x] The trip screenshot tests (2026-10-22): `a_routes_line_page_never_holds_a_verdict_its_check_no_longer_stands_behind`
+          threw `CalledFromWrongThreadException` on CI. Rather than a sibling class, `RealWorkerComposeRule`
+          picks the rule per test: the 26 marked `@RealWorker` queue their effects, the rest keep the default.
+          Three that step a held worker run by run still need effects at once and stay unmarked
+          (`a_replans_cards_arrive_with_their_headers`, `an_open_rides_rows_come_with_its_frame_never_after_its_stop_count`,
+          `back_closes_a_route_asked_for_before_its_frame_is_in`). The other classes above wait for a flake of their own.
 - [ ] Fix the flaky `MainViewModelTest.a relocation's farther cards are re-measured on the worker thread`.
       It passes alone but failed once in a full `:app:testDebugUnitTest` run on 2026-10-11 with "work
       reached the worker after it stopped": something still hands work to the test's worker after
@@ -51,6 +57,8 @@ exercises the whole spine the widget later renders from.
       reproduced on 2026-10-22 in 10 runs alone (4 on one core), 3 full-class runs on one core, or a worker
       stepped through its jobs in batches of 1 to all, FIFO and LIFO, a frame after each. The test now names
       what the page showed in its place (its list or not, and which of its waits), so the next failure says.
+      Since 2026-10-22 it runs with its effects queued (`@RealWorker`): an effect resuming on its real worker
+      may have been the cause, as it was for a sibling test that threw `CalledFromWrongThreadException`.
 - [x] Fix the flaky `QuietConnectionsTest."a trip's plan waiting on a connection that went quiet is asked
       once more, with a rate token, and answers"` (once on 2026-10-20: the plan asked three times, not
       twice). Not a timer but the app: a request canceled for its quiet connection failed before the close,
