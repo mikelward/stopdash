@@ -114,7 +114,66 @@ class TflRateLimiterTest {
     }
 
     @Test
+    fun `a refusal from TfL empties the bucket, so the next request waits for a refill`() = runTest {
+        // Just restarted: the bucket is full, but TfL still counts the requests before the restart.
+        val limiter = limiter(capacity = 3, refillPerMinute = 60)
+        limiter.acquire()
+        limiter.refused(retryAfterMillis = null)
+        limiter.acquire()
+        assertEquals("the burst left is gone with TfL's refusal", listOf(1000L), slept)
+    }
+
+    @Test
+    fun `a refusal holds every request for the wait TfL names`() = runTest {
+        val limiter = limiter(capacity = 3, refillPerMinute = 60, maxWaitMillis = 10_000)
+        limiter.acquire()
+        limiter.refused(retryAfterMillis = 5_000)
+        limiter.acquire()
+        // Refilled meanwhile, so the next goes at once.
+        limiter.acquire()
+        assertEquals("nothing goes before TfL's wait is over", listOf(5_000L), slept)
+    }
+
+    @Test
+    fun `a named wait past the bound turns requests away unsent, then lets them wait it out`() = runTest {
+        val limiter = limiter(capacity = 3, refillPerMinute = 60, maxWaitMillis = 10_000)
+        limiter.acquire()
+        limiter.refused(retryAfterMillis = 30_000)
+        var rateLimited = false
+        try {
+            limiter.acquire()
+        } catch (e: TflException.RateLimited) {
+            rateLimited = true
+        }
+        assertTrue("a request that couldn't go within the bound is turned away", rateLimited)
+        assertEquals("without sleeping first", emptyList<Long>(), slept)
+        now += 20_000
+        limiter.acquire()
+        assertEquals("once within the bound, it waits for the rest", listOf(10_000L), slept)
+    }
+
+    @Test
+    fun `a later refusal never shortens a wait already held`() = runTest {
+        val limiter = limiter(capacity = 3, refillPerMinute = 60, maxWaitMillis = 60_000)
+        limiter.acquire()
+        limiter.refused(retryAfterMillis = 20_000)
+        limiter.refused(retryAfterMillis = 5_000)
+        limiter.acquire()
+        assertEquals(listOf(20_000L), slept)
+    }
+
+    @Test
+    fun `a named wait is held a minute at most`() = runTest {
+        val limiter = limiter(capacity = 3, refillPerMinute = 60, maxWaitMillis = 600_000)
+        limiter.acquire()
+        limiter.refused(retryAfterMillis = 600_000)
+        limiter.acquire()
+        assertEquals(listOf(TokenBucketRateLimiter.MAX_HOLD_MILLIS), slept)
+    }
+
+    @Test
     fun `UNLIMITED never waits`() = runTest {
+        TflRateLimiter.UNLIMITED.refused(retryAfterMillis = 60_000)
         repeat(1000) { TflRateLimiter.UNLIMITED.acquire() }
         assertEquals(emptyList<Long>(), slept)
     }

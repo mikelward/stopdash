@@ -25,6 +25,15 @@ interface TflRateLimiter {
      */
     suspend fun acquire()
 
+    /**
+     * TfL refused a request for its rate limit (HTTP 429), saying to ask again in [retryAfterMillis]
+     * when it said. TfL's count is then past this limiter's (which starts over on a restart while
+     * TfL's doesn't), so nothing more is sent before that: a request meanwhile waits for it in
+     * [acquire], or, past the bounded wait, is turned away as [TflException.RateLimited] unsent,
+     * rather than fired at a limit TfL is still refusing. A limiter with no budget ignores it.
+     */
+    suspend fun refused(retryAfterMillis: Long?) {}
+
     companion object {
         /**
          * A no-op limiter — every [acquire] returns at once. The default where no shared bucket is
@@ -51,6 +60,10 @@ interface TflRateLimiter {
  * fired at once, the case that otherwise hits the limit right after an app update (maintainer,
  * 2026-09-22). A request that would wait longer than [maxWaitMillis] throws
  * [TflException.RateLimited] instead of deferring a background refresh indefinitely.
+ *
+ * TfL's own refusal is taken as the truer count ([refused]): the bucket is emptied, and no token is
+ * granted before the wait TfL named (at most [MAX_HOLD_MILLIS]), so a burst that ran past the limit
+ * (a cold start right after an update) isn't followed by more requests TfL refuses too.
  *
  * A token is consumed **only when granted**, never reserved ahead: so a wait canceled by a
  * superseded refresh (which MainViewModel does routinely) reclaims nothing and can't accumulate
@@ -91,6 +104,9 @@ class TokenBucketRateLimiter(
     // clock's absolute origin doesn't matter (only elapsed time does).
     private var lastRefillMillis: Long = Long.MIN_VALUE
 
+    // No token is granted before this, when TfL last said to wait ([refused]); unset otherwise.
+    private var heldUntilMillis: Long = Long.MIN_VALUE
+
     override suspend fun acquire() {
         val deadline = nowMillis() + maxWaitMillis
         while (true) {
@@ -98,19 +114,33 @@ class TokenBucketRateLimiter(
                 mutex.withLock {
                     val now = nowMillis()
                     refill(now)
-                    if (availableTokens >= 1.0) {
+                    // Time left of the wait TfL named, if any.
+                    val held = if (heldUntilMillis > now) heldUntilMillis - now else 0L
+                    if (held == 0L && availableTokens >= 1.0) {
                         // Consume only on grant — a wait canceled before here reclaims nothing.
                         availableTokens -= 1.0
                         return
                     }
-                    // Time until the bucket next holds a whole token.
-                    val wait = ceil((1.0 - availableTokens) / tokensPerMillis).toLong()
+                    // Time until the bucket next holds a whole token, and TfL's wait is over.
+                    val refillWait = if (availableTokens >= 1.0) 0L else ceil((1.0 - availableTokens) / tokensPerMillis).toLong()
+                    val wait = maxOf(held, refillWait)
                     if (now + wait > deadline) {
                         throw TflException.RateLimited(null)
                     }
                     wait
                 }
             if (waitMillis > 0) sleep(waitMillis)
+        }
+    }
+
+    override suspend fun refused(retryAfterMillis: Long?) {
+        mutex.withLock {
+            val now = nowMillis()
+            refill(now)
+            availableTokens = 0.0
+            if (retryAfterMillis != null && retryAfterMillis > 0) {
+                heldUntilMillis = maxOf(heldUntilMillis, now + minOf(retryAfterMillis, MAX_HOLD_MILLIS))
+            }
         }
     }
 
@@ -128,5 +158,10 @@ class TokenBucketRateLimiter(
         val elapsed = now - lastRefillMillis
         availableTokens = minOf(capacity.toDouble(), availableTokens + elapsed * tokensPerMillis)
         lastRefillMillis = now
+    }
+
+    companion object {
+        /** The longest wait TfL can name that's held: its budgets are per minute, so none runs past one. */
+        const val MAX_HOLD_MILLIS = 60_000L
     }
 }
