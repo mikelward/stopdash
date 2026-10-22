@@ -46,11 +46,11 @@ class LineMap internal constructor(
      * a one-way street, or to a stand its way back doesn't start from, runs one way only. [arrives] on
      * the rail into the row a track ends at, where the track is drawn once rather than at every row it
      * passes. [offRoute] on a route page's map, for another route than its train's, drawn dashed, with no rows of
-     * its own ([LineMap.of]'s `ridesOpen`): one track between two of the train's stations it runs between, or a
-     * stub half a row long where it runs on to the line's end. Such a track can stand for several, drawn closed where
-     * any is; [stationClosedDown], [stationClosedUp], [stationUpcomingDown] and [stationUpcomingUp] are then the one
-     * it meets this row's station by, which alone say whether trains call there (Codex on #1102). Elsewhere, the
-     * track's own.
+     * its own ([LineMap.of]'s `ridesOpen`): one track between two of the train's stations it runs between, whichever
+     * stations it runs through, or a stub half a row long where it runs on to the line's end. Where it meets one of the
+     * train's stations it's the track it is there, which is all whether that station has trains reads; [closedAlong]
+     * where a closure shuts any of that route's tracks with no rows, so the dashed track is drawn closed though the
+     * track it is may be open.
      */
     data class Rail(
         val from: Int,
@@ -67,19 +67,16 @@ class LineMap internal constructor(
         val upcomingDown: Map<Int, java.time.LocalDate> = emptyMap(),
         val upcomingUp: Map<Int, java.time.LocalDate> = emptyMap(),
         val offRoute: Boolean = false,
-        val stationClosedDown: Boolean = closedGoingDown,
-        val stationClosedUp: Boolean = closedGoingUp,
-        val stationUpcomingDown: Map<Int, java.time.LocalDate> = upcomingDown,
-        val stationUpcomingUp: Map<Int, java.time.LocalDate> = upcomingUp,
+        val closedAlong: Boolean = false,
     ) {
         /** Run one way only: drawn with an arrow the way it's run. */
         val oneWay: Boolean = runsDown != runsUp
 
-        /** Closed one way or both: drawn closed. */
-        val closed: Boolean = closedGoingDown || closedGoingUp
+        /** The track closed one way or both. */
+        val trackClosed: Boolean = closedGoingDown || closedGoingUp
 
-        /** The track it meets its station by closed one way or both ([stationClosedDown]). */
-        val stationClosed: Boolean = stationClosedDown || stationClosedUp
+        /** Drawn closed: the track, or another route's it's drawn for ([closedAlong]). */
+        val closed: Boolean = trackClosed || closedAlong
 
         /** Shut the way the trip rides it: a closure the other way doesn't touch the trip (Codex, #613). */
         val closedRidden: Boolean = closedGoingDown && riddenGoingDown || closedGoingUp && riddenGoingUp
@@ -119,8 +116,8 @@ class LineMap internal constructor(
         private val own: List<Rail> = top.filter { it.to == column } + bottom.filter { it.from == column }
 
         // Every track to it closed going down the map, or going up it: no train calls going that way.
-        private val noneDown: Boolean = own.isNotEmpty() && own.all { it.stationClosedDown }
-        private val noneUp: Boolean = own.isNotEmpty() && own.all { it.stationClosedUp }
+        private val noneDown: Boolean = own.isNotEmpty() && own.all { it.closedGoingDown }
+        private val noneUp: Boolean = own.isNotEmpty() && own.all { it.closedGoingUp }
 
         /** Every track to it closed both ways: no train calls. */
         val unserved: Boolean = noneDown && noneUp
@@ -139,18 +136,18 @@ class LineMap internal constructor(
             null
         } else {
             // Each way a track is run: a one-way track (a bus round a loop) shut its one way leaves none (Codex, #707).
-            (own.first().stationUpcomingDown + own.first().stationUpcomingUp).entries
+            (own.first().upcomingDown + own.first().upcomingUp).entries
                 .filter { (closure, _) ->
-                    own.all { (!it.runsDown || closure in it.stationUpcomingDown) && (!it.runsUp || closure in it.stationUpcomingUp) }
+                    own.all { (!it.runsDown || closure in it.upcomingDown) && (!it.runsUp || closure in it.upcomingUp) }
                 }
                 .minOfOrNull { it.value }
         }
 
         /** A closed track to it while it's still served both ways: where a closure begins (Kennington's). */
-        val besideClosure: Boolean = !unserved && !servedOneWay && own.any { it.stationClosed }
+        val besideClosure: Boolean = !unserved && !servedOneWay && own.any { it.trackClosed }
 
         /** What the alert places here: a closed track to it, or its name in the alert's words. */
-        val alerted: Boolean = marked || own.any { it.stationClosed }
+        val alerted: Boolean = marked || own.any { it.trackClosed }
 
 
         /**
@@ -269,7 +266,7 @@ class LineMap internal constructor(
     private val inside: BooleanArray = BooleanArray(rows.size) { k ->
         val row = rows[k]
         val own = row.top.filter { it.to == row.column } + row.bottom.filter { it.from == row.column }
-        row.alerted && !row.named && (own.all { it.stationClosed } || own.none { it.stationClosed }) &&
+        row.alerted && !row.named && (own.all { it.trackClosed } || own.none { it.trackClosed }) &&
             neighbor(k, up = true)?.alerted == true && neighbor(k, up = false)?.alerted == true
     }
 
@@ -473,8 +470,19 @@ class LineMap internal constructor(
     private fun runFold(key: String, from: Int, until: Int): Item.Fold {
         val span = rows.subList(from, until)
         val column = span.first().column
-        val passing = span.first().top.filter { it.from == it.to && it.from != column }
-            .map { FoldRail(it.from, folded = false, fromTop = true, toBottom = true, closed = it.closed, offRoute = it.offRoute) }
+        // Every other column a rail runs straight into it from above or on out of it below: a track passing by, or a
+        // stub ending in its first row or starting in its last, drawn only from the side it runs in or out of.
+        fun straight(rails: List<Rail>, c: Int) = rails.any { it.from == c && it.to == c }
+        val passing = (span.first().top.map { it.from } + span.last().bottom.map { it.to })
+            .filter { c -> c != column && (straight(span.first().top, c) || straight(span.last().bottom, c)) }
+            .distinct()
+            .map { c ->
+                val along = span.flatMap { row -> (row.top + row.bottom).filter { it.from == c && it.to == c } }
+                FoldRail(
+                    c, folded = false, fromTop = straight(span.first().top, c), toBottom = straight(span.last().bottom, c),
+                    closed = along.any { it.closed }, offRoute = along.all { it.offRoute },
+                )
+            }
         // Its own track drawn closed where a closure shuts any of it, into or out of the fold included: not another
         // route's stub meeting it (Codex on #1102).
         val closed = span.any { row ->
@@ -672,39 +680,14 @@ class LineMap internal constructor(
             // A route page's train's path, kept in one column ([layOut]).
             val path = if (routeAlone) ridden else emptySet()
             // A route page's map has its train's route alone, behind where it's boarded and on from there: every
-            // other route's stations have no row, its tracks drawn dashed where they meet the train's, and the
-            // train's rail is the rightmost, beside the names (maintainer, 2026-10-22). Laid out as the routes run
-            // through what's kept, another route's way between two kept stations a stop of its own standing in for
-            // it ([standIns]), its row dropped once laid out, since every rail runs straight through it: so it keeps a
-            // track of its own beside any the two share, and what's placed on the tracks it stands for is drawn on it
-            // ([along]). Each stub is kept by the station it runs to or from (Codex on #1102).
+            // other route's tracks drawn dashed where they meet the train's, its stations with no rows, and the
+            // train's rail the rightmost, beside the names (maintainer, 2026-10-22). Laid out from the train's
+            // stations alone, no column carried over from the whole line ([alone]; maintainer, 2026-10-22).
             val own = if (routeAlone) ownRoute(graph, ridden, riddenTracks, way.travel) else null
             val kept = own?.first
-            val standIns = HashMap<String, List<String>>()
-            val into = HashMap<String, MutableSet<List<String>>>()
-            val outOf = HashMap<String, MutableSet<List<String>>>()
-            val laid = kept?.let { k ->
-                Graph(
-                    nodeRoutes.mapNotNull { route ->
-                        val at = route.indices.filter { route[it] in k }
-                        if (at.isEmpty()) return@mapNotNull null
-                        if (at.first() > 0) into.getOrPut(route[at.first()]) { HashSet() } += route.subList(0, at.first() + 1)
-                        if (at.last() < route.lastIndex) outOf.getOrPut(route[at.last()]) { HashSet() } += route.subList(at.last(), route.size)
-                        buildList {
-                            at.forEachIndexed { n, i ->
-                                if (n > 0 && i > at[n - 1] + 1) {
-                                    val run = route.subList(at[n - 1], i + 1)
-                                    val id = STAND_IN + run.joinToString(">")
-                                    standIns[id] = run
-                                    add(id)
-                                }
-                                add(route[i])
-                            }
-                        }
-                    },
-                )
-            } ?: graph
-            val laidRemaining = if (kept == null) remaining else laid.remaining() ?: return null
+            // A track between two of the train's stations that isn't the train's is another route's too, dashed
+            // (Codex on #1102).
+            val ownTracks = own?.second
             fun rail(from: String, to: String) = Rail(
                 0, 0,
                 closedGoingDown = "${base(from)}>${base(to)}" in closed,
@@ -715,64 +698,25 @@ class LineMap internal constructor(
                 runsUp = way.travel?.contains("${base(to)}>${base(from)}") ?: true,
                 upcomingDown = upcomingTracks["${base(from)}>${base(to)}"].orEmpty(),
                 upcomingUp = upcomingTracks["${base(to)}>${base(from)}"].orEmpty(),
+                offRoute = ownTracks != null && "$from>$to" !in ownTracks,
             )
-            // Another route's dashed track standing for [runs]: closed where a track of theirs is, shut to come the
-            // same, and run each way one of them runs whole. Whether trains call at the station it meets is the
-            // track it meets it by, [first] of each run or its last: only every one of those closed shuts it, and
-            // only a closure to come shutting each of them run that way, as each track's own runs are read on the
-            // line's map (Codex on #1102).
-            fun along(runs: Collection<List<String>>, first: Boolean): Rail {
-                val tracks = runs.flatMap { it.zipWithNext() }
-                val meets = runs.map { if (first) it[0] to it[1] else it[it.lastIndex - 1] to it.last() }
-                val travel = way.travel
-                fun runWhole(back: Boolean) = travel == null ||
-                    runs.any { run -> run.zipWithNext().all { (a, b) -> (if (back) "${base(b)}>${base(a)}" else "${base(a)}>${base(b)}") in travel } }
-                fun shut(a: String, b: String) = "${base(a)}>${base(b)}" in closed
-                fun toCome(a: String, b: String) = upcomingTracks["${base(a)}>${base(b)}"].orEmpty()
-                fun isRun(a: String, b: String) = travel == null || "${base(a)}>${base(b)}" in travel
-                fun common(each: List<Map<Int, java.time.LocalDate>>) =
-                    if (each.isEmpty()) emptyMap() else each.reduce { all, days -> all.filterKeys { it in days } }
-                return Rail(
-                    0, 0,
-                    closedGoingDown = tracks.any { (a, b) -> shut(a, b) },
-                    closedGoingUp = tracks.any { (a, b) -> shut(b, a) },
-                    runsDown = runWhole(back = false),
-                    runsUp = runWhole(back = true),
-                    upcomingDown = tracks.fold(emptyMap()) { days, (a, b) -> days + toCome(a, b) },
-                    upcomingUp = tracks.fold(emptyMap()) { days, (a, b) -> days + toCome(b, a) },
-                    offRoute = true,
-                    stationClosedDown = meets.all { (a, b) -> shut(a, b) },
-                    stationClosedUp = meets.all { (a, b) -> shut(b, a) },
-                    stationUpcomingDown = common(meets.filter { (a, b) -> isRun(a, b) }.map { (a, b) -> toCome(a, b) }),
-                    stationUpcomingUp = common(meets.filter { (a, b) -> isRun(b, a) }.map { (a, b) -> toCome(b, a) }),
-                )
+            val alone = if (kept == null || ownTracks == null) {
+                null
+            } else {
+                alone(graph, kept, ownTracks, path, { a, b -> rail(a, b) }) { a, b -> "${base(a)}>${base(b)}" in closed } ?: return null
             }
-            // A track between two of the train's stations that isn't the train's: another route's, dashed (Codex on
-            // #1102), drawn as the track it is.
-            val ownTracks = own?.second
-            val rows = layOut(laid, laidRemaining, path, flags = graph) { from, to ->
-                standIns[to]?.let { along(listOf(it), first = true) }
-                    ?: standIns[from]?.let { along(listOf(it), first = false) }
-                    ?: rail(from, to).let { if (ownTracks != null && "$from>$to" !in ownTracks) it.copy(offRoute = true) else it }
-            }?.filter { it.key !in standIns } ?: return null
+            val rows = if (alone == null) {
+                val onward = graph.nodes.associateWith { node -> graph.nextOf(node).map { Track(node, it, rail(node, it)) } }
+                layOut(graph.nodes, onward, remaining, graph) ?: return null
+            } else {
+                alone.rows
+            }
             // Each closure, none of its own track on the map (the way back it shuts left off), is placed by
             // its words, as an alert TfL doesn't place, rather than leave the map looking unaffected there
-            // (Codex, #606). On a route page's map, the tracks drawn are the train's route's and those its dashed
-            // tracks and stubs stand for: a route sharing no station with the train's is drawn nowhere, so a
-            // closure on it is placed by its words too (Codex on #1102).
-            val tracks = if (kept == null) {
-                graph.nodes.flatMapTo(HashSet()) { node -> graph.nextOf(node).map { "${base(node)}>${base(it)}" } }
-            } else {
-                HashSet<String>().apply {
-                    for (node in laid.nodes) {
-                        if (node in standIns) continue
-                        for (next in laid.nextOf(node)) if (next !in standIns) add("${base(node)}>${base(next)}")
-                    }
-                    for (run in standIns.values + into.values.flatten() + outOf.values.flatten()) {
-                        run.zipWithNext { a, b -> add("${base(a)}>${base(b)}") }
-                    }
-                }
-            }
+            // (Codex, #606). On a route page's map, the tracks drawn are the train's route's and those of the
+            // other routes meeting it ([Alone.drawn]): a route sharing no station with the train's is drawn
+            // nowhere, so a closure on it is placed by its words too (Codex on #1102).
+            val tracks = alone?.drawn ?: graph.nodes.flatMapTo(HashSet()) { node -> graph.nextOf(node).map { "${base(node)}>${base(it)}" } }
             fun landed(closure: PartClosure) = closure.sections.any { section ->
                 drawn(section).zipWithNext().any { (a, b) -> "$a>$b" in tracks || "$b>$a" in tracks }
             }
@@ -816,8 +760,7 @@ class LineMap internal constructor(
                     onPath = ridesOpen && row.key in ridden,
                 )
             }
-            // Where another route runs to the train's from stations left off, or on from it to them, a dashed stub.
-            val drawnRows = if (kept == null) all else stubbed(rightmost(all), into.mapValues { along(it.value, first = false) }, outOf.mapValues { along(it.value, first = true) })
+            val drawnRows = if (kept == null) all else rightmost(all)
             val columns = drawnRows.maxOf { row -> maxOf(row.column, (row.top + row.bottom).maxOfOrNull { maxOf(it.from, it.to) } ?: 0) } + 1
             if (columns > MAX_COLUMNS) return null
             return LineMap(
@@ -856,52 +799,103 @@ class LineMap internal constructor(
             return kept to own
         }
 
-        // [rows] with a dashed stub half a row long where another route runs [into] a station from stations left off
-        // the map above it, and out of one ([outOf]) to them below it, each drawn as the rail it's keyed to, in the
-        // nearest column free there, left of it first: a column of its own at the left where none is. Drawn beside a
-        // dashed track meeting it the same side too, so what's placed on the stub's tracks is never lost (Codex on
-        // #1102).
-        private fun stubbed(rows: List<Row>, into: Map<String, Rail>, outOf: Map<String, Rail>): List<Row> {
-            var out = rows.toMutableList()
-            fun touches(rails: List<Rail>, column: Int) = rails.any { it.from == column || it.to == column }
-            fun width() = out.maxOf { row -> maxOf(row.column, (row.top + row.bottom).maxOfOrNull { maxOf(it.from, it.to) } ?: 0) } + 1
-            // The column a stub from row [i] takes, its other half in row [j]'s [other] half; null with none free.
-            fun column(i: Int, j: Int?, below: Boolean): Int? {
-                val row = out[i]
-                val near = out.getOrNull(j ?: -1)
-                return ((row.column - 1 downTo 0) + (row.column + 1 until width())).firstOrNull { c ->
-                    !touches(if (below) row.bottom else row.top, c) &&
-                        (near == null || near.column != c && !touches(if (below) near.top else near.bottom, c))
+        // A route page's map of its train's route alone: its [rows] and the tracks they draw, each a stop's to the next.
+        private class Alone(val rows: List<Row>, val drawn: Set<String>)
+
+        // A route page's map of its train's route alone ([kept], its own tracks [own], "a>b" either way round, its path
+        // [path]): laid out from those stations only, each track between two of them the track it is ([rail]), so no
+        // column is carried over from the whole line (maintainer, 2026-10-22). The other routes' stations are taken in
+        // ways, each joined by the tracks between them. Each way down the map from one of the train's stations to
+        // another is one dashed track between them, its half out of the one the track it leaves by and its half into
+        // the other the track it comes in by, so whether trains call at either reads those tracks as the line's own map
+        // does. Any other track of a way meeting one of the train's stations, one only to or from the line's end, is a
+        // stub half a row long there, one per track, and a way meeting none isn't drawn. Either is drawn closed where a
+        // closure shuts any of the way's tracks ([shut], from the upper stop to the lower, or the way back;
+        // [Rail.closedAlong]). Null where the train's stations can't be laid out so ([layOut]).
+        private fun alone(
+            graph: Graph,
+            kept: Set<String>,
+            own: Set<String>,
+            path: Set<String>,
+            rail: (String, String) -> Rail,
+            shut: (String, String) -> Boolean,
+        ): Alone? {
+            val way = HashMap<String, Int>()
+            val ways = ArrayList<Set<String>>()
+            for (node in graph.nodes) {
+                if (node in kept || node in way) continue
+                val members = LinkedHashSet<String>()
+                val queue = ArrayDeque(listOf(node))
+                way[node] = ways.size
+                while (queue.isNotEmpty()) {
+                    val n = queue.removeFirst()
+                    members += n
+                    for (m in graph.nextOf(n) + graph.previousOf(n)) {
+                        if (m in kept || m in way) continue
+                        way[m] = ways.size
+                        queue += m
+                    }
+                }
+                ways += members
+            }
+            // Each way's tracks, those to and from the train's stations included, from the upper stop to the lower.
+            val closedAlong = ways.map { members ->
+                members.any { n ->
+                    (graph.nextOf(n).map { n to it } + graph.previousOf(n).filter { it in kept }.map { it to n })
+                        .any { (a, b) -> shut(a, b) || shut(b, a) }
                 }
             }
-            fun shifted() = out.map { row ->
-                fun Rail.moved() = copy(from = from + 1, to = to + 1)
-                row.copy(column = row.column + 1, top = row.top.map { it.moved() }, bottom = row.bottom.map { it.moved() })
-            }.toMutableList()
-            for (i in out.indices) {
-                val leaving = outOf[out[i].key]
-                if (leaving != null) {
-                    val next = (i + 1).takeIf { it < out.size }
-                    val c = column(i, next, below = true) ?: run { out = shifted(); 0 }
-                    out[i] = out[i].copy(bottom = out[i].bottom + leaving.copy(from = out[i].column, to = c))
-                    if (next != null) out[next] = out[next].copy(top = out[next].top + leaving.copy(from = c, to = c))
-                }
-                val coming = into[out[i].key]
-                if (coming != null) {
-                    val previous = (i - 1).takeIf { it >= 0 }
-                    val c = column(i, previous, below = false) ?: run { out = shifted(); 0 }
-                    out[i] = out[i].copy(top = out[i].top + coming.copy(from = c, to = out[i].column, arrives = true))
-                    if (previous != null) out[previous] = out[previous].copy(bottom = out[previous].bottom + coming.copy(from = c, to = c))
+            fun dashed(from: String, to: String, w: Int) = rail(from, to).copy(offRoute = true, closedAlong = closedAlong[w])
+            val nodes = graph.nodes.filter { it in kept }
+            val onward = HashMap<String, List<Track>>()
+            val stubsOut = HashMap<String, MutableList<Rail>>()
+            val stubsIn = HashMap<String, MutableList<Rail>>()
+            // The tracks from a way's stations into one of the train's that some way from one of the train's comes by.
+            val reached = HashSet<String>()
+            for (node in nodes) {
+                onward[node] = graph.nextOf(node).flatMap { n ->
+                    if (n in kept) return@flatMap listOf(Track(node, n, rail(node, n), own = node in path && n in path && "$node>$n" in own))
+                    val w = way.getValue(n)
+                    // Every station of the way down the map from the one it leaves by, and each track out of one of
+                    // them into one of the train's stations: a dashed track to that station, one per track.
+                    val seen = LinkedHashSet<String>()
+                    val queue = ArrayDeque(listOf(n))
+                    while (queue.isNotEmpty()) {
+                        val m = queue.removeFirst()
+                        if (seen.add(m)) graph.nextOf(m).filterTo(queue) { it !in kept }
+                    }
+                    val exits = seen.flatMap { m -> graph.nextOf(m).filter { it in kept }.map { m to it } }
+                    if (exits.isEmpty()) stubsOut.getOrPut(node) { ArrayList() } += dashed(node, n, w)
+                    exits.map { (m, to) ->
+                        reached += "$m>$to"
+                        Track(node, to, dashed(node, n, w), dashed(m, to, w))
+                    }
                 }
             }
-            return out
+            // A track into one of the train's stations that no way from one of them comes by: a stub there.
+            for (node in nodes) {
+                for (m in graph.previousOf(node)) {
+                    if (m !in kept && "$m>$node" !in reached) stubsIn.getOrPut(node) { ArrayList() } += dashed(m, node, way.getValue(m))
+                }
+            }
+            val remaining = longestWays(nodes) { node -> onward.getValue(node).map { it.to } } ?: return null
+            val rows = layOut(nodes, onward, remaining, graph, path, stubsOut, stubsIn) ?: return null
+            val drawn = HashSet<String>()
+            val meets = ways.map { members -> members.any { n -> (graph.nextOf(n) + graph.previousOf(n)).any { it in kept } } }
+            for (node in graph.nodes) {
+                for (next in graph.nextOf(node)) {
+                    val w = way[node] ?: way[next]
+                    if (w == null || meets[w]) drawn += "${base(node)}>${base(next)}"
+                }
+            }
+            return Alone(rows, drawn)
         }
 
         // [rows] with the train's path, in one column ([layOut]), as the rightmost, beside the names: the columns left
         // of it stay as they were, those right of it turn round to its left, nearest first, and any no row or rail
-        // uses goes. As they were where the path takes more than one column.
+        // uses goes. Where the path takes more than one column, in their order, those no row or rail uses gone.
         private fun rightmost(rows: List<Row>): List<Row> {
-            val path = rows.filter { it.onPath }.mapTo(HashSet()) { it.column }.singleOrNull() ?: return rows
+            val path = rows.filter { it.onPath }.mapTo(HashSet()) { it.column }.singleOrNull()
             val used = sortedSetOf<Int>()
             for (row in rows) {
                 used += row.column
@@ -910,7 +904,7 @@ class LineMap internal constructor(
                     used += rail.to
                 }
             }
-            val order = used.filter { it < path } + used.filter { it > path }.sortedDescending() + path
+            val order = if (path == null) used.toList() else used.filter { it < path } + used.filter { it > path }.sortedDescending() + path
             val at = order.withIndex().associate { (i, column) -> column to i }
             fun Rail.moved() = copy(from = at.getValue(from), to = at.getValue(to))
             return rows.map { row -> row.copy(column = at.getValue(row.column), top = row.top.map { it.moved() }, bottom = row.bottom.map { it.moved() }) }
@@ -1258,75 +1252,122 @@ class LineMap internal constructor(
              * Each node's longest way on to a line's end, counted in stations, or null when the tracks loop
              * back on themselves and can't be read top to bottom.
              */
-            fun remaining(): Map<String, Int>? {
-                val waiting = nodes.associateWithTo(HashMap()) { previousOf(it).size }
-                val queue = ArrayDeque(nodes.filter { waiting.getValue(it) == 0 })
-                val order = ArrayList<String>(nodes.size)
-                while (queue.isNotEmpty()) {
-                    val node = queue.removeFirst()
-                    order += node
-                    for (n in nextOf(node)) {
-                        val left = waiting.getValue(n) - 1
-                        waiting[n] = left
-                        if (left == 0) queue += n
-                    }
-                }
-                if (order.size != nodes.size) return null
-                val remaining = HashMap<String, Int>()
-                for (node in order.asReversed()) remaining[node] = 1 + (nextOf(node).maxOfOrNull { remaining.getValue(it) } ?: 0)
-                return remaining
-            }
+            fun remaining(): Map<String, Int>? = longestWays(nodes) { nextOf(it) }
         }
 
-        private class Lane(val from: String, val to: String)
+        // Each of [nodes]' longest way on to a line's end by the tracks down from each ([next]), counted in stations, or
+        // null when the tracks loop back on themselves and can't be read top to bottom.
+        private fun longestWays(nodes: Collection<String>, next: (String) -> Collection<String>): Map<String, Int>? {
+            val waiting = nodes.associateWithTo(HashMap()) { 0 }
+            for (node in nodes) for (n in next(node)) waiting[n] = waiting.getValue(n) + 1
+            val queue = ArrayDeque(nodes.filter { waiting.getValue(it) == 0 })
+            val order = ArrayList<String>(nodes.size)
+            while (queue.isNotEmpty()) {
+                val node = queue.removeFirst()
+                order += node
+                for (n in next(node)) {
+                    val left = waiting.getValue(n) - 1
+                    waiting[n] = left
+                    if (left == 0) queue += n
+                }
+            }
+            if (order.size != nodes.size) return null
+            val remaining = HashMap<String, Int>()
+            for (node in order.asReversed()) remaining[node] = 1 + (next(node).maxOfOrNull { remaining.getValue(it) } ?: 0)
+            return remaining
+        }
+
+        /**
+         * A track as [layOut] draws it, from node [from] down to node [to]: [upper] its half out of [from] and on, [lower]
+         * its half into [to]. The line's own tracks are each one; on a route page's map another route's way between two
+         * of its train's stations is one too, each half the track it is there ([alone]). [own] for the train's path's.
+         */
+        private class Track(val from: String, val to: String, val upper: Rail, val lower: Rail = upper, val own: Boolean = false)
+
+        // A column's track down, or a stub ([stub]) out of the row before, which ends half way down this one.
+        private class Lane(val track: Track?, val stub: Rail? = null)
 
         // The rows, each node once, as `git log --graph` lays out history: a node takes the column of
         // the tracks coming into it (the leftmost where branches meet), its longest way on keeps that
         // column, and any other way on starts a column of its own at the leftmost one free. A branch is
         // drawn whole before the next where it can be — the shortest way on first, so a short spur is
         // drawn and its column freed before the trunk carries on beside it.
-        // [closed] gives the track from one node down to the next as a rail closed whichever way round it is. The nodes
-        // of [path] (a route page's train's) keep one column from where it starts, each taking the column of the track
-        // in from the one before rather than the leftmost, and are drawn as soon as they're ready. Ends and junctions
-        // are [flags]'s, the whole line's, where [graph] is a route page's own route alone.
+        // [nodes] in the order first met, each with its tracks down ([onward]), two between the same nodes kept apart; the
+        // line's ends and junctions are [flags]'. The tracks of [path] (a route page's train's, [Track.own]) keep one
+        // column from where it starts, each node taking the column of its track in rather than the leftmost, and are
+        // drawn as soon as they're ready. [stubsOut] are the stubs half a row long out of a node down the map, ending
+        // half way down the next row, and [stubsIn] those into one, starting half way down the row before, each on a
+        // column no other rail of those two halves takes, so it's never drawn joined to another (Codex on #1127).
         private fun layOut(
-            graph: Graph,
+            nodes: Collection<String>,
+            onward: Map<String, List<Track>>,
             remaining: Map<String, Int>,
+            flags: Graph,
             path: Set<String> = emptySet(),
-            flags: Graph = graph,
-            closed: (String, String) -> Rail,
+            stubsOut: Map<String, List<Rail>> = emptyMap(),
+            stubsIn: Map<String, List<Rail>> = emptyMap(),
         ): List<Row>? {
-            val waiting = graph.nodes.associateWithTo(HashMap()) { graph.previousOf(it).size }
-            val longestFirst = compareByDescending<String> { remaining.getValue(it) }
+            val waiting = nodes.associateWithTo(HashMap()) { 0 }
+            for (node in nodes) for (track in onward.getValue(node)) waiting[track.to] = waiting.getValue(track.to) + 1
             // A stack: the node popped next is the one ready last, so a branch carries on down while it can.
-            val ready = ArrayList(graph.nodes.filter { waiting.getValue(it) == 0 }.asReversed())
+            val ready = ArrayList(nodes.filter { waiting.getValue(it) == 0 }.asReversed())
             val lanes = ArrayList<Lane?>()
-            fun free(): Int {
-                val at = lanes.indexOfFirst { it == null }
-                if (at >= 0) return at
+            fun free(taken: Set<Int> = emptySet()): Int {
+                val at = lanes.indices.firstOrNull { lanes[it] == null && it !in taken }
+                if (at != null) return at
                 lanes += null
                 return lanes.lastIndex
             }
-            val rows = ArrayList<Row>(graph.nodes.size)
+            val rows = ArrayList<Row>(nodes.size)
             while (ready.isNotEmpty()) {
                 val node = ready.removeAt(ready.lastIndex)
-                val coming = lanes.indices.filter { lanes[it]?.to == node }
-                val column = coming.firstOrNull { node in path && lanes[it]?.from in path } ?: coming.minOrNull() ?: free()
+                val coming = lanes.indices.filter { lanes[it]?.track?.to == node }
+                // The stubs out of the row before, ending half way down this one.
+                val ending = lanes.indices.filter { lanes[it]?.stub != null }
+                val column = coming.firstOrNull { lanes[it]!!.track!!.own } ?: coming.minOrNull() ?: free()
                 val top = lanes.mapIndexedNotNull { i, lane ->
-                    lane?.let { closed(it.from, it.to).copy(from = i, to = if (it.to == node) column else i, arrives = it.to == node) }
+                    when {
+                        lane == null -> null
+                        lane.stub != null -> lane.stub.copy(from = i, to = i, arrives = false)
+                        lane.track!!.to == node -> lane.track.lower.copy(from = i, to = column, arrives = true)
+                        else -> lane.track.upper.copy(from = i, to = i)
+                    }
+                }.toMutableList()
+                // The stubs into this one, each on a column free in the row before's foot, not that row's own nor this one's,
+                // nor one a track comes into that row by, which it would seem to run on from.
+                val above = rows.lastOrNull()
+                val starting = HashSet<Int>()
+                val clear = listOf(column) + listOfNotNull(above?.column) + above?.top?.map { it.from }.orEmpty()
+                for (stub in stubsIn[node].orEmpty()) {
+                    val at = free(starting + clear)
+                    starting += at
+                    top += stub.copy(from = at, to = column, arrives = true)
+                    if (above != null) rows[rows.lastIndex] = rows.last().copy(bottom = rows.last().bottom + stub.copy(from = at, to = at))
                 }
                 coming.forEach { lanes[it] = null }
                 // The path's way on keeps the column, else the longest.
-                val onward = graph.nextOf(node).sortedWith(compareBy<String> { if (node in path && it in path) 0 else 1 }.then(longestFirst))
+                val tracks = onward.getValue(node).sortedWith(compareBy<Track> { if (it.own) 0 else 1 }.thenByDescending { remaining.getValue(it.to) })
                 val leaving = HashSet<Int>()
-                onward.forEachIndexed { i, n ->
+                tracks.forEachIndexed { i, track ->
                     val at = if (i == 0) column else free()
-                    lanes[at] = Lane(node, n)
+                    lanes[at] = Lane(track)
+                    leaving += at
+                }
+                // Its own stubs down, on columns free here and, still taken until the next row's done, clear of those ending
+                // in it: straight on down where no track leaves it, as the line itself goes on.
+                for ((i, stub) in stubsOut[node].orEmpty().withIndex()) {
+                    val at = if (tracks.isEmpty() && i == 0) column else free(setOf(column))
+                    lanes[at] = Lane(null, stub)
                     leaving += at
                 }
                 val bottom = lanes.mapIndexedNotNull { i, lane ->
-                    lane?.let { closed(it.from, it.to).copy(from = if (i in leaving) column else i, to = i) }
+                    when {
+                        lane == null || i in ending -> null
+                        lane.stub != null -> lane.stub.copy(from = column, to = i)
+                        else -> lane.track!!.upper.copy(from = if (i in leaving) column else i, to = i)
+                    }
                 }
+                ending.forEach { lanes[it] = null }
                 val stop = base(node)
                 rows += Row(
                     key = node,
@@ -1340,17 +1381,14 @@ class LineMap internal constructor(
                 )
                 // The newly ready, longest first onto the stack, so the shortest comes off first; the path's last, so it
                 // comes off before them.
-                onward.filter { n -> (waiting.getValue(n) - 1).also { waiting[n] = it } == 0 }
+                tracks.map { it.to }.distinct().filter { n -> (waiting.getValue(n) - tracks.count { it.to == n }).also { waiting[n] = it } == 0 }
                     .sortedBy { if (it in path) 1 else 0 }
                     .forEach { ready += it }
             }
-            return rows.takeIf { it.size == graph.nodes.size }
+            return rows.takeIf { it.size == nodes.size }
         }
 
         private const val BRANCH = "#"
-
-        // A route page's stand-in for another route's way between two of its train's stations: no stop's id.
-        private const val STAND_IN = "~"
 
         private fun base(node: String): String = node.substringBefore(BRANCH)
 
