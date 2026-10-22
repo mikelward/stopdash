@@ -1055,7 +1055,8 @@ as "no trains" when they were only unseen; at night the same empty list is hones
 timetable is what tells the two apart. **The timetable decides only which mark: its times are never
 shown in place of live ones**, since it knows nothing of the disruption that emptied the board
 (maintainer, 2026-10-03); a favorite ride's page gives its next few trains before the line opens, marked as the
-timetable's (*Journeys*, maintainer, 2026-10-21), and a "?" row's page each way's next few (below). It is fetched only for a line with no live times, kept for the service
+timetable's (*Journeys*, maintainer, 2026-10-21), a "?" row's page each way's next few, and a route page's
+timetable, opened on purpose, the day's (below). It is fetched only for a line with no live times, kept for the service
 day. While it is still being fetched, or a failed one is being asked for again, the row shows a small **spinner** (heard as "Loading times"),
 not "?": a "?" during a page load read as an answer when it was only a wait (maintainer,
 2026-10-03). A timetable that failed, or can't say, is "?" — StopDash can't be sure. A place card whose
@@ -1090,6 +1091,19 @@ say for is left out. The chips then choose a way's stops, as on any route page. 
 running here, has the same page: "No live times", then "No trains due here in the next 30 minutes, by the
 timetable", and each way's next trains after the gap; where its timetable can't say, just that TfL has no live
 times there. A line's disruption or a stop's notice says why itself, and gives no timetable.
+
+**The timetable page** (maintainer, 2026-10-22): every route page of a TfL line has a **Timetable** button (a clock,
+in its bar), whatever the line's status or the stop's notices, since the rider asked for the timetable itself: a
+closed station or a suspended line doesn't hide it. It opens a page of its own over the route page with the day's
+scheduled trains for the way the route page shows (a ride's, from where it boards to where it gets off), the page's
+route chips choosing the way where the line runs several and none is chosen, and **Today** or **Tomorrow**. The
+route page's notices head it (its line's alert, the stop's notice, whether they could be checked), and the times sit
+under **"Scheduled"**, so they never read as live, nor as a promise the disruption lets the line keep (maintainer,
+2026-10-22). A stretch of at least six trains a steady gap apart, 12 minutes or less (TfL's own high frequency), reads
+as one line, "06:30–09:30 every 5 min" ("every 3–5 min" where the gap wobbles); the rest are listed by time, an hour
+to a line, today's already gone grayed. A holiday, a train the timetable couldn't read, and a stop or ride TfL has no
+timetable for are said. National Rail lines, which TfL doesn't time, have no button. It asks for nothing a board or a
+ride doesn't already: the same one timetable per line and stop (or per ride) a service day.
 
 The list shows the **watched stops'** rows (D1) — stopdash renders the stops the user
 chose ahead of time, not "nearest to me" — ordered **location-free** so the view works
@@ -4425,7 +4439,7 @@ lands on the near-me list (*On the way*), as a place shared into the app does (*
 The back gesture is predictive (maintainer, 2026-10-22, "shrink only"): as the rider swipes, the page
 follows, shrinking toward the edge swiped from over a deepening scrim, and springs back if they let go
 without going back. A page that is a window over another (a stop's details, Departures, a line's page
-from a trip) shows the page under it as it shrinks. A full page doesn't draw the page under it, so a
+from a trip, a route's timetable) shows the page under it as it shrinks. A full page doesn't draw the page under it, so a
 swipe that's let go starts nothing that page would: no location fix, no refresh, no request. Back from
 the near-me list, with nothing left to close, shows the system's own peek at the home screen, on
 Android 14 and 15 as on 16. Drawing the real page under every page waits on a back stack of real

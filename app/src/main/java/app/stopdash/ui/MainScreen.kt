@@ -161,6 +161,7 @@ import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.JourneySegment
 import app.stopdash.domain.JourneyTrains
 import app.stopdash.domain.Journeys
+import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.Coordinates
@@ -1458,6 +1459,8 @@ fun MainScreen(
     // opening, so it stays open while a rotation's rows are worked out again, and while the page moves to
     // another platform's row.
     val routeLineOpen = rememberSaveable(detailOpened) { mutableStateOf(false) }
+    // Its timetable open over it, kept the same way.
+    val routeTimetableOpen = rememberSaveable(detailOpened) { mutableStateOf(false) }
     // For the usage stats: the route's page, its line's page over it, or what's beneath. A page still
     // open while its rows are worked out again (a rotation, a return to the list) is still that page.
     // A journey's ride page, while its card is shown: gone with the card (unstarred, or the list moved on).
@@ -1478,16 +1481,18 @@ fun MainScreen(
         when {
             !routeOpen -> usageScreen
             routeLineOpen.value -> UsageEvent.Screen.LINE
+            routeTimetableOpen.value -> UsageEvent.Screen.TIMETABLE
             else -> UsageEvent.Screen.ROUTE
         },
     )
     if (rideView != null && rideLoaded != null) {
-        RidePage(rideView, rideLoaded, now, onBack = { rideKey = null }, lineOpen = routeLineOpen)
+        RidePage(rideView, rideLoaded, now, onBack = { rideKey = null }, lineOpen = routeLineOpen, timetableOpen = routeTimetableOpen)
         return
     }
     if (detailLoaded != null && detailRow != null) {
         RouteDetailScreen(
             lineOpen = routeLineOpen,
+            timetableOpen = routeTimetableOpen,
             // The list's own rows, drawn against the time they were built for ([detailNow]).
             boardRows = true,
             row = detailRow,
@@ -6188,6 +6193,9 @@ internal fun RouteDetailScreen(
     // Whether its line's page ("View line") is open over it: held by the caller, whose usage stats count
     // the page shown ([UsageEvent.Screen.LINE]); one of its own otherwise.
     lineOpen: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
+    // Whether its timetable is open over it ([TimetablePage]): held by the caller, as [lineOpen] is, so it stays open
+    // while the page moves to another route of its line; one of its own otherwise.
+    timetableOpen: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
     // The rows [row] was found among, from the same fetch: the route's trains on its stop's other
     // platforms are listed with its own ([otherPlatforms], picked out with the page's trains on the
     // worker). Empty lists [row]'s alone.
@@ -6231,6 +6239,9 @@ internal fun RouteDetailScreen(
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
     // 2026-10-06).
     var lineShown by lineOpen
+    // The timetable button: the day's scheduled trains for the way the page shows, whatever the line's status or the
+    // stop's notices, which head it (maintainer, 2026-10-22).
+    var timetableShown by timetableOpen
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
     val topology = LocalRouteTopology.current
@@ -6410,6 +6421,78 @@ internal fun RouteDetailScreen(
     } else {
         null
     }
+    val choices = routeChoices?.choices
+    val holdsChips = onChooseRoute != null && holdsRouteChoices(row)
+    // A ride's ways go where its stops do instead (below).
+    val chipsShown = !rideChoices && choices != null && choices.choices.size >= (if (holdsChips) 1 else 2)
+    val chipsFailed = !rideChoices && routeChoices?.failure != null
+    val selectedWay = chosenIndex ?: choices?.current
+    // A chip tapped, on the page or over it on its timetable.
+    val chooseRoute: (Int) -> Unit = choose@{ index ->
+        val ui = routeChoices ?: return@choose
+        val choice = ui.choices.choices.getOrNull(index) ?: return@choose
+        val live = choice.live
+        when {
+            // The page's own route.
+            index == ui.choices.current && live != null -> chosenKey = null
+            // One with no train at the stop: listed here.
+            live == null -> chosenKey = choice.key
+            // Its train as the rows were before a refresh, being worked out again: not followed,
+            // as it may have gone; the chips are settled again in a moment (Codex on #1038).
+            !ui.settled -> Unit
+            else -> {
+                chosenKey = null
+                onChooseRoute?.invoke(live.row, live.focus)
+            }
+        }
+    }
+    // Its timetable, offered on every page of a TfL line, whatever its status (maintainer, 2026-10-22): a ride's from
+    // where it boards to where it gets off, else the stop's for the way the page shows ([TimetableAsk]). Not National
+    // Rail's, which TfL doesn't time.
+    val legTimetables = LocalLegTimetables.current
+    val timetableMode = (ride?.mode ?: row.mode).ifBlank { Connections.knownMode(row.lineId).orEmpty() }
+    val timetableOffered = row.lineId.isNotBlank() && !timetableMode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
+        (ride == null || legTimetables != null)
+    if (timetableShown && timetableOffered) {
+        val wayIndex = selectedWay
+        val way = wayIndex?.let { choices?.choices?.getOrNull(it) }
+        val ask = when {
+            ride != null -> TimetableAsk.Of(
+                TimetableSource.Ride(LegTimetables.Key(ride.lineId, ride.fromId, ride.toId)),
+                ride.toName.takeIf { it.isNotBlank() }?.let { stringResource(R.string.route_stop_to, it) },
+            )
+            way != null && way.path.size >= 2 -> TimetableAsk.Of(
+                TimetableSource.Stop(row.stopId, row.lineId, way.path),
+                wayIndex?.let { routeChoices?.labels?.getOrNull(it) }?.let { stringResource(R.string.route_stop_to, it) },
+            )
+            way != null -> TimetableAsk.Unknown
+            onChooseRoute != null && routeChoices == null -> TimetableAsk.Waiting
+            chipsShown -> TimetableAsk.Choose
+            // No ways to tell apart (they couldn't be had, or none are wired): every route's trains, said as such.
+            else -> TimetableAsk.Of(TimetableSource.Stop(row.stopId, row.lineId, null), stringResource(R.string.timetable_all_routes))
+        }
+        TimetablePage(
+            lineId = row.lineId,
+            lineName = row.lineName,
+            mode = timetableMode,
+            place = row.hubName.ifBlank { row.stopName },
+            ask = ask,
+            now = now,
+            onClose = { timetableShown = false },
+            // The page's own chips, choosing for both: the notices above the times are then that way's.
+            chips = if (chipsShown && routeChoices != null) {
+                { RouteChips(routeChoices.labels, routeChoices.keys, selectedWay, onSelect = chooseRoute) }
+            } else {
+                null
+            },
+            notices = {
+                RouteNotices(
+                    row, shown, alertPlaces, dismissAlert = null, dismissPlanned = null, closures, uncheckedEnd,
+                    checking = disruptionChecking || wayPending, disruptionUnknown = disruptionUnknown, stale = stale, stopNotice = true,
+                )
+            },
+        )
+    }
     Scaffold(
         modifier = Modifier.fillMaxSize().followsBack(back),
         topBar = {
@@ -6468,6 +6551,11 @@ internal fun RouteDetailScreen(
                             )
                         }
                     }
+                    if (timetableOffered) {
+                        IconButton(onClick = { timetableShown = true }) {
+                            Icon(ScheduleIcon, contentDescription = stringResource(R.string.route_detail_timetable_heading))
+                        }
+                    }
                     AppMenuOverflow { close ->
                         // A status row about a stop has no line to show.
                         if (row.lineId.isNotBlank()) {
@@ -6500,38 +6588,11 @@ internal fun RouteDetailScreen(
             // worked out, so nothing below moves when they come in, and kept there once they are, a single way's chip
             // and all (a terminus), or empty where none runs from here (Codex on #1038). Elsewhere (a bus pole, one
             // way's) only where there are ways to choose between.
-            val choices = routeChoices?.choices
-            val holdsChips = onChooseRoute != null && holdsRouteChoices(row)
-            // A ride's ways go where its stops do instead (below).
-            val chipsShown = !rideChoices && choices != null && choices.choices.size >= (if (holdsChips) 1 else 2)
-            val chipsFailed = !rideChoices && routeChoices?.failure != null
             // One slot, the chips' height, whichever of them, a failure or nothing is in it ([RouteChipsSlot]).
             if (chipsShown || chipsFailed || holdsChips) {
                 RouteChipsSlot(Modifier.padding(bottom = 8.dp)) {
-                    if (chipsShown) {
-                        val selected = chosenIndex ?: choices.current
-                        RouteChips(
-                            routeChoices.labels,
-                            routeChoices.keys,
-                            selected,
-                            onSelect = { index ->
-                                val choice = choices.choices[index]
-                                val live = choice.live
-                                when {
-                                    // The page's own route.
-                                    index == choices.current && live != null -> chosenKey = null
-                                    // One with no train at the stop: listed here.
-                                    live == null -> chosenKey = choice.key
-                                    // Its train as the rows were before a refresh, being worked out again: not followed,
-                                    // as it may have gone; the chips are settled again in a moment (Codex on #1038).
-                                    !routeChoices.settled -> Unit
-                                    else -> {
-                                        chosenKey = null
-                                        onChooseRoute?.invoke(live.row, live.focus)
-                                    }
-                                }
-                            },
-                        )
+                    if (chipsShown && routeChoices != null) {
+                        RouteChips(routeChoices.labels, routeChoices.keys, selectedWay, onSelect = chooseRoute)
                     } else if (chipsFailed) {
                         RouteChoicesFailed(onRetry = { routeStopsRetry++ })
                     }
@@ -6711,150 +6772,10 @@ internal fun RouteDetailScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
                 )
             }
-            val status = shown.status
-            if (status != null) {
-                // The short chip label always; the full prose below it, collapsed to its first line
-                // with tap-to-expand, when TfL gave a reason (SPEC *Disruptions*). The dismiss (×) sits
-                // at the chip's end, so it's there whether or not TfL gave prose.
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        DisruptionChip(status.description)
-                        // Where it is, beside what it is: on the train's own list, the runs of stops the
-                        // alert touches (the ones its ⚠s mark), each by its ends, "A to B"; with no list
-                        // to follow, the stations it names. Each stop by the part a rider reads on it (a
-                        // bus stop's own name, not its cross street).
-                        if (alertPlaces.isNotEmpty()) {
-                            Text(
-                                text = alertPlaces.joinToString(", "),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-                    }
-                    if (dismissAlert != null) {
-                        IconButton(onClick = dismissAlert) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.alert_dismiss),
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                }
-                status.shownText?.let { fullText ->
-                    CollapsibleStatus(
-                        text = fullText,
-                        title = null,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            }
-            // A line alert wholly behind this stop (a bus diversion a bus from here has passed): told,
-            // muted, with where it is, but never flagged as this row's (SPEC *Disruptions*).
-            val behind = shown.statusBehind
-            if (status == null && behind != null) {
-                Text(
-                    text = if (alertPlaces.isEmpty()) {
-                        stringResource(R.string.route_detail_alert_behind, behind.description)
-                    } else {
-                        stringResource(R.string.route_detail_alert_behind_at, behind.description, alertPlaces.joinToString(", "))
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                behind.shownText?.let { fullText ->
-                    CollapsibleStatus(
-                        text = fullText,
-                        title = null,
-                        modifier = Modifier.padding(top = 8.dp),
-                        container = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            // Work still to come, after any disruption now: each with the day it starts, so a
-            // closure next month reads as notice, not as today's trouble (SPEC *Disruptions*).
-            shown.plannedAlerts.forEach { planned ->
-                PlannedAlertBlock(
-                    planned,
-                    Modifier.padding(top = 12.dp),
-                    onDismiss = dismissPlanned?.let { dismiss -> { dismiss(planned) } },
-                )
-            }
-            // The notices the ride's card carries (its far end's, its boarding stops'), as its card shows them: why its
-            // timetable is withheld, said rather than left to guess (Codex on #1036).
-            closures.forEach { (closure, title) ->
-                Box(Modifier.padding(top = 12.dp)) { StopClosureCard(closure, onDismiss = null, title = title) }
-            }
-            if (uncheckedEnd != null) {
-                Text(
-                    text = stringResource(R.string.journey_destination_unchecked, uncheckedEnd),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
-            // The disruption-check state, independent of staleness (the two caveats are separate
-            // facts, both shown when both apply — Codex): "couldn't check" whenever this row's line
-            // was undetermined OR its stop's disruption lookup failed — a known line alert doesn't
-            // mean the stop-level closure/move check ran, so the note sits alongside the alert too,
-            // and the stale caveat below never stands in for it. "No disruptions reported" only when
-            // determined-clean AND fresh — never claimed from stale or unchecked data (SPEC principle
-            // 1 / D4). A stale but determined-clean row shows neither here; the stale caveat covers it.
-            // A dismissed line alert is its own fact, shown beside any "couldn't check" note: the line
-            // IS disrupted, the user only hid the alert, so never claim a clean line (SPEC principle 1).
-            if (shown.statusDismissed) {
-                Text(
-                    text = stringResource(R.string.route_detail_alert_dismissed),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
-            if (disruptionChecking || wayPending) {
-                Text(
-                    text = stringResource(R.string.disruptions_checking),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            } else if (disruptionUnknown) {
-                Text(
-                    text = stringResource(R.string.disruptions_unknown),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            } else if (status == null && !shown.statusDismissed && shown.statusBehind == null && row.stopDisruption == null && !stale &&
-                closures.isEmpty() && uncheckedEnd == null
-            ) {
-                // Nor with a notice in force at its stop (a closure, a moved stop): not a clean stop.
-                Text(
-                    text = stringResource(R.string.route_detail_no_disruption),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
-            // The page has no freshness stamp of its own, so a stale snapshot is caveated here — an
-            // independent fact from the disruption-check state above: it sits under a shown
-            // disruption (which may be resolved or superseded), replaces a "no disruptions" claim
-            // (a new one may exist), and sits alongside a "couldn't check" note (age and a failed
-            // check are different gaps) alike (SPEC D4).
-            if (stale) {
-                Text(
-                    text = stringResource(R.string.route_detail_status_stale),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
+            RouteNotices(
+                row, shown, alertPlaces, dismissAlert, dismissPlanned, closures, uncheckedEnd,
+                checking = disruptionChecking || wayPending, disruptionUnknown = disruptionUnknown, stale = stale,
+            )
             // Each saved journey that boards here on this page, with the stops on this page it ends at:
             // by id, or placed on this page's route the way the journey card places it (a bus's way
             // back boards across the road).
@@ -7099,6 +7020,179 @@ internal fun RouteDetailScreen(
                 },
             )
         }
+    }
+}
+
+/**
+ * What a route page says of its line and stop before it lists anything (SPEC *Disruptions*): its line's alert, with
+ * where it is ([alertPlaces]) and its full words, else one wholly behind the stop, muted; work still to come; the
+ * notices a ride's card carries ([closures]) and a far end that couldn't be checked ([uncheckedEnd]); then whether the
+ * checks could be made, are still out ([checking]) or found nothing, and whether [stale] data stands behind them.
+ * [shown] is the row as the page shows it, its way's alerts; [row] is the page's own. A dismiss is offered only where
+ * [dismissAlert] or [dismissPlanned] is given. [stopNotice] adds the stop's own notice, for a page over the route page
+ * (its timetable), which shows none of its card.
+ */
+@Composable
+internal fun RouteNotices(
+    row: DepartureRow,
+    shown: DepartureRow,
+    alertPlaces: List<String>,
+    dismissAlert: (() -> Unit)?,
+    dismissPlanned: ((PlannedAlert) -> Unit)?,
+    closures: List<Pair<DepartureRow, String>>,
+    uncheckedEnd: String?,
+    checking: Boolean,
+    disruptionUnknown: Boolean,
+    stale: Boolean,
+    stopNotice: Boolean = false,
+) {
+    val status = shown.status
+    if (status != null) {
+        // The short chip label always; the full prose below it, collapsed to its first line
+        // with tap-to-expand, when TfL gave a reason (SPEC *Disruptions*). The dismiss (×) sits
+        // at the chip's end, so it's there whether or not TfL gave prose.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                DisruptionChip(status.description)
+                // Where it is, beside what it is: on the train's own list, the runs of stops the
+                // alert touches (the ones its ⚠s mark), each by its ends, "A to B"; with no list
+                // to follow, the stations it names. Each stop by the part a rider reads on it (a
+                // bus stop's own name, not its cross street).
+                if (alertPlaces.isNotEmpty()) {
+                    Text(
+                        text = alertPlaces.joinToString(", "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+            if (dismissAlert != null) {
+                IconButton(onClick = dismissAlert) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.alert_dismiss),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        status.shownText?.let { fullText ->
+            CollapsibleStatus(
+                text = fullText,
+                title = null,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+    // A line alert wholly behind this stop (a bus diversion a bus from here has passed): told,
+    // muted, with where it is, but never flagged as this row's (SPEC *Disruptions*).
+    val behind = shown.statusBehind
+    if (status == null && behind != null) {
+        Text(
+            text = if (alertPlaces.isEmpty()) {
+                stringResource(R.string.route_detail_alert_behind, behind.description)
+            } else {
+                stringResource(R.string.route_detail_alert_behind_at, behind.description, alertPlaces.joinToString(", "))
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        behind.shownText?.let { fullText ->
+            CollapsibleStatus(
+                text = fullText,
+                title = null,
+                modifier = Modifier.padding(top = 8.dp),
+                container = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    // Work still to come, after any disruption now: each with the day it starts, so a
+    // closure next month reads as notice, not as today's trouble (SPEC *Disruptions*).
+    shown.plannedAlerts.forEach { planned ->
+        PlannedAlertBlock(
+            planned,
+            Modifier.padding(top = 12.dp),
+            onDismiss = dismissPlanned?.let { dismiss -> { dismiss(planned) } },
+        )
+    }
+    // The stop's own notice, where the page doesn't show its card already (a timetable over it).
+    if (stopNotice && row.stopDisruption != null) {
+        Box(Modifier.padding(top = 12.dp)) { StopClosureCard(row, onDismiss = null) }
+    }
+    // The notices the ride's card carries (its far end's, its boarding stops'), as its card shows them: why its
+    // timetable is withheld, said rather than left to guess (Codex on #1036).
+    closures.forEach { (closure, title) ->
+        Box(Modifier.padding(top = 12.dp)) { StopClosureCard(closure, onDismiss = null, title = title) }
+    }
+    if (uncheckedEnd != null) {
+        Text(
+            text = stringResource(R.string.journey_destination_unchecked, uncheckedEnd),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+    // The disruption-check state, independent of staleness (the two caveats are separate
+    // facts, both shown when both apply — Codex): "couldn't check" whenever this row's line
+    // was undetermined OR its stop's disruption lookup failed — a known line alert doesn't
+    // mean the stop-level closure/move check ran, so the note sits alongside the alert too,
+    // and the stale caveat below never stands in for it. "No disruptions reported" only when
+    // determined-clean AND fresh — never claimed from stale or unchecked data (SPEC principle
+    // 1 / D4). A stale but determined-clean row shows neither here; the stale caveat covers it.
+    // A dismissed line alert is its own fact, shown beside any "couldn't check" note: the line
+    // IS disrupted, the user only hid the alert, so never claim a clean line (SPEC principle 1).
+    if (shown.statusDismissed) {
+        Text(
+            text = stringResource(R.string.route_detail_alert_dismissed),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+    if (checking) {
+        Text(
+            text = stringResource(R.string.disruptions_checking),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    } else if (disruptionUnknown) {
+        Text(
+            text = stringResource(R.string.disruptions_unknown),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    } else if (status == null && !shown.statusDismissed && shown.statusBehind == null && row.stopDisruption == null && !stale &&
+        closures.isEmpty() && uncheckedEnd == null
+    ) {
+        // Nor with a notice in force at its stop (a closure, a moved stop): not a clean stop.
+        Text(
+            text = stringResource(R.string.route_detail_no_disruption),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+    // The page has no freshness stamp of its own, so a stale snapshot is caveated here — an
+    // independent fact from the disruption-check state above: it sits under a shown
+    // disruption (which may be resolved or superseded), replaces a "no disruptions" claim
+    // (a new one may exist), and sits alongside a "couldn't check" note (age and a failed
+    // check are different gaps) alike (SPEC D4).
+    if (stale) {
+        Text(
+            text = stringResource(R.string.route_detail_status_stale),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
     }
 }
 

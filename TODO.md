@@ -4276,6 +4276,14 @@ Builds on Phase 1's minimal line-status marking.
       the morning's first and the gaps after it, on the ride's page, still said as the timetable's. Done
       (2026-10-21): the next three it can vouch for (`StopTimetable.nextDepartures`), "Next trains 05:41 ·
       05:49 · 05:57 (timetable)".
+- [x] **A timetable button on the route page, whatever the station's or the line's status** (maintainer,
+      2026-10-22: "when I'm on a route page, can we have a timetable button to see the timetable no matter the
+      station or lines status"; fine "on a dedicated timetable page" saying "Scheduled", with "any status
+      notices at the top"; a frequent service as "06:00-10:00 every 4 mins"). Done (2026-10-22): a clock in the
+      route page's bar opens the day's scheduled trains for the way it shows, or a ride's (`TimetablePage`),
+      under the page's notices, a steady run every 12 minutes or less summed up (`ScheduledDay`), Today or
+      Tomorrow. Needs a device check, and a look at how real timetables' frequencies read (a stretch that
+      wobbles past the band splits in two).
 - [x] **Put the direction beside the platform on the route page** (maintainer, 2026-10-21: "From Highgate -
       Southbound - Platform 2" on one line if it fits; Southbound never more than a row from the platform).
       Done (2026-10-21): the "From" line names the way between the place and the platform, and the heading
