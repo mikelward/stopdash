@@ -104,6 +104,9 @@ class NearbyAreaTest {
                         KeptPages(stationFlowPage(stationId), stationFlowPages(stationSearch, stationId)) {
                             Screen(stationId?.let { "Station $it" } ?: "Search", page)
                         }
+                    } else if (page == Page.OnTheWay) {
+                        // A screen whose state is reset as it closes, as the trip from here's destination is.
+                        Text(if (pages.isOpen(page)) "On the way" else RESET)
                     } else {
                         Screen(page.toString(), page)
                     }
@@ -300,6 +303,24 @@ class NearbyAreaTest {
     }
 
     @Test
+    fun `a page closing keeps its last look as it goes, not what its state is reset to`() {
+        show()
+        open(Page.OnTheWay)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnUiThread {
+            pages.close(Page.OnTheWay)
+            Snapshot.sendApplyNotifications()
+        }
+        composeRule.mainClock.advanceTimeBy(100)
+        // Still going, the page under it coming: never drawn as it would be reset.
+        composeRule.onNodeWithText(LIST).assertExists()
+        composeRule.onNodeWithText(RESET).assertDoesNotExist()
+        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.onNodeWithText(LIST).assertIsDisplayed()
+        composeRule.onNodeWithText(RESET).assertDoesNotExist()
+    }
+
+    @Test
     fun `a page opens over the one under it in a quarter of a second`() {
         show()
         composeRule.mainClock.autoAdvance = false
@@ -404,5 +425,6 @@ class NearbyAreaTest {
         const val TRIP = "Trip"
         const val PLACEHOLDER = "Placeholder"
         const val SET = "set"
+        const val RESET = "Reset"
     }
 }

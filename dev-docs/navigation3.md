@@ -267,6 +267,10 @@ The screens over the near-me view are pages of a back stack (`Pages.kt`), drawn 
   and still shrinks over a scrim, until step 6.
 - **Pages open in 250 ms and close in 200 ms,** sliding an eighth of their width as they fade; the back
   swipe drives the close.
+- **A page closing keeps its last look** (found after step 4): closing resets its state at once (the trip
+  from here's destination, a station, Lines…'s line), and the page drawn as it slid away showed that,
+  the trip's routes turning into its To… search, or built again what closing dropped. Once a page leaves
+  the stack its content leaves composition, and its last frame, recorded as it's drawn, is drawn instead.
 - **The line and station searches take focus only on top** (Codex on #1136): drawn under a swipe from
   Settings or Licenses opened over one, a search raised the keyboard over the screen being swiped.
 - **`ReportScreen` counts a visit by the app leaving the front, not the page pausing.** A page drops to
