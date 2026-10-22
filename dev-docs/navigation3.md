@@ -156,7 +156,12 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
 5. **The station flow stacks.** Search, `Station(id)`, then the station's trip. A station opened from a
    route stop's details now goes on top of the station under it instead of replacing it, which is
    `TODO.md`'s "takes the place of the station under it". `KeptPages`, which keeps the flow's pages apart
-   inside its one page until then, goes.
+   inside its one page until then, goes. In three PRs:
+   - **5a. Done:** the From… search and a station become pages of their own (*Step 5a: what changed*).
+   - **5b.** Stations stack, each with its own id, name and To…, the one under the top reloading as it
+     comes back, since the flow keeps models for one station at a time. A change of start leaves its
+     station under the From… search, so Back from the search to it is the stack's, the swipe drawing it.
+   - **5c.** A station's trip becomes a page over the station.
 6. **In-screen views become entries, a family per PR.** The near-me page's platform, station and
    journey views and its route and ride pages; the trip's open route and later list; Settings'
    Disruptions page; the favorite rides' alerts and picker. Each family gets the real page underneath
@@ -250,8 +255,8 @@ The screens over the near-me view are pages of a back stack (`Pages.kt`), drawn 
   `PagesTest` checks each of `topOverlay`'s rankings against the order the rider opens the screens in. The
   one it didn't reproduce on its own is a screen opened again from under another (the trip on the way's
   screen, reopened to say an End failed): set again, a screen comes up from under the pages opened since.
-- **The station flow is one page** (`Stations`) until step 5 stacks it: open while its search or a station
-  is (`Pages.kept`), with its own Backs and their option 1 shrink as before. Inside it, `KeptPages` keeps
+- **The station flow is one page** (`Stations`) until step 5 stacks it (split in step 5a): open while its search
+  or a station is (`Pages.kept`), with its own Backs and their option 1 shrink as before. Inside it, `KeptPages` keeps
   the search and each station's pages apart, as it did across the whole flow, so the search is as it was
   left under a station opened from it (Codex on #1136).
 - **Lines… is on the stack only while it shows.** Under the trip from here, it steps off, and the near-me
@@ -332,6 +337,29 @@ screen, and now a trip from here a place in that editor routes to, which used to
 `PagesTest` holds the windows to the stack's order: shown over the page, covered by each screen opened over them
 until its Back, Departures over the details or over Lines… opened from them. `NearbyAreaTest` checks a window
 leaves the page under it drawn and on top, and is found again under Settings' Back.
+
+## Step 5a: what changed
+
+The From… search (`StationSearch`) and a station's page (`Station`) are pages of their own, where the station flow
+was one. A station picked in the search opens over it; a station opened from anywhere else (a route page's stop,
+Lines…'s From, a favorite ride's Whole station, the trip on the way's Plan again) opens over whatever is up.
+
+- **The swipe from a station draws the search under it,** as it was left: the station's Back at its root is the
+  stack's (`rootBack` on its list, its placeholder, its departures with nowhere to stand, and its trip where the
+  trip is all it has). Its trip's routes and To… search otherwise keep a Back of their own, back to the
+  station's list, until step 5c.
+- **The search's Back is the stack's** too, but where a station's From row opened it: Back from it then
+  reopens that station, which was closed for the change and isn't under it, so the search follows the gesture
+  over a scrim as before and the station opens over it once let go. Step 5b leaves the station under the
+  search instead.
+- **The two pages' flags open in place** (`Pages.kept`, now without `others`): set, a page opens over the top,
+  or stays where it is if it's open, so the search a change of start goes back to stays under the station.
+- **`KeptPages` stays inside the station's page** until stations stack: a station opened in another's place
+  still starts afresh, not with that station's pages.
+
+`PagesTest` follows the two pages: a station over its search, its Back to it, a change of start leaving the
+search where it was. `NearbyAreaTest` checks the swipe from a station draws the search under it as it was left,
+and that a station opened in another's place starts afresh.
 
 ## Decided (maintainer, 2026-10-22)
 
