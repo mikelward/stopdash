@@ -1,6 +1,7 @@
 # Syncing a rider's setup through their Google Drive
 
-**Status: planned, favorite rides first (maintainer, 2026-10-22); not built.** A
+**Status: planned, favorite rides first (maintainer, 2026-10-22); the sync engine is built
+(`Sync`, `SyncFile` in `:domain`), unused.** A
 developer-facing write-up of how StopDash syncs a rider's saved setup between their phones
 through their own Google Drive. The steps are the *Sync a rider's setup between their phones*
 item in Phase 2 of `TODO.md`; what syncs after rides waits on the open questions at the end.
@@ -93,20 +94,27 @@ StopDash's data from Drive clears it. A phone that finds its own file missing up
   than its copy of the ride, and drops the ride. A record is an entry's key and a time, a few
   dozen bytes, so keeping every one costs nothing that matters; pruning them would let a phone
   back after the pruning republish what they removed (Codex on #1141).
-- **The stores stay as they are.** Sync keeps its own ledger per phone: each entry's
-  fingerprint and change time as last synced. A sync compares each store with the ledger to
-  timestamp what changed here, merges the other phones' files, and writes the result back
-  through each store's own edit path, under its existing write lock.
+- **The stores stay as they are.** Sync keeps its own ledger per phone, in the same format as
+  its file: each entry's value and change time as last synced. A sync compares each store with
+  the ledger to timestamp what changed here, merges the other phones' files, and writes the
+  result back through each store's own edit path, under its existing write lock, and only while
+  the store still holds what was compared, else a change made meanwhile would be undone. Each
+  store says which two values are the same entry, so a value this build re-encodes without a
+  newer build's fields isn't a change, and never overwrites that build's richer copy.
 - **Change times** are a hybrid logical clock (wall time, a counter, the install id to break
   ties), so two edits never tie, and an edit made after a phone has read another's file comes
-  after every change in it. Between phones that haven't yet read each other's files, it orders
-  edits only as well as their clocks agree: a phone a year fast would beat edits the others
-  made before reading its file. So **a phone syncs only while its clock is within five minutes
-  of Drive's** (the `Date` on Drive's own answers), and otherwise says its clock is wrong and
-  syncs nothing. Two phones editing one entry within those minutes, before either has read the
-  other's file, may go either way (Codex on #1141).
+  after every change in it. **Its wall time is Drive's, never the phone's** (maintainer,
+  2026-10-22): the `Date` on Drive's answer that listed the files, plus the phone's monotonic
+  time since (`DriveClock`). Every phone stamps by one clock, so a phone whose own clock is
+  wrong, by a minute or a year, stamps like the rest and never needs setting right to sync
+  (Codex on #1141, twice). A sync stamps the changes it finds when it runs, so of two phones
+  that change one entry between their syncs, the one that syncs later wins.
 - **Joining never removes anything.** A phone's first sync adds its entries to what Drive
-  holds and takes what Drive holds: two phones' rides end up as one list. Only a phone that has
+  holds and takes what Drive holds: two phones' rides end up as one list. Each sync reads the
+  other phones' files before it stamps this phone's changes, and stamps them after everything in
+  those files, so a joining phone's rides beat any removal already in Drive, even one stamped in
+  the same second (Codex on #1141). The store is compared with the ledger, not the merged view,
+  so an entry only another phone holds is never taken for one removed here. Only a phone that has
   never synced with that Google account joins: turning sync off keeps the ledger, so turning it
   back on resumes, and a ride removed meanwhile on another phone is removed here too.
 - **Edits within an entry** (a ride's hidden lines, a place renamed or moved) replace the whole
@@ -134,8 +142,8 @@ StopDash's data from Drive clears it. A phone that finds its own file missing up
   choice and consent sheet ("See, create and delete its own configuration data in your Google
   Drive"), then merges this phone's setup with Drive's. The row names the account.
 - Its status: "Synced 2 min ago", "Couldn't sync: offline", "Sign in again" (with a button),
-  "Drive is full", "Set your phone's clock to sync", "Update StopDash to sync with your other
-  phone". Never silent (SPEC principle 2).
+  "Drive is full", "Update StopDash to sync with your other phone". Never silent (SPEC principle
+  2).
 - Turning it off stops syncing and leaves the phone's setup as it is, with an offer to delete
   StopDash's data from Drive. Deleting it while another phone still syncs only means that phone
   uploads its own file again; nothing is lost.
@@ -172,8 +180,8 @@ grant doesn't travel either, so a restored phone with sync on says "Sign in agai
 | Grant revoked, password changed | "Sign in again"; the phone's setup is untouched |
 | Drive full (`storageQuotaExceeded`) | "Drive is full" |
 | Rate limited | Not expected: Drive's per-user quotas are far above a few requests per open; a refusal is said, and the next open tries again |
-| A phone's clock is more than five minutes off Drive's | "Set your phone's clock to sync"; nothing syncs until it's right |
-| Two phones change one entry within minutes, before either reads the other's file | The later by their clocks wins; the other change to that entry is lost |
+| A phone's clock is wrong | Nothing: changes are stamped by Drive's clock |
+| Two phones change one entry between their syncs | The change synced later wins; the other change to that entry is lost |
 | The rider deletes StopDash's data from Drive | Each phone uploads its own file at its next sync; nothing is lost |
 | Different Google accounts on the two phones | They don't sync; the row names each phone's account |
 | No Play services | The option isn't offered |
