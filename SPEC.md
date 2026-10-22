@@ -4525,7 +4525,8 @@ The screens opened over the near-me view are a back stack, the one opened last o
 Licenses, Lines…, the station flow, the saved places and favorite rides, the trip on the way's screen, and
 the trip from here, over the page it was opened from (the near-me list, or Lines… for a stop's To). Each
 opens over the page it was opened from in a quarter of a second, sliding in a little as it fades in, and
-closes the same way a little faster (maintainer, 2026-10-22: Navigation 3's 700 ms default is too long). A
+closes the same way a little faster (maintainer, 2026-10-22: Navigation 3's 700 ms default is too long),
+looking as it did until it's gone, never as closing leaves it. A
 stop's details and its Departures, windows over the page they were opened from, are on the stack too:
 whatever opens after them covers them until its Back, which finds them as they were.
 

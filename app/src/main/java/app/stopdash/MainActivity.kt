@@ -9,6 +9,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.saveable.rememberSerializable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation3.runtime.NavBackStack
@@ -135,6 +139,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -7248,18 +7253,33 @@ internal fun NearbyArea(
         predictivePopTransitionSpec = { pageCloses(rtl) },
         entryProvider = { page ->
             NavEntry(page) {
+                // A page closing keeps the look it had as it goes, rather than drawing what closing reset (the trip
+                // from here's To… search for its routes, a station's search for the station) or building again
+                // what closing dropped: drawn while it's on the stack, and from then on its last frame.
+                val look = rememberGraphicsLayer()
+                if (page !in pages.stack) {
+                    Spacer(Modifier.fillMaxSize().drawBehind { drawLayer(look) })
+                    return@NavEntry
+                }
                 val back = remember { PageBack() }
                 DisposableEffect(page, back) {
                     backs[page] = back
                     onDispose { if (backs[page] === back) backs.remove(page) }
                 }
-                // On top only once the stack says so: the page a back gesture reveals isn't, until the swipe is
-                // done, so a glimpse of it starts nothing ([LocalPageOnTop]). A window over it leaves it on top.
-                CompositionLocalProvider(LocalPageOnTop provides (page == pages.topPage), LocalPageBack provides back) {
-                    when (page) {
-                        is Page.NearMe -> body(false)
-                        is Page.HereTrip -> body(true)
-                        else -> overlayContent(page)
+                Box(
+                    Modifier.drawWithContent {
+                        look.record { this@drawWithContent.drawContent() }
+                        drawLayer(look)
+                    },
+                ) {
+                    // On top only once the stack says so: the page a back gesture reveals isn't, until the swipe is
+                    // done, so a glimpse of it starts nothing ([LocalPageOnTop]). A window over it leaves it on top.
+                    CompositionLocalProvider(LocalPageOnTop provides (page == pages.topPage), LocalPageBack provides back) {
+                        when (page) {
+                            is Page.NearMe -> body(false)
+                            is Page.HereTrip -> body(true)
+                            else -> overlayContent(page)
+                        }
                     }
                 }
             }
