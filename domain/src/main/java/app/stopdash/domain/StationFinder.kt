@@ -6,7 +6,7 @@ import androidx.annotation.WorkerThread
  * A station, hub or stop that matched a typed name (SPEC *Finding stops → Find a station*): the
  * id to look it up by ([StationFinder.stationStops]), its cleaned display name, and the modes it
  * serves (for the result row's secondary line). Public TfL facts, never the rider's location: the
- * [latitude]/[longitude] are TfL's own placing of the station, when its search gives one, used
+ * [latitude]/[longitude] are TfL's own placing of the station, where the bundled data gives one, used
  * only to fold same-named neighbors into one result ([StationIndex.rank]) and never saved.
  */
 data class StationMatch(
@@ -21,7 +21,7 @@ data class StationMatch(
     val lead: List<String> = emptyList(),
     // The level the row is a pick at (dev-docs/station-model.md *Saved data*), where the row says so
     // itself: a bundled station or interchange, a bundled bus stop, a place. Null where only the model
-    // can tell (an interchange's station name, a TfL search answer, a stop the app has shown), read
+    // can tell (an interchange's station name, a stop the app has shown), read
     // then through [Hubs.picked]. Saved with the pick; nothing reads it yet.
     val level: Pick.Level? = null,
     // What the row shows and says for [modes], worked out once, where the match is first made (off the
@@ -43,22 +43,17 @@ data class StationMatch(
 }
 
 /**
- * Finds a station by name and resolves the stops that carry its departures — the in-app "Find a
- * station" action (SPEC *Finding stops*). Kept apart from [TflClient] like [StopFinder]: this is an
- * on-demand, user-typed search whose query leaves the device, while departures refresh is a
- * background path that must not reach it.
+ * Resolves the stops that carry a picked station's departures — the in-app "Find a station" action
+ * (SPEC *Finding stops*), whose search itself runs on the device ([StationIndex]). Kept apart from
+ * [TflClient] like [StopFinder]: this is an on-demand lookup of what the rider picked, while
+ * departures refresh is a background path that must not reach it.
  */
 interface StationFinder {
     /**
-     * Stations and stops whose name matches [query], best match first (TfL `/StopPoint/Search`).
-     * Throws on a transport/decode failure, mapped to a domain [TflException].
-     */
-    suspend fun searchStations(query: String): List<StationMatch>
-
-    /**
      * The stops under station/hub [id] that carry departures — a hub's stations, a station itself,
      * a bus stop area's poles — with their served lines, from TfL `/StopPoint/{id}`. Empty when the
-     * id resolves to nothing stopdash shows departures for. Throws like [searchStations].
+     * id resolves to nothing stopdash shows departures for. Throws on a transport/decode failure,
+     * mapped to a domain [TflException].
      */
     suspend fun stationStops(id: String): List<StopLocation>
 

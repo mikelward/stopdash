@@ -28,7 +28,6 @@ import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
-import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopZoneSource
@@ -692,20 +691,6 @@ class KtorTflClient(
             }.body<TflStopPointsResponseDto>().stopPoints.mapNotNull { it.toStopLocationOrNull() }
         }
 
-    override suspend fun searchStations(query: String): List<StationMatch> =
-        tflRequest { key ->
-            httpClient.get("$baseUrl/StopPoint/Search") {
-                parameter("query", query)
-                parameter("maxResults", SEARCH_MAX_RESULTS)
-                // Interchanges ("HUBKGX") are left out unless asked for; a hub is the match whose
-                // stops span every station there, which is what a rider searching a name wants.
-                parameter("includeHubs", true)
-                applyAppKey(key)
-            }.body<TflSearchResponseDto>().matches
-                .mapNotNull { it.toStationMatchOrNull() }
-                .distinctBy { it.id }
-        }
-
     override suspend fun stationStops(id: String): List<StopLocation> =
         tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$id") {
@@ -1250,9 +1235,6 @@ class KtorTflClient(
          * resolved origin (or the `from` disambiguation) is read, never the route to it.
          */
         const val POSTCODE_ANCHOR_ID: String = "940GZZLUKSX"
-
-        /** How many name-search matches to ask for — a screenful; a longer query narrows it. */
-        const val SEARCH_MAX_RESULTS: Int = 20
 
         /** The most ids TfL's `/StopPoint/{ids}` answers in one request. */
         const val STOP_POINT_IDS_PER_REQUEST: Int = 20

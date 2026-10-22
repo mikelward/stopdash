@@ -1869,9 +1869,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       back twice with six stops of one name stripped of every line, which drops them from
                       name search (a bus row needs a line). `build_stops.py` now reads the list twice and
                       merges the reads.
-                - [ ] **Drop the unused TfL stop search**: `searchStations` and its DTOs and tests, now
-                      that nothing calls it. `searchPlaces`/`resolvePostcode` stay: places outside London
-                      use them.
+                - [x] **Drop the unused TfL stop search**: `searchStations`, its DTOs and tests are gone,
+                      so no code path can send a typed stop search to TfL. `searchPlaces`/`resolvePostcode`
+                      stay: places outside London use them.
                 - [x] **Drop the favorite place editor's postcode lookup** (maintainer, 2026-10-11: no
                       Journey Planner lookup from search): a complete postcode the bundle doesn't hold
                       (outside London) has no places; the chooser and its failure state are gone.

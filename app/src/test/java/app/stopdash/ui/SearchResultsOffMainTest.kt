@@ -73,7 +73,6 @@ class SearchResultsOffMainTest {
     private class Finder(
         val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
-        override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
