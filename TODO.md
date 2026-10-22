@@ -1124,6 +1124,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                       since putting the end back as planned can't move it: the line goes
                                       no further toward the trip (Codex, #1070). So does the Planner's own
                                       call, which stays for its line, if its lift goes out.
+                                    - [x] On the way: a coming ride a lift out today leaves with no call
+                                          meeting the level where it gets off, its own included, though
+                                          one does with every lift working, is a high *Disruption ahead*
+                                          signal (`RouteDisruption.Signal.NotStepFree`, `StepFreeExits.lost`),
+                                          its card offering Plan again and Keep going. Judged by each call's
+                                          lines over all their platforms, not the platform a train names.
+                                    - [ ] The trip page: a route whose ride has no step-free way off today
+                                          says so on its card and offers to plan again.
+                                    - [ ] A ride's boarding call, which On the way doesn't yet judge against
+                                          today's lifts either.
                                 - [ ] The detour cut, offering every equally good ride.
                                     - [x] On the way: a ride before the last gets the rider off where
                                           the route first reaches the destination, once on board: at its

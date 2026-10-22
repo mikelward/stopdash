@@ -87,7 +87,14 @@ Fully):
 - **Getting off**: the first call in the hub that passes; else the Planner's endpoint if it passes;
   else none does, and the ride says so (the leg shows it is no longer step-free and offers a
   replan, *never fail silently*), never sending the rider to a call that fails. A line other than
-  the Planner's that can't board and get off at passing calls isn't offered.
+  the Planner's that can't board and get off at passing calls isn't offered. Built on the way
+  (2026-10-22): a coming ride none of whose calls where it gets off, its Planner's call included,
+  meets the level with today's lifts, though one does with every lift working, raises a high
+  *Disruption ahead* signal (`RouteDisruption.Signal.NotStepFree`, `StepFreeExits.lost`), whose card
+  offers Plan again and Keep going. Only a lift going out says so: a ride whose calls all fail the
+  table with every lift working says nothing, the Planner having checked its call, so a call the table
+  doesn't describe never raises it. The rider's own call stays where the Planner put it meanwhile. Not
+  yet on the trip page.
 - **Rechecked when the lifts change.** A change to the outage set redoes every judgment, an active
   trip's included: its followed train's endpoint is worked out again from its planned legs, so it
   can move later as well as earlier (built: `OnTheWay.advance` puts a moved end back as planned,

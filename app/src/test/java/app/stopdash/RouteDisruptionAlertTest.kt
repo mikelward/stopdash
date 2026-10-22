@@ -46,6 +46,14 @@ class RouteDisruptionAlertTest {
     }
 
     @Test
+    fun `a ride a lift out leaves with no step-free way off names where it was to get off`() {
+        val lost = RouteDisruption.Signal.NotStepFree(0, "940GZZLUPRA", "Praed")
+        assertEquals("Not step-free at Praed: a lift is out" to null, RouteDisruptionAlert.content(app, listOf(lost)))
+        // With no name, by its id rather than none.
+        assertEquals("Not step-free at 940GZZLUPRA: a lift is out" to null, RouteDisruptionAlert.content(app, listOf(lost.copy(stopName = ""))))
+    }
+
+    @Test
     fun `National Rail's words are said only if they're still current when the alert comes down`() {
         val now = Instant.now()
         val link = "https://www.nationalrail.co.uk/service-disruptions/example-20261018/"

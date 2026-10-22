@@ -18,14 +18,30 @@ import kotlinx.coroutines.sync.withLock
 internal class LiftedAccess(private val table: suspend () -> StepFreeAccess?, private val warn: (String) -> Unit = {}) {
     private val mutex = Mutex()
     private var read = false
-    private var base: StepFreeAccess? = null
+    private var bundled: StepFreeAccess? = null
     private var lifted: Pair<Set<String>, StepFreeAccess>? = null
 
     /** The table with [out] (TfL's lift ids) out of service; null where there's none to check by. On a worker only. */
     @WorkerThread
     suspend fun with(out: Set<String>): StepFreeAccess? = mutex.withLock {
+        val table = loaded() ?: return@withLock null
+        lifted?.takeIf { it.first == out }?.let { return@withLock it.second }
+        val now = if (out.isEmpty()) table else table.withLiftsOut(out)
+        lifted = out to now
+        now
+    }
+
+    /**
+     * The table with every lift working, as [with] no lifts out gives it, leaving the one last rebuilt for lifts out to
+     * be had again without rebuilding it; null where there's none to check by. On a worker only.
+     */
+    @WorkerThread
+    suspend fun base(): StepFreeAccess? = mutex.withLock { loaded() }
+
+    // The bundled table, read the first time it's asked for; under [mutex].
+    private suspend fun loaded(): StepFreeAccess? {
         if (!read) {
-            base = try {
+            bundled = try {
                 table()?.takeIf { !it.isEmpty }
             } catch (e: CancellationException) {
                 throw e
@@ -36,11 +52,7 @@ internal class LiftedAccess(private val table: suspend () -> StepFreeAccess?, pr
             }
             read = true
         }
-        val table = base ?: return@withLock null
-        lifted?.takeIf { it.first == out }?.let { return@withLock it.second }
-        val now = if (out.isEmpty()) table else table.withLiftsOut(out)
-        lifted = out to now
-        now
+        return bundled
     }
 
     /**

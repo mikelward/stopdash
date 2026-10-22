@@ -589,6 +589,55 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `on the way a step-free ride a lift out leaves with no way off says so, until the lift is back`() = runTest {
+        // To Praed, whose red platform only a lift, LIFT1, makes step-free: with it out, the ride can get off nowhere
+        // at the trip's level, and the trip says so rather than send the rider there.
+        val toPraed = TripRoute(listOf(ride.copy(toId = "940GZZLUPRA", toName = "Praed", path = listOf("B", "940GZZLUPRA"))))
+        val praed = app.stopdash.domain.StepFreeAccess(
+            mapOf(
+                "940GZZLUPRA" to mapOf(
+                    "red" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.RAMP, byLift = app.stopdash.domain.LiftStop("PRA", 1))),
+                ),
+            ),
+            mapOf("PRA" to app.stopdash.domain.LiftMap(walks = emptyMap(), lifts = mapOf("LIFT1" to setOf(0, 1)))),
+        )
+        var out = emptySet<String>()
+        val tracker = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = praed, liftsOut = { out })
+        now = t0
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 9), call("940GZZLUPRA", 14))
+        tracker.start(
+            toPraed, "Praed", readyAt = now, destinationIds = mapOf("940GZZLUPRA" to "940GZZLUPRA"),
+            destinationStopId = "940GZZLUPRA", destinationLevel = Pick.Level.STATION, stepFree = StepFree.FULLY,
+        )
+        val key = "stepfree/0/940GZZLUPRA"
+        tracker.refresh()
+        assertTrue("$disruptionAlerts", disruptionAlerts.none { key in it })
+        out = setOf("LIFT1")
+        tracker.refresh()
+        assertTrue("$disruptionAlerts", disruptionAlerts.any { it.startsWith("new") && key in it })
+        val said = tracker.routeDisruptions.value?.signals.orEmpty().single { it.key == key } as RouteDisruption.Signal.NotStepFree
+        assertEquals("Praed", said.stopName)
+        // Back in service: nothing's lost, and what it said comes down.
+        out = emptySet()
+        tracker.refresh()
+        assertTrue(tracker.routeDisruptions.value?.signals.orEmpty().none { it.key == key })
+        // A trip at no level says nothing, whatever's out.
+        tracker.end()
+        out = setOf("LIFT1")
+        disruptionAlerts.clear()
+        val any = tracker(StandardTestDispatcher(testScheduler), hubs = twoStationHub, access = praed, liftsOut = { out })
+        now = t0
+        any.start(
+            toPraed, "Praed", readyAt = now, destinationIds = mapOf("940GZZLUPRA" to "940GZZLUPRA"),
+            destinationStopId = "940GZZLUPRA", destinationLevel = Pick.Level.STATION, stepFree = StepFree.ANY,
+        )
+        any.refresh()
+        assertTrue("$disruptionAlerts", disruptionAlerts.none { key in it })
+        any.end()
+    }
+
+    @Test
     fun `on the way the last ride takes another line to another station of the destination's hub, and gets off there`() = runTest {
         // Planned to Hamlet on red; blue, one of its lines as the trip's cards offer them, reaches Praed, another
         // station of Hamlet's hub, and its train comes first.
