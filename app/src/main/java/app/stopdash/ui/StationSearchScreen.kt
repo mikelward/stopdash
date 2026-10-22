@@ -706,6 +706,7 @@ private fun OutsideStatusRow(outside: OutsideLondon, onSearch: () -> Unit) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp))
         }
         OutsideLondon.NoMatches -> Message(stringResource(R.string.station_search_outside_none))
+        OutsideLondon.NoSuchPostcode -> Message(stringResource(R.string.station_search_postcode_none))
         OutsideLondon.Failed -> Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -1878,6 +1878,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 - [x] **Places outside London from TfL** (maintainer, 2026-10-11): a *Search outside
                       London* row asks the Journey Planner when tapped, and a complete postcode the bundle
                       doesn't hold is asked at once, in *To…*, *From…* and the favorite place editor.
+                - [x] **Never offer a postcode other than the one typed** (2026-10-22): TfL answers a
+                      postcode it doesn't know with another it does, named as that one, and a favorite
+                      place in a bug report was saved at such a stand-in. Only the postcode
+                      typed is listed; with none, the row says *Postcode not found*.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
                   read (~22,000 stops, once per process, now started in the background as the app's screen opens)
                   and search are measured only on a desktop JVM.

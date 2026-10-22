@@ -91,6 +91,21 @@ class UkPostcodeTest {
     }
 
     @Test
+    fun `names tells the postcode typed from one that only looks like it`() {
+        assertTrue(UkPostcode.names("X1 9XX", "x19xx"))
+        assertTrue(UkPostcode.names("x19xx", "X1 9XX"))
+        assertTrue(UkPostcode.names("Zeta Hall, X1 9XX", "X1 9XX"))
+        // Another postcode with the typed one inside it, as TfL answers one it doesn't know.
+        assertFalse(UkPostcode.names("XX1 9XX", "X1 9XX"))
+        assertFalse(UkPostcode.names("X11 9XX", "X1 9XX"))
+        assertFalse(UkPostcode.names("X1 9XXX", "X1 9XX"))
+        // A look-alike, a name with no postcode, and an incomplete code typed.
+        assertFalse(UkPostcode.names("X1 9XY", "X1 9XX"))
+        assertFalse(UkPostcode.names("Zeta Hall", "X1 9XX"))
+        assertFalse(UkPostcode.names("X1 9XX", "X1"))
+    }
+
+    @Test
     fun `the defunct GIR 0AA is intentionally not recognized`() {
         // Excluded on purpose: it never helps a London rider (see the class doc).
         assertFalse(UkPostcode.isComplete("GIR 0AA"))

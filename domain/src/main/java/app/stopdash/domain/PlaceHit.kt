@@ -77,7 +77,8 @@ object PlaceHits {
         val q = query.trim()
         if (q.isEmpty() || candidates.isEmpty()) return emptyList()
         val ordered = when (kind) {
-            PlaceKind.POSTCODE -> candidates
+            // Only the postcode typed: TfL answers one it doesn't know with another ([UkPostcode.names]).
+            PlaceKind.POSTCODE -> candidates.filter { UkPostcode.names(it.name, q) }
             PlaceKind.PLACE, PlaceKind.STREET -> candidates
                 .mapNotNull { candidate -> StationMatcher.tier(q, candidate.name)?.let { it to candidate } }
                 // An exact name, then one the query starts (not just a part of), then the nearer of equal matches to where the trip starts ([near]), as the

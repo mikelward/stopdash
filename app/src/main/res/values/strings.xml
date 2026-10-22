@@ -790,6 +790,9 @@
     <string name="station_search_outside_heading">Outside London</string>
     <string name="station_search_outside_none">Nothing found outside London</string>
     <string name="station_search_outside_failed">Couldn\'t search outside London</string>
+    <!-- Under "Outside London" when TfL doesn't place the postcode typed, or answers with a different one. -->
+    <!-- TODO: translate -->
+    <string name="station_search_postcode_none" tools:ignore="MissingTranslation">Postcode not found</string>
     <!-- Headings over the user's own stops, listed before anything is typed. -->
     <string name="station_search_starred">Starred</string>
     <string name="station_search_recent">Recent</string>
