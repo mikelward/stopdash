@@ -4375,9 +4375,10 @@ Builds on Phase 1's minimal line-status marking.
       with no label"). Done (2026-10-22): the train's route is the rightmost rail, every station on it labeled;
       other routes have no rows, their tracks dashed where they meet it (a bypass, or a stub to the line's end),
       said "Other routes meet here" to a screen reader. Needs a device check of the dashes and stubs.
-- [ ] **An All chip on the route page** (maintainer, 2026-10-22: "when viewing the whole line or when the All
+- [x] **An All chip on the route page** (maintainer, 2026-10-22: "when viewing the whole line or when the All
       chip is selected it would keep the current view"): a last chip in the route chips row drawing the whole
-      line's map as the line page does, every route labeled.
+      line's map as the line page does, every route labeled. Done (2026-10-22): the map is laid out as before
+      the route-alone map (`LineMap.of`'s `wholeLine`), a route's chip going back to its route alone.
 - [ ] **Choose the route on the route page** (maintainer, 2026-10-21). A line row with no train (a quiet
       or status row) opens a page that can't list stops, since which direction or branch is a guess.
       Proposed: a row of chips under the title, one per route from the stop ("via Bank", "via Charing

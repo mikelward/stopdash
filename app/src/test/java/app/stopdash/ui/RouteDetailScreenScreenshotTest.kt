@@ -19,6 +19,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -28,8 +31,11 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -2476,6 +2482,136 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun theAllChip_drawsTheWholeLine_andARouteChipGoesBackToItsRouteAlone() {
+        // The Northern line at Highgate (synthetic routes), south to Morden by Bank: the map draws that route alone,
+        // the Charing Cross branch dashed with no rows, and the All chip, last, the whole line (maintainer, 2026-10-22).
+        val names = mapOf(
+            "940GZZLUHBT" to "High Barnet", "940GZZLUHGT" to "Highgate", "940GZZLUCTN" to "Camden Town",
+            "940GZZLUMTC" to "Mornington Crescent", "940GZZLUEUS" to "Euston", "940GZZLUBNK" to "Bank",
+            "940GZZLUCHX" to "Charing Cross", "940GZZLUKNG" to "Kennington", "940GZZLUMDN" to "Morden",
+        )
+        val south = listOf(
+            LineRoute("High Barnet &harr; Morden via Bank", listOf("940GZZLUHBT", "940GZZLUHGT", "940GZZLUCTN", "940GZZLUEUS", "940GZZLUBNK", "940GZZLUKNG", "940GZZLUMDN"), "outbound"),
+            LineRoute(
+                "High Barnet &harr; Morden via Charing Cross",
+                listOf("940GZZLUHBT", "940GZZLUHGT", "940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS", "940GZZLUCHX", "940GZZLUKNG", "940GZZLUMDN"),
+                "outbound",
+            ),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = LineSequence(
+                    if (direction == "outbound") south else south.map { it.copy(stopIds = it.stopIds.asReversed(), direction = "inbound") },
+                    names,
+                )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val stop = StopArrivals(
+            stopId = "940GZZLUHGT",
+            stopName = "Highgate",
+            departures = listOf(
+                Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", now.plusSeconds(120), "tube", "Bank"),
+            ),
+            fetchedAt = now,
+        )
+        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        focus = RouteFocus("Morden", "Bank"),
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onAllNodesWithText("Mornington Crescent", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        // Last in the row, scrolled to as the rider would.
+        composeRule.onNodeWithTag("routeChips").performScrollToNode(hasTestTag("routeChoice-all"))
+        composeRule.onNodeWithTag("routeChoice-all").assertTextEquals("All").assertIsNotSelected().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routeChoice-all").assertIsSelected()
+        composeRule.onNodeWithTag("routeChips").performScrollToNode(hasTestTag("routeChoice-0"))
+        composeRule.onNodeWithTag("routeChoice-0").assertIsNotSelected()
+        assertTrue(
+            "the Charing Cross branch's stations drawn",
+            composeRule.onAllNodesWithText("Mornington Crescent", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+        )
+        // Its own route's chip again: that route alone.
+        composeRule.onNodeWithTag("routeChips").performScrollToNode(hasTestTag("routeChoice-0"))
+        composeRule.onNodeWithTag("routeChoice-0").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onAllNodesWithText("Mornington Crescent", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun theAllChip_onAQuietRowWithNoRouteChosen_drawsTheWholeLineFromItsOwnRoutes() {
+        // The Northern line at Highgate (synthetic routes) with no live times and no route chosen: no train's route to
+        // follow, so All draws the line's map from its own routes, as its line page would (Codex on #1113).
+        val opened = mutableListOf<RouteStopOpen>()
+        val row = DepartureRow(
+            stopId = "940GZZLUHGT", stopName = "Highgate", lineId = "northern", lineName = "Northern",
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now, quiet = true,
+        )
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                // Synthetic positions, as a line's route data carries them.
+                CompositionLocalProvider(LocalRouteStops provides highgateRoutes(mapOf("940GZZLUKNG" to (51.5 to -0.1)))) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        siblings = listOf(row),
+                        onChooseRoute = { _, _ -> },
+                        onOpenStop = { opened += it },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("lineMap").assertCountEquals(0)
+        composeRule.onNodeWithTag("routeChips").performScrollToNode(hasTestTag("routeChoice-all"))
+        composeRule.onNodeWithTag("routeChoice-all").assertIsNotSelected().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routeChoice-all").assertIsSelected()
+        composeRule.onNodeWithTag("lineMap").assertExists()
+        // The line's ends and the junctions its branches leave from, as the line page opens on them.
+        for (station in listOf("High Barnet", "Camden Town", "Kennington", "Morden")) {
+            assertTrue(
+                "$station drawn",
+                composeRule.onAllNodesWithText(station, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+            )
+        }
+        // A station tapped opens with no ride to offer, placed where the map has it: no train's stops place it.
+        composeRule.onNodeWithText("Kennington", substring = true).performScrollTo().performClick()
+        composeRule.waitForIdle()
+        val kennington = opened.single()
+        assertEquals("940GZZLUKNG", kennington.stopId)
+        assertEquals(Coordinates(51.5, -0.1), kennington.position)
+        assertFalse(kennington.ridden)
+        assertEquals(null, kennington.go)
+    }
+
+    @Test
     fun aQuietRow_saysWhyItsTimesAreMissing_andGivesEachWaysTimetabledTrains() {
         // The Northern line at Highgate (synthetic routes) with no live times, its timetable due both ways.
         val names = mapOf(
@@ -2547,7 +2683,7 @@ class RouteDetailScreenScreenshotTest {
     private val viaBank = listOf("940GZZLUCTN", "940GZZLUEUS", "940GZZLUBNK", "940GZZLUKNG", "940GZZLUMDN")
     private val viaCharing = listOf("940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS", "940GZZLUCHX", "940GZZLUKNG", "940GZZLUMDN")
 
-    private fun highgateRoutes(): RouteStopsRepository {
+    private fun highgateRoutes(positions: Map<String, Pair<Double, Double>> = emptyMap()): RouteStopsRepository {
         val south = listOf(
             LineRoute("High Barnet &harr; Morden via Bank", listOf("940GZZLUHBT", "940GZZLUHGT") + viaBank, "outbound"),
             LineRoute("High Barnet &harr; Morden via Charing Cross", listOf("940GZZLUHBT", "940GZZLUHGT") + viaCharing, "outbound"),
@@ -2557,6 +2693,7 @@ class RouteDetailScreenScreenshotTest {
                 override suspend fun routeSequence(lineId: String, direction: String): LineSequence = LineSequence(
                     if (direction == "outbound") south else south.map { it.copy(stopIds = it.stopIds.asReversed(), direction = "inbound") },
                     highgateNames,
+                    stopPositions = positions,
                 )
             },
             io = kotlinx.coroutines.Dispatchers.Unconfined,

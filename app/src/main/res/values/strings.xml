@@ -69,6 +69,9 @@
     <!-- A route chip atop a route page, for one of two ways to one place that only a stop tells apart:
          %1$s is where it goes, %2$s the first stop it calls at that the other doesn't. -->
     <string name="route_choice_via" tools:ignore="MissingTranslation">%1$s via %2$s</string>
+    <!-- The last of a route page's route chips: the map of the whole line, every route, rather than the train's alone. -->
+    <!-- TODO: translate -->
+    <string name="route_choice_all" tools:ignore="MissingTranslation">All</string>
     <!-- TODO: translate -->
     <!-- A route chip for a train TfL names no destination for ("Check Front of Train"): the farthest stop all its way's routes reach, a guess. -->
     <string name="route_choice_at_least" tools:ignore="MissingTranslation">At least to %1$s?</string>

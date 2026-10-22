@@ -546,16 +546,19 @@ class LineMap internal constructor(
             // Every station [rides] take open, as a route page's train is (SPEC *Route detail*); else only
             // what an alert places on them.
             ridesOpen: Boolean = false,
+            // With [ridesOpen], the whole line drawn, every route's stations, rather than the train's route alone (a
+            // route page's All chip).
+            wholeLine: Boolean = false,
         ): LineMap? {
             val alone = oneWay(sequence, otherWay = false)
             val both = oneWay(sequence, otherWay = true)
             // The way back drawn on the outbound way's own tracks: one map, its arrows from both ways.
-            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen)
+            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen, wholeLine)
             // Else the outbound way alone where the way back can't be drawn, with no arrows: the way back runs
             // somewhere the map doesn't show, so its tracks can't say which way buses run them.
             val unknownWay = OneWay(alone.routes, alone.same, alone.through)
-            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen)
-            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen) ?: return outbound
+            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen, wholeLine)
+            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen, wholeLine) ?: return outbound
             fun LineMap.twice() = rows.size - rows.mapTo(HashSet()) { it.stopId }.size
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
         }
@@ -573,6 +576,7 @@ class LineMap internal constructor(
             here: Coordinates?,
             upcoming: List<PlannedAlert>,
             ridesOpen: Boolean,
+            wholeLine: Boolean,
         ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
             // A section's stops as the map has them: the way back's poles as the outbound stops, and a hop
@@ -663,8 +667,10 @@ class LineMap internal constructor(
                 nodes
             }
 
+            // A route page's map of its train's route alone, unless it's asked for the whole line.
+            val routeAlone = ridesOpen && !wholeLine
             // A route page's train's path, kept in one column ([layOut]).
-            val path = if (ridesOpen) ridden else emptySet()
+            val path = if (routeAlone) ridden else emptySet()
             // A route page's map has its train's route alone, behind where it's boarded and on from there: every
             // other route's stations have no row, its tracks drawn dashed where they meet the train's, and the
             // train's rail is the rightmost, beside the names (maintainer, 2026-10-22). Laid out as the routes run
@@ -672,7 +678,7 @@ class LineMap internal constructor(
             // it ([standIns]), its row dropped once laid out, since every rail runs straight through it: so it keeps a
             // track of its own beside any the two share, and what's placed on the tracks it stands for is drawn on it
             // ([along]). Each stub is kept by the station it runs to or from (Codex on #1102).
-            val own = if (ridesOpen) ownRoute(graph, ridden, riddenTracks, way.travel) else null
+            val own = if (routeAlone) ownRoute(graph, ridden, riddenTracks, way.travel) else null
             val kept = own?.first
             val standIns = HashMap<String, List<String>>()
             val into = HashMap<String, MutableSet<List<String>>>()
@@ -955,9 +961,10 @@ class LineMap internal constructor(
             here: Coordinates? = null,
             upcoming: List<PlannedAlert> = emptyList(),
             ridesOpen: Boolean = false,
+            wholeLine: Boolean = false,
         ): LineMap? {
             val placed = (placed(status) + placed(quieted)).distinct()
-            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here, upcoming, ridesOpen)
+            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here, upcoming, ridesOpen, wholeLine)
         }
 
         /**

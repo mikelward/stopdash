@@ -1352,7 +1352,9 @@ where it meets the train's: one dashed track between two of the train's stations
 Cross branch from Camden Town to Kennington beside a train by Bank), else a short stub where it runs on to the
 line's end (the Battersea branch out of Kennington). A screen reader hears "Other routes meet here" at each
 station one meets. A train going nowhere from the stop (one ending there), or whose route can't be told,
-leaves the whole line drawn; the line's own page keeps every route as before.
+leaves the whole line drawn; the line's own page keeps every route as before. The **All** chip, last among the route
+chips, draws the whole line on the route page too, every route's stations labeled and the train's path open, until
+a route's chip is tapped (maintainer, 2026-10-22: "when the All chip is selected it would keep the current view").
 
 **On a route page's map, the stretch behind the boarding stop folds into one line** (maintainer, 2026-10-21:
 "fully collapse and show High Barnet/Mill Hill East (both origins) and tapping could expand one level"):

@@ -186,6 +186,8 @@ internal fun rememberLineMap(
     nearMe: Boolean = true,
     // Told, as it composes, whether the map drawn was laid out for the inputs given ([LineMapSectionState.current]).
     reportCurrent: ((Boolean) -> Unit)? = null,
+    // With [ridesOpen], the whole line rather than the train's route alone ([LineMap.forStatus]).
+    wholeLine: Boolean = false,
 ): LineMapUi? {
     val repository = LocalRouteStops.current ?: return null
     val worker = LocalWorker.current
@@ -219,13 +221,13 @@ internal fun rememberLineMap(
     // are read from them.
     val statusWords = rememberShownWords(status)
     val quietedWords = rememberShownWords(quieted)
-    val laidKey = Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld, ridesOpen, statusWords, quietedWords)
+    val laidKey = Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld, ridesOpen, wholeLine, statusWords, quietedWords)
     val laid = rememberWorked(laidSlot, laidKey, keep = { _, _ -> true }) {
         Laid(
             sequence,
             statusKey,
             // No near-me list's pick: the stop the map draws nearest the rider's fix, however far.
-            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here, upcomingHeld?.alerts() ?: upcoming, ridesOpen) },
+            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here, upcomingHeld?.alerts() ?: upcoming, ridesOpen, wholeLine) },
         )
     }
     // A map laid out for this route data and this status, for starred or ridden stops since changed
@@ -382,6 +384,8 @@ internal fun rememberLineMapSection(
     // rows a fold holds depend on the path kept open.
     foldsFor: String = "",
     nearMe: Boolean = true,
+    // A route page's map of the whole line, its All chip chosen, rather than its train's route alone.
+    wholeLine: Boolean = false,
 ): LineMapSectionState? {
     var retry by remember(lineId) { mutableIntStateOf(0) }
     // Kept above the page where it's given somewhere to keep them ([LocalLineMapWork]), else saved here.
@@ -393,7 +397,7 @@ internal fun rememberLineMapSection(
     var current = true
     val ui = rememberLineMap(
         lineId, status, starred, riding, opened, all, retry, statusKey, quieted, rides, nearby, planned, upcomingHeld, ridesOpen, seed,
-        nearMe, reportCurrent = { current = it },
+        nearMe, reportCurrent = { current = it }, wholeLine = wholeLine,
     )
     val atFirst = opened == null && !all
     return if (ui == null) {
