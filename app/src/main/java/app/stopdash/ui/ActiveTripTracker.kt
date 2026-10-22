@@ -2049,8 +2049,8 @@ class ActiveTripTracker(
         val sequence = routeOf(leg.lineId) ?: return null
         val fix = rider.takeIf { preciseAllowed() }?.let { aged(it, Duration.ofMillis(elapsed() - seenAt)) } ?: return null
         val moved = withContext(compute) { OnTheWay.seenPastCalls(trip, progress, fix, OnTheWay.ridePositions(leg, sequence), now) }
-        // Two fixes in a row, each its own refresh, before the calls are overruled, and only as far as both place
-        // them: a fix can jump wide for a moment (maintainer, 2026-10-19). One that doesn't place them past starts over.
+        // Two fixes in a row, each its own refresh, before the calls are overruled: a fix can jump wide for a moment
+        // (maintainer, 2026-10-19). One that doesn't place them past starts over.
         val before = pastSeen
         pastSeen = moved?.let { PastSeen(trip.startedAt, trip.legIndex, it.seenAlongStop) }
         if (moved == null) return null
@@ -2067,7 +2067,9 @@ class ActiveTripTracker(
             warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId} once, fix accuracy $accuracy m: waiting for another")
             return null
         }
-        val confirmed = minOf(before.stop, moved.seenAlongStop)
+        // From the later where it's a stop past the earlier: the bus moves on between them, so the nearer left the
+        // count a stop behind and "get off soon" came after the stop (maintainer, 2026-10-22). Else the nearer.
+        val confirmed = if (moved.seenAlongStop == before.stop + 1) moved.seenAlongStop else minOf(before.stop, moved.seenAlongStop)
         if (confirmed <= trip.seenAlongStop) return null
         warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId} twice, counted from stop ${confirmed + 1} of ${leg.path.size}, fix accuracy $accuracy m")
         return moved.copy(seenAlongStop = confirmed)

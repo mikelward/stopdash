@@ -2638,6 +2638,46 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `seen past the calls twice, a stop on the second time, the trip counts on from the later`() = runTest {
+        // The rider is seen at B, then at C a refresh later, each past the 9's lagging calls: the bus moved on between
+        // the two, so counting from the nearer said "get off soon" after the stop (maintainer, 2026-10-22).
+        sequences["red"] = redLine.copy(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ E", listOf("A", "B", "C", "D", "E"))),
+            stopNames = redLine.stopNames + mapOf("D" to "D", "E" to "E"),
+            stopPositions = redLine.stopPositions + mapOf("D" to (51.53 to -0.12), "E" to (51.54 to -0.12)),
+        )
+        val toD = ride.copy(mode = "bus", toId = "D", toName = "D", path = listOf("B", "C", "D"), pathNames = listOf("B", "C", "D"))
+        val saved = ActiveTrip(TripRoute(listOf(toD)), "D", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        trains["9"] = listOf(call("B", 9), call("C", 14), call("D", 19))
+        now = at(8)
+        tracker.refresh(fixAt(51.51, accuracy = 30f))
+        assertEquals(3, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        trains["9"] = listOf(call("C", 14), call("D", 19))
+        tracker.refresh(fixAt(51.52, accuracy = 30f))
+        assertEquals(2, tracker.trip.value?.seenAlongStop)
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals("D", riding.nextStop)
+        assertEquals(1, riding.stopsLeft)
+        assertTrue(riding.getOffSoon)
+        assertEquals(listOf("said D"), alerts)
+        assertTrue(logged.any { it.startsWith("on the way: seen 1 stop(s) past the next call on line red twice, counted from stop 3 of 3") })
+        // Seen two stops on the second time: as likely a fix that jumped wide, so only from the nearer, which the calls
+        // have caught up with.
+        val toE = toD.copy(toId = "E", toName = "E", path = listOf("B", "C", "D", "E"), pathNames = listOf("B", "C", "D", "E"))
+        val far = tracker(StandardTestDispatcher(testScheduler), load = { saved.copy(route = TripRoute(listOf(toE)), destinationName = "E") })
+        far.restore()
+        trains["9"] = listOf(call("B", 9), call("C", 14), call("D", 19), call("E", 24))
+        far.refresh(fixAt(51.51, accuracy = 30f))
+        trains["9"] = listOf(call("D", 19), call("E", 24))
+        far.refresh(fixAt(51.53, accuracy = 30f))
+        assertEquals(1, far.trip.value?.seenAlongStop)
+        assertEquals(2, (far.progress.value as TripProgress.Riding).stopsLeft)
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
     fun `a bus's next call well past its time counts the trip on a stop`() = runTest {
         // The 9's calls still say B is next half a minute after it was due: counted on to C, and "get off soon" said
         // (maintainer, 2026-10-20).
