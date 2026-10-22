@@ -1,6 +1,7 @@
 package app.stopdash.wear
 
 import app.stopdash.data.WatchTrip
+import app.stopdash.domain.CountdownWords
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -124,6 +125,12 @@ class WatchTripStateTest {
         assertEquals("2 · 5 min", rows.single().row.countdown)
         assertEquals("", rows.single().stop)
         assertFalse(rows.single().row.muted)
+    }
+
+    @Test
+    fun `the next ride's countdowns are written in the watch's words`() {
+        val german = CountdownWords(" | ") { "$it Min." }
+        assertEquals("2 | 5 Min.", trainRows(sentAgo(10), now, stale = false, words = german).single().row.countdown)
     }
 
     @Test

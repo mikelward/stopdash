@@ -18,9 +18,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -79,13 +81,17 @@ fun WatchHomeScreen(
         var page by remember(trip?.trip?.startedAt, trip?.trip?.current, trip?.stepsKey, openTrip) { mutableIntStateOf(trip?.trip?.current ?: 0) }
         // With a trip, the list opens at its top, the trip first, rather than centered on its second item.
         val list = rememberScalingLazyListState(initialCenterItemIndex = if (trip != null) 0 else 1)
+        // The trip's trains' countdowns in the watch's language, made once per language.
+        val resources = LocalResources.current
+        val configuration = LocalConfiguration.current
+        val words = remember(resources, configuration) { countdownWords(resources) }
         // A trip that arrives with the screen open goes above where the list stands, and so does the
         // step paged to (from the pager below it) or sent by the phone: bring it into view.
         val hasTrip = trip != null
         LaunchedEffect(hasTrip, trip?.trip?.startedAt, trip?.trip?.current, page, openTrip) { if (hasTrip) list.scrollToItem(0) }
         when {
             frame is TileFrame.Rows -> ScalingLazyColumn(modifier = background, state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (trip != null) tripItems(trip, now, page) { page = it }
+                if (trip != null) tripItems(trip, now, page, words) { page = it }
                 item { Stamp(frame) }
                 if (frame.stale || frame.partial) {
                     item { Note(stringResource(if (frame.stale) R.string.tile_out_of_date else R.string.watch_partly_out_of_date), Warning) }
@@ -100,7 +106,7 @@ fun WatchHomeScreen(
             }
             // A trip with no departures to list under it (yet): the trip alone, never hidden behind them.
             trip != null -> ScalingLazyColumn(modifier = background, state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                tripItems(trip, now, page) { page = it }
+                tripItems(trip, now, page, words) { page = it }
                 if (onRefresh != null && frame != null) item { RefreshButton(notice, onRefresh) }
             }
             frame == null -> Box(modifier = background, contentAlignment = Alignment.Center) { Title() }

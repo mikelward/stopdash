@@ -90,6 +90,13 @@
     <string name="watch_trip_previous">Previous step</string>
     <!-- Pages forward through the trip's steps; spoken by a screen reader. -->
     <string name="watch_trip_next">Next step</string>
+    <!-- TODO: translate -->
+    <!-- A countdown's minutes on the tile and in the app: %1$s is one or more numbers already joined
+         ("3 · 7"), the unit written once after them ("3 · 7 min"). The phone's countdown_minutes. -->
+    <string name="countdown_minutes" tools:ignore="MissingTranslation">%1$s min</string>
+    <!-- TODO: translate -->
+    <!-- What goes between a countdown's times ("3 · 7 min"), spaces included. -->
+    <string name="countdown_between" tools:ignore="MissingTranslation">" · "</string>
     <!-- Stops left out because the snapshot was too big to send. -->
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">%d more stop on phone</item>

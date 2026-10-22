@@ -1,6 +1,7 @@
 package app.stopdash.wear
 
 import app.stopdash.data.WatchTrip
+import app.stopdash.domain.CountdownWords
 import java.time.Duration
 import java.time.Instant
 
@@ -26,6 +27,8 @@ internal object TileTrip {
         now: Instant,
         elapsedNow: Long,
         screen: TileScreen?,
+        // The trains' countdowns' words, in the watch's language ([countdownWords]); English for a test.
+        words: CountdownWords = CountdownWords.ENGLISH,
         after: (from: Instant, maxScheduled: Int) -> TileSchedule,
     ): TileSchedule? {
         held ?: return null
@@ -69,7 +72,7 @@ internal object TileTrip {
         for (instant in instants) {
             val elapsed = elapsedNow + Duration.between(now, instant).toMillis()
             val shown = WatchTripState.shown(held, instant, elapsed) ?: break
-            val next = frame(shown.trip, instant, shown.stale, screen)
+            val next = frame(shown.trip, instant, shown.stale, screen, words)
             if (next == current) continue
             current?.let { entries += TileEntry(start, instant, it) }
             start = instant
@@ -82,7 +85,7 @@ internal object TileTrip {
     }
 
     /** [trip] as the tile draws it at [at]: its trains, under their poles, as many as fit [screen]. */
-    fun frame(trip: WatchTrip, at: Instant, stale: Boolean, screen: TileScreen?): TileFrame.Trip {
+    fun frame(trip: WatchTrip, at: Instant, stale: Boolean, screen: TileScreen?, words: CountdownWords = CountdownWords.ENGLISH): TileFrame.Trip {
         // Its trains go with the step boarding them, and the steps on the way to it.
         val showsTrains = trip.departuresAt >= 0 && trip.current <= trip.departuresAt
         val note = trip.departuresNote.takeIf { showsTrains }.orEmpty()
@@ -92,7 +95,7 @@ internal object TileTrip {
         val lines = if (!showsTrains) {
             emptyList()
         } else {
-            val all = trainRows(trip, at, stale).groupBy { it.stop }.flatMap { (stop, rows) ->
+            val all = trainRows(trip, at, stale, words).groupBy { it.stop }.flatMap { (stop, rows) ->
                 listOfNotNull(stop.takeIf { it.isNotEmpty() }?.let { TileLine.Header(it) }) + rows.map { TileLine.Departure(it.row) }
             }
             val taken = all.take(budget).let { if (it.lastOrNull() is TileLine.Header) it.dropLast(1) else it }

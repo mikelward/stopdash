@@ -78,9 +78,11 @@ class StopDashTileService : TileService() {
                     val topology = RouteTopologyStore.over(this, envelope?.routePatterns().orEmpty())
                     // While On the way follows a trip, the tile shows it, as the phone's widget does; else
                     // the departures. A trip that arrived before this process started is read back once.
-                    val schedule = TileTrip.schedule(WatchTripState.trip.value, now, SystemClock.elapsedRealtime(), screen) { from, max ->
-                        TileTimeline.schedule(envelope, from, topology, screen, maxScheduled = max)
-                    } ?: TileTimeline.schedule(envelope, now, topology, screen)
+                    // The countdowns in the watch's language.
+                    val words = countdownWords(resources)
+                    val schedule = TileTrip.schedule(WatchTripState.trip.value, now, SystemClock.elapsedRealtime(), screen, words) { from, max ->
+                        TileTimeline.schedule(envelope, from, topology, screen, maxScheduled = max, words = words)
+                    } ?: TileTimeline.schedule(envelope, now, topology, screen, words = words)
                     val notices = RefreshPolicy.notices(WatchRefresh.state.value, now)
                     val timeline = tileTimeline(this, TileTimeline.withNotice(schedule.entries, notices))
                     val tile = TileBuilders.Tile.Builder()

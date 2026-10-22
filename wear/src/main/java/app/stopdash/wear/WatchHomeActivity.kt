@@ -76,7 +76,7 @@ class WatchHomeActivity : ComponentActivity() {
                                 this@WatchHomeActivity,
                                 (received as? WatchReceived.Received)?.envelope?.routePatterns().orEmpty(),
                             )
-                            WatchAppFrames.tick(received, topology, Instant::now, { r -> store.current() ?: r.envelope }) { f -> frame.value = f }
+                            WatchAppFrames.tick(received, topology, Instant::now, { r -> store.current() ?: r.envelope }, countdownWords(this@WatchHomeActivity.resources)) { f -> frame.value = f }
                         }
                     } finally {
                         frame.value = null

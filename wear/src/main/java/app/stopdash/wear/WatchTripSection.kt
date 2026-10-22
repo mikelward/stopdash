@@ -21,6 +21,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import app.stopdash.data.WatchTrip
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.Departure
 import app.stopdash.domain.lineCode
 import java.time.Instant
@@ -32,7 +33,14 @@ import java.time.Instant
  * nothing, the trip stays where the phone says the rider is, and a new step from the phone brings the
  * page back to it. Each part is its own list item, so the round screen scales them as it scrolls.
  */
-internal fun ScalingLazyListScope.tripItems(shown: ShownTrip, now: Instant, page: Int, onPage: (Int) -> Unit) {
+internal fun ScalingLazyListScope.tripItems(
+    shown: ShownTrip,
+    now: Instant,
+    page: Int,
+    // Its trains' countdowns' words, in the watch's language ([countdownWords]).
+    words: CountdownWords = CountdownWords.ENGLISH,
+    onPage: (Int) -> Unit,
+) {
     val trip = shown.trip
     val step = trip.steps.getOrNull(page) ?: return
     item { TripHeading(shown.stale) }
@@ -42,7 +50,7 @@ internal fun ScalingLazyListScope.tripItems(shown: ShownTrip, now: Instant, page
         // What the phone says of them: a failed update (over the last good rows), updating, or none.
         if (trip.departuresNote.isNotEmpty()) item { Note(trip.departuresNote, Warning) }
         // Each pole's trains under its own "Stop N", where the pair's other poles have some too.
-        trainRows(trip, now, shown.stale).groupBy { it.stop }.forEach { (stop, rows) ->
+        trainRows(trip, now, shown.stale, words).groupBy { it.stop }.forEach { (stop, rows) ->
             if (stop.isNotEmpty()) item { Note(stop) }
             items(rows) { DepartureRow(it.row) }
         }
@@ -108,7 +116,7 @@ internal data class TripTrainRow(val stop: String, val row: TileRow)
  * rider can't catch get their own muted row, so a grayed time never shares a row with a catchable
  * one. Rows keep the order of each one's soonest train, a pole's rows together.
  */
-internal fun trainRows(trip: WatchTrip, now: Instant, stale: Boolean): List<TripTrainRow> {
+internal fun trainRows(trip: WatchTrip, now: Instant, stale: Boolean, words: CountdownWords = CountdownWords.ENGLISH): List<TripTrainRow> {
     // From a board the phone holds as too old to stand behind ([WatchTrip.oldDepartures]): marked guesses,
     // as when the trip itself has gone out of date.
     val old = trip.departures.isEmpty() && trip.oldDepartures.isNotEmpty()
@@ -122,7 +130,7 @@ internal fun trainRows(trip: WatchTrip, now: Instant, stale: Boolean): List<Trip
         trains.groupBy { (d, t) -> listOf(t.missed, d.lineId, d.lineName, d.destination) }.map { (_, group) ->
             val first = group.first().first
             val missed = group.first().second.missed
-            val countdown = if (marked) Countdown.staleLabel(group.map { it.first }) else Countdown.mergedLabel(group.map { it.first }, now)
+            val countdown = if (marked) Countdown.staleLabel(group.map { it.first }) else Countdown.mergedLabel(group.map { it.first }, now, words)
             TripTrainRow(stop, TileRow(first.lineName, first.lineId, first.mode, lineCode(first.lineName, first.mode, first.lineId), first.destination, countdown, starred = false, stale = marked, muted = missed))
         }
     }

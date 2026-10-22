@@ -1,6 +1,7 @@
 package app.stopdash.wear
 
 import app.stopdash.data.WatchEnvelope
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.RouteTopology
 import java.time.Duration
 import java.time.Instant
@@ -14,11 +15,17 @@ import kotlinx.coroutines.delay
  */
 object WatchAppFrames {
     /** The app's frame for [received] at [now]; null until the stored envelope has been read. */
-    fun at(received: WatchReceived, now: Instant, topology: RouteTopology = RouteTopology.EMPTY): TileFrame? =
+    fun at(
+        received: WatchReceived,
+        now: Instant,
+        topology: RouteTopology = RouteTopology.EMPTY,
+        // The countdowns' words, in the watch's language ([countdownWords]); English for a test.
+        words: CountdownWords = CountdownWords.ENGLISH,
+    ): TileFrame? =
         when (received) {
             WatchReceived.Loading -> null
             WatchReceived.NeverSynced -> TileFrame.NeverSynced
-            is WatchReceived.Received -> TileTimeline.frame(received.envelope, now, topology, budget = TileTimeline.UNBOUNDED)
+            is WatchReceived.Received -> TileTimeline.frame(received.envelope, now, topology, budget = TileTimeline.UNBOUNDED, words = words)
         }
 
     /**
@@ -35,6 +42,7 @@ object WatchAppFrames {
         // The envelope as the clock reads it now ([WatchEnvelopeStore.current]), given the one the
         // ticker last judged.
         current: (WatchReceived.Received) -> WatchEnvelope = { it.envelope },
+        words: CountdownWords = CountdownWords.ENGLISH,
         emit: (TileFrame?) -> Unit,
     ) {
         var received = stored
@@ -50,7 +58,7 @@ object WatchAppFrames {
             received = (received as? WatchReceived.Received)
                 ?.let { it.copy(envelope = current(it).distrustingFuture(now), arrivedIn = null) }
                 ?: received
-            emit(at(received, now, topology))
+            emit(at(received, now, topology, words))
             val next = TileTimeline.nextChange((received as? WatchReceived.Received)?.envelope, now) ?: return
             delay(Duration.between(clock(), next).toMillis().coerceAtLeast(0))
         }
