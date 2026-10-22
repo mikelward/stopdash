@@ -1051,6 +1051,76 @@ class RouteChipsTest {
         composeRule.onNodeWithText("Morden/Charing X").assertIsDisplayed()
     }
 
+    @Test
+    fun a_national_rail_page_offers_a_chip_per_place_its_trains_go_and_holds_room_for_them() {
+        // A National Rail line through A: south by a stopping and a fast pattern to Zulu and a stopping one to
+        // Yankee; north to November. Synthetic stations.
+        val south = listOf(
+            LineRoute("November - Zulu", listOf("N", "A", "B", "C", "Z"), "outbound"),
+            LineRoute("November - Zulu (fast)", listOf("N", "A", "C", "Z"), "outbound"),
+            LineRoute("November - Yankee", listOf("N", "A", "B", "Y"), "outbound"),
+        )
+        val stations = mapOf("N" to "November", "A" to "Alpha", "B" to "Bravo", "C" to "Charlie", "Y" to "Yankee", "Z" to "Zulu")
+        val rail = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
+                    if (direction == "outbound") south else listOf(LineRoute("Zulu - November", listOf("Z", "C", "B", "A", "N"), "inbound")),
+                    stations,
+                )
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        val alpha = StopArrivals(
+            stopId = "A",
+            stopName = "Alpha",
+            departures = listOf(
+                Departure("southern", "Southern", "outbound", "Zulu", null, now.plusSeconds(120), "national-rail"),
+                Departure("southern", "Southern", "inbound", "November", null, now.plusSeconds(300), "national-rail"),
+            ),
+            fetchedAt = now,
+        )
+        val scheduler = TestCoroutineScheduler()
+        val board = app.stopdash.domain.DepartureRows.across(listOf(alpha), now)
+        val row = board.single { it.direction == "outbound" }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides StandardTestDispatcher(scheduler), LocalRouteStops provides rail) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        siblings = board,
+                        onChooseRoute = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Room held for the chips before they're worked out, so they come in without moving the page.
+        composeRule.onNodeWithTag("routeChoice-0").assertDoesNotExist()
+        val held = composeRule.onNodeWithTag("routeChipsSlot").getUnclippedBoundsInRoot()
+        settle(scheduler)
+        assertEquals(held.height, composeRule.onNodeWithTag("routeChipsSlot").getUnclippedBoundsInRoot().height)
+        // One chip per place, its two patterns to Zulu one, the row's train's chosen.
+        composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
+        composeRule.onNodeWithTag("routeChoice-0").assert(hasText("Zulu"))
+        composeRule.onNodeWithTag("routeChoice-1").assert(hasText("Yankee"))
+        composeRule.onNodeWithTag("routeChoice-2").assert(hasText("November"))
+        composeRule.onNodeWithTag("routeChoice-3").assertDoesNotExist()
+        // Yankee, with no train at the stop: its stops, with no live times.
+        composeRule.onNodeWithTag("routeChoice-1").performClick()
+        settle(scheduler)
+        composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
+        composeRule.onNodeWithText("No live times").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Bravo").assertCountEquals(1)
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"

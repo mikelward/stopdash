@@ -172,14 +172,14 @@ internal class RouteChoicesUi private constructor(
 /**
  * Whether a route page on [row]'s line holds room for its chips before they're worked out, so they come in
  * without moving what's below (SPEC *hold still*): a rail line's stop has a way on in each direction, two
- * choices, all but at its ends. A bus pole is one way's, so it seldom has two, and a National Rail line has
- * none yet ([RouteChoices.of]).
+ * choices, all but at its ends, and a National Rail line's a place or more each way ([RouteChoices.of]). A bus
+ * pole is one way's, so it seldom has two.
  */
 internal fun holdsRouteChoices(row: DepartureRow): Boolean {
     if (row.lineId.isBlank()) return false
     // The row's mode, else its line's known one: no walk of its trains in composition (AGENTS.md *Main thread*).
     val mode = row.mode.ifBlank { Connections.knownMode(row.lineId).orEmpty() }
-    return Connections.isRail(mode, row.lineId) && !mode.equals("national-rail", ignoreCase = true)
+    return Connections.isRail(mode, row.lineId)
 }
 
 /**
