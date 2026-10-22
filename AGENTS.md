@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-21
+last_modified: 2026-10-22
 ---
 
 # AGENTS.md
@@ -257,8 +257,9 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 - **Read the Codex verdict on the PR body** (`eyes` = reading, `+1` = clean, revoked on
   push; `+1` + green CI = merge). Read `get_review_comments`, `get_comments`, and
   `get_reviews` to the last page. A pending `codex` status with nothing left to address
-  gets one `@codex review` poke 5 min after the last review/rebuttal/push; escalate rather
-  than poke twice.
+  gets an `@codex review` poke 5 min after the last review/rebuttal/push, as does a review
+  stuck at running (👀) 10 min; a poke that hangs the same way gets a second an hour later,
+  and only a second that hangs too is escalated, never the first (maintainer, 2026-10-22).
 - **Once Codex +1s a head, make no unnecessary change without asking** (maintainer,
   2026-10-13): tidy-ups wait for a yes or a follow-up PR; required rebases (`dirty`/`behind`),
   red-CI fixes, and drive/autopilot steps proceed unasked.
