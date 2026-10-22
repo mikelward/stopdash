@@ -4018,7 +4018,15 @@ Builds on Phase 1's minimal line-status marking.
       - [ ] **The real page under every page during the gesture**: today only windows over a page show
             it. Drawing it for full pages needs a back stack of real entries rather than the overlays'
             flags, with the near-me page's location fix, return refresh and other effects held off while
-            it's only a glimpse. Planned as the move to Navigation 3.
+            it's only a glimpse. Moving to Navigation 3 (maintainer, 2026-10-22), a PR a step
+            (`dev-docs/navigation3.md`):
+        - [x] 1. The spike: what the move relies on, confirmed on the app's own stack.
+        - [ ] 2. The near-me page's effects wait until it's on top of the stack.
+        - [ ] 3. The overlays become a back stack.
+        - [ ] 4. A route stop's windows become window entries.
+        - [ ] 5. The station flow stacks.
+        - [ ] 6. The in-screen views become entries, a family per PR.
+        - [ ] 7. Cleanup: the flag rules the stack replaces go.
   - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their
         favorite journeys' lines covered wherever their stop is, starred rows' while in the list.
   - [x] **Pick individual lines** (maintainer, 2026-10-06): a chip per line, grouped under Tube,
