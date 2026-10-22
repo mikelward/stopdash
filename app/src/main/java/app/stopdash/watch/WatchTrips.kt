@@ -10,6 +10,7 @@ import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.ui.BusPoleCues
+import app.stopdash.ui.HeaderWords
 import app.stopdash.ui.busPoleLabels
 import java.time.Duration
 import java.time.Instant
@@ -50,9 +51,11 @@ internal object WatchTrips {
         topology: RouteTopology = RouteTopology.EMPTY,
         // [trains] are from a board too old to stand behind: sent as [WatchTrip.oldDepartures].
         old: Boolean = false,
+        // What each train's pole is named by ("Stop K"), in the phone's language.
+        words: HeaderWords = HeaderWords.ENGLISH,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
-    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, topology, old, stepText) }
+    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, topology, old, words, stepText) }
 
     // [build]'s work, on whichever thread calls it.
     private fun assemble(
@@ -67,6 +70,7 @@ internal object WatchTrips {
         poleOf: (Departure) -> Pole?,
         topology: RouteTopology,
         old: Boolean,
+        words: HeaderWords,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
     ): WatchTrip {
         val steps = OnTheWay.steps(trip)
@@ -83,7 +87,7 @@ internal object WatchTrips {
         val departuresAt = if (rideLeg < 0) -1 else steps.indexOf(OnTheWay.Step(rideLeg))
         val upcoming = if (departuresAt < 0) emptyList() else Countdown.upcoming(trains, now)
         val shown = sent(upcoming, readyAt)
-        val stops = labels(shown.mapNotNull(poleOf))
+        val stops = labels(shown.mapNotNull(poleOf), words)
         val sentTrains = shown.map {
             // Shortened as the boards say it ("Brixton", not "Brixton Underground Station").
             val label = DepartureLabels.destinationLabel(it.destination, it.direction) ?: it.destination
@@ -124,9 +128,9 @@ internal object WatchTrips {
     // Each of [poles]' label by its key, among only the poles whose trains are sent: two that would read
     // the same fall back to their bearings ([busPoleLabels]), a pole with none sent can't force that on
     // one shown alone (Codex P2, #492), and one whose cues name nothing goes by its name.
-    private fun labels(poles: List<Pole>): Map<String, String> {
+    private fun labels(poles: List<Pole>, words: HeaderWords): Map<String, String> {
         val distinct = poles.distinctBy { it.key }
-        return distinct.zip(busPoleLabels(distinct.map { it.cues })).associate { (pole, label) -> pole.key to (label ?: pole.name) }
+        return distinct.zip(busPoleLabels(distinct.map { it.cues }, words)).associate { (pole, label) -> pole.key to (label ?: pole.name) }
     }
 
     // The trains sent, soonest first: those the rider can catch first, then, where they leave room in

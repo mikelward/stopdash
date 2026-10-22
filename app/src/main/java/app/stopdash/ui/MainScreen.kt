@@ -153,7 +153,6 @@ import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.EmptyTimes
-import app.stopdash.domain.EvenShortening
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyCall
@@ -822,6 +821,9 @@ fun MainScreen(
     // How the list's and the journey cards' stop cards group a branching line's trains ([stopCard]):
     // worked out with them on the list's worker, again if it's replaced once its patterns load.
     val topology = LocalRouteTopology.current
+    // A stop's platform or pole words ("Platform 2", "Stop E") in the app's language: the journey cards'
+    // stop headings and closure titles, and a platform view's title, all worked out on the list's worker.
+    val headerWords = rememberHeaderWords()
     // Judged against the snapshot and time [rows] were built from ([ListRows.source]), with the list
     // they're drawn beside, on the list's worker ([shownRowsOf]'s stage) (Codex, #524).
     fun judgeCards(rows: ListRows): List<JourneyCard> {
@@ -918,6 +920,7 @@ fun MainScreen(
                                 retry = trains.routeFailed || polesFailed,
                                 changes = changes,
                                 topology = topology,
+                                headerWords = headerWords,
                                 limit = if (journey.key == journeyViewKey) Int.MAX_VALUE else JOURNEY_ROWS,
                                 capped = journeySiblings[journey.key]?.capped == true,
                             )
@@ -963,7 +966,7 @@ fun MainScreen(
                 ?: origin?.let { stopPlace(it.stopId, it.stopName, it.clusterId, emptyList()).id.takeIf { id -> id != it.stopId } }.orEmpty()
             // And its published position from its line's route, for a ride saved before ends' positions were (Codex, #959).
             val originPosition = journeySequences[journey.lineId]?.stopPositions?.get(journey.from.stopId)
-            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition)
+            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition, headerWords)
         }
     }
     val nearbyOrdered = listRows?.nearby.orEmpty()
@@ -998,7 +1001,7 @@ fun MainScreen(
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
             journeyPoleKeys, journeyPoles, journeyFarEnds, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
-            journeyViewKey, quietPending,
+            journeyViewKey, quietPending, headerWords,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -1142,8 +1145,6 @@ fun MainScreen(
     // was opened straight from the full list.
     var parentStationIds by rememberSaveable { mutableStateOf<String?>(null) }
     var parentStationTitle by rememberSaveable { mutableStateOf("") }
-    // A platform's or pole's title words ("Platform 2", "Stop E") in the app's language.
-    val headerWords = rememberHeaderWords()
     // Its rows and title ([platformViewOf]), off the main thread; the same view's last rows stand in
     // meanwhile. Null while closed, and while a view just opened has none worked out yet.
     val platformView = rememberWorked(
@@ -4561,11 +4562,11 @@ internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?, title:
  * The title of one closure notice carried by [rows] (one row per stop carrying it): the most specific
  * heading covering them all ([closureTitle]) where every one is a bus pole, else the place's name.
  */
-internal fun closureTitleOf(rows: List<DepartureRow>): String {
+internal fun closureTitleOf(rows: List<DepartureRow>, words: HeaderWords = HeaderWords.ENGLISH): String {
     val first = rows.firstOrNull() ?: return ""
     val poles = rows.takeIf { it.all(::isPole) }.orEmpty().distinctBy { it.stopId }
         .map { ClosurePole(it.stopName, BusPoleCues(it.stopLetter, it.towards, it.bearing)) }
-    return closureTitle(first.hubName.ifBlank { first.stopName }, poles)
+    return closureTitle(first.hubName.ifBlank { first.stopName }, poles, words)
 }
 
 /**
@@ -4605,9 +4606,11 @@ internal data class JourneyCard(
     val originArea: String = "",
     // Its origin's published position on its line's route ([LineSequence.stopPositions]); null where not loaded.
     val originPosition: Pair<Double, Double>? = null,
+    // The words its closure titles name a pole by ("Stop K"), in the app's language.
+    val headerWords: HeaderWords = HeaderWords.ENGLISH,
 ) {
     /** Each of [closures]' titles ([closureTitleOf]), worked out with the card, off the main thread. */
-    val closureTitles: List<String> = closures.map(::closureTitleOf)
+    val closureTitles: List<String> = closures.map { closureTitleOf(it, headerWords) }
 
     /**
      * The ride as its Whole station and Show on map act on it: its origin's saved stop area and position, else the
@@ -4678,9 +4681,9 @@ internal data class JourneyCard(
  */
 internal class RideStopForms(val name: List<String>, val qualifier: List<String>) {
     companion object {
-        fun of(group: StopGroup): RideStopForms {
-            val label = groupHeaderLabel(group.qualifier)
-            val qualifier = label?.let { EvenShortening.qualifierForms(it).map { form -> "${groupHeaderJoin(it)}$form" } }.orEmpty()
+        fun of(group: StopGroup, words: HeaderWords = HeaderWords.ENGLISH): RideStopForms {
+            val forms = groupHeaderForms(group.qualifier, words)
+            val qualifier = forms.map { form -> "${groupHeaderJoin(forms.first())}$form" }
             return RideStopForms(DestinationAbbreviations.forms(group.stopName), qualifier)
         }
     }
@@ -4764,6 +4767,8 @@ internal sealed interface JourneyCardState {
         val changes: List<JourneyChange> = emptyList(),
         // How the card's stop cards group a branching line's trains ([stopCard]).
         val topology: RouteTopology = RouteTopology.EMPTY,
+        // The words its stop headings name a platform or pole by ("Platform 6", "Plat 6"), in the app's language.
+        val headerWords: HeaderWords = HeaderWords.ENGLISH,
         // How many of [rows] the card draws ([JOURNEY_ROWS] on the list, the rest behind "+N more";
         // all in the journey's own view).
         val limit: Int = Int.MAX_VALUE,
@@ -4820,7 +4825,7 @@ internal sealed interface JourneyCardState {
         val cards: List<StopCard> = groups.map { stopCard(it, topology) }
 
         /** Each of [groups]' heading forms when grouped by stop ([RideStopForms]), worked out with them. */
-        val stopForms: List<RideStopForms> = groups.map { RideStopForms.of(it) }
+        val stopForms: List<RideStopForms> = groups.map { RideStopForms.of(it, headerWords) }
 
         /**
          * [cards] as one card, every stop's rows in order: grouped by ride (SPEC *Journeys*), a ride

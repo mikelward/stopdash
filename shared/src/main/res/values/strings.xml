@@ -5,6 +5,9 @@
     <!-- A stop header's platform, %1$s its number as TfL gives it: "King's Cross St. Pancras – Platform 1". -->
     <string name="header_platform" tools:ignore="MissingTranslation">Platform %1$s</string>
     <!-- TODO: translate -->
+    <!-- [header_platform] cut short where a ride's stop heading needs the room: "Plat 6". -->
+    <string name="header_platform_short" tools:ignore="MissingTranslation">Plat %1$s</string>
+    <!-- TODO: translate -->
     <!-- A bus stop's pole, %1$s the letter on its flag: "Turnpike Lane – Stop E". -->
     <string name="header_stop" tools:ignore="MissingTranslation">Stop %1$s</string>
     <!-- TODO: translate -->

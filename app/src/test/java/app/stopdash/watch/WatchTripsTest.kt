@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import app.stopdash.ui.BusPoleCues
+import app.stopdash.ui.HeaderWords
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -172,6 +173,14 @@ class WatchTripsTest {
         assertEquals(listOf(at(7), at(8), at(9)).map { it.toEpochMilli() }, sent.departures.map { it.dueAt })
         assertTrue(sent.departures.none { it.missed })
         assertTrue(sent.departures.all { it.stop == "Stop A" })
+        // In the words the phone gives it.
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap())
+        val worded = runBlocking {
+            WatchTrips.build(
+                trip, "Walk", "4 min", trains, t0, readyAt = at(5), poleOf = { WatchTrips.Pole("A", "King's Cross", BusPoleCues("A", "", "")) }, words = german,
+            ) { leg, _ -> leg.toName }
+        }
+        assertTrue(worded.departures.all { it.stop == "Haltestelle A" })
         val few = runBlocking { WatchTrips.build(trip, "Walk", "4 min", listOf(train(2), train(3), train(7)), t0, readyAt = at(5)) { leg, _ -> leg.toName } }
         // Missed ones fill the room the catchable leave, marked.
         assertEquals(listOf(true, true, false), few.departures.map { it.missed })

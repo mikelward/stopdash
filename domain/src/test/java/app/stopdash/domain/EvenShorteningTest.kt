@@ -107,7 +107,7 @@ class EvenShorteningTest {
         // "Baker Street" (12), "Platform 6" (10) and "Euston" (6) need 280; the abbreviated name beside
         // the whole platform still needs 240. Only with "Plat 6" too (200) does the line fit 230: the gap
         // is per level, so the platform shortens with the names.
-        val platform = EvenShortening.qualifierForms("Platform 6").map { it.length * 10 }
+        val platform = listOf("Platform 6", "Plat 6").map { it.length * 10 }
         assertEquals(listOf(100, 60), platform)
         val choice = EvenShortening.choose(
             DestinationAbbreviations.forms("Baker Street"),
@@ -117,13 +117,6 @@ class EvenShorteningTest {
             width,
         )
         assertEquals(EvenShortening.Choice("Baker St", "Euston", level = 1), choice)
-    }
-
-    @Test
-    fun `a platform shortens to Plat and a pole keeps its label`() {
-        assertEquals(listOf("Platform 6", "Plat 6"), EvenShortening.qualifierForms("Platform 6"))
-        assertEquals(listOf("Stop K", "Stop K"), EvenShortening.qualifierForms("Stop K"))
-        assertEquals(listOf("Southbound", "Southbound"), EvenShortening.qualifierForms("Southbound"))
     }
 
     @Test

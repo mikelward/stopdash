@@ -15,9 +15,14 @@ class HeaderWords(
     private val towardsOf: (place: String) -> String,
     // The eight compass points ("N", "NE", ...) as direction words.
     private val bearings: Map<String, String>,
+    // [platformOf] cut short, where a heading needs the room: "Plat 2". The full form where none is given.
+    private val platformShortOf: (number: String) -> String = platformOf,
 ) {
     /** "Platform 2". */
     fun platform(number: String): String = platformOf(number)
+
+    /** "Plat 2": [platform] where a heading needs the room. */
+    fun platformShort(number: String): String = platformShortOf(number)
 
     /** "Stop E". */
     fun stop(letter: String): String = stopOf(letter)
@@ -38,6 +43,7 @@ class HeaderWords(
                 "N" to "Northbound", "E" to "Eastbound", "S" to "Southbound", "W" to "Westbound",
                 "NE" to "Northeast-bound", "NW" to "Northwest-bound", "SE" to "Southeast-bound", "SW" to "Southwest-bound",
             ),
+            platformShortOf = { "Plat $it" },
         )
     }
 }
@@ -57,4 +63,5 @@ fun headerWords(resources: Resources): HeaderWords = HeaderWords(
         "SE" to resources.getString(R.string.header_bearing_se),
         "SW" to resources.getString(R.string.header_bearing_sw),
     ),
+    platformShortOf = { resources.getString(R.string.header_platform_short, it) },
 )
