@@ -3542,9 +3542,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           one place, shown elsewhere.
     - [ ] **Show a ride's hidden lines on its Settings page** (2026-10-15). Settings → Favorite rides
           opens a ride's Alerts; its hidden lines are listed only in the ride's own view.
-    - [ ] **Star a journey on the application scope** (2026-10-15). A station's journey star saves on
-          the main screen's composition scope, so a rotation right after the tap can cancel the save
-          with nothing said. A ride's line hide moved off it for the same reason (#874).
+    - [x] **Star a journey on the application scope** (2026-10-15). A station's journey star saved on
+          the main screen's composition scope, so a rotation right after the tap could cancel the save
+          with nothing said. A ride's line hide moved off it for the same reason (#874). Done
+          (2026-10-22): `JourneyStars` saves on the application scope, and a failure stands
+          process-wide until the screen has said so.
     - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
           ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
           Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same
