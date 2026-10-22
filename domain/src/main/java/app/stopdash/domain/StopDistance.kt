@@ -42,8 +42,27 @@ enum class DistanceUnits {
     }
 }
 
+/** A unit a distance label is written in: the short ones in whole tens, the long ones ([tenths]) to a tenth. */
+enum class DistanceUnit(val symbol: String, val tenths: Boolean) {
+    METERS("m", false),
+    KILOMETERS("km", true),
+    YARDS("yd", false),
+    FEET("ft", false),
+    MILES("mi", true),
+}
+
 /**
- * Formats a great-circle distance (meters, the near-me ranking's own input) as the short
+ * A distance as its label reads it: [count] of [unit], whole up close ("120" m), or tenths of a long
+ * unit farther out (6 for "0.6" km). The words are the caller's, in the app's language
+ * ([StopDistance.label] is the English, for the bug report).
+ */
+data class DistanceReading(val unit: DistanceUnit, val count: Int) {
+    /** The amount to write, as a long unit's tenths read: 0.6 for six tenths of a km. */
+    val amount: Double get() = if (unit.tenths) count / 10.0 else count.toDouble()
+}
+
+/**
+ * Reads a great-circle distance (meters, the near-me ranking's own input) for the short
  * label shown after a stop's name in its group header — "120 m", "0.6 km", "130 yd", "390 ft",
  * "0.4 mi". Pure and JVM-testable, mirroring [Countdown]'s plain-string labels; the system is
  * handed in, never read from a locale here.
@@ -60,26 +79,32 @@ object StopDistance {
     private const val METERS_PER_FOOT = 0.3048
     private const val METERS_PER_MILE = 1609.344
 
-    fun label(meters: Double, system: DistanceSystem = DistanceSystem.METERS): String {
+    fun reading(meters: Double, system: DistanceSystem = DistanceSystem.METERS): DistanceReading {
         val m = meters.coerceAtLeast(0.0)
         val (perShort, shortUnit, longFrom) = when (system) {
             // 495 m would round to "500 m"; from there the label is "0.5 km", so meters top out at 490.
-            DistanceSystem.METERS -> Triple(1.0, "m", 495.0)
+            DistanceSystem.METERS -> Triple(1.0, DistanceUnit.METERS, 495.0)
             // The same ~500 m switch: yards top out at "540 yd", then "0.3 mi".
-            DistanceSystem.YARDS -> Triple(METERS_PER_YARD, "yd", 495.0)
+            DistanceSystem.YARDS -> Triple(METERS_PER_YARD, DistanceUnit.YARDS, 495.0)
             // 160 m is 525 ft, which would round to "530 ft" — past 0.1 mi, so it reads "0.1 mi".
-            DistanceSystem.FEET -> Triple(METERS_PER_FOOT, "ft", 160.0)
+            DistanceSystem.FEET -> Triple(METERS_PER_FOOT, DistanceUnit.FEET, 160.0)
         }
         if (m < longFrom) {
             val rounded = (m / perShort / 10).roundToInt() * 10
-            return "${rounded.coerceAtLeast(10)} $shortUnit"
+            return DistanceReading(shortUnit, rounded.coerceAtLeast(10))
         }
         val (long, longUnit) = when (system) {
-            DistanceSystem.METERS -> m / 1000 to "km"
-            DistanceSystem.YARDS, DistanceSystem.FEET -> m / METERS_PER_MILE to "mi"
+            DistanceSystem.METERS -> m / 1000 to DistanceUnit.KILOMETERS
+            DistanceSystem.YARDS, DistanceSystem.FEET -> m / METERS_PER_MILE to DistanceUnit.MILES
         }
-        // Floored at 0.1 so the long-unit branch can never print "0.0".
-        val tenths = (long * 10).roundToInt().coerceAtLeast(1) / 10.0
-        return "$tenths $longUnit"
+        // Floored at a tenth so the long unit can never read "0.0".
+        return DistanceReading(longUnit, (long * 10).roundToInt().coerceAtLeast(1))
+    }
+
+    /** [reading] in English ("120 m", "0.6 km"): the bug report's, which the maintainer reads. */
+    fun label(meters: Double, system: DistanceSystem = DistanceSystem.METERS): String {
+        val reading = reading(meters, system)
+        val amount = if (reading.unit.tenths) reading.amount.toString() else reading.count.toString()
+        return "$amount ${reading.unit.symbol}"
     }
 }

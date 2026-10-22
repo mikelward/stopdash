@@ -63,6 +63,19 @@ class StopDistanceTest {
     }
 
     @Test
+    fun `a reading carries the unit and its count, a long unit's in tenths`() {
+        assertEquals(DistanceReading(DistanceUnit.METERS, 120), StopDistance.reading(118.0))
+        assertEquals(DistanceReading(DistanceUnit.KILOMETERS, 6), StopDistance.reading(620.0))
+        assertEquals(0.6, StopDistance.reading(620.0).amount, 0.0)
+        assertEquals(DistanceReading(DistanceUnit.YARDS, 130), StopDistance.reading(118.0, YARDS))
+        assertEquals(DistanceReading(DistanceUnit.FEET, 390), StopDistance.reading(118.0, FEET))
+        assertEquals(DistanceReading(DistanceUnit.MILES, 4), StopDistance.reading(620.0, FEET))
+        // The long unit's floor: a tenth, never none.
+        assertEquals(DistanceReading(DistanceUnit.MILES, 1), StopDistance.reading(160.0, FEET))
+        assertEquals(120.0, StopDistance.reading(118.0).amount, 0.0)
+    }
+
+    @Test
     fun `meters are the default system`() {
         assertEquals(StopDistance.label(620.0, METERS), StopDistance.label(620.0))
     }

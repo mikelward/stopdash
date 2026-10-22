@@ -72,7 +72,6 @@ import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StopClosureCache
-import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopLinks
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TimetableRepository
@@ -149,6 +148,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -264,6 +264,7 @@ import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.ByIdentity
 import app.stopdash.ui.DISRUPTION_REUSE
 import app.stopdash.ui.collectByIdentityWithLifecycle
+import app.stopdash.ui.distanceText
 import app.stopdash.ui.DeparturesUiState
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
@@ -1829,9 +1830,10 @@ class MainActivity : ComponentActivity() {
                 // A station tapped on the home screen's or a trip's line page: Lines… opens on it, that line's page
                 // under it, its distance from the rider's last fix where there is one.
                 val lineStopSystem = LocalDistanceSystem.current
+                val lineStopResources = LocalResources.current
                 // How far [at] is from the rider's last fix, as a label; null with either unknown. The near-me state as
                 // it is when asked, read from its source rather than through what was composed (Codex on #708).
-                val fixDistance: (Coordinates?) -> String? = remember(lineStopSystem) { { at ->
+                val fixDistance: (Coordinates?) -> String? = remember(lineStopSystem, lineStopResources) { { at ->
                     val fix = when (val near = nearbyViewModel.state.value) {
                         is NearbyStopsViewModel.State.Ready -> near.location
                         is NearbyStopsViewModel.State.Empty -> near.location
@@ -1841,7 +1843,7 @@ class MainActivity : ComponentActivity() {
                     if (at == null || fix == null || lineStopSystem == null) {
                         null
                     } else {
-                        StopDistance.label(NearestStops.distanceMeters(fix.latitude, fix.longitude, at.latitude, at.longitude), lineStopSystem)
+                        distanceText(NearestStops.distanceMeters(fix.latitude, fix.longitude, at.latitude, at.longitude), lineStopSystem, lineStopResources)
                     }
                 } }
                 val openLineStop: (LineRef, String, String, Pair<Double, Double>?) -> Unit = remember(fixDistance) { { line, id, name, position ->

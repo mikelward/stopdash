@@ -1,7 +1,6 @@
 package app.stopdash.ui
 
 import android.content.res.Resources
-import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopLinks
 import app.stopdash.domain.StopAccess
 import app.stopdash.domain.stopAccessFor
@@ -267,12 +266,13 @@ internal fun LinesOverlay(
         val pagesOpen = remember { mutableIntStateOf(0) }
         val dismissal = LineAlertDismissal(viewModel::dismiss, dismissFailed, viewModel::dismissWriteFailureShown, pagesOpen, viewModel::dismissPlanned)
         val system = LocalDistanceSystem.current
+        val resources = LocalResources.current
         // How far [position] is from the rider's last fix, as a label; null with either unknown.
         fun distanceTo(position: Coordinates?): String? =
             if (position == null || here == null || system == null) {
                 null
             } else {
-                StopDistance.label(NearestStops.distanceMeters(here.latitude, here.longitude, position.latitude, position.longitude), system)
+                distanceText(NearestStops.distanceMeters(here.latitude, here.longitude, position.latitude, position.longitude), system, resources)
             }
         CompositionLocalProvider(
             LocalDismissLineAlert provides dismissal,

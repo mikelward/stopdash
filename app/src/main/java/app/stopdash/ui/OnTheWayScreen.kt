@@ -73,6 +73,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -103,7 +104,6 @@ import app.stopdash.domain.rideStopList
 import app.stopdash.domain.withRouteStops
 import app.stopdash.domain.TflException
 import app.stopdash.domain.OnTheWay
-import app.stopdash.domain.StopDistance
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.RouteDisruptionAlert
@@ -1630,7 +1630,7 @@ internal fun NextStep(
     val point = walking?.point
     val walkLabel = if (walkLeft != null && system != null) {
         // Estimated from a fix taken before the walk began, it says so until a fix on the walk places the rider.
-        StopDistance.label(walkLeft, system).let { if (walking?.estimated == true) stringResource(R.string.on_the_way_walk_left_estimated, it) else it }
+        distanceText(walkLeft, system, LocalResources.current).let { if (walking?.estimated == true) stringResource(R.string.on_the_way_walk_left_estimated, it) else it }
     } else {
         null
     }

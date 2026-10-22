@@ -9,6 +9,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -83,7 +84,6 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.NearestStops
-import app.stopdash.domain.StopDistance
 import app.stopdash.domain.TflException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -721,7 +721,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
     val system = LocalDistanceSystem.current
     // "Nearest", with how far where the rider's fix gives it, so they judge how near that is.
     val nearest = if (nearestMeters != null && system != null) {
-        stringResource(R.string.line_map_nearest_at, StopDistance.label(nearestMeters, system))
+        stringResource(R.string.line_map_nearest_at, distanceText(nearestMeters, system, LocalResources.current))
     } else {
         stringResource(R.string.line_map_nearest)
     }
