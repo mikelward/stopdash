@@ -10,13 +10,6 @@ package app.stopdash.domain
  */
 object EvenShortening {
     /**
-     * A stop's platform or pole label, longest first, kept whole at each level: "Platform 6", then
-     * "Plat 6" (maintainer, 2026-10-14). A pole's letter or "➔ Archway" has no shorter form.
-     */
-    fun qualifierForms(label: String): List<String> =
-        listOf(label, label.split(" ").joinToString(" ") { if (it == "Platform") "Plat" else it })
-
-    /**
      * What to draw: [first] and [second], the [level] they were taken at (so whatever sits between them
      * can take its form at the same level), and, when even their last forms don't fit, the most of the
      * width each may take ([firstMax], [secondMax]), each eliding within it; both null when they fit.

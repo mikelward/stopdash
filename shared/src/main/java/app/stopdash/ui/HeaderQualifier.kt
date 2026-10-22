@@ -36,6 +36,17 @@ fun groupHeaderLabel(qualifier: StopQualifier?, words: HeaderWords = HeaderWords
 }
 
 /**
+ * [groupHeaderLabel]'s forms, longest first, one per level a heading shortens at: a platform's
+ * "Platform 6" then "Plat 6" (maintainer, 2026-10-14); a pole's letter, a way or "➔ Archway" has no
+ * shorter form, so it's the same at both. None for no qualifier.
+ */
+fun groupHeaderForms(qualifier: StopQualifier?, words: HeaderWords = HeaderWords.ENGLISH): List<String> {
+    val label = groupHeaderLabel(qualifier, words) ?: return emptyList()
+    val short = if (qualifier is StopQualifier.Platform) words.platformShort(qualifier.number) else label
+    return listOf(label, short)
+}
+
+/**
  * The qualifier a bus pole is headed by, from its own stop data: its letter ("Stop D"), else the
  * "towards" on its sign ("➔ Farringdon"), else its compass bearing ("Westbound"), else null. The
  * same order the grouping heads a pole by (SPEC D8), for a surface that labels one pole on its own

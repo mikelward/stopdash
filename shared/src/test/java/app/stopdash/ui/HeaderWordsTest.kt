@@ -29,6 +29,7 @@ class HeaderWordsTest {
             assertEquals(groupHeaderSpoken(qualifier), groupHeaderSpoken(qualifier, words))
         }
         assertEquals("Platform 2", groupHeaderLabel(StopQualifier.Platform("2", null), words))
+        assertEquals(listOf("Platform 2", "Plat 2"), groupHeaderForms(StopQualifier.Platform("2", null), words))
         assertEquals("Stop E, towards Farringdon", groupHeaderSpoken(StopQualifier.BusStop("e", "Farringdon"), words))
         assertEquals("Southwest-bound", bearingDirection("sw", words))
         assertNull(bearingDirection("X", words))

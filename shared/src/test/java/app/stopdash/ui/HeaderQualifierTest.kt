@@ -229,4 +229,16 @@ class HeaderQualifierTest {
         )
         assertNull(english.bearing("X"))
     }
+
+    @Test
+    fun `a platform shortens to Plat and a pole keeps its label`() {
+        assertEquals(listOf("Platform 6", "Plat 6"), groupHeaderForms(StopQualifier.Platform("6", "Southbound")))
+        assertEquals(listOf("Stop K", "Stop K"), groupHeaderForms(StopQualifier.BusStop("k", null)))
+        assertEquals(listOf("Southbound", "Southbound"), groupHeaderForms(StopQualifier.Compass("Southbound")))
+        assertEquals(emptyList<String>(), groupHeaderForms(null))
+        // A caller's words, short form included; words with no short form keep the full one.
+        val short = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap()) { "Gl. $it" }
+        assertEquals(listOf("Gleis 6", "Gl. 6"), groupHeaderForms(StopQualifier.Platform("6", null), short))
+        assertEquals(listOf("Gleis 6", "Gleis 6"), groupHeaderForms(StopQualifier.Platform("6", null), german))
+    }
 }

@@ -21,6 +21,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.BusPoleCues
+import app.stopdash.ui.headerWords
 import app.stopdash.ui.nextStepText
 import app.stopdash.widget.WidgetTripStore
 import app.stopdash.widget.WidgetTrips
@@ -105,7 +106,10 @@ internal object WatchTripSync {
                 val topology = withContext(Dispatchers.IO) { RouteTopologyStore.load(app) }
                 // A train leaving before the rider can board is grayed, as the trip's screen grays it.
                 val readyAt = OnTheWay.readyAt(trip, progress)
-                WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }, topology = topology, old = found.old) { leg, onBoard ->
+                WatchTrips.build(
+                    trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }, topology = topology, old = found.old,
+                    words = headerWords(app.resources),
+                ) { leg, onBoard ->
                     stepText(app, leg, onBoard)
                 }.also { built = it }
             }

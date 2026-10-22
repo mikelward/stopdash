@@ -315,7 +315,7 @@ private fun openView(
         // With a route open, only its own legs' warnings frame it.
         framing = framing(listOf(estimate), state, now, sequences, rideLines),
         closures = closures,
-        closureCards = tripClosureCards(closures, rows),
+        closureCards = tripClosureCards(closures, rows, headerWords(resources)),
         statuses = shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed),
         rides = openRides(estimate.route, state, now, sequences, rideLines, dismissed, topology),
     )
@@ -333,10 +333,15 @@ internal class TripClosureCard(val row: DepartureRow, val title: String)
  * they were folded), so a notice on two poles of one stop is headed by that stop, one on a single
  * pole by its letter.
  */
-internal fun tripClosureCards(closures: Map<String, DepartureRow>, rows: List<DepartureRow>): Map<String, TripClosureCard> {
+internal fun tripClosureCards(
+    closures: Map<String, DepartureRow>,
+    rows: List<DepartureRow>,
+    // What a pole is named by ("Stop K"), in the app's language.
+    words: HeaderWords = HeaderWords.ENGLISH,
+): Map<String, TripClosureCard> {
     val byNotice = rows.groupBy { stopPlaceKey(it) to it.stopDisruption }
     return closures.mapValues { (_, row) ->
-        TripClosureCard(row, closureTitleOf(byNotice[stopPlaceKey(row) to row.stopDisruption] ?: listOf(row)))
+        TripClosureCard(row, closureTitleOf(byNotice[stopPlaceKey(row) to row.stopDisruption] ?: listOf(row), words))
     }
 }
 

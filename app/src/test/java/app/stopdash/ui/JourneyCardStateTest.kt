@@ -280,6 +280,48 @@ class JourneyCardStateTest {
     }
 
     @Test
+    fun `a card's stop headings and closure titles are in the words it's given`() {
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap()) { "Gl. $it" }
+        fun group(qualifier: app.stopdash.domain.StopQualifier) =
+            app.stopdash.domain.StopGroup("Example Cross", "ex", showHeader = true, rows = emptyList(), qualifier = qualifier)
+        assertEquals(listOf(" – Gleis 6", " – Gl. 6"), RideStopForms.of(group(app.stopdash.domain.StopQualifier.Platform("6", null)), german).qualifier)
+        assertEquals(listOf(" – Haltestelle K", " – Haltestelle K"), RideStopForms.of(group(app.stopdash.domain.StopQualifier.BusStop("K", null)), german).qualifier)
+        // The card's own groups take its words: a station's two platforms, each headed by its number.
+        val platformRows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "EXAMPLE-X", "Example Cross",
+                    listOf(
+                        Departure("victoria", "Victoria", "outbound", "North End", "Northbound - Platform 6", now.plusSeconds(60), "tube"),
+                        Departure("victoria", "Victoria", "inbound", "South End", "Southbound - Platform 7", now.plusSeconds(120), "tube"),
+                    ),
+                    fetchedAt = now,
+                ),
+            ),
+            now,
+        )
+        val trains = JourneyCardState.Trains(platformRows, headerWords = german)
+        assertEquals(2, trains.stopForms.size)
+        assertEquals(
+            setOf(listOf(" – Gleis 6", " – Gl. 6"), listOf(" – Gleis 7", " – Gl. 7")),
+            trains.stopForms.map { it.qualifier }.toSet(),
+        )
+        // A closure on one pole (a bus stop id, "490…") is titled by its letter in the card's words.
+        val closed = app.stopdash.domain.DepartureRow(
+            "490EXAMPLEK", "Example Road", stopLetter = "K", hubName = "Example Cross", interchangeId = "HUBEX", lineId = "", lineName = "",
+            direction = "", directionKey = "", destination = "", mode = "bus", upcoming = emptyList(), fetchedAt = now, stopDisruption = "Bus Stop Closed",
+        )
+        val card = JourneyCard(
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("A", "A"), app.stopdash.domain.JourneyEnd("B", "B"), "example"),
+            JourneyCardState.Checking("test"),
+            closures = listOf(listOf(closed)),
+            headerWords = german,
+        )
+        assertEquals(listOf("Example Road – Haltestelle K"), card.closureTitles)
+        assertEquals("Example Road – Haltestelle K", tripClosureCards(mapOf(closed.stopId to closed), listOf(closed), german).getValue(closed.stopId).title)
+    }
+
+    @Test
     fun `a journey's far end is where its route gets off, not the interchange it was saved as`() {
         val ride = app.stopdash.domain.FavoriteJourney(
             app.stopdash.domain.JourneyEnd("940GZZLUHGT", "Highgate"),
