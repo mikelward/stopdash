@@ -213,6 +213,11 @@ private fun DisruptionRow(line: TileLine.Disruption) {
         NoTimes.NO_DATA -> stringResource(R.string.watch_no_data)
         NoTimes.NO_TRAINS, null -> null
     }
+    val spoken = if (reason == null) {
+        stringResource(R.string.watch_disrupted_spoken, line.description)
+    } else {
+        stringResource(R.string.watch_disrupted_spoken_detail, line.description, reason)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -225,7 +230,7 @@ private fun DisruptionRow(line: TileLine.Disruption) {
             maxLines = if (reason == null) 1 else 3,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = 4.dp).semantics {
-                contentDescription = if (reason == null) "Disrupted: ${line.description}" else "Disrupted: ${line.description}. $reason"
+                contentDescription = spoken
             },
         )
     }

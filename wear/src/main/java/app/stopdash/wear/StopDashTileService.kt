@@ -418,9 +418,12 @@ internal object TileLayout {
         // disruption always leads and a tight line cuts the reason, never the alert.
         val reason = noTimesText(context, line.noTimes)
         val status = if (reason == null) {
-            text("⚠ ${line.description}", 12f, warning, spoken = "Disrupted: ${line.description}")
+            text("⚠ ${line.description}", 12f, warning, spoken = context.getString(R.string.watch_disrupted_spoken, line.description))
         } else {
-            text("⚠ ${line.description} · $reason", 12f, warning, spoken = "Disrupted: ${line.description}. $reason")
+            text(
+                "⚠ ${line.description} · $reason", 12f, warning,
+                spoken = context.getString(R.string.watch_disrupted_spoken_detail, line.description, reason),
+            )
         }
         return Row.Builder()
             .setWidth(expand())
