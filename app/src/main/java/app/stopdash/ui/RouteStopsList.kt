@@ -68,6 +68,7 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
@@ -130,12 +131,14 @@ sealed interface RouteStopsUi {
     // [sequence]: the route they came from, which places a saved journey's stops on this page (a
     // bus's way back uses the poles across the road); [endsHere]: the train ends at the boarding
     // stop ([RouteStops.Resolution.EndsHere]), so [stops] is that stop alone and the page says
-    // "Terminates here" (maintainer, 2026-10-09).
+    // "Terminates here" (maintainer, 2026-10-09); [calls]: [stops] are the train's own calling points
+    // ([RouteStopsRepository.trainStops]), so a station its line runs through between two is one it passes.
     data class Loaded(
         val stops: List<RouteStop>,
         val positions: Map<String, Pair<Double, Double>> = emptyMap(),
         val sequence: LineSequence? = null,
         val endsHere: Boolean = false,
+        val calls: Boolean = false,
     ) : RouteStopsUi
 }
 
@@ -151,6 +154,9 @@ internal class RouteMapInputs(
     val after: Set<String>,
     val connections: Map<String, List<LineRef>>,
     val stepFree: Map<String, StepFreeLevel>,
+    // The path is the train's own calls ([RouteStopsUi.Loaded.calls]): a map drawing a station between two of them
+    // on it draws one it passes as one it calls at.
+    val calls: Boolean = false,
 ) {
     /** The path's stations by the ids the map draws them as, where none is drawn as another stop. */
     val asDrawn = RouteMapStations(
@@ -184,11 +190,14 @@ internal class RouteMapInputs(
     /**
      * Whether [map] draws every stop of the train's path, each on its open stretch: one that can't place the
      * way the train runs (a bus's way back with no poles it can match) draws other stops, so the page keeps its list.
+     * For the train's own calls ([calls]), only where it draws no other station on that stretch either: one it runs
+     * through without calling (a fast train's) would read as a stop (Codex, #1140).
      */
     @WorkerThread
     fun drawnOn(map: LineMap): Boolean {
         val open = map.rows.filter { it.onPath }.mapTo(HashSet()) { it.stopId }
-        return rides.flatten().all { (map.drawnAs[it] ?: it) in open }
+        val path = rides.flatten().mapTo(HashSet()) { map.drawnAs[it] ?: it }
+        return path.all { it in open } && (!calls || open.all { it in path })
     }
 
     companion object {
@@ -201,6 +210,7 @@ internal class RouteMapInputs(
                 after = ids.drop(1).toSet(),
                 connections = loaded.stops.filter { it.connections.isNotEmpty() }.associate { it.id to it.connections },
                 stepFree = ids.toSet().let { path -> levels.filterKeys { it in path } },
+                calls = loaded.calls,
             )
         }
     }
@@ -293,10 +303,21 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
             else -> RouteStopsUi.Unavailable(resolution)
         }
     }
+    // A National Rail train's own stops, where National Rail can give them ([RouteStopsRepository.trainStops]): its
+    // line's patterns can list a stop it doesn't make. Worked out on the worker, as [resolve] is.
+    fun own(stops: List<RouteStop>, sequence: LineSequence): RouteStopsUi.Loaded = RouteStopsUi.Loaded(
+        stops,
+        stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
+        sequence,
+        endsHere = stops.size == 1,
+        calls = true,
+    )
     // Keyed by the followed train (and the mode, which changes the matching rule), so a change of
     // soonest train (a refresh, or one departing) discards the old state outright: the first frame
-    // for the new train is its own list or Loading, never the previous train's stops.
-    val memo = listOf("train", repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, next.via, bus)
+    // for the new train is its own list or Loading, never the previous train's stops. A National Rail
+    // train by itself too, as its own stops are its, not its destination's.
+    val rail = next.vehicleId.takeIf { next.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
+    val memo = listOf("train", repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, next.via, bus, rail)
     return key(memo, worker) {
         // Only while the repository still holds the routes it came from: none past its day or a refetch.
         val remembered = RouteStopsMemo.get(memo, repository.cached(row.lineId, row.direction))
@@ -306,7 +327,9 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
             value = try {
                 withContext(worker) {
                     val fetched = repository.load(row.lineId, row.direction)
-                    resolve(fetched).also { RouteStopsMemo.put(memo, it, fetched) }
+                    val seen = fetched.callingAt(row.stopId)
+                    val stops = repository.trainStops(next, row.stopId, row.stopName, seen)?.let { own(it, seen) } ?: resolve(fetched)
+                    stops.also { RouteStopsMemo.put(memo, it, fetched) }
                 }
             } catch (e: CancellationException) {
                 throw e

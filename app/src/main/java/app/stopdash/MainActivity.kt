@@ -6763,6 +6763,9 @@ class MainActivity : ComponentActivity() {
                 // A station's ids as the station model files them, not each route's own codes: waited
                 // for once before the first merge (HubsStore.ready bounds it at 3 s).
                 model = { HubsStore.ready() },
+                // A National Rail train's own stops, from National Rail's board toward its terminus (SPEC *Route detail*).
+                railRuns = railBoards(context.applicationContext)::runs,
+                railIds = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
             ).also { repository ->
                 routeStopsInstance = repository
                 (context.applicationContext as? StopdashApp)?.applicationScope?.launch { repository.warm() }

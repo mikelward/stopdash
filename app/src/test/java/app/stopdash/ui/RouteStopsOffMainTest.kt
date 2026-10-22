@@ -14,6 +14,10 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RailFollow
+import app.stopdash.domain.RailPoint
+import app.stopdash.domain.RailRun
+import app.stopdash.domain.RailRuns
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StepFree
@@ -103,6 +107,62 @@ class RouteStopsOffMainTest {
         assertEquals(listOf("s1", "s2", "s3"), (state as RouteStopsUi.Loaded).stops.map { it.id })
         val loadedOn = threads.threads()
         assertTrue("loaded on $loadedOn", loadedOn.isNotEmpty() && loadedOn.all { it.startsWith("test-worker") })
+    }
+
+    @Test
+    fun aNationalRailTrainsOwnStops_areListedNotItsLinesPattern_workedOutOnTheWorker() {
+        val threads = ThreadRecorder()
+        // Synthetic stations: the line's pattern calls at Mid, which National Rail's board says this train runs past.
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Far", listOf("910GTOP", "910GMID", "910GNEAR", "910GFAR"))),
+            stopNames = mapOf("910GTOP" to "Top", "910GMID" to "Mid", "910GNEAR" to "Near", "910GFAR" to "Far"),
+        )
+        val now = Instant.parse("2026-10-22T17:10:00Z")
+        val scheduled = now.plusSeconds(360)
+        fun point(crs: String, name: String) = RailPoint(crs, name, scheduled, scheduled)
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            clock = { now },
+            railRuns = { _, _, _ ->
+                threads.note()
+                RailRuns(listOf(RailRun("TOP", "Top", "rail-example", scheduled, scheduled, "Platform 1", "FAR", emptyList(), listOf(point("NRR", "Near"), point("FAR", "Far")))))
+            },
+            railIds = { mapOf("NRR" to setOf("910GNEAR"), "FAR" to setOf("910GFAR"))[it].orEmpty() },
+        )
+        val next = Departure(
+            "rail-example", "Rail Example", "", "Far", "Platform 1", scheduled, "national-rail",
+            vehicleId = RailFollow.idOf("TOP", scheduled, "FAR", "rail-example"),
+        )
+        val row = DepartureRow(
+            stopId = "910GTOP",
+            stopName = "Top",
+            lineId = "rail-example",
+            lineName = "Rail Example",
+            direction = "",
+            directionKey = "",
+            destination = "Far",
+            mode = "national-rail",
+            upcoming = listOf(next),
+            fetchedAt = now,
+        )
+        var state: RouteStopsUi = RouteStopsUi.Hidden
+        composeRule.setContent {
+            CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides worker) {
+                state = rememberRouteStops(row, next, retry = 0)
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { state !is RouteStopsUi.Loading }
+
+        assertTrue("$state", state is RouteStopsUi.Loaded)
+        assertEquals(listOf("910GTOP", "910GNEAR", "910GFAR"), (state as RouteStopsUi.Loaded).stops.map { it.id })
+        // Its own calls: a map passing Mid on the way can't stand in for them.
+        assertTrue((state as RouteStopsUi.Loaded).calls)
+        val askedOn = threads.threads()
+        assertTrue("asked on $askedOn", askedOn.isNotEmpty() && askedOn.all { it.startsWith("test-worker") })
     }
 
     @Test

@@ -39,6 +39,16 @@ class RouteMapInputsTest {
         }
         assertEquals(true, on(listOf("A1", "B1", "C1")))
         assertEquals(false, on(listOf("X2", "Y2", "Z2")))
+        // A National Rail train's own calls, passing B1: a map drawing B1 on its path draws a stop it doesn't make, so
+        // the page keeps its list (Codex, #1140). Its line's pattern, not its calls, is drawn as it was.
+        fun calls(path: List<String>, calls: Boolean): Boolean {
+            val inputs = RouteMapInputs.of(RouteStopsUi.Loaded(path.map { RouteStop(it, it) }, calls = calls), emptyMap())
+            val map = app.stopdash.domain.LineMap.of(sequence, riding = inputs.riding, rides = inputs.rides, ridesOpen = true)!!
+            return inputs.drawnOn(map)
+        }
+        assertEquals(false, calls(listOf("A1", "C1"), calls = true))
+        assertEquals(true, calls(listOf("A1", "B1", "C1"), calls = true))
+        assertEquals(true, calls(listOf("A1", "C1"), calls = false))
     }
 
     @Test
