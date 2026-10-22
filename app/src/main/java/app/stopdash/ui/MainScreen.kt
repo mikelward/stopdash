@@ -175,6 +175,7 @@ import app.stopdash.domain.NoTimes
 import app.stopdash.domain.NoticePlan
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.PlatformDirection
+import app.stopdash.domain.RelativeAge
 import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteFocus
@@ -2756,7 +2757,7 @@ private fun FreshnessStamp(state: DeparturesUiState, now: Instant, refreshing: B
                 state.checkingDisruptions -> stringResource(R.string.checking_stamp)
                 // The age alone ("1 min ago", "Just now"): an "Updated" before it cost top-bar room
                 // and said nothing the position doesn't (maintainer, 2026-09-26).
-                else -> RelativeTime.formatAge(age).replaceFirstChar { it.uppercaseChar() }
+                else -> ageStampText(RelativeTime.of(age))
             }
         }
         // An error has its own full-screen message (no snapshot, so no age to stamp). A retry from it
@@ -2771,6 +2772,14 @@ private fun FreshnessStamp(state: DeparturesUiState, now: Instant, refreshing: B
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.clickable(onClick = onRefresh).padding(horizontal = 8.dp, vertical = 12.dp),
     )
+}
+
+/** The age stamp's words for [age], in the app's language: "Just now", "1 min ago", "1 h ago". */
+@Composable
+private fun ageStampText(age: RelativeAge): String = when (age) {
+    RelativeAge.JustNow -> stringResource(R.string.age_just_now)
+    is RelativeAge.MinutesAgo -> stringResource(R.string.age_minutes_ago, age.minutes)
+    is RelativeAge.HoursAgo -> stringResource(R.string.age_hours_ago, age.hours)
 }
 
 @Composable

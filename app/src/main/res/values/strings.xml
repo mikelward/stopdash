@@ -11,6 +11,15 @@
     <!-- Stamp while a part-loaded list's disruptions are still being checked, in place of a
          banner that would move the list (SPEC Freshness → Cold load). -->
     <string name="checking_stamp">Checking…</string>
+    <!-- The top bar's age stamp: how long ago the departures shown were fetched. -->
+    <!-- TODO: translate -->
+    <string name="age_just_now" tools:ignore="MissingTranslation">Just now</string>
+    <!-- TODO: translate -->
+    <!-- %1$d is whole minutes: "2 min ago". -->
+    <string name="age_minutes_ago" tools:ignore="MissingTranslation">%1$d min ago</string>
+    <!-- TODO: translate -->
+    <!-- %1$d is whole hours: "3 h ago". -->
+    <string name="age_hours_ago" tools:ignore="MissingTranslation">%1$d h ago</string>
 
     <!-- Departures list -->
     <string name="departures_loading">Loading departures…</string>
