@@ -1448,10 +1448,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         national rail"): TfL's routes for EMR list a stop out of St Pancras its trains don't call at, so a trip
         offered one to get there. A trip now asks its boarding station's board of the trains calling where each
         National Rail ride gets off, and judges a train past the board with details by it.
-    - [ ] **A National Rail route page lists its train's own stops**, not its line's TfL pattern (which
-          showed that stop on an EMR train): the train's calls from National Rail, asked when
-          the page opens (`RailBoardSource.runs` toward its terminus, as a followed train's are), or the
-          calling points a trip's board already carries.
+    - [x] **A National Rail route page lists its train's own stops**, not its line's TfL pattern, which showed
+          that stop on an EMR train: from National Rail's board toward where it ends, as a followed train's
+          calls are.
+      - [ ] **A trip's route page could use the calling points its board already carries**, sparing the request,
+            once those keep their stops in order (`CallingPortion.stops` is a set of TfL ids).
   - [x] **National Rail station messages as station notices** (maintainer, 2026-10-17): TfL's status for
         a National Rail line is often only a link; the board's `nrccMessages` now join the stop's notices.
     - [ ] **Check the `nrccMessages` shape against a live board**: the fixture is hand-written in the

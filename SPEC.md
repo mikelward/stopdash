@@ -1194,7 +1194,12 @@ shows the stop's, judged as the cards judge them, so never a train just past its
 National Rail line's routes are its stopping patterns, a dozen from one platform, so its chips are where they go
 (maintainer, 2026-10-22): one per station its patterns from the stop end at, both ways, a train to a place none of
 them ends at its own. Each follows its place's soonest train at the stop, listing that train's stops; one with none
-lists the stops of its first pattern TfL gives. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
+lists the stops of its first pattern TfL gives. A National Rail train's stops are its own, from National Rail's board
+at the station toward where it ends, as a followed train's calls are read (maintainer, 2026-10-22: TfL's patterns for
+a line can list a stop its trains don't make): one request as its page opens on the train, kept by the proxy as any
+board. Where National Rail can't be asked (no key), or its board doesn't list the train whole (one that divides, one
+past its ten), the line's patterns give them as before; a board that fails says so, with a retry, never the patterns
+passed off as the train's. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
 in for: shown collapsed to its first line, tapped to expand (the same widget the stop-closure card
 uses). A **web link** in an alert — with or without `https://`, as TfL writes them ("visit
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links

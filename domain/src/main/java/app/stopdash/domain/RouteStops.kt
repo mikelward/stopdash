@@ -788,6 +788,11 @@ class RouteStopsRepository(
     private val model: suspend () -> Hubs? = { null },
     // A station's fare zone and facilities, for its details (null: none looked up, as in a test).
     private val zones: StopZoneSource? = source as? StopZoneSource,
+    // A station's board with calling points toward a terminus, by their codes, from so many minutes on
+    // ([RailBoardSource.runs], null with no key): a National Rail train's own stops ([trainStops]). None in a test.
+    private val railRuns: (suspend (String, String, Int) -> RailRuns?)? = null,
+    // Every TfL stop id of a station code ([RailStationCodes.stopIdsFor]), naming those stops.
+    private val railIds: (String) -> Set<String> = { emptySet() },
 ) {
     private val cache = ConcurrentHashMap<String, RouteStopsStore.Timed<LineSequence>>()
     // Each line+direction's routes merged and placed ([merge]), with the cache entries they came
@@ -1036,6 +1041,51 @@ class RouteStopsRepository(
         val held = merged[mergedKey(lineId, direction)] ?: return null
         val now = clock()
         return held.sequence.takeIf { held.heldIn(cache) && held.parts.all { fresh(it, now) } }
+    }
+
+    /**
+     * [train]'s own stops, from [stopId] ([stopName]) where it boards through where it ends, as National Rail's board
+     * at the station toward its terminus lists them ([RailRun.next], [railRuns]; maintainer, 2026-10-22): its line's
+     * TfL routes are the line's patterns, which can list a stop its trains don't make. Each by the id [sequence] (its
+     * line's routes, seen from [stopId]) calls that station by, else its first TfL id, named as the board names it.
+     * Null where it isn't National Rail's to say, and the routes stand: a train with no [RailFollow.Key] (a TfL one, or
+     * one that divides), no board to ask (no key), or a board that doesn't list it whole or name its every stop
+     * (logged). Throws as a board read does.
+     */
+    suspend fun trainStops(train: Departure, stopId: String, stopName: String, sequence: LineSequence): List<RouteStop>? {
+        val key = RailFollow.keyOf(train.vehicleId) ?: return null
+        val runs = railRuns ?: return null
+        val board = try {
+            runs(key.fromCrs, key.destinationCrs, RailFollow.offsetMinutes(key.scheduled, clock())) ?: return null
+        } catch (e: TflException.NotFound) {
+            // Nothing for this station to give: its line's routes, as with no key.
+            warn("route stops: national rail board not found at ${key.fromCrs}: ${e::class.simpleName}; its line's routes stand")
+            return null
+        } catch (e: TflException) {
+            // The page says it with a retry ([TflException] reaches it as a failed list); said here too, as a route's
+            // own fetch failures are, so a report of that retry says why (Codex, #1140).
+            warn("route stops: national rail board failed at ${key.fromCrs}: ${e::class.simpleName}")
+            throw e
+        }
+        return withContext(compute) {
+            val listed = RailFollow.find(board.runs, key)?.takeIf { it.throughTerminus && it.atCrs == key.fromCrs }
+            if (listed == null) {
+                warn("route stops: national rail train not listed whole at ${key.fromCrs}; its line's routes stand")
+                return@withContext null
+            }
+            val onRoute = sequence.routes.flatMapTo(HashSet()) { it.stopIds }
+            fun stop(id: String, name: String) = RouteStop(id, name, Connections.of(sequence.stopLines[id].orEmpty(), train.lineId))
+            val after = listed.next.map { point ->
+                val ids = railIds(point.crs)
+                val id = ids.firstOrNull { it in onRoute } ?: ids.minOrNull()
+                if (id == null) {
+                    warn("route stops: national rail stop ${point.crs} has no TfL id; its line's routes stand")
+                    return@withContext null
+                }
+                stop(id, point.name.ifBlank { sequence.stopNames[id].orEmpty() })
+            }
+            listOf(stop(stopId, sequence.stopNames[stopId].orEmpty().ifBlank { stopName })) + after
+        }
     }
 
     /**

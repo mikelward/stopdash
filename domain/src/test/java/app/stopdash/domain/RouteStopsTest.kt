@@ -302,6 +302,70 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a National Rail train's stops are its own, from National Rail's board toward where it ends`() = runTest {
+        // Synthetic stations: the line's one pattern calls at Mid, which this train runs past.
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Far", listOf("910GTOP", "910GMID", "910GNEAR", "910GNEARLL", "910GFAR"))),
+            stopNames = mapOf("910GTOP" to "Top", "910GMID" to "Mid", "910GNEAR" to "Near", "910GNEARLL" to "Near", "910GFAR" to "Far"),
+            stopLines = mapOf("910GFAR" to listOf(LineRef("other-example", "Other", "national-rail"))),
+        )
+        val scheduled = Instant.parse("2026-10-22T17:16:00Z")
+        fun train(vehicleId: String) =
+            Departure("rail-example", "Rail Example", "", "Far", "Platform 1", scheduled, "national-rail", vehicleId = vehicleId)
+        val followed = train(RailFollow.idOf("TOP", scheduled, "FAR", "rail-example"))
+        fun point(crs: String, name: String) = RailPoint(crs, name, scheduled, scheduled)
+        // Near's low level is the id the line's routes call it by.
+        val run = RailRun("TOP", "Top", "rail-example", scheduled, scheduled, "Platform 1", "FAR", emptyList(), listOf(point("NRR", "Near"), point("FAR", "Far")))
+        val ids = mapOf("TOP" to setOf("910GTOP"), "NRR" to setOf("910GNEARXX", "910GNEARLL"), "FAR" to setOf("910GFAR"))
+        val asked = mutableListOf<String>()
+        var listed: List<RailRun>? = listOf(run)
+        val warnings = mutableListOf<String>()
+        val repository = RouteStopsRepository(
+            source = object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+            warn = { warnings += it },
+            clock = { scheduled.minusSeconds(300) },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+            railRuns = { crs, towards, offset ->
+                asked += "$crs $towards $offset"
+                listed?.let { RailRuns(it) }
+            },
+            railIds = { ids[it].orEmpty() },
+        )
+        val stops = checkNotNull(repository.trainStops(followed, "910GTOP", "Top", sequence))
+        assertEquals(listOf("910GTOP", "910GNEARLL", "910GFAR"), stops.map { it.id })
+        assertEquals(listOf("Top", "Near", "Far"), stops.map { it.name })
+        assertEquals(listOf("other-example"), stops.last().connections.map { it.id })
+        // Asked toward its terminus, from now: it's due within the board's first few.
+        assertEquals(listOf("TOP FAR 0"), asked)
+        // A train it can't follow by (a TfL one, or one that divides) isn't National Rail's to say.
+        assertNull(repository.trainStops(train(""), "910GTOP", "Top", sequence))
+        assertEquals(1, asked.size)
+        // A board that doesn't list it, or no key to ask by: the line's routes stand, the first said in the log.
+        listed = emptyList()
+        assertNull(repository.trainStops(followed, "910GTOP", "Top", sequence))
+        assertTrue(warnings.any { it.startsWith("route stops: national rail train not listed whole at TOP") })
+        listed = null
+        assertNull(repository.trainStops(followed, "910GTOP", "Top", sequence))
+        // A stop with no TfL id: its routes, never a list missing one.
+        listed = listOf(run.copy(next = run.next + point("ZZZ", "Nowhere")))
+        assertNull(repository.trainStops(followed, "910GTOP", "Top", sequence))
+        // A board that fails is the list's failure, said in the log (Codex, #1140).
+        val failing = RouteStopsRepository(
+            source = object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+            warn = { warnings += it },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+            railRuns = { _, _, _ -> throw TflException.Unreachable("HTTP 500", null) },
+            railIds = { ids[it].orEmpty() },
+        )
+        assertTrue(runCatching { failing.trainStops(followed, "910GTOP", "Top", sequence) }.exceptionOrNull() is TflException.Unreachable)
+        assertTrue(warnings.contains("route stops: national rail board failed at TOP: Unreachable"))
+    }
+
+    @Test
     fun `an unresolved list is logged with its reason, a resolved one is not`() = runTest {
         val warnings = mutableListOf<String>()
         val repository = RouteStopsRepository(
