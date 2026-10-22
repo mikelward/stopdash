@@ -340,8 +340,9 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
    (`plannedThroughWays`), and drawn cut at their first call in the hubs, naming the train as planned
    (`TripRoute.drawnFrom`), so the open
    route saves and finds again the train as planned (`OpenRoute.routeIn`). The routes the
-   trip holds are never changed: the plan kept for reuse and the routes it fetches for are the
-   Planner's, a cut copy names the route it's drawn from (`TripRoute.drawnFrom`) and is that route by
+   trip holds are never changed: the plan kept for reuse is the Planner's, and its fetches cut the
+   routes as the page draws them (`TripViewModel.drawnFor`, 2026-10-22), so what's timed live is what's
+   drawn. A cut copy names the route it's drawn from (`TripRoute.drawnFrom`) and is that route by
    key (`routeKey`), so it's opened, kept open, ranked and fetched for as the plan, two plans cut alike
    staying two, and a Start starts the route as planned (`TripFrame.starts`,
    `ShownRoutes.plannedOf`, a train through likewise), which On the way moves the end of
@@ -367,8 +368,10 @@ at hubs only (King's Cross & St Pancras, Paddington, Stratford), per AGENTS.md *
      detour scan, `withoutDetours`, which then reads the cut copies) reads a route's whole path the
      same way, so a route whose earlier ride or change already reaches the destination's hub ends
      there, never telling the rider to ride on or change after they've arrived (a regression test
-     covers that route shape, Codex on #1005). The trip's own fetches still run the detour scan on
-     the routes as planned (`TripViewModel.timedRoutes`, `TODO.md`).
+     covers that route shape, Codex on #1005). The trip's own fetches run the detour scan on the
+     routes cut the same way (`TripViewModel.drawnFor`, 2026-10-22), so a detour the page keeps drawn
+     cut has its boarding stop's live times, and a ride on past where it's drawn getting off isn't
+     asked about.
      The call it cuts at is the first in the hub that passes the trip's step-free level, with
      today's lift outages (*Decision*'s step-free rule), so a lift out at the first record it
      reaches moves the cut on to the next passing one, never ending a card where the rider can't

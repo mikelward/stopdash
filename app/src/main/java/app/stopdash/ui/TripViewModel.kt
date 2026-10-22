@@ -464,7 +464,7 @@ class TripViewModel(
             if (value == field) return
             val was = field
             field = value
-            val s = _state.value
+            val s = asDrawn(_state.value)
             if (s.routes == null) return
             val keys = openKeys()
             // The routes timed and fetched for: those shown, within the cap ([bestOf]), since a
@@ -504,9 +504,9 @@ class TripViewModel(
     // draws cut is keyed as its route as planned ([routeKey]), so these are this trip's own routes' keys.
     private fun openKeys(): Set<String> = OpenRoute.parse(openRoute.value)?.keys.orEmpty()
 
-    // The routes a refresh fetches for and checks ([refreshLive]): those shown, less a hidden mode's,
-    // the soonest few and the open one ([bestOf]).
-    private fun timedRoutes(): List<TripRoute>? = _state.value.let { s -> s.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys(), s.directKeys, s.delayedLines) } }
+    // The routes a refresh fetches for and checks ([refreshLive]): those shown as the page draws them ([asDrawn]),
+    // less a hidden mode's, the soonest few and the open one ([bestOf]).
+    private fun timedRoutes(): List<TripRoute>? = asDrawn(_state.value).let { s -> s.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys(), s.directKeys, s.delayedLines) } }
 
     // The saved handle can outlive this trip (it's the activity's, by the model's key): a trip
     // planned afresh must not open this one's route.
@@ -1003,6 +1003,40 @@ class TripViewModel(
     // The step-free table with the lifts out now, for a step-free trip's ends ([stepFreeAccess]).
     private val lifted = LiftedAccess({ withContext(io) { stepFreeAccess() } }, warn)
 
+    // The lifts out the page last drew a step-free trip's ends by ([shownRoutes]): the routes fetched for are cut by
+    // them too ([drawnFor]). Empty at no level, where lifts change nothing.
+    private var liftsDrawn: Set<String> = emptySet()
+
+    // The routes [of] (by identity) as the page draws them, at [stepFree] with the lifts [liftsOut] out ([drawnFor]).
+    private class Drawn(val of: List<TripRoute>, val stepFree: StepFree, val liftsOut: Set<String>, val routes: List<TripRoute>)
+
+    // The last routes [drawnFor] worked out.
+    private var drawn: Drawn? = null
+
+    /**
+     * [held] with its routes as the page draws them ([shownRoutes]): each cut where it first reaches the destination's
+     * hubs ([RideEnds.cut]), at the trip's level, with the lifts out the page last drew by (none until it has). So a
+     * refresh fetches for and checks what the page draws: a detour the plan's own scan drops ([withoutDetours]) but the
+     * page keeps drawn cut has its boarding stop's live times too, and a ride past where it's drawn getting off is asked
+     * about no more. Worked out on [compute] once for each set of routes and lifts; as planned with no model. The routes
+     * stay keyed as planned ([routeKey]), so the open one and a Direct row's are found among them.
+     */
+    private suspend fun drawnFor(held: State): State {
+        val routes = held.routes ?: return held
+        val level = stepFree
+        val lifts = liftsDrawn
+        drawn?.takeIf { it.of === routes && it.stepFree == level && it.liftsOut === lifts }?.let { return held.copy(routes = it.routes) }
+        val at = arrivingAt.awaitDestination(warn, "trip fetches") ?: return held
+        val cut = withContext(compute) { RideEnds.cut(routes, level, lifted.destination(at, level, lifts)) }
+        drawn = Drawn(routes, level, lifts, cut)
+        return held.copy(routes = cut)
+    }
+
+    // [held] as [drawnFor] last worked it out for its routes, at the trip's level and the lifts the page last drew by;
+    // as planned where it hasn't yet. In constant time, for the main thread.
+    private fun asDrawn(held: State): State =
+        drawn?.takeIf { it.of === held.routes && it.stepFree == stepFree && it.liftsOut === liftsDrawn }?.let { held.copy(routes = it.routes) } ?: held
+
     /**
      * [placed]'s routes as the screen draws them at [stepFree] ([ShownRoutes]): each last ride the Planner gets
      * off in the destination's hubs getting off at its first call anywhere in them, shown cut and named there
@@ -1014,6 +1048,8 @@ class TripViewModel(
      * in [liftsOut] out of service, says their line meets its level there ([LiftedAccess]).
      */
     internal suspend fun shownRoutes(placed: State, stepFree: StepFree, liftsOut: Set<String> = emptySet()): ShownRoutes {
+        // What the trip's fetches cut its routes by ([drawnFor]); none at no level, as the page passes none.
+        liftsDrawn = if (stepFree == StepFree.ANY) emptySet() else liftsOut
         if (placed.routes.isNullOrEmpty()) return ShownRoutes.planned(placed, stepFree, liftsOut)
         val at = arrivingAt.awaitDestination(warn, "trip ride ends") ?: return ShownRoutes.planned(placed, stepFree, liftsOut)
         return withContext(compute) { ShownRoutes.of(placed, stepFree, lifted.destination(at, stepFree, liftsOut), liftsOut) }
@@ -1815,7 +1851,8 @@ class TripViewModel(
         // fetched for.
         // Picked on the worker from the state as it stands: a first plan runs this as each answer lands, and
         // the pick walks every route (AGENTS.md *Main thread*; Codex, #1016).
-        val held = _state.value
+        // As the page draws them ([drawnFor]): a detour it keeps drawn cut is fetched for too.
+        val held = drawnFor(_state.value)
         val hidden = hiddenModes
         val open = openKeys()
         val (routes, lines) = withContext(compute) {

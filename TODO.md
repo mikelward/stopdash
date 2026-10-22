@@ -1141,11 +1141,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                           `TripTiming.Reason.CUT`, asking no re-plan), listed after the
                                           timed routes and kept past the route cap (`RideEnds.cut`,
                                           `detourCutAt`, `TripViewModel.bestOf`).
-                                    - [ ] The trip fetches live times for the routes as planned, so a
-                                          detour it drops there (`withoutDetours`), which the page shows
-                                          cut, is timed from the timetable alone where its boarding stop
-                                          is none of the others'. Fetch for the routes as the page draws
-                                          them (`ShownRoutes.of` before `TripViewModel.timedRoutes`).
+                                    - [x] The trip fetching live times for the routes as the page
+                                          draws them, each cut by `RideEnds.cut` before the detour scan
+                                          (`TripViewModel.drawnFor`, at the lifts out the page last drew
+                                          by), so a detour the page keeps drawn cut has its boarding
+                                          stop's live times, and a ride past where it's drawn getting off
+                                          isn't asked about.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
