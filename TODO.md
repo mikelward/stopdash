@@ -1561,8 +1561,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       moving to the page's work as one.
   - [ ] **On the way's own title forms**: the screen's next-step card works out its destination's and
         step's forms in composition (`destinationTitleForms`, `stepTitleForms`), which the banner atop
-        other screens already works out on a worker (`OnTheWayBanner`); the screen could take the same.
-        Then `DestinationAbbreviations`' three could be marked `@WorkerThread`, so lint catches the next.
+        other screens already works out on a worker (`OnTheWayBanner`). Taking the banner's way as it is
+        would open the screen on its "On the way" placeholder for a frame before the step's words, the
+        swap *hold still* rules out (as the maintainer did for measuring names, 2026-10-15). Without it,
+        the forms would have to be in before the screen opens: worked out where the trip's progress is
+        (`ActiveTripTracker`, which has no resources to word them) or kept from the banner's frame.
+        Then `DestinationAbbreviations`' three could be marked `@WorkerThread`, so lint catches the next,
+        once the route page's title branch and "Destination unknown" move too.
 
 ## Phase 2 — Watched stops and settings
 
