@@ -411,12 +411,14 @@ class TripViewModel(
         // through a change) finds its walks too. Decided off the main thread as the routes come in;
         // empty until then, the walks shown as walks.
         val changesOnFoot: Set<TripLeg> = emptySet(),
-        // Bumped each time something newly fails: the plan, a stop's refresh, a line's status check or a
-        // stop's closure check, judged from that answer alone; when a check answers differently (a line
-        // now suspended, a stop now closed); and when arrivals are withdrawn (another departure source).
-        // What's drawn from an earlier state tells by it, in constant time, that something it vouched for
-        // has since failed, changed or gone (Codex, #529).
-        val failures: Int = 0,
+        // Bumped each time an answer overturns what was held: a check answering differently (a line now
+        // suspended, a stop now closed, a line TfL now leaves out), arrivals withdrawn (another departure
+        // source), or a leg moved to another stop. What's drawn from an earlier state tells by it, in
+        // constant time, that something it vouched for has since changed or gone (Codex, #529). Not when a
+        // check fails: what's drawn is then the last good answer, which stands until the page draws the
+        // failure, rather than a blank meanwhile (SPEC principle 2; maintainer, 2026-10-22: the page flashed
+        // with each failure while TfL rate-limited the app).
+        val overturned: Int = 0,
         // The routes added for a Direct row ([openDirect]) that the plan didn't offer: openable, timed
         // while open, never a card of their own. By [routeKey].
         val directKeys: Set<String> = emptySet(),
@@ -1098,8 +1100,8 @@ class TripViewModel(
                 // the shared ones too; clearing twice only costs a fetch).
                 sourceGeneration++
                 arrivals.clear()
-                // Withdrawn as a failure is: a frame drawn from them never stands in (Codex, #529).
-                _state.update { it.copy(live = emptyMap(), failures = it.failures + 1) }
+                // Withdrawn: a frame drawn from them never stands in (Codex, #529).
+                _state.update { it.copy(live = emptyMap(), overturned = it.overturned + 1) }
                 started = false
             }
         }
@@ -1535,7 +1537,7 @@ class TripViewModel(
         }
         // Failed only when no stop answered: one that answered with no route is still an answer.
         if (answered == 0 && failed != null) {
-            _state.update { it.copy(planning = false, planError = errorKindOf(failed), failures = it.failures + 1) }
+            _state.update { it.copy(planning = false, planError = errorKindOf(failed)) }
             countPlan(failed, answered, 0, viaFailed, from, planAgain)
             // A Direct route open from elsewhere, or under other choices, can't stand with this plan's walk
             // unknown: let go, said, its Retry the plan's own.
@@ -1638,8 +1640,6 @@ class TripViewModel(
                         planning = false,
                         planError = null,
                         planIncomplete = failed != null,
-                        // A plan that reached only some of the trip's stops has failed in part ([State.failures]).
-                        failures = if (failed != null) s.failures + 1 else s.failures,
                         statusUnknown = unknownLines(all, s),
                         closuresUnknown = unknownClosures(all, s),
                     )
@@ -1907,7 +1907,8 @@ class TripViewModel(
                 // (AGENTS.md *Main thread*; Codex, #529): a line's status answered differently or dropped (one
                 // TfL now leaves out, or one no longer asked about), a stop's closures answered differently (a
                 // line now suspended, a stop now closed). Against the state as it stood: a change landing
-                // meanwhile only moves the generation once more.
+                // meanwhile only moves the generation once more. Not a check that failed: what was drawn
+                // from the last good answer stands until the page draws the failure ([State.overturned]).
                 val held = _state.value
                 // The lines asked that the answer left out, worked out on [io] too (AGENTS.md *Main thread*).
                 val omitted = fetched?.let { answer -> withContext(io) { (lines + others).filterTo(HashSet()) { it !in answer.statuses && it !in answer.failed } } }
@@ -1916,11 +1917,7 @@ class TripViewModel(
                 val newVerdict = withContext(io) {
                     (fetched != null && (fetched.statuses.any { (id, status) -> held.statuses[id] != status } ||
                         held.statuses.keys.any { it !in fetched.statuses && it !in fetched.failed })) ||
-                        checked.found.any { (id, notices) -> id in latest && held.closures[id] != notices } ||
-                        // Newly failed, of what this refresh asked: a stop, a line's status, a stop's closures.
-                        (current && live.any { (id, stop) -> stop == null && held.live[id]?.failed != true }) ||
-                        (fetched?.failed ?: (lines + others)).any { it !in held.statusFailedLines } ||
-                        checked.failed.any { it in latest && it !in held.closuresFailed }
+                        checked.found.any { (id, notices) -> id in latest && held.closures[id] != notices }
                 }
                 updateOnWorker {
                     // Judged again after the hop to [io]: a source changed while it ran dropped the arrivals, and these,
@@ -1930,7 +1927,7 @@ class TripViewModel(
                     val shownNow = shownStops
                     { state ->
                     val next = state.copy(
-                        failures = if (newVerdict) state.failures + 1 else state.failures,
+                        overturned = if (newVerdict) state.overturned + 1 else state.overturned,
                         live = if (!fresh) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
@@ -1981,16 +1978,16 @@ class TripViewModel(
                 val lateOmitted = found?.let { f ->
                     withContext(io) { heldNow.statusOmitted - late.toSet() + late.filter { id -> id !in f.statuses && id !in f.failed } }
                 }
-                val newlyFailed = withContext(io) {
-                    // Newly failed: a late line not already failed ([State.failures]; Codex, #529).
-                    (found?.failed ?: late.toSet()).any { id -> id !in heldNow.statusFailedLines } ||
-                        (found != null && (found.statuses.any { (id, status) -> heldNow.statuses[id] != status } ||
-                            late.any { id -> id in heldNow.statuses && id !in found.statuses && id !in found.failed }))
+                // A late line's status answered differently, or one held that it leaves out ([State.overturned];
+                // Codex, #529). Not one whose check failed: what was drawn stands until the page draws that.
+                val changed = found != null && withContext(io) {
+                    found.statuses.any { (id, status) -> heldNow.statuses[id] != status } ||
+                        late.any { id -> id in heldNow.statuses && id !in found.statuses && id !in found.failed }
                 }
                 updateOnWorker {
                     {
                     it.copy(
-                        failures = if (newlyFailed) it.failures + 1 else it.failures,
+                        overturned = if (changed) it.overturned + 1 else it.overturned,
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
                         delayedLines = found?.let { f -> it.delayedLines.filter { id -> id !in late || id in f.failed }.toSet() + lateDelayed.orEmpty() } ?: it.delayedLines,
                         statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt } ?: it.statusesAt,
@@ -2061,7 +2058,7 @@ class TripViewModel(
         updateOnWorker {
             { state ->
                 val placedAnew = found.mapNotNull { (area, poles) -> poles?.let { area to it } }.toMap()
-                if (placedAnew.isEmpty()) state else state.copy(areaPoles = state.areaPoles + placedAnew, failures = state.failures + 1)
+                if (placedAnew.isEmpty()) state else state.copy(areaPoles = state.areaPoles + placedAnew, overturned = state.overturned + 1)
             }
         }
     }
@@ -2101,7 +2098,7 @@ class TripViewModel(
         val live = _state.value.live
         fun usable(id: String) = live[id]?.failed == false
         val placedNow = placedStands
-        if ((placedNow - active).any(::usable) || (active - placedNow).any(::usable)) _state.update { it.copy(failures = it.failures + 1) }
+        if ((placedNow - active).any(::usable) || (active - placedNow).any(::usable)) _state.update { it.copy(overturned = it.overturned + 1) }
         stands.filter { placedEver.add(it) }
             .forEach { warn("trip bus ${it.lineId} boards at the route's stand ${it.standId}, not the Planner's ${it.plannerId}") }
         val now = clock()
@@ -2109,7 +2106,7 @@ class TripViewModel(
     }
 
     /**
-     * [state] with [live], the generation moved ([State.failures]) when a stand the screen boards a bus at
+     * [state] with [live], the generation moved ([State.overturned]) when a stand the screen boards a bus at
      * ([placedStands]) becomes usable or stops being: the screen moves a leg to it only once it's fetched
      * ([onPoles]), so what was drawn from the Planner's stand no longer stands (Codex, #529). Over the
      * placed stands alone, one at most per bus leg moved.
@@ -2117,7 +2114,7 @@ class TripViewModel(
     private fun withLive(state: State, live: Map<String, StopLive>, placed: Set<String> = placedStands): State {
         fun usable(stop: StopLive?) = stop != null && !stop.failed
         val moved = placed.any { usable(state.live[it]) != usable(live[it]) }
-        return state.copy(live = live, failures = if (moved) state.failures + 1 else state.failures)
+        return state.copy(live = live, overturned = if (moved) state.overturned + 1 else state.overturned)
     }
 
     private fun cached(
@@ -2203,15 +2200,15 @@ class TripViewModel(
         viewModelScope.launch {
             val checked = checkClosures(asked.toList())
             val latest = checked.latest()
-            // A stop's closures answered differently, judged on [io] (Codex, #529).
+            // A stop's closures answered differently, judged on [io] (Codex, #529); not a check that failed
+            // ([State.overturned]).
             val heldNow = _state.value
-            val newlyFailed = withContext(io) {
-                checked.failed.any { id -> id in latest && id !in heldNow.closuresFailed } ||
-                    checked.found.any { (id, notices) -> id in latest && heldNow.closures[id] != notices }
+            val changed = withContext(io) {
+                checked.found.any { (id, notices) -> id in latest && heldNow.closures[id] != notices }
             }
             _state.update {
                 val next = it.copy(
-                    failures = if (newlyFailed) it.failures + 1 else it.failures,
+                    overturned = if (changed) it.overturned + 1 else it.overturned,
                     closures = it.closures + checked.found.filterKeys { id -> id in latest },
                     closuresAt = it.closuresAt + checked.at.filterKeys { id -> id in latest },
                     closuresFailed = it.closuresFailed - latest + checked.failed.filter { id -> id in latest },
@@ -2243,7 +2240,7 @@ class TripViewModel(
         val next = state.copy(
             // Another screen's answer differing from the trip's: what was drawn from the trip's no longer
             // stands (Codex, #529).
-            failures = if (held.any { (id, lookup) -> state.closures[id] != lookup.notices }) state.failures + 1 else state.failures,
+            overturned = if (held.any { (id, lookup) -> state.closures[id] != lookup.notices }) state.overturned + 1 else state.overturned,
             closures = state.closures + held.mapValues { it.value.notices },
             closuresAt = state.closuresAt + held.mapValues { it.value.at },
             closuresFailed = failed,

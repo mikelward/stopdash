@@ -1247,9 +1247,11 @@ internal fun TripScreen(
  * worked out (Codex, #529): only while what changed is the data and the clock (a refresh, a route
  * loaded, a tick), never what the rider chose or is told (the trip, the walk, the routes hidden or
  * avoided, whether the origin is confirmed, the alerts dismissed, the planning options: walking speed,
- * longest walk, step-free level, modes), nor once something the frame vouched for has failed (a plan,
- * a status or closure check, a stop's refresh) or the trip is planned again, and only for [FRAME_HOLD] (a
- * tick), never frozen at an old time past it. [held] and [wanted] are the frame's [Inputs], in the page's order.
+ * longest walk, step-free level, modes), nor once something the frame vouched for has been overturned (a
+ * status or closure answered differently, arrivals withdrawn, a leg moved) or the trip is planned again, and
+ * only for [FRAME_HOLD] (a tick), never frozen at an old time past it. A check that failed (a plan, a status
+ * or closure check, a stop's refresh) is data like any other: the last good frame stands in until the one
+ * that says so is in. [held] and [wanted] are the frame's [Inputs], in the page's order.
  */
 private fun mayStandIn(held: Inputs, wanted: Inputs): Boolean {
     val heldAt = held.parts[FRAME_TIME] as Instant
@@ -1262,7 +1264,7 @@ private fun mayStandIn(held: Inputs, wanted: Inputs): Boolean {
 
 // Where the frame's inputs (see the page's `Inputs`) hold its time, and what the rider chose or is told:
 // the trip, the walk, the routes left out, whether the origin is unconfirmed, the alerts dismissed, the
-// planning options, what has failed, the plan, where its legs board and get off, and what its words are written with.
+// planning options, what has been overturned, the plan, where its legs board and get off, and what its words are written with.
 private const val FRAME_TIME = 2
 // And the route open, if any ([TripFrame.openKey]).
 private const val FRAME_OPEN = 9
@@ -1519,9 +1521,11 @@ private fun TripContent(
     val frameInputs = Inputs(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loadingVersion, routeStops,
             // The planning options: the frame a plan under the old ones was worked out for never stands in.
             walkingSpeed, maxWalk, stepFree, tripModes,
-            // What has failed since ([TripViewModel.State.failures]): a frame from before a failed refresh
-            // never stands in once it fails (Codex, #529).
-            liveState.failures,
+            // What has been overturned since ([TripViewModel.State.overturned]): a frame from before a check
+            // answered differently never stands in once it has (Codex, #529). One from before a check failed
+            // does, as for any refresh: it's the last good answer, the failure drawn with the next frame,
+            // where dropping it drew "Checking…" in its place, a flash at each failure (maintainer, 2026-10-22).
+            liveState.overturned,
             // The plan, one list until it's planned again: a new plan's frame waits for the worker, so a
             // route it dropped never lingers (#535).
             planned.routes,
