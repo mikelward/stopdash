@@ -780,8 +780,9 @@ fun MainScreen(
     // waits on them without its origin (Codex, #625).
     val journeyStops = rememberWorked(
         listWork.journeyStops,
-        heldWhile(originsPending, listWork.journeyStops, Inputs(journeyOrigins, cardJourneys, journeySegments, journeySiblings, journeyViewKey, journeyFarEnds)),
+        Inputs(journeyOrigins, cardJourneys, journeySegments, journeySiblings, journeyViewKey, journeyFarEnds),
         keep = { _, _ -> true },
+        hold = originsPending,
     ) {
         // The last answer as it stands when this runs, read on the worker, whose reports this one reuses
         // where they're unchanged.

@@ -1538,12 +1538,11 @@ private fun TripContent(
             openRef,
             // What the frame's words are written with (a card's step-free notices).
             resources)
-    // While the routes in hand aren't drawn yet ([ShownRoutes.pending]), no frame is worked out ([heldWhile]): the
-    // last stands in if it may, or none does, never one of the routes as planned, whose last ride's end would move
-    // a moment later. A frame under way still lands.
+    // While the routes in hand aren't drawn yet ([ShownRoutes.pending]), no frame is worked out ([rememberWorked]'s
+    // hold): the last stands in if it may, or none does, never one of the routes as planned, whose last ride's end
+    // would move a moment later. A frame under way still lands.
     val heldFrame = frameSlot.value?.key
-    val frameKey = heldWhile(shown.pending, frameSlot, frameInputs)
-    val frame = rememberWorked(frameSlot, frameKey, keep = ::mayStandIn) {
+    val frame = rememberWorked(frameSlot, frameInputs, keep = ::mayStandIn, hold = shown.pending) {
         if (shown.pending) {
             null
         } else {

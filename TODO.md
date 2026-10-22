@@ -49,7 +49,7 @@ exercises the whole spine the widget later renders from.
       in 30 runs alone (half under full CPU load) or 8 full-suite runs; run alone, every dispatch to the
       worker comes from the test thread or the worker itself, which `close` drains, so the late one came
       from some third thread not yet found.
-- [ ] Fix the flaky `TripScreenScreenshotTest.the_disruptions_row_never_holds_none_over_a_disruption_the_worker_has_not_caught_up_with`.
+- [x] Fix the flaky `TripScreenScreenshotTest.the_disruptions_row_never_holds_none_over_a_disruption_the_worker_has_not_caught_up_with`.
       Twice on CI on 2026-10-22 (#1081's first head, #1082): released, the worker caught up through
       `[, Checking for disruptions, Disruptions: Jubilee]`, the first with no row tagged as the trip's
       disruptions on the page at all. If the page showed its placeholder for that moment, the list went for a
@@ -66,6 +66,13 @@ exercises the whole spine the widget later renders from.
       before the next was in (`mayStandIn`, `heldWhile` and the `takeIf` after it, in `TripScreen`), or the
       list's `revealedState` went false. Either is a hold-still bug in the app, unless an input only the test
       moves is the cause. The test's clock is fixed (`now`), so the frame's 15 s hold isn't it.
+      Done (2026-10-22): the first, and an app bug. Reproduced once in 24 copies of the test under CPU load,
+      logging the page: a frame of no routes had been stored over the last one. While the routes were being
+      drawn, `heldWhile` keyed the frame on the slot's answer as that composition read it; a frame under way
+      landed before the composition's effect ran, so the effect started a run for the old key, worked out from
+      the composition's own inputs with the routes still pending, which gave none and landed over the newer
+      frame. `rememberWorked` now takes the hold itself and starts no run while held (`WorkedTest`); 32 such
+      frames in those 24 runs, none after. The journeys' stops on the home screen held the same way.
 - [x] Fix the flaky `QuietConnectionsTest."a trip's plan waiting on a connection that went quiet is asked
       once more, with a rate token, and answers"` (once on 2026-10-20: the plan asked three times, not
       twice). Not a timer but the app: a request canceled for its quiet connection failed before the close,
