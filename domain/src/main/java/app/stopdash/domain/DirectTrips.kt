@@ -151,11 +151,17 @@ object DirectTrips {
     /**
      * Whether [departure] calls at one of [destinationIds] by its own calling points
      * ([Departure.callingAt], [calling]); null when they don't settle it and its line's routes must.
-     * Every judgement asks this first, before needing a route at all.
+     * With none known, a train its station's board of the trains calling there left out ([Departure.missesStops])
+     * doesn't, where that's every National Rail station among them, at least one: a hub's other stations may be
+     * where it calls. Every judgement asks this first, before needing a route at all.
      */
     @WorkerThread
-    fun settledByStops(departure: Departure, destinationIds: Set<String>): Boolean? =
-        departure.callingAt?.let { calling(it, destinationIds) }
+    fun settledByStops(departure: Departure, destinationIds: Set<String>): Boolean? {
+        departure.callingAt?.let { return calling(it, destinationIds) }
+        if (departure.missesStops.isEmpty()) return null
+        val stations = destinationIds.filter { it.startsWith(RAIL_STATION_PREFIX) }
+        return false.takeIf { stations.isNotEmpty() && stations.all { it in departure.missesStops } }
+    }
 
     /**
      * Whether [departure] gets [ride] off where it ends ([settledByStops]) by its own calling points; null
@@ -359,4 +365,7 @@ object DirectTrips {
             i >= 0 && route.stopIds.drop(i + 1).any { it in ends }
         }
     }
+
+    // TfL's ids for National Rail stations (and the Overground's and Elizabeth line's, which Darwin's boards leave to TfL).
+    private const val RAIL_STATION_PREFIX = "910G"
 }

@@ -4755,9 +4755,14 @@ surface.)
   same key; maintainer, 2026-10-07): a train's own stops say whether it calls where the rider gets
   off, which its line's routes can't when one runs fast and the next all stations (a London
   terminus's trains, read off the routes, mostly came out "Couldn't check"). That board lists only
-  the next 10 trains, so the plain one still gives the times, and a train past it is judged on its
-  line's routes as before; a train that divides is judged on its stops only where every portion
-  agrees. Only a trip asks for it, not the lists, the widget or the watch: one more free request per
+  the next 10 trains, so the plain one still gives the times. A train past it is judged by the same
+  board filtered to where each of the trip's National Rail rides from the station gets off (`filterCrs`;
+  maintainer, 2026-10-22: TfL's routes for a line can list a stop its trains don't make, so a train
+  that doesn't call there was offered to get there), asked only while a train has no stops of its own:
+  each train it lists gets its stops from it, and one it leaves out that's due to leave before it lists
+  every train to (the last of its ten, or an hour on where it lists fewer) doesn't call there. A train
+  past both is judged on its line's routes as before; a train that divides is judged on its stops only
+  where every portion agrees, and never by a board leaving it out, having no one schedule to place it by. Only a trip asks for it, not the lists, the widget or the watch: one more free request per
   station a trip boards at, each refresh, carrying the same code and key. The plain board stays the one
   every screen shares; the one with details is kept beside it, and a train's stops are worked out off the
   screen as its other checks are. If it fails, the trip says so
@@ -4810,7 +4815,9 @@ surface.)
   £0**, against the user's own key's limit, or through the proxy against its own budget (below): the
   lists ask at most one request per rail station per
   refresh, shared by every screen. An open trip adds one for each station it reads departures at, for
-  that station's calling points, and the boards that follow its train and check which is the rider's,
+  that station's calling points, one for each station its National Rail rides from there get off at
+  while a train on the board has no stops of its own (each kept as a board is, and the same request the
+  proxy answers for following a train there), and the boards that follow its train and check which is the rider's,
   each toward a terminus, within the limits above (Codex, #883); one or two requests a refresh as a
   rule. A failed calling-points request leaves the plain board standing.
   **Play Data Safety:** no new data type — a request carries only a public station code and the

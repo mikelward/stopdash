@@ -59,6 +59,22 @@ class DirectTripsTest {
     }
 
     @Test
+    fun `a train left off the board of those calling where the ride ends misses it, if that's every station there`() {
+        // Its own calling points unknown; its station's board of the trains calling at 910GNEAR left it out.
+        val train = departure("Far", 60, mode = "national-rail").copy(missesStops = setOf("910GNEAR", "910GNEARLL"))
+        assertEquals(false, DirectTrips.settledByStops(train, setOf("910GNEAR")))
+        // A station's tube platforms are no National Rail train's to call at.
+        assertEquals(false, DirectTrips.settledByStops(train, setOf("910GNEAR", "910GNEARLL", "940GZZLUNEAR")))
+        // A hub's other station may be where it calls: its route decides.
+        assertEquals(null, DirectTrips.settledByStops(train, setOf("910GNEAR", "910GBESIDE")))
+        assertEquals(null, DirectTrips.settledByStops(train, setOf("940GZZLUNEAR")))
+        // Nothing known: its route decides; its own calling points outrank the board's word.
+        assertEquals(null, DirectTrips.settledByStops(train.copy(missesStops = emptySet()), setOf("910GNEAR")))
+        val calls = train.copy(callingAt = listOf(CallingPortion(setOf("910GNEAR"), complete = true)))
+        assertEquals(true, DirectTrips.settledByStops(calls, setOf("910GNEAR")))
+    }
+
+    @Test
     fun `a ride is judged by the pair, and a hub end with no ids worked out judges as the Planner's call`() {
         // Riding from Top to Mid, getting off where the Planner does, or at a hub (synthetic ids).
         val leg = TripLeg("tube", "rail", "rail", "TOP", "Top", "MID", "Mid", now, now.plusSeconds(300))

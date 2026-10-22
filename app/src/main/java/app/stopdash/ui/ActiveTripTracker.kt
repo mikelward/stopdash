@@ -20,6 +20,7 @@ import app.stopdash.domain.OffPlan
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.RailFollow
+import app.stopdash.domain.RailRideEnds
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RideArrivals
 import app.stopdash.domain.LegEnd
@@ -79,6 +80,9 @@ class ActiveTripTracker(
     // quota. With none given, [arrivals]. Comes with when a board kept from another screen's read was
     // read, which dates the trip's board ([RideArrivals.fetchedAt]).
     private val railArrivals: (suspend (String) -> RideArrivals)? = null,
+    // Where the ride [railArrivals] is asked for gets off, which its client asks the station's trains calling at
+    // too ([RailRideEnds]), so a train past its board with details is still judged by its own stops. Null for none.
+    private val railRideEnds: RailRideEnds? = null,
     private val vehicles: VehicleSource,
     // Where a station can be walked into, by its stop id ([OnTheWay.seen]): its entrances as well as
     // its one published point. Asked once per station while the rider walks to it.
@@ -582,6 +586,7 @@ class ActiveTripTracker(
     // [stopId]'s departures as read for [ride]: a National Rail one's with its station's board ([railArrivals]).
     private suspend fun arrivalsFor(ride: TripLeg, stopId: String): RideArrivals {
         val rail = railArrivals?.takeIf { ride.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
+        if (rail != null) railRideEnds?.let { ends -> withContext(compute) { ends.set(listOf(ride)) } }
         return rail?.invoke(stopId) ?: RideArrivals(arrivals(stopId))
     }
 

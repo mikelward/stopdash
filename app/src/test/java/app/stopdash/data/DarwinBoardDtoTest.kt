@@ -45,6 +45,39 @@ class DarwinBoardDtoTest {
     }
 
     @Test
+    fun `a board of the trains calling somewhere lists every one for an hour, or through the last it could list`() {
+        // Recorded: St Pancras's trains toward Brighton, made at 17:00 UK time, three of the ten asked for.
+        val board = json.decodeFromString<DarwinBoardDto>(
+            checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText(),
+        )
+        assertEquals(Instant.parse("2026-10-15T17:00:00Z"), board.coversUntil(10, java.time.Duration.ofMinutes(60)))
+        // As many as it could list: through the last one's schedule, past which more may have been cut off.
+        val first = board.trainServices!!.first()
+        val full = board.copy(trainServices = List(10) { i -> first.copy(std = "17:%02d".format(10 + 2 * i), serviceID = "$i") })
+        assertEquals(Instant.parse("2026-10-15T16:28:00Z"), full.coversUntil(10, java.time.Duration.ofMinutes(60)))
+        // A schedule it can't read, or no time it was made at: it can't say.
+        val unreadable = full.copy(trainServices = full.trainServices!!.dropLast(1) + first.copy(std = "soon"))
+        assertEquals(null, unreadable.coversUntil(10, java.time.Duration.ofMinutes(60)))
+        val warned = mutableListOf<String>()
+        assertEquals(null, board.copy(generatedAt = "later").coversUntil(10, java.time.Duration.ofMinutes(60), warned::add))
+        assertEquals(1, warned.size)
+    }
+
+    @Test
+    fun `a board of the trains calling somewhere says nothing of those it leaves out once it drops one it couldn't read`() {
+        val board = json.decodeFromString<DarwinBoardDto>(
+            checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText(),
+        )
+        val hour = java.time.Duration.ofMinutes(60)
+        assertEquals(Instant.parse("2026-10-15T17:00:00Z"), board.coversUntilRead(board.toBoard(), 10, hour))
+        // One train's estimate garbled: left out of the trains read, though another board may read it (Codex, #1138).
+        val garbled = board.copy(trainServices = board.trainServices!!.dropLast(1) + board.trainServices!!.last().copy(etd = "garbled"))
+        val read = garbled.toBoard()
+        assertEquals(board.toBoard().departures.size - 1, read.departures.size)
+        assertEquals(null, garbled.coversUntilRead(read, 10, hour))
+    }
+
+    @Test
     fun `a portion that won't run today is no way to reach its stops`() {
         fun point(crs: String) = DarwinCallingPointDto(crs, crs)
         val ids = mapOf("WOK" to setOf("910GWOKING"), "GLD" to setOf("910GGUILDFD"), "BSK" to setOf("910GBSNGSTK"))

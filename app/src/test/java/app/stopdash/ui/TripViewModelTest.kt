@@ -5646,6 +5646,12 @@ class TripViewModelTest {
         val board = listOf(toEnd, alsoOut, back).map { it.copy(direction = "") }
         val rail = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(board, now)))
         assertEquals(listOf(board[0]), pendingTrains(rail, leg, plannedEnd(leg), now, emptyMap()))
+        // Nor one National Rail's board of the trains calling where the ride ends left out (Codex, #1138).
+        val railLeg = leg.copy(mode = "national-rail", toId = "910GC")
+        val passing = toEnd.copy(direction = "", mode = "national-rail", missesStops = setOf("910GC"))
+        val stopping = toEnd.copy(direction = "", mode = "national-rail", expectedArrival = toEnd.expectedArrival.plusSeconds(60))
+        val passed = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(listOf(passing, stopping), now)))
+        assertEquals(listOf(stopping), pendingTrains(passed, railLeg, plannedEnd(railLeg), now, emptyMap()))
         assertEquals(emptyList<Departure>(), pendingTrains(rail, leg.copy(headings = emptyList()), plannedEnd(leg.copy(headings = emptyList())), now, emptyMap()))
         // A train with no destination isn't shown under the Planner's terminus.
         val blank = train("blue", "", 3)

@@ -188,6 +188,7 @@ class ActiveTripTrackerTest {
         forgetting: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(dispatcher),
         preciseAllowed: () -> Boolean = { true },
         railArrivals: (suspend (String) -> app.stopdash.domain.RideArrivals)? = null,
+        railRideEnds: app.stopdash.domain.RailRideEnds? = null,
         hubs: app.stopdash.domain.Hubs? = null,
         access: app.stopdash.domain.StepFreeAccess? = null,
         liftsOut: suspend () -> Set<String> = { emptySet() },
@@ -217,6 +218,7 @@ class ActiveTripTrackerTest {
             if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
         },
         railArrivals = railArrivals,
+        railRideEnds = railRideEnds,
         vehicles = object : VehicleSource {
             override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> {
                 gate?.await()
@@ -6959,6 +6961,23 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertEquals(true, tracker.nextBoard.value?.failed)
         assertEquals(at(1), tracker.nextBoard.value?.fetchedAt)
+    }
+
+    @Test
+    fun `a National Rail ride's board is read knowing where the ride gets off`() = runTest {
+        // Its client asks the station's trains calling there too, so a train past its board with details is still
+        // judged by its own stops (maintainer, 2026-10-22).
+        val ends = app.stopdash.domain.RailRideEnds()
+        val seen = mutableListOf<List<Pair<String, String>>>()
+        val byRail = TripRoute(listOf(ride.copy(mode = "national-rail", lineId = "thameslink", lineName = "Thameslink")))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), railRideEnds = ends, railArrivals = {
+            seen += ends.all()
+            app.stopdash.domain.RideArrivals(listOf(train("rail:STP/1/BTN/thameslink", 6).copy(lineId = "thameslink", lineName = "Thameslink", mode = "national-rail")))
+        })
+        now = at(1)
+        tracker.start(byRail, "C", readyAt = at(3))
+        tracker.refresh()
+        assertEquals(listOf(byRail.legs.single().fromId to byRail.legs.single().toId), seen.distinct().single())
     }
 
     @Test

@@ -54,6 +54,10 @@ import java.time.Instant
  * [railServiceId] is Darwin's id for a National Rail service, which pairs a train across two boards
  * of the same station (the plain one and the one with calling points). Blank on every TfL departure.
  *
+ * [missesStops] are stops a National Rail train is known not to call at after this one though its
+ * [callingAt] isn't known: the station's board of the trains calling at them left it out ([withCallsAt],
+ * a trip's), as its line's route can't tell. Empty where nothing is known.
+ *
  * [paired] marks either of two tube trains of a line TfL times a minute or less apart at one platform
  * ([DoubtfulTrains.PAIR]), which TfL's tracking does when it follows one train twice ([DoubtfulTrains]):
  * one of the two may not come, and nothing says which, so both are grayed and read as maybe not running
@@ -91,6 +95,7 @@ data class Departure(
     val via: String = "",
     val callingAt: List<CallingPortion>? = null,
     val railServiceId: String = "",
+    val missesStops: Set<String> = emptySet(),
     val doubtful: Boolean = false,
     val paired: Boolean = false,
     val held: Boolean = false,

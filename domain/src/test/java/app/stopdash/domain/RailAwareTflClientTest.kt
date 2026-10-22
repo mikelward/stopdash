@@ -125,6 +125,84 @@ class RailAwareTflClientTest {
     }
 
     @Test
+    fun `a trip's train past its calling points is judged by the trains calling where its ride gets off`() = runTest {
+        // A ride from EXAMPLE (EXA) to NEAR (NRR). The board with details gives the first train's stops only; the
+        // board of the trains calling at NRR lists the second, with its stops, through an hour on.
+        val codes = RailStationCodes(mapOf("EXAMPLE" to "EXA", "NEAR" to "NRR", "FAR" to "FAR"))
+        val near = listOf(CallingPortion(setOf("910GNEAR", "910GFAR"), complete = true))
+        val fast = listOf(CallingPortion(setOf("910GFAR"), complete = true))
+        fun train(service: String, inSeconds: Long, callingAt: List<CallingPortion>? = null) = Departure(
+            "great-example", "Great Example", "", "Far", null, now.plusSeconds(inSeconds), "national-rail", callingAt = callingAt,
+            railServiceId = service, vehicleId = RailFollow.idOf("EXA", now.plusSeconds(inSeconds), "FAR", "great-example"),
+        )
+        val asked = mutableListOf<String>()
+        var towardsFail = false
+        val board = object : RailBoardSource {
+            override val available = true
+            override suspend fun departures(crs: String) = error("the whole board is asked for")
+            override suspend fun board(crs: String): RailBoard {
+                asked += "plain"
+                return RailBoard(listOf(train("1", 300), train("2", 600), train("3", 900), train("4", 7200)))
+            }
+            override suspend fun boardWithDetails(crs: String): RailBoard {
+                asked += "details"
+                return RailBoard(listOf(train("1", 300, fast)))
+            }
+            override suspend fun boardWithDetails(crs: String, towards: String): RailBoard {
+                asked += "toward $towards"
+                if (towardsFail) throw TflException.Unreachable("HTTP 500", null)
+                return RailBoard(listOf(train("2", 600, near)), coversUntil = now.plusSeconds(3600))
+            }
+        }
+        val ends = RailRideEnds()
+        ends.set(listOf(TripLeg("national-rail", "great-example", "Great Example", "910GEXAMPLE", "Example", "910GNEAR", "Near", now, now.plusSeconds(1200))))
+        val warned = mutableListOf<String>()
+        val boards = ArrivalsCache()
+        val trip = RailAwareTflClient(tfl, board, { codes }, warn = { warned += it }, boardAtEveryStop = true, boards = boards, clock = { now }, callingPoints = true, rideEnds = ends)
+        val rail = trip.arrivals("910GEXAMPLE").filter { it.mode == "national-rail" }
+        assertEquals(listOf("plain", "details", "toward NRR"), asked)
+        // Its own calling points stand; the second takes those the board toward NRR lists for it; the third, left out
+        // of it within its hour, doesn't call there; the fourth, past the hour, is as it was.
+        assertEquals(listOf(fast, near, null, null), rail.map { it.callingAt })
+        assertEquals(listOf(emptySet(), emptySet(), setOf("910GNEAR"), emptySet<String>()), rail.map { it.missesStops })
+        assertEquals(false, DirectTrips.settledByStops(rail[2], setOf("910GNEAR")))
+        // Kept as a board is: asked again only once it's old.
+        asked.clear()
+        trip.arrivals("910GEXAMPLE")
+        assertEquals(emptyList<String>(), asked)
+        // A list asks for none; nor does a trip with no ride from the station.
+        boards.clear()
+        RailAwareTflClient(tfl, board, { codes }, boards = boards, clock = { now }).arrivals("910GEXAMPLE")
+        ends.set(emptyList())
+        trip.arrivals("910GEXAMPLE")
+        assertTrue(asked.none { it.startsWith("toward") })
+        // One that fails leaves the trains to their routes, said in the log.
+        boards.clear()
+        ends.set(listOf(TripLeg("national-rail", "great-example", "Great Example", "910GEXAMPLE", "Example", "910GNEAR", "Near", now, now.plusSeconds(1200))))
+        towardsFail = true
+        assertTrue(trip.arrivals("910GEXAMPLE").all { it.missesStops.isEmpty() })
+        assertTrue(warned.any { it.startsWith("national rail calling points toward a ride's end failed for stop 910GEXAMPLE") })
+    }
+
+    @Test
+    fun `a train the board of those calling there leaves out misses it only within what that board covers`() {
+        val calling = listOf(CallingPortion(setOf("910GNEAR"), complete = true))
+        fun train(service: String, inSeconds: Long, followed: Boolean = true, callingAt: List<CallingPortion>? = null) = Departure(
+            "great-example", "Great Example", "", "Far", null, now.plusSeconds(inSeconds), "national-rail", callingAt = callingAt, railServiceId = service,
+            vehicleId = if (followed) RailFollow.idOf("EXA", now.plusSeconds(inSeconds), "FAR", "great-example") else "",
+        )
+        val plain = listOf(train("1", 300), train("2", 600, followed = false), train("3", 900), train("4", 1200), train("", 1500))
+        // The fourth is listed with no time ("Delayed" there since): still listed, so not one that misses it.
+        val towards = RailBoard(listOf(train("1", 300, callingAt = calling)), untimed = listOf(UntimedTrain(train("4", 1200), canceled = false)), coversUntil = now.plusSeconds(1800))
+        val judged = withCallsAt(plain, towards, setOf("910GNEAR"))
+        assertEquals(listOf(calling, null, null, null, null), judged.map { it.callingAt })
+        // One that divides has no schedule to place it by, and one with no service id can't be told: as they were.
+        assertEquals(listOf(emptySet(), emptySet(), setOf("910GNEAR"), emptySet(), emptySet<String>()), judged.map { it.missesStops })
+        // A board that can't say how far on it lists them all says nothing of those it leaves out.
+        assertTrue(withCallsAt(plain, towards.copy(coversUntil = null), setOf("910GNEAR")).all { it.missesStops.isEmpty() })
+    }
+
+    @Test
     fun `calling points pair with the plain board's trains by service`() {
         val calling = listOf(CallingPortion(setOf("910GFAR"), complete = true))
         fun train(service: String, callingAt: List<CallingPortion>? = null) =

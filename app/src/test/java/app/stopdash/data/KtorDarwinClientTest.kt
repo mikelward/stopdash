@@ -125,6 +125,8 @@ class KtorDarwinClientTest {
             client.boardWithDetails("WAT")
             client.runs("STP", "BTN")
             client.runs("STP", "BTN", offsetMinutes = 45)
+            // The trains calling where a ride gets off: the same board as following one toward there.
+            client.boardWithDetails("STP", "BTN")
         }
         assertEquals(
             listOf(
@@ -132,6 +134,7 @@ class KtorDarwinClientTest {
                 "proxy.example/v1/board/WAT/details null",
                 "proxy.example/v1/board/STP/details?to=BTN null",
                 "proxy.example/v1/board/STP/details?to=BTN&offset=45 null",
+                "proxy.example/v1/board/STP/details?to=BTN null",
             ),
             asked,
         )
@@ -319,6 +322,30 @@ class KtorDarwinClientTest {
         val keyless = KtorDarwinClient(http, apiKey = { " " }, baseUrl = "https://darwin.example/api/20220120")
         assertEquals(null, runBlocking { keyless.runs("STP", "BTN") })
         assertEquals(2, asked.size)
+    }
+
+    @Test
+    fun `the trains calling where a ride gets off come with their calling points and how far on they're all listed`() {
+        val body = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val params = request.url.parameters
+            asked += "${request.url.encodedPath.substringAfterLast("/api/20220120/")} ${params["numRows"]} ${params["filterCrs"]} ${params["filterType"]} ${params["timeOffset"]}"
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example/api/20220120")
+        val board = checkNotNull(runBlocking { client.boardWithDetails("STP", "BTN") })
+        assertEquals(listOf("GetDepBoardWithDetails/STP 10 BTN to null"), asked)
+        assertTrue(board.departures.isNotEmpty())
+        assertTrue(board.departures.all { it.callingAt != null && it.railServiceId.isNotBlank() })
+        // Three of the ten it could list: every one for the next hour from when it was made (17:00 UK time).
+        assertEquals(java.time.Instant.parse("2026-10-15T17:00:00Z"), board.coversUntil)
+        // No key, nothing asked.
+        assertEquals(null, runBlocking { KtorDarwinClient(http, apiKey = { null }).boardWithDetails("STP", "BTN") })
     }
 
     @Test

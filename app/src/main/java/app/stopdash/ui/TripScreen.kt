@@ -592,7 +592,14 @@ internal fun pendingTrains(
     if (Staleness.isStale(stop.fetchedAt, now)) return emptyList()
     // A train with no destination couldn't be labeled but by the Planner's terminus, which the live
     // feed never said it runs to: left out until the route check vouches for it.
-    val line = Countdown.upcoming(stop.departures.filter { it.lineId == leg.lineId && it.destination.isNotBlank() }, now)
+    // Nor one its own stops already say misses where the ride gets off ([TripVerdicts.byStops]), as National Rail's
+    // board of the trains calling there can, though its route isn't in (Codex, #1138).
+    val line = Countdown.upcoming(
+        stop.departures.filter {
+            it.lineId == leg.lineId && it.destination.isNotBlank() && TripVerdicts.byStops(leg to end, it) != TripVerdicts.ByStops.MISSES
+        },
+        now,
+    )
     val toward = line.filter { train -> towardTerminus(train, leg) }
     // With no train heading for the terminus, only a bus pole (which serves one direction by nature)
     // says which way its trains run; a station's snapshot may simply lack the leg's direction.

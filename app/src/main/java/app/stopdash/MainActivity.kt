@@ -64,6 +64,7 @@ import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
+import app.stopdash.domain.RailRideEnds
 import app.stopdash.domain.RailTimetables
 import app.stopdash.domain.RailVehicles
 import app.stopdash.domain.RecentPositions
@@ -5671,8 +5672,10 @@ class MainActivity : ComponentActivity() {
             viewModelStoreOwner = owner,
             factory = viewModelFactory {
                 initializer {
+                    // Where its routes' National Rail rides get off, shared with its client's boards.
+                    val rideEnds = RailRideEnds()
                     TripViewModel(
-                        journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true), fromId,
+                        journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true, rideEnds = rideEnds), fromId,
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = DepartureSourceSettings.changes,
                         sharedLines = LineStatusCache.SHARED, lineStatusReuse = LINE_STATUS_REUSE,
@@ -5695,6 +5698,7 @@ class MainActivity : ComponentActivity() {
                         refused = RefusedStops.SHARED,
                         origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
                         via = viaStops,
+                        railRideEnds = rideEnds,
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,
                         stepFree = StepFreeSetting.changes.value,
@@ -6365,7 +6369,7 @@ class MainActivity : ComponentActivity() {
         // them. A trip gets the board at every stop it boards at ([boardAtEveryStop]); a list shows
         // it under one stop of a station, and each train's calling points with it (one more request
         // per station: a fast train and a stopping one look alike on its line's routes).
-        private fun departuresClient(context: Context, boardAtEveryStop: Boolean = false): TflClient = CachingTflClient(RailAwareTflClient(
+        private fun departuresClient(context: Context, boardAtEveryStop: Boolean = false, rideEnds: RailRideEnds? = null): TflClient = CachingTflClient(RailAwareTflClient(
             tfl = KtorTflClient(
                 httpClient,
                 appKey = { UserApiKeySetting.current },
@@ -6390,6 +6394,8 @@ class MainActivity : ComponentActivity() {
             boards = ArrivalsCache.SHARED,
             // A trip's boards carry each train's stopping pattern: which it calls at decides its legs.
             callingPoints = boardAtEveryStop,
+            // And, past their few, which trains call where its rides get off.
+            rideEnds = rideEnds,
         ))
 
         // National Rail's boards with the rider's own key, read per request (SPEC *National Rail*).
@@ -6532,6 +6538,8 @@ class MainActivity : ComponentActivity() {
             activeTripInstance ?: run {
                 val planner = journeyPlanner(context)
                 val store = FileActiveTripStore(File(AppDirs.noBackup(context), "active-trip.json"), ::logDepartureWarning)
+                // Where the ride it reads a station's board for gets off, shared with that board's client.
+                val tripRideEnds = RailRideEnds()
                 ActiveTripTracker(
                     // A walk's first distance from the fix the app took lately, before one on the walk.
                     remembered = { AndroidLocationProvider.rememberedPreciseFix(context.applicationContext) },
@@ -6545,9 +6553,10 @@ class MainActivity : ComponentActivity() {
                     // National Rail ride's with its station's board, as the trip's cards read it, calling points
                     // and all.
                     arrivals = planner::arrivals,
-                    railArrivals = departuresClient(context.applicationContext, boardAtEveryStop = true).let { rail ->
+                    railArrivals = departuresClient(context.applicationContext, boardAtEveryStop = true, rideEnds = tripRideEnds).let { rail ->
                         { stopId: String -> rail.railRideArrivals(stopId) }
                     },
+                    railRideEnds = tripRideEnds,
                     // A TfL train by TfL's id; a National Rail one by the boards of the stations it's due at
                     // next, with the rider's key (SPEC *On the way*).
                     vehicles = RailVehicles(

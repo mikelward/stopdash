@@ -65,6 +65,16 @@ class TripVerdictsTest {
     }
 
     @Test
+    fun `a train its station's board of those calling where the ride ends left out misses it, with no route needed`() {
+        // National Rail's ids: the board of the trains calling at Cole left this one out ([Departure.missesStops]).
+        val railRide = ended(TripLeg("national-rail", "rail", "Rail", "910GASTON", "Aston", "910GCOLE", "Cole", now, now.plus(Duration.ofMinutes(9))))
+        val passing = train("Dale", 4).copy(lineId = "rail", mode = "national-rail", missesStops = setOf("910GCOLE"))
+        assertEquals(TripVerdicts.ByStops.UNJUDGED, TripVerdicts.byStops(railRide, passing))
+        assertTrue(TripVerdicts.warmStops(railRide, listOf(passing)))
+        assertEquals(TripVerdicts.ByStops.MISSES, TripVerdicts.byStops(railRide, passing))
+    }
+
+    @Test
     fun `a train is judged only once warmed, and its verdict holds for later predictions of the service`() {
         val route = blue()
         val toDale = train("Dale", 2)
