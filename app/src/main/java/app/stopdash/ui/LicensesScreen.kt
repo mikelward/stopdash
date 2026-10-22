@@ -4,7 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,7 +50,8 @@ import com.mikepenz.aboutlibraries.ui.compose.android.produceLibraries
  */
 @Composable
 fun LicensesScreen(onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     val context = LocalContext.current
     val linkFailed = stringResource(R.string.licenses_link_failed)
     // produceLibraries parses the bundled JSON off the composition thread and swaps it in when
@@ -59,6 +59,7 @@ fun LicensesScreen(onBack: () -> Unit) {
     val libraries by produceLibraries(R.raw.aboutlibraries)
     LicensesContent(
         libraries = libraries,
+        modifier = Modifier.followsBack(back),
         onBack = onBack,
         onOpenLicenseUrl = { url ->
             try {
@@ -77,6 +78,7 @@ fun LicensesScreen(onBack: () -> Unit) {
 @Composable
 internal fun LicensesContent(
     libraries: Libs?,
+    modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onOpenLicenseUrl: (String) -> Unit = {},
 ) {
@@ -93,7 +95,7 @@ internal fun LicensesContent(
         libraryWithId(libraries, restoreId)
     }
     val selected = tapped?.takeIf { it.uniqueId == selectedId } ?: restored?.takeIf { it.uniqueId == selectedId }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()

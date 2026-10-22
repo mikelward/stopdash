@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -84,7 +83,8 @@ internal fun LaterTripScreen(
     // The stop the trip goes via (SPEC *Going via a stop*), named where no route passes it, as the trip for now does.
     viaName: String? = null,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(notice) {
         if (notice != null) {
@@ -93,6 +93,7 @@ internal fun LaterTripScreen(
         }
     }
     Scaffold(
+        modifier = Modifier.followsBack(back),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(

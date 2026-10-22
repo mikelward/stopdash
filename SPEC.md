@@ -4417,6 +4417,15 @@ opened over a route page, or on a station's top from Licenses opened over its ro
 is forgotten: opened again, it starts afresh. Two ways land somewhere on purpose: an arrived trip's Done
 lands on the near-me list (*On the way*), as a place shared into the app does (*Finding stops*).
 
+The back gesture is predictive (maintainer, 2026-10-22, "shrink only"): as the rider swipes, the page
+follows, shrinking toward the edge swiped from over a deepening scrim, and springs back if they let go
+without going back. A page that is a window over another (a stop's details, Departures, a line's page
+from a trip) shows the page under it as it shrinks. A full page doesn't draw the page under it, so a
+swipe that's let go starts nothing that page would: no location fix, no refresh, no request. Back from
+the near-me list, with nothing left to close, shows the system's own peek at the home screen, on
+Android 14 and 15 as on 16. Drawing the real page under every page waits on a back stack of real
+entries (`TODO.md`).
+
 ### Scroll cue
 
 A scrolling screen marks its top or bottom edge while there is more to scroll past that edge,

@@ -16,7 +16,6 @@ import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Constraints
-import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
@@ -1588,7 +1587,8 @@ private fun TripContent(
     // A route asked for closes on Back even before its frame is in, never leaving the trip (Codex, #529).
     // The on-screen arrow too.
     val back = { if (openRef != null) setOpen(null) else onBack() }
-    BackHandler(onBack = back)
+    val follow = rememberBackFollow()
+    PredictiveBack(follow, onBack = back)
     // A leg's row tapped on an open route: its line's page, as a row on the main screen opens it,
     // with the line's full service alert and its stops (SPEC *Trips with a change*). Found again among
     // the open route's rows on every refresh, so it stays live; gone with them, it closes.
@@ -1811,6 +1811,7 @@ private fun TripContent(
         )
     }
     Scaffold(
+        modifier = Modifier.followsBack(follow),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // An open route starts on the way from here: followed by its train to the destination. Above
         // the system navigation bar, as the app draws edge to edge.
@@ -4367,6 +4368,9 @@ internal fun TripLinesPage(
         onDismissRequest = back,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
+        // The dialog's own Back, as a gesture the page follows: the trip under it shows as it goes.
+        val follow = rememberBackFollow()
+        PredictiveBack(follow, onBack = back)
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -4413,7 +4417,7 @@ internal fun TripLinesPage(
                 )
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            modifier = Modifier.testTag("tripLinesPage"),
+            modifier = Modifier.followsBack(follow).testTag("tripLinesPage"),
         ) { padding ->
             if (onReason) {
                 if (reasonLine != null) {

@@ -17,7 +17,6 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.MutableState
 import androidx.compose.material3.Button
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -538,7 +537,8 @@ internal fun LineStopPage(
     // row and no [pole] line; null for a stop opened from a line's map.
     route: RouteStopMode? = null,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     val zoneCue = zone?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.line_stop_zone, it) }
     val accessCue = when {
         access == null || access.level == null -> null
@@ -548,6 +548,7 @@ internal fun LineStopPage(
         else -> stringResource(R.string.route_stop_step_free_platform)
     }
     Scaffold(
+        modifier = Modifier.followsBack(back),
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -826,13 +827,15 @@ internal fun LineSearchScreen(
     // Off in the screenshot test, where a focused field would add a blinking cursor.
     autoFocus: Boolean = true,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     if (autoFocus) LaunchedEffect(Unit) { focus.requestFocus() }
     // The field keeps its own value, cursor included, seeded from the query once (as the station search's).
     var field by remember { mutableStateOf(queryFieldValue(state.query)) }
     Scaffold(
+        modifier = Modifier.followsBack(back),
         topBar = {
             TopAppBar(
                 navigationIcon = {

@@ -2,7 +2,6 @@ package app.stopdash.ui
 
 import android.content.res.Resources
 import androidx.annotation.WorkerThread
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.Canvas
@@ -209,7 +208,8 @@ internal fun OnTheWayScreen(
     dismissed: Set<DismissedAlert> = emptySet(),
     lineDismissal: LineAlertDismissal? = null,
 ) {
-    BackHandler(onBack = onBack)
+    val back = rememberBackFollow()
+    PredictiveBack(back, onBack = onBack)
     // A train tapped on the board: its route's page over this one, every train on it to come, as a row on the
     // main screen opens (maintainer, 2026-10-14), its line's page a "View line" away. Kept by the row's identity
     // ([detailKey]) and the route tapped on its card, so a rotation keeps it open, and found again in each board
@@ -302,6 +302,7 @@ internal fun OnTheWayScreen(
     }
     val destination = trip?.destinationName
     Scaffold(
+        modifier = Modifier.followsBack(back),
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
