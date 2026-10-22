@@ -4800,7 +4800,12 @@ surface.)
   10 in flight: a whole typical cold near-me load
   (the nearby lookup plus ~15-18 requests) goes out unpaced in two quick waves (2026-09-23). A flat-out minute
   can reach 60, over TfL's ~50 — only sustained heavy use gets there, a 429 shows as rate-limited,
-  and fewer requests per refresh (caching) is the planned way back under.
+  and fewer requests per refresh (caching) is the planned way back under. **A 429 is taken as TfL's
+  truer count** (its count spans a restart, the app's in-memory one doesn't, so a burst right after
+  an update can run past it): the app empties that budget and sends nothing more on it until the
+  wait TfL's `Retry-After` names (a minute at most). A request asked meanwhile waits it out, or, if
+  that's past its bounded wait (20 s), shows as rate-limited without being sent, so one refusal isn't
+  followed by a run of requests TfL refuses too (2026-10-22).
   Each departures refresh logs its request count and timing to the on-device debug log (the
   nearby-stop lookup before a near-me load is one more request), so a slow load is diagnosable
   from real numbers.

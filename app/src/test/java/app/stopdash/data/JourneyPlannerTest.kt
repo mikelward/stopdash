@@ -1033,7 +1033,9 @@ class JourneyPlannerTest {
                 }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
             }
         }
-        assertEquals(3, warnings.untimed().size)
+        // The refusal says TfL named no wait, the rest each say what came of them.
+        assertEquals(listOf("TfL rate limit: no wait given"), warnings.untimed().filter { it.startsWith("TfL rate limit") })
+        assertEquals(3, warnings.untimed().filterNot { it.startsWith("TfL rate limit") }.size)
         // And every one timed, by what came of it.
         assertEquals(warnings.toString(), 4, warnings.size - warnings.untimed().size)
         for (which in listOf("journey planner (fewest changes): ", "journey planner (least walking): ", "journey planner (bus only): ")) {

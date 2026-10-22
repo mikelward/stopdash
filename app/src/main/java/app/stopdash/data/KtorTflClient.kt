@@ -1129,7 +1129,15 @@ class KtorTflClient(
             // A 401/403 answering the user's own key is the key refused (SPEC D7); keyless, it
             // says nothing about a key, so it stays a plain rejection.
             throw when (e.response.status) {
-                HttpStatusCode.TooManyRequests -> TflException.RateLimited(e)
+                HttpStatusCode.TooManyRequests -> {
+                    // TfL's count is past the limiter's (it starts over on a restart, TfL's doesn't):
+                    // nothing more goes on that budget until the wait TfL names, so the requests behind
+                    // this one wait it out rather than be refused too.
+                    val wait = retryAfterMillis(e.response.headers[HttpHeaders.RetryAfter])
+                    warn("TfL rate limit: ${wait?.let { "asked to wait ${it / 1000} s" } ?: "no wait given"}")
+                    rateLimiterFor(sent).refused(wait)
+                    TflException.RateLimited(e)
+                }
                 HttpStatusCode.NotFound -> TflException.NotFound(e)
                 HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden ->
                     sent?.let { key ->
@@ -1316,6 +1324,12 @@ private data class PlanAsk(val preference: String?, val busOnly: Boolean = false
         )
     }
 }
+
+// The wait a 429's Retry-After names, in milliseconds, from its seconds form (an hour at most, so it
+// can't overflow; the limiter holds a minute at most). Null when it names none, or a date, so the
+// limiter only empties its bucket.
+internal fun retryAfterMillis(header: String?): Long? =
+    header?.trim()?.toLongOrNull()?.takeIf { it > 0 }?.let { minOf(it, 3_600L) * 1000 }
 
 // Where in an answer a decode failure stopped (kotlinx's "at path: $.journeys[0].legs[1].mode"),
 // from [e] or what it wraps, or null for any other failure. Only the path: the rest of such a message

@@ -1670,6 +1670,44 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a 429 holds the limiter for the wait TfL names, and says so`() = runTest {
+        for ((header, wait) in listOf("26" to 26_000L, null to null)) {
+            val refusals = mutableListOf<Long?>()
+            val warnings = mutableListOf<String>()
+            val limiter = object : TflRateLimiter {
+                override suspend fun acquire() {}
+
+                override suspend fun refused(retryAfterMillis: Long?) {
+                    refusals += retryAfterMillis
+                }
+            }
+            val engine = MockEngine {
+                val headers = listOfNotNull(HttpHeaders.ContentType to listOf("application/json"), header?.let { HttpHeaders.RetryAfter to listOf(it) })
+                respond(ByteReadChannel("{}"), HttpStatusCode.TooManyRequests, headersOf(*headers.toTypedArray()))
+            }
+            val http = HttpClient(engine) {
+                expectSuccess = true
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
+            val client = KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, rateLimiterFor = { limiter }, warn = { warnings += it })
+            val failure = runCatching { client.arrivals("940GZZLUVIC") }.exceptionOrNull()
+            assertTrue("$header: still RateLimited", failure is TflException.RateLimited)
+            assertEquals("$header", listOf(wait), refusals)
+            assertEquals("$header", listOf(if (wait == null) "TfL rate limit: no wait given" else "TfL rate limit: asked to wait 26 s"), warnings)
+        }
+    }
+
+    @Test
+    fun `a Retry-After is read in seconds, a date or nothing as no wait`() {
+        assertEquals(26_000L, retryAfterMillis("26"))
+        assertEquals(5_000L, retryAfterMillis(" 5 "))
+        assertEquals(3_600_000L, retryAfterMillis("99999999999999999"))
+        assertNull(retryAfterMillis("0"))
+        assertNull(retryAfterMillis("Wed, 21 Oct 2026 07:28:00 GMT"))
+        assertNull(retryAfterMillis(null))
+    }
+
+    @Test
     fun `a 401 or 403 answering the user's key maps to KeyRejected`() {
         for (status in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden)) {
             assertThrows("$status", TflException.KeyRejected::class.java) {

@@ -3122,6 +3122,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         close it. Worth doing **only if it stays cheap** (maintainer, 2026-09-22) — a DataStore
         read/write on every request is not; a periodic/batched flush might be. Otherwise leave it
         best-effort.
+  - [x] **Hold the limiter on TfL's own 429** (2026-10-22). A bug report right after an update
+        showed the restart gap above: TfL refused a trip's route lookups (its Direct section said
+        "Couldn't check"), and the app kept sending at the refill rate into the refusal. A 429 now
+        empties that budget and holds every request on it for the wait TfL's `Retry-After` names (a
+        minute at most), so the requests behind it wait it out, or show as rate-limited unsent. Each
+        429 logs the wait TfL named, or that it named none: the next report says whether TfL sends one.
   - [x] **Size the shared limiter to the active budget from the user `app_key`** (item-6 follow-up,
         2026-09-22). Done with the Settings paste path: `KeyedTflRateLimiter` holds a keyless
         (~50/min) and a keyed (~500/min, SPEC D7) bucket and selects between them **per acquire** by
