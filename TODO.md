@@ -139,17 +139,19 @@ exercises the whole spine the widget later renders from.
       (`rememberHereOrigin`) followed onto the worker. A relocation that keeps the same cluster set
       (`MainViewModel.reconcile`, with `reconcileSameSet`'s journey checks) is worked out on the
       worker too, and applied, prune first, before its refetch.
-- [ ] The smaller per-tick and per-recomposition passes: `MainActivity`'s farther
-      cards built (`fartherCards`, `fartherDistanceMeters`) and the farther stations
-      reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
-      before their `produceState` hops), all in composition. The search and lookup results are worked
+- [ ] The smaller per-tick and per-recomposition passes. `MainActivity`'s farther cards are now built
+      with their standing on the worker (`OpenedCards.drawn`, `openDistanceMeters`), the stops they
+      count as reached are worked out by the list's model (`MainViewModel.reachedStops`), and the bus
+      places are picked with the stations (`fartherPlacesOf`), none in composition. The search and lookup results are worked
       over on the worker after their requests (`StationSearchViewModel`'s ranking and merging,
       `StationStopsViewModel.retry`'s centered stops, `FavoritePlacesViewModel`'s picked center and
       bundled positions). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
       behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
-      input on the main thread before checking it off. Known still there: `refresh`'s nearby places
-      (`nearbyPlacesOf`), and `setJourneyStops`' comparisons. (`FartherCardsViewModel`'s `retain`
+      input on the main thread before checking it off. Known still there: the list's stop distances
+      merged with an opened farther card's (`ready.distanceMeters + fartherDistanceMeters`), a new map on
+      every recomposition that the list's own `remember`s then compare. (`refresh`'s nearby places and
+      `setJourneyStops`' comparisons are worked out on the worker; `FartherCardsViewModel`'s `retain`
       and `open` after its lookup, and the `remeasure` `retain` calls on each opened card's model, now
       work on the worker; the licenses dialog now opens the tapped
       library as it is, and finds a restored one again on the worker; the main screen's

@@ -6514,6 +6514,34 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the stops the farther cards count as reached are worked out on the worker`() = runTest(dispatcher) {
+        // A worker held on a scheduler of its own, so this (the main) thread can be run to idle without it.
+        val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val (loaded, failing) = seeds.map { it.id }
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> {
+                if (stopId == failing) throw TflException.Offline(null)
+                return listOf(departure("victoria", "Victoria", 120))
+            }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = held)
+        advanceUntilIdle()
+        // Nothing is worked out on this thread.
+        assertNull(vm.reachedStops.value)
+
+        repeat(10) {
+            scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+        }
+        assertTrue(vm.state.value is DeparturesUiState.Loaded)
+        // The stop whose fetch failed doesn't count, so its lines keep their farther cards.
+        assertEquals(listOf(setOf(loaded)), vm.reachedStops.value?.map { it.ids })
+    }
+
+    @Test
     fun `farther cards count a shown stop's lines and ids as reached`() {
         val reached = fartherReached(
             listOf(StopRef("S", "S", listOf(LineRef("victoria", "Victoria", "Tube")), clusterId = "C", interchangeId = "")),

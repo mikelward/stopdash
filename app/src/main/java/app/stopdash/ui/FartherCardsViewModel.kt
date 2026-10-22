@@ -9,8 +9,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.FartherStations
+import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestStops
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.Workers
 import kotlinx.coroutines.CancellationException
@@ -275,12 +278,16 @@ internal data class Picked(val offered: List<CollapsedPlaces.Place>?, val loads:
 /**
  * The places offered as cards ([offered]), where every tapped card stands ([loads]), and the open
  * ones' stop ids and states ([cards]), published together, so a card's new standing (reopening on
- * new poles, say) never meets its old rows, nor a place no longer offered its rows.
+ * new poles, say) never meets its old rows, nor a place no longer offered its rows. With the cards as
+ * the screen draws them ([drawn]) and the open ones' stops' distances ([openDistanceMeters]), worked
+ * out with them ([fartherCardsOf], [openDistancesOf]).
  */
 class OpenedCards(
     val offered: List<CollapsedPlaces.Place>?,
     val loads: Map<String, FartherLoad>,
     val cards: List<Pair<Set<String>, DeparturesUiState>>,
+    val drawn: List<FartherCard> = emptyList(),
+    val openDistanceMeters: Map<String, Double> = emptyMap(),
 ) {
     companion object {
         val NONE = OpenedCards(null, emptyMap(), emptyList())
@@ -289,9 +296,26 @@ class OpenedCards(
 
 /**
  * The list as the screen shows it, its opened cards merged in ([state]), with the places offered as
- * cards ([offered], null until first picked) and those cards' standing ([loads]) it was merged with.
+ * cards ([offered], null until first picked) and those cards' standing ([loads]) it was merged with,
+ * the cards as drawn ([cards]) and the open ones' stops' distances ([distanceMeters]).
  */
-class ShownFarther(val state: DeparturesUiState, val offered: List<CollapsedPlaces.Place>?, val loads: Map<String, FartherLoad>)
+class ShownFarther(
+    val state: DeparturesUiState,
+    val offered: List<CollapsedPlaces.Place>?,
+    val loads: Map<String, FartherLoad>,
+    val cards: List<FartherCard> = emptyList(),
+    val distanceMeters: Map<String, Double> = emptyMap(),
+)
+
+/** Each place in [offered] as a card, with where it stands in [loads]. */
+@WorkerThread
+internal fun fartherCardsOf(offered: List<CollapsedPlaces.Place>?, loads: Map<String, FartherLoad>): List<FartherCard> =
+    offered.orEmpty().map { FartherCard(it, loads[it.key]) }
+
+/** The open cards' stops in [loads], each with its distance from the fix, for the list to measure them by. */
+@WorkerThread
+internal fun openDistancesOf(loads: Map<String, FartherLoad>): Map<String, Double> =
+    loads.values.filterIsInstance<FartherLoad.Open>().fold(emptyMap()) { acc, open -> acc + open.distanceMeters }
 
 /**
  * [list] with [opened]'s departures merged in ([merge]), alongside the cards' standing, each change
@@ -307,7 +331,7 @@ internal fun shownWithOpened(
 ): Flow<ShownFarther> = combine(list, opened) { state, cards -> state to cards }
     .mapLatest { (state, cards) ->
         val merged = if (state is DeparturesUiState.Loaded && cards.cards.isNotEmpty()) merge(state, cards.cards) else state
-        ShownFarther(merged, cards.offered, cards.loads)
+        ShownFarther(merged, cards.offered, cards.loads, cards.drawn, cards.openDistanceMeters)
     }
     .flowOn(compute)
 
@@ -321,17 +345,21 @@ internal fun shownWithOpened(
 internal fun openedCards(
     cards: Flow<Picked>,
     compute: CoroutineDispatcher,
+    drawnOf: (List<CollapsedPlaces.Place>?, Map<String, FartherLoad>) -> List<FartherCard> = ::fartherCardsOf,
 ): Flow<OpenedCards> = cards
     .flatMapLatest { (offered, loads) ->
+        // Once per change of the cards, not of their departures, so the screen gets the same ones meanwhile.
+        val drawn = drawnOf(offered, loads)
+        val distances = openDistancesOf(loads)
         val each = loads.values.mapNotNull { load ->
             val open = load as? FartherLoad.Open ?: return@mapNotNull null
             val ids = open.distanceMeters.keys
             open.departures.map { ids to it }
         }
         if (each.isEmpty()) {
-            flowOf(OpenedCards(offered, loads, emptyList()))
+            flowOf(OpenedCards(offered, loads, emptyList(), drawn, distances))
         } else {
-            combine(each) { states -> OpenedCards(offered, loads, states.toList()) }
+            combine(each) { states -> OpenedCards(offered, loads, states.toList(), drawn, distances) }
         }
     }
     .flowOn(compute)
@@ -505,11 +533,35 @@ internal class FartherFor(val key: String, val places: List<CollapsedPlaces.Plac
 }
 
 /**
+ * The places to offer as farther cards (SPEC *Finding stops → Farther stations*), nearest first: the
+ * nearest station of each rail line nothing [reached] reaches, from the bundled index [index] reads, and
+ * the bus places of the nearby lookup's farther tier ([more]), each recording the [eager] stations it
+ * stands by. Worked out on [worker]: each step walks the nearby set or the index.
+ */
+internal suspend fun fartherPlacesOf(
+    eager: List<NearbySelection.NearbyCluster>,
+    more: List<NearbySelection.NearbyCluster>,
+    from: Coordinates,
+    reached: List<FartherStations.ReachedStop>,
+    hiddenModes: Set<String>,
+    worker: CoroutineDispatcher,
+    index: () -> StationIndex,
+): List<CollapsedPlaces.Place> = withContext(worker) {
+    val stationStops = FartherBuses.stationStops(eager, hiddenModes)
+    val buses = FartherBuses.candidates(more, hiddenModes, stationStops).map { CollapsedPlaces.of(it) }
+    val loaded = index()
+    val stations = FartherStations.pick(loaded.stations, from, reached, hiddenModes)
+        .map { CollapsedPlaces.of(it, loaded.lineNames) }
+    CollapsedPlaces.ordered(stations, buses)
+}
+
+/**
  * The stops [state] counts as reached for [fartherReached]: those it has departures for, plus, while
  * a cold load is part-shown, the ones still loading — they're about to land, so their lines don't
  * flash up a farther card that then vanishes (and close one opened meanwhile). Null while nothing
  * has loaded yet (everything shown counts).
  */
+@WorkerThread
 internal fun reachedStopIds(state: DeparturesUiState): Set<String>? {
     val loaded = state as? DeparturesUiState.Loaded ?: return null
     val ids = loaded.stops.mapTo(HashSet()) { it.stopId }
@@ -525,6 +577,7 @@ internal fun reachedStopIds(state: DeparturesUiState): Set<String>? {
  * an unloaded stop's lines, or those of one whose fetch failed, would leave a line with no row and
  * no card; a loaded one left out would get a duplicate card.
  */
+@WorkerThread
 internal fun fartherReached(shown: List<StopRef>, loadedIds: Set<String>? = null): List<FartherStations.ReachedStop> =
     shown.filter { loadedIds == null || it.id in loadedIds }.map { stop ->
         FartherStations.ReachedStop(
