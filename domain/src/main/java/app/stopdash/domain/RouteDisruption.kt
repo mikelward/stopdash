@@ -123,7 +123,8 @@ object RouteDisruption {
          * [lineId] (named [lineName]), still on its line, at or heading for [atName] ([atId]), the stop to
          * plan again from ([ActiveTrip.pastLeg]; maintainer, 2026-10-06: the one to say loudest). Heard
          * once for that ride's stop. [onward] is the ride they were to board on from it ([missedOnward]),
-         * [onwardLabel] its line as it reads alone ("Central line"), and [onwardAvoid] the entry that
+         * [onwardLabel] its line as it reads alone ("Central line", kept apart so the card says it in the
+         * app's words), and [onwardAvoid] the entry that
          * avoids that line ([AvoidedLines.key]); [stopAvoid] the entry that avoids the stop gone past
          * ([AvoidedLines.stopKey]), should it be closed. All worked out with the signal so the card and its
          * buttons only read them.
@@ -137,7 +138,7 @@ object RouteDisruption {
             val atId: String,
             val atName: String,
             val onward: TripLeg? = null,
-            val onwardLabel: String = "",
+            val onwardLabel: LineLabel? = null,
             val onwardAvoid: String = "",
             val stopAvoid: String = "",
         ) : Signal {
@@ -254,11 +255,12 @@ object RouteDisruption {
         val ride = OnTheWay.offRide(trip, trip.pastLeg)
         val missed = Signal.Missed(trip.pastLeg, ride.lineId, ride.lineName, ride.toId, ride.toName.ifBlank { ride.toId }, trip.pastAtId, trip.pastAtName.ifBlank { trip.pastAtId })
         val onward = missedOnward(trip, missed)
-        val label = onward?.let { lineLabel(it.lineName.ifBlank { it.lineId }, it.mode) }.orEmpty()
+        val label = onward?.let { LineLabel.of(it.lineName.ifBlank { it.lineId }, it.mode) }
         return missed.copy(
             onward = onward,
             onwardLabel = label,
-            onwardAvoid = onward?.let { AvoidedLines.key(it.lineId, label) }.orEmpty(),
+            // Saved by its English label, as every avoided line is ([HiddenModes.lineKey]).
+            onwardAvoid = if (onward != null && label != null) AvoidedLines.key(onward.lineId, label.text()) else "",
             // A bus stop by its area, so both its poles are left out: the planned leg's when the ride was another
             // line's, whose leg doesn't carry it (Codex, #701).
             stopAvoid = AvoidedLines.stopKey(

@@ -152,6 +152,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.ENGLISH_LINE
 import app.stopdash.domain.EmptyTimes
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
@@ -162,6 +163,7 @@ import app.stopdash.domain.JourneySegment
 import app.stopdash.domain.JourneyTrains
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.LegTimetables
+import app.stopdash.domain.LineLabel
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.Coordinates
@@ -211,7 +213,6 @@ import app.stopdash.domain.focusedDeparture
 import app.stopdash.domain.followedDeparture
 import app.stopdash.domain.hasTrains
 import app.stopdash.domain.isPole
-import app.stopdash.domain.lineLabel
 import app.stopdash.domain.planNotices
 import app.stopdash.domain.routeAnchor
 import app.stopdash.domain.routeDepartures
@@ -824,6 +825,8 @@ fun MainScreen(
     // A stop's platform or pole words ("Platform 2", "Stop E") in the app's language: the journey cards'
     // stop headings and closure titles, and a platform view's title, all worked out on the list's worker.
     val headerWords = rememberHeaderWords()
+    // And how a ride's hidden lines are named ("Northern line"), likewise.
+    val lineWord = rememberLineWord()
     // Judged against the snapshot and time [rows] were built from ([ListRows.source]), with the list
     // they're drawn beside, on the list's worker ([shownRowsOf]'s stage) (Codex, #524).
     fun judgeCards(rows: ListRows): List<JourneyCard> {
@@ -966,7 +969,7 @@ fun MainScreen(
                 ?: origin?.let { stopPlace(it.stopId, it.stopName, it.clusterId, emptyList()).id.takeIf { id -> id != it.stopId } }.orEmpty()
             // And its published position from its line's route, for a ride saved before ends' positions were (Codex, #959).
             val originPosition = journeySequences[journey.lineId]?.stopPositions?.get(journey.from.stopId)
-            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition, headerWords)
+            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition, headerWords, lineWord)
         }
     }
     val nearbyOrdered = listRows?.nearby.orEmpty()
@@ -1001,7 +1004,7 @@ fun MainScreen(
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
             journeyPoleKeys, journeyPoles, journeyFarEnds, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
-            journeyViewKey, quietPending, headerWords,
+            journeyViewKey, quietPending, headerWords, lineWord,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -4450,25 +4453,28 @@ internal fun HideModeMenu(
                 },
             )
         }
+        // Each line named in the app's words, and saved by its English label (HiddenModes.lineKey): both
+        // from one LineLabel per line, so a tap only reads it.
+        val lineWord = rememberLineWord()
         lines.distinctBy { it.id.lowercase() }.forEach { line ->
-            val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
+            val label = LineLabel.of(line.name.ifBlank { line.id }, line.mode)
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.hide_line, label)) },
+                text = { Text(stringResource(R.string.hide_line, label.text(lineWord))) },
                 onClick = {
                     onDismiss()
-                    onHideMode(HiddenModes.lineKey(line.id, label))
+                    onHideMode(HiddenModes.lineKey(line.id, label.text()))
                 },
             )
         }
         // A trip's lines to avoid, after the hides: avoiding leaves a line out of trips only.
         if (onAvoidLine != null) {
             lines.distinctBy { it.id.lowercase() }.forEach { line ->
-                val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
+                val label = LineLabel.of(line.name.ifBlank { line.id }, line.mode)
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.avoid_line, label)) },
+                    text = { Text(stringResource(R.string.avoid_line, label.text(lineWord))) },
                     onClick = {
                         onDismiss()
-                        onAvoidLine(AvoidedLines.key(line.id, label))
+                        onAvoidLine(AvoidedLines.key(line.id, label.text()))
                     },
                 )
             }
@@ -4608,6 +4614,8 @@ internal data class JourneyCard(
     val originPosition: Pair<Double, Double>? = null,
     // The words its closure titles name a pole by ("Stop K"), in the app's language.
     val headerWords: HeaderWords = HeaderWords.ENGLISH,
+    // How its hidden lines are named ("Northern line"), in the app's language.
+    val lineWord: (name: String) -> String = ENGLISH_LINE,
 ) {
     /** Each of [closures]' titles ([closureTitleOf]), worked out with the card, off the main thread. */
     val closureTitles: List<String> = closures.map { closureTitleOf(it, headerWords) }
@@ -4638,7 +4646,7 @@ internal data class JourneyCard(
     val toForms: List<String> = DestinationAbbreviations.forms(journey.to.name)
 
     /** The lines hidden from the ride, each entry with its label, for its own view's Show: worked out with the card, on the worker. */
-    val hiddenLines: List<Pair<String, String>> = Journeys.hiddenLines(journey)
+    val hiddenLines: List<Pair<String, String>> = Journeys.hiddenLines(journey, lineWord)
 
     /**
      * The ride's own line at its origin as a row with no times: the card's one row while it has no train
@@ -5759,7 +5767,7 @@ internal fun RouteRow(
         StopDashMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             starItem?.invoke()
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.hide_line_from_ride, lineLabel(row.lineName.ifBlank { row.lineId }, row.mode))) },
+                text = { Text(stringResource(R.string.hide_line_from_ride, lineLabel(row.lineName.ifBlank { row.lineId }, row.mode, LocalResources.current))) },
                 onClick = {
                     menuOpen = false
                     currentRideHide?.invoke(LineRef(currentRow.lineId, currentRow.lineName, currentRow.mode))

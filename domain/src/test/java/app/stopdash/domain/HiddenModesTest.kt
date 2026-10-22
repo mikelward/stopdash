@@ -62,6 +62,8 @@ class HiddenModesTest {
         assertFalse(HiddenModes.isHidden("tube", hidden))
         assertFalse(HiddenModes.isLineHidden("", hidden))
         assertEquals(listOf("Northern line"), HiddenModes.hiddenLineLabels(hidden))
+        // In the app's words, as saved in English.
+        assertEquals(listOf("ligne Northern"), HiddenModes.hiddenLineLabels(hidden, line = { "ligne $it" }))
     }
 
     @Test

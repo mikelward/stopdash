@@ -12,8 +12,8 @@ import androidx.compose.ui.platform.LocalContext
 import app.stopdash.R
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LineLabel
 import app.stopdash.domain.LineRef
-import app.stopdash.domain.lineLabel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -45,13 +45,14 @@ internal fun rememberRideLineHideWithUndo(
     val hide = remember(host, scope, resources) {
         var offer: Job? = null
         val hideThenOffer: (FavoriteJourney, LineRef) -> Unit = { journey, line ->
-            val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
-            val entry = HiddenModes.lineKey(line.id, label)
+            // Saved by its English label, as every hidden line is (HiddenModes.lineKey); said in the app's words.
+            val label = LineLabel.of(line.name.ifBlank { line.id }, line.mode)
+            val entry = HiddenModes.lineKey(line.id, label.text())
             setHidden?.invoke(journey, entry, true)
             offer?.cancel()
             offer = scope.launch {
                 val result = host.showSnackbar(
-                    message = resources.getString(R.string.ride_line_hidden, label),
+                    message = resources.getString(R.string.ride_line_hidden, label.text(lineWord(resources))),
                     actionLabel = resources.getString(R.string.action_undo),
                     duration = SnackbarDuration.Short,
                 )

@@ -52,10 +52,45 @@ private val TRAILING_ALIAS = Regex("""\s*\([^()]*\)$""")
 
 /**
  * How a line is named on its own in a sentence, as "Hide ‹line›" and its banner say it: a tube or
- * named Overground line as "Northern line" ([takesLineSuffix]), anything else by its TfL name ("134",
- * "Elizabeth", "Thameslink").
+ * named Overground line as "Northern line" ([takesLineSuffix]), in [line]'s words, anything else by its
+ * TfL name ("134", "Elizabeth", "Thameslink"). [ENGLISH_LINE] by default, which is also how a hidden or
+ * avoided line's entry keeps it ([HiddenModes.lineKey]): one saved form, whatever the app's language.
  */
-fun lineLabel(lineName: String, mode: String): String {
-    val name = riderLineName(lineName, mode).trim()
-    return if (takesLineSuffix(name, mode)) "$name line" else name
+fun lineLabel(lineName: String, mode: String, line: (name: String) -> String = ENGLISH_LINE): String =
+    LineLabel.of(lineName, mode).text(line)
+
+/**
+ * A line as [lineLabel] names it, kept apart so a surface can say it in its own words without reading a
+ * label back: TfL's [name] for it ("Northern", "134"), never translated, and whether it [takesLine] the
+ * word for "line" ([takesLineSuffix]).
+ */
+data class LineLabel(val name: String, val takesLine: Boolean) {
+    /** "Northern line" in [line]'s words; a name that takes no word as it is. */
+    fun text(line: (name: String) -> String = ENGLISH_LINE): String = if (takesLine) line(name) else name
+
+    companion object {
+        /** Line [lineName] of [mode], as its riders know it ([riderLineName]). */
+        fun of(lineName: String, mode: String): LineLabel {
+            val name = riderLineName(lineName, mode).trim()
+            return LineLabel(name, takesLineSuffix(name, mode))
+        }
+    }
 }
+
+/** A line's name with "line" ([lineLabel]) in English: "Northern" → "Northern line". */
+val ENGLISH_LINE: (name: String) -> String = { "$it$LINE_SUFFIX" }
+
+/**
+ * A line's label as an entry keeps it ([lineLabel] in English), in [line]'s words: "Northern line" reads
+ * as the app says a line, and a name without the suffix ("134", "Elizabeth") as it is. Renamed on the way
+ * back in, like any saved name ([riderLineName]; the entry keeps no mode), so a line saved before a rename
+ * isn't named the old way.
+ */
+fun savedLineLabel(saved: String, line: (name: String) -> String = ENGLISH_LINE): String {
+    val label = riderLineName(saved, mode = "")
+    val name = label.removeSuffix(LINE_SUFFIX)
+    return if (name != label && name.isNotBlank()) line(name) else label
+}
+
+/** What [ENGLISH_LINE] adds to a line's name. */
+private const val LINE_SUFFIX = " line"

@@ -494,12 +494,13 @@ internal fun OnTheWayScreen(
                                 }
                             }
                             if (missed.onwardAvoid.isNotEmpty()) {
+                                val lineWord = rememberLineWord()
                                 OutlinedButton(
                                     onClick = { onClosed(missed.onwardAvoid, planAgain) },
                                     enabled = closedEnabled,
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onTheWayLineClosed"),
                                 ) {
-                                    Text(stringResource(R.string.on_the_way_line_closed, missed.onwardLabel))
+                                    Text(stringResource(R.string.on_the_way_line_closed, missed.onwardLabel?.text(lineWord).orEmpty()))
                                 }
                             }
                         }

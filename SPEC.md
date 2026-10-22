@@ -4584,7 +4584,9 @@ Spain and Latin America, save the Android button names it quotes, which follow e
 publishes stays as published — stop, line and place names and the text of disruption messages
 come in English. A new string ships in English first, until the maintainer has seen it on a
 device; a translations pass then brings every language up to date, so meanwhile a translated
-app may show its newest strings in English.
+app may show its newest strings in English. What the rider saves names nothing in a language of its
+own: a hidden or avoided line is kept under one saved form and named in the app's language wherever
+it's shown, so switching language renames it too.
 
 ## Architecture
 

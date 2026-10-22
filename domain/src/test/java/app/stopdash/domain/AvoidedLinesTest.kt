@@ -23,6 +23,8 @@ class AvoidedLinesTest {
         val central = AvoidedLines.key("central", "Central line")
         assertEquals(listOf(central to "Central line", northern to "Northern line"), AvoidedLines.labeled(linkedSetOf(central, northern, "bus")))
         assertEquals(emptyList<Pair<String, String>>(), AvoidedLines.labeled(emptySet()))
+        // In the app's words, the entry as saved.
+        assertEquals(listOf(central to "ligne Central", northern to "ligne Northern"), AvoidedLines.labeled(linkedSetOf(central, northern), line = { "ligne $it" }))
     }
 
     @Test
