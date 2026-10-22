@@ -1685,10 +1685,10 @@
         },
         {
             "uniqueId": "androidx.navigationevent:navigationevent",
-            "artifactVersion": "1.0.0",
+            "artifactVersion": "1.2.0",
             "name": "Navigation Event",
             "description": "Provides APIs to easily intercept platform navigation events, including swipes and clicks, to provide a consistent API surface for handling these events.",
-            "website": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.0.0",
+            "website": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -1710,10 +1710,10 @@
         },
         {
             "uniqueId": "androidx.navigationevent:navigationevent-compose",
-            "artifactVersion": "1.0.0",
+            "artifactVersion": "1.2.0",
             "name": "NavigationEvent Compose",
             "description": "Compose integration with NavigationEvent",
-            "website": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.0.0",
+            "website": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
