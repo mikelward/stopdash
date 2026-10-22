@@ -29,6 +29,13 @@ sealed class TflException(message: String, cause: Throwable?) : Exception(messag
      */
     class KeyRejected(cause: Throwable?) : TflException("app_key rejected", cause)
 
+    /**
+     * TfL's Journey Planner answered, but every route it offered rides a service it names no line or
+     * stop for (a bus outside London), which can't be timed from live data or checked. Asking again
+     * gives the same routes, so a surface says why, never that TfL couldn't be reached.
+     */
+    class Unfollowable(routes: Int) : TflException("$routes routes, none on lines TfL names", null)
+
     /** Reached TfL but the request still failed — a non-2xx, or a decode failure. */
     class Unreachable(reason: String, cause: Throwable?) : TflException(reason, cause)
 

@@ -386,6 +386,8 @@ class MainViewModelTest {
         assertEquals(DeparturesUiState.Error.Kind.SERVER, errorKindOf(TflException.Unreachable("HTTP 503", null)))
         // TfL refused the user's own key: only clearing it mends that (SPEC D7).
         assertEquals(DeparturesUiState.Error.Kind.KEY_REJECTED, errorKindOf(TflException.KeyRejected(null)))
+        // A trip's every route on services TfL names no line or stop for: said as that, not as TfL unreachable.
+        assertEquals(DeparturesUiState.Error.Kind.UNFOLLOWABLE, errorKindOf(TflException.Unfollowable(3)))
     }
 
     @Test

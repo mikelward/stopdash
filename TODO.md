@@ -1761,6 +1761,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **First version** (#242): *To…* from the near-me list and a *From…* station plans,
             lists and opens routes with live times, walks, ranking tiers, status and refresh
             warnings, the location banner and hidden modes.
+      - [x] **Say why a trip outside TfL can't be planned** (2026-10-22): a bug report's trip
+            outside London failed with "Can't reach TfL" though TfL answered: every route rode a bus
+            TfL names no line or stop for, which the trip leaves out. Such an answer now says *Its
+            routes need services outside TfL*. Showing those routes from the Planner's timetable
+            alone is a product call not taken here.
       - [x] **Closure checks where the rider gets off** (each leg's alighting stop and the
             destination), from the list's few-minute cache, with the boarding stops (below).
       - [x] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does):

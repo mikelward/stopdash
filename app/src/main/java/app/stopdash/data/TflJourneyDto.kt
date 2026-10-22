@@ -42,6 +42,9 @@ data class TflJourneyDto(val legs: List<TflJourneyLegDto> = emptyList(), val far
         }
         return TripRoute(legs, fare?.toFareOrNull()).takeIf { legs.isNotEmpty() }
     }
+
+    /** Whether it rides a service no route through can be followed on ([TflJourneyLegDto.unfollowable]). */
+    fun unfollowable(stationOf: (String) -> String? = { null }): Boolean = legs.any { it.unfollowable(stationOf) }
 }
 
 /**
@@ -99,6 +102,17 @@ data class TflJourneyLegDto(
     val interChangeDuration: String? = null,
     val interChangePosition: String? = null,
 ) {
+    /**
+     * Whether it's a ride [toLegOrNull] drops for want of a line TfL names or a stop at either end (a bus
+     * outside London), rather than for an answer it couldn't read.
+     */
+    fun unfollowable(stationOf: (String) -> String? = { null }): Boolean {
+        val modeId = mode.id.ifBlank { return false }
+        if (modeId.equals(TripLeg.WALKING, ignoreCase = true)) return false
+        return routeOptions.firstOrNull()?.lineIdentifier?.id.isNullOrBlank() ||
+            departurePoint.stopId(stationOf) == null || arrivalPoint.stopId(stationOf) == null
+    }
+
     fun toLegOrNull(now: Instant = Instant.now(), after: Instant? = null, stationOf: (String) -> String? = { null }): TripLeg? {
         val modeId = mode.id.ifBlank { return null }
         val walk = modeId.equals(TripLeg.WALKING, ignoreCase = true)
