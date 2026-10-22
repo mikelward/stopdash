@@ -368,7 +368,6 @@
     <string name="settings_favorite_places_title">Locuri preferate</string>
     <string name="settings_favorite_places_summary">Salvați locuri unde mergeți, cum ar fi Acasă și Serviciu</string>
     <string name="settings_favorite_journeys_title">Curse preferate</string>
-    <string name="settings_favorite_journeys_summary">Salvați curse între două locuri</string>
     <string name="favorite_journeys_title">Curse preferate</string>
     <string name="favorite_journeys_loading">Se încarcă…</string>
     <string name="favorite_journeys_empty">Niciuna încă. Atingeți „Adăugați” și alegeți două stații sau locuri.</string>

@@ -365,7 +365,6 @@
     <string name="settings_favorite_places_title">প্রিয় জায়গা</string>
     <string name="settings_favorite_places_summary">যাওয়ার জন্য জায়গা সেভ করুন, যেমন বাড়ি ও কর্মস্থল</string>
     <string name="settings_favorite_journeys_title">প্রিয় যাত্রা</string>
-    <string name="settings_favorite_journeys_summary">দুটি জায়গার মধ্যে যাত্রা সেভ করুন</string>
     <string name="favorite_journeys_title">প্রিয় যাত্রা</string>
     <string name="favorite_journeys_loading">লোড হচ্ছে…</string>
     <string name="favorite_journeys_empty">এখনো কিছু নেই। “যোগ করুন” ট্যাপ করে দুটি স্টেশন বা জায়গা বেছে নিন।</string>

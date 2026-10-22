@@ -106,7 +106,6 @@
     <string name="place_type_mall">Shopping</string>
     <string name="place_type_gym">Academia</string>
     <string name="settings_favorite_places_summary">Salve locais para onde ir, como Casa e Trabalho</string>
-    <string name="settings_favorite_journeys_summary">Salve trajetos entre dois locais</string>
     <string name="favorite_journeys_loading">Carregando…</string>
     <string name="journey_pick_from_hint">Estação ou parada de partida</string>
     <string name="favorite_journeys_adding">Adicionando %1$s ⇄ %2$s…</string>

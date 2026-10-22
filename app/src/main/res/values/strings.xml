@@ -944,7 +944,8 @@
     <string name="settings_favorite_places_summary">Save places to go to, like Home and Work</string>
     <!-- Settings row that opens the favorite-journeys list, to see, add and remove them. -->
     <string name="settings_favorite_journeys_title">Favorite rides</string>
-    <string name="settings_favorite_journeys_summary">Save rides between two places</string>
+    <!-- TODO: translate -->
+    <string name="settings_favorite_journeys_summary" tools:ignore="MissingTranslation">Save rides between two stations</string>
     <string name="favorite_journeys_title">Favorite rides</string>
     <string name="favorite_journeys_loading">Loading…</string>
     <string name="favorite_journeys_empty">None yet. Tap Add and pick two stations or places.</string>

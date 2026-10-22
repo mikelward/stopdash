@@ -3420,6 +3420,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           with a place end is saved grayed, as one StopDash can't follow yet.
     - [ ] **Follow a grayed journey**: open it in the trip planner (Fastest/Simplest), then alerts on the
           planned route's lines, and drop the gray (*Trips with a change*).
+      - [ ] **Follow a ride with a favorite-place end directly** (maintainer, 2026-10-22: for later; Settings
+            says "Save rides between two stations" for now, since a place end is only saved grayed). A place
+            end would be the stops within the rider's max walk at their walking speed, as *Direct to a place*
+            reaches a place, a station or stop end staying its hub (`dev-docs/station-model.md`, *Favorite
+            rides*); each line between the ends boarding from its nearest stop, so a ride asks one board per
+            line. Measured on the bundled stops at the default walk (about 1.07 km): a place's reach holds a
+            median 66 bus stops and 18 lines, and pairs sharing a line share a median 2 (at most 15). At the
+            Slow pace a ride can lose every line. Still to decide: whether its card shows each row's walk or
+            leaves out a train the walk can't catch.
       - [x] **Show a place end under its current label**: a grayed journey kept the place's name from when
             it was saved, so renaming Home or Work left the row on the old one. Look the place up by its
             saved id (the name only a fallback for a deleted place), as following the journey must anyway

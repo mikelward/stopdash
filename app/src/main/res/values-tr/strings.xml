@@ -365,7 +365,6 @@
     <string name="settings_favorite_places_title">Favori yerler</string>
     <string name="settings_favorite_places_summary">Ev ve İş gibi gideceğiniz yerleri kaydedin</string>
     <string name="settings_favorite_journeys_title">Favori binişler</string>
-    <string name="settings_favorite_journeys_summary">İki yer arasındaki binişleri kaydedin</string>
     <string name="favorite_journeys_title">Favori binişler</string>
     <string name="favorite_journeys_loading">Yükleniyor…</string>
     <string name="favorite_journeys_empty">Henüz yok. Ekle\'ye dokunup iki istasyon veya yer seçin.</string>

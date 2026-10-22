@@ -379,7 +379,6 @@
     <string name="settings_favorite_places_title">Ulubione miejsca</string>
     <string name="settings_favorite_places_summary">Zapisz miejsca docelowe, np. Dom i Praca</string>
     <string name="settings_favorite_journeys_title">Ulubione przejazdy</string>
-    <string name="settings_favorite_journeys_summary">Zapisz przejazdy między dwoma miejscami</string>
     <string name="favorite_journeys_title">Ulubione przejazdy</string>
     <string name="favorite_journeys_loading">Wczytuję…</string>
     <string name="favorite_journeys_empty">Brak przejazdów. Kliknij „Dodaj” i wybierz dwie stacje lub miejsca.</string>

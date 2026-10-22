@@ -365,7 +365,6 @@
     <string name="settings_favorite_places_title">Lieblingsorte</string>
     <string name="settings_favorite_places_summary">Orte als Ziele speichern, z. B. Zuhause und Arbeit</string>
     <string name="settings_favorite_journeys_title">Lieblingsstrecken</string>
-    <string name="settings_favorite_journeys_summary">Strecken zwischen zwei Orten speichern</string>
     <string name="favorite_journeys_title">Lieblingsstrecken</string>
     <string name="favorite_journeys_loading">Wird geladen…</string>
     <string name="favorite_journeys_empty">Noch keine. Tippe auf „Hinzufügen“ und wähle zwei Stationen oder Orte.</string>
