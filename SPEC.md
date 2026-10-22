@@ -3090,7 +3090,8 @@ as it was.
   fix at one of the ride's stops past the one its predictions still say is next counts the step's stops (and so
   the dot) on from there: one fix sure to 20 m on its own, one sure only to 50 m once a second in a row agrees,
   from the nearer of the two (a fix can jump wide for a moment, and one between stops or off the ride counts for
-  nothing; maintainers, 2026-10-19 and 2026-10-20). So too on a bus, by one stop, once the stop the predictions say is next
+  nothing; maintainers, 2026-10-19 and 2026-10-20), or from the later where it's a stop past the earlier, as the bus
+  moves on between them (maintainer, 2026-10-22). So too on a bus, by one stop, once the stop the predictions say is next
   is 30 s past its time, so "get off soon" isn't held back waiting on them (maintainer, 2026-10-20); not on a train, which can be held short of it. This holds on
   the ride as the bus's own line runs it, and where the trip finds the rider's bus again after counting them by
   where they were seen, that count stands. Never back again for a refresh without one, though
