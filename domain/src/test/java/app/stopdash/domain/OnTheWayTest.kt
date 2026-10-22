@@ -34,6 +34,14 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a ride with a stop the Planner gives no id for is checked on its ends, and finds its bus there by name`() {
+        // A bus stop named for a station comes with its name but no id ([TripLeg.path]): no call matches it by id.
+        val bus = TripLeg("bus", "1", "1", "490EXA", "A", "490EXC", "C", at(5), at(15), path = listOf("", "490EXC"), pathNames = listOf("B", "C"))
+        assertFalse(OnTheWay.checkable(bus))
+        assertEquals(0, OnTheWay.aheadOnLeg(bus, listOf(VehicleCall("490EXB", "B", null, at(9)))))
+    }
+
+    @Test
     fun `a National Rail train's call at a station is at each of its ids, whichever the ride names`() {
         // St Pancras's three ids are one station to a train: its board names the station, never one id.
         val stPancras = setOf("910GSTPX", "910GSTPXBOX", "910GSTPADOM")

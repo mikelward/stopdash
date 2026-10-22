@@ -161,7 +161,9 @@ private fun polesOf(leg: TripLeg, sequence: LineSequence): Pair<String, String>?
     fun boardsNamed(id: String) = boardsByName(leg, sequence, id)
     fun alights(id: String) = alightsAt(leg, sequence, id)
     fun named(id: String) = alightsByName(leg, sequence, id)
-    val next = leg.path.firstOrNull()
+    // Its first stop with an id before where it gets off: one named for a station has none ([TripLeg.path]), and where it
+    // gets off is matched as [alights] matches it, never by the Planner's own pole, which may be the other side's.
+    val next = leg.path.dropLast(1).firstOrNull { it.isNotBlank() }
     val ends = sequence.routes.flatMap { route ->
         val boarding = route.stopIds.indices.filter { boards(route.stopIds[it]) }
             .ifEmpty { route.stopIds.indices.filter { boardsNamed(route.stopIds[it]) } }

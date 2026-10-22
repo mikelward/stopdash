@@ -3100,7 +3100,9 @@ as it was.
   marked rather than a guess, nor from an answer too old to stand behind (as the card
   withholds its stops then; stops counted from where the rider was seen stand). Each stop is a row of the screen's list, so a long route draws only
   what's on screen. The stops are the Planner's for the ride (the line's own where the
-  trip follows them on another of its lines), else, where it lists none, the line's route's from where it
+  trip follows them on another of its lines), every one of them: a bus stop named for a station ("Victoria
+  Station"), which the Planner names but gives no id, is kept by its name, so neither the list nor the stops
+  counted to place the rider skips it; else, where it lists none, the line's route's from where it
   boards through where it gets off ("Stop list unavailable" where neither can); a stop it leaves unnamed (a bus's, often) takes its name
   from the line's route, cached as the trip's other checks cache it (a line's route is its two directions,
   so at most two TfL requests per line a day, asked only when a stop is unlisted or unnamed; the list says

@@ -47,6 +47,23 @@ class BusPlacementTest {
     }
 
     @Test
+    fun `a bus leg whose next stop the Planner gives no id for goes by its first stop with one`() {
+        // The northbound route calls at Yn, a stop named for a station, which the Planner names but gives no id.
+        val viaY = road.copy(
+            routes = listOf(LineRoute("North", listOf("As", "Bn", "Yn", "Xn", "Cn")), road.routes[1]),
+            stopNames = road.stopNames + ("Yn" to "Y"),
+        )
+        val leg = plannerBus.copy(path = listOf("", "XG", "CG"), pathNames = listOf("Y", "X", "C"))
+        val placed = onPoles(leg, mapOf("1" to viaY))
+        assertEquals("Bn", placed.fromId)
+        assertEquals("Cn", placed.toId)
+        // Its every stop before where it gets off named for a station: where it gets off, as the Planner names it by
+        // the other side's pole, doesn't stand in for one (Codex, #1134).
+        val short = plannerBus.copy(path = listOf("", "Cs"), pathNames = listOf("Y", "C"))
+        assertEquals("Bn" to "Cn", onPoles(short, mapOf("1" to viaY)).let { it.fromId to it.toId })
+    }
+
+    @Test
     fun `a bus leg is placed on its poles only once its route gives a single answer`() {
         assertTrue(placedOnPoles(plannerBus, mapOf("1" to road)))
         // Its route not in yet, or failed: another pole of the pair may be the one it uses.

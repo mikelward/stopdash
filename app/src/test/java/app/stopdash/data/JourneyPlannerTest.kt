@@ -10,9 +10,11 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTime
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.journeys
+import app.stopdash.domain.rideStopList
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -561,6 +563,28 @@ class JourneyPlannerTest {
         val first = TripRoute(route.legs.take(2))
         val pair = setOf(route.legs[1].toId, route.legs[1].toArea) + route.legs[1].path.takeLast(2)
         assertTrue(!first.passesThrough(pair))
+    }
+
+    @Test
+    fun `a bus leg keeps the stops the Planner names for a station but gives no id`() = runTest {
+        // Recorded, trimmed: Euston to Victoria by bus. The Planner names the 24's stops at Tottenham Court Road,
+        // Leicester Square, St James's Park and Victoria with no id; dropped, the ride's stop list skipped them, and
+        // counting the stops left put the rider stops behind where they were.
+        val body = checkNotNull(javaClass.getResource("/fixtures/journey_results_euston_to_victoria_bus.json")).readText()
+        val bus = client(body).journeys("940GZZLUEUS", TripDestination.Stop("940GZZLUVIC")).single().rides.last()
+        assertEquals(13, bus.path.size)
+        assertEquals(bus.path.size, bus.pathNames.size)
+        assertEquals("", bus.path[1])
+        assertEquals("Tottenham Court Road", bus.pathNames[1])
+        // The last is where it gets off, by its end's own id.
+        assertEquals(bus.toId, bus.path.last())
+        assertEquals("Victoria", bus.pathNames.last())
+        val stops = rideStopList(bus, null, boarded = false)!!
+        assertEquals(listOf("Goodge Street", "Stephen Street", "Tottenham Court Road", "Cambridge Circus", "Leicester Square"), stops.names.take(5))
+        assertEquals(14, stops.names.size)
+        // Three stops left, the next Westminster City Hall: the rider is past St James's Park.
+        val riding = TripProgress.Riding(bus, "Westminster City Hall", 3, null, getOffSoon = false)
+        assertEquals("St James's Park", stops.names[rideStopList(bus, riding, boarded = true)!!.here!!])
     }
 
     @Test
