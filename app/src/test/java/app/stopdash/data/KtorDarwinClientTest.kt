@@ -322,6 +322,83 @@ class KtorDarwinClientTest {
     }
 
     @Test
+    fun `a timetable is two of Darwin's longest windows, the second as far on as it asks, joined`() {
+        val example = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val params = request.url.parameters
+            asked += "${request.url.encodedPath.substringAfterLast("/api/")} ${params["numRows"]} ${params["timeWindow"]} ${params["timeOffset"]} ${params["filterCrs"]} ${params["filterType"]}"
+            // The first part lists the first three trains, the second the rest, Woking's on both.
+            val board = json.decodeFromString<DarwinBoardDto>(example)
+            val services = if (params["timeOffset"] == null) board.trainServices!!.take(3) else board.trainServices!!.drop(2)
+            respond(ByteReadChannel(json.encodeToString(DarwinBoardDto.serializer(), board.copy(trainServices = services))), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example/api")
+        val timetable = checkNotNull(runBlocking { client.timetable("WAT", towards = "GLD") })
+        assertEquals(listOf("GetDepartureBoard/WAT 150 120 null GLD to", "GetDepartureBoard/WAT 150 120 119 GLD to"), asked)
+        // Woking's train once; the TfL-run train left out.
+        assertEquals(listOf("1", "2", "3", "4", "6"), timetable.trains.map { it.serviceId })
+        assertTrue(timetable.complete)
+        // Every train of the station: nothing to filter by.
+        runBlocking { client.timetable("WAT", towards = null) }
+        assertEquals(listOf("GetDepartureBoard/WAT 150 120 null null null", "GetDepartureBoard/WAT 150 120 119 null null"), asked.takeLast(2))
+        // No key, nothing asked.
+        val keyless = KtorDarwinClient(http, apiKey = { null }, baseUrl = "https://darwin.example/api")
+        assertEquals(null, runBlocking { keyless.timetable("WAT", towards = null) })
+        assertEquals(4, asked.size)
+    }
+
+    @Test
+    fun `a proxy's timetable is asked by its parts, and a proxy too old for one gives its board, said as incomplete`() {
+        val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        val asked = mutableListOf<String>()
+        var old = false
+        val engine = MockEngine { request ->
+            asked += "${request.url.encodedPath}${request.url.encodedQuery.takeIf { it.isNotEmpty() }?.let { "?$it" }.orEmpty()} ${request.headers["x-apikey"]}"
+            if (old && request.url.encodedPath.endsWith("/timetable")) {
+                return@MockEngine respond("""{"error":"not found"}""", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+            respond(ByteReadChannel(board), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType to listOf("application/json"), HttpHeaders.Age to listOf("12")))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val warned = mutableListOf<String>()
+        val client = KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" }, warn = { warned += it })
+        val timetable = checkNotNull(runBlocking { client.timetable("WAT", towards = "GLD") })
+        assertEquals(
+            listOf("/v1/board/WAT/timetable?to=GLD&from=0 null", "/v1/board/WAT/timetable?to=GLD&from=120 null"),
+            asked,
+        )
+        assertTrue(timetable.complete)
+        assertEquals(java.time.Duration.ofSeconds(12), timetable.age)
+        // An older proxy: its board toward where it's asked, once, and the timetable says some may be missing.
+        old = true
+        asked.clear()
+        val toward = checkNotNull(runBlocking { client.timetable("WAT", towards = "GLD") })
+        assertEquals(listOf("/v1/board/WAT/timetable?to=GLD&from=0 null", "/v1/board/WAT/details?to=GLD null"), asked)
+        assertFalse(toward.complete)
+        assertEquals(listOf("1", "2", "3", "4", "6"), toward.trains.map { it.serviceId })
+        asked.clear()
+        val every = checkNotNull(runBlocking { client.timetable("WAT", towards = null) })
+        assertEquals(listOf("/v1/board/WAT/timetable?from=0 null", "/v1/board/WAT null"), asked)
+        assertFalse(every.complete)
+        assertTrue(warned.all { it == "stopdash proxy: no timetable, its board instead" } && warned.size == 2)
+        // Any other failure is the timetable's, never read as a shorter one.
+        val down = KtorDarwinClient(
+            HttpClient(MockEngine { respond("", HttpStatusCode.BadGateway) }) { expectSuccess = true },
+            apiKey = { null },
+            proxyUrl = { "https://proxy.example" },
+        )
+        assertTrue(runCatching { runBlocking { down.timetable("WAT", towards = null) } }.exceptionOrNull() is TflException.Unreachable)
+    }
+
+    @Test
     fun `a refusal of the user's key says the key is why, and only for the user's key`() {
         var status = HttpStatusCode.Unauthorized
         val engine = MockEngine { respond("", status) }

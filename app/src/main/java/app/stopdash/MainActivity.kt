@@ -53,6 +53,7 @@ import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
+import app.stopdash.domain.RailTimetables
 import app.stopdash.domain.RailVehicles
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.RefusedStops
@@ -301,6 +302,7 @@ import app.stopdash.ui.LocalJourneyWalkMeters
 import app.stopdash.ui.LocalJourneyEndStops
 import app.stopdash.ui.LocalJourneyHubs
 import app.stopdash.ui.LocalLegTimetables
+import app.stopdash.ui.LocalRailTimetables
 import app.stopdash.ui.JourneyEndStops
 import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocalRiderPosition
@@ -4186,6 +4188,7 @@ class MainActivity : ComponentActivity() {
                 LocalRouteStops provides routeStops(appContext),
                 // A favorite ride's page gives its timetable's next train while nothing live says (RidePage).
                 LocalLegTimetables provides legTimetables(),
+                LocalRailTimetables provides railTimetables(appContext),
                 LocalJourneyEndStops provides journeyEndStops,
                 // A ride's ends are hubs: the stops in each come from the station model, once it's loaded.
                 LocalJourneyHubs provides (HubsStore.state.collectAsStateWithLifecycle().value as? Hubs.State.Ready)?.hubs,
@@ -6173,6 +6176,7 @@ class MainActivity : ComponentActivity() {
             LocalRouteTopology provides routeTopology.value,
             LocalRouteStops provides routeStops(appContext),
             LocalLegTimetables provides legTimetables(),
+            LocalRailTimetables provides railTimetables(appContext),
             LocalDismissLineAlert provides LineAlertDismissal(
                 viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
                 viewModel::dismissPlannedAlert, viewModel.dismissed.collectByIdentityWithLifecycle().value,
@@ -6633,6 +6637,19 @@ class MainActivity : ComponentActivity() {
                 ),
                 warn = ::logTimetableWarning,
             ).also { legTimetablesInstance = it }
+        }
+
+        // National Rail's timetables for a route page ([RailTimetables]): its station's boards asked further ahead, only
+        // while one's timetable is shown. Never on the refresh path.
+        private val railTimetablesLock = Any()
+        private var railTimetablesInstance: RailTimetables? = null
+
+        internal fun railTimetables(context: Context): RailTimetables = synchronized(railTimetablesLock) {
+            railTimetablesInstance ?: RailTimetables(
+                railBoards(context),
+                codes = { RailStationCodesStore.load(context.applicationContext) },
+                warn = ::logTimetableWarning,
+            ).also { railTimetablesInstance = it }
         }
 
         // Internal for the widget's refresh, which reads only what's held ([placeWidgetAlerts]).

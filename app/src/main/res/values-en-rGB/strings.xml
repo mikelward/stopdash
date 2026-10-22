@@ -19,6 +19,8 @@
     <string name="step_free_station_detail">Street to platform, for luggage or a buggy</string>
     <string name="countdown_canceled">Cancelled</string>
     <string name="countdown_canceled_description">cancelled</string>
+    <string name="timetable_canceled">%1$s (cancelled)</string>
+    <string name="timetable_canceled_spoken">%1$s, cancelled</string>
     <string name="journey_tip">Long-press a stop to favourite the ride there</string>
     <string name="settings_favorite_journeys_title">Favourite rides</string>
     <string name="settings_ride_grouping_title">Group favourite rides</string>

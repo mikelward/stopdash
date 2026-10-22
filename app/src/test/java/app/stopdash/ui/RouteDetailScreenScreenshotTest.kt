@@ -2680,15 +2680,45 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("06:30–09:30").assertExists()
     }
 
-    @Test
-    fun aNationalRailPage_offersNoTimetable_whichTfLDoesntKeep() {
+    private fun exampleRailRow(): DepartureRow {
         val stop = StopArrivals(
             stopId = "910GEXAMPLE",
             stopName = "Example",
             departures = listOf(Departure("great-example", "Great Example", "", "Cambridge", "Platform 4", now.plusSeconds(600), "national-rail")),
             fetchedAt = now,
         )
-        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        return DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+    }
+
+    // National Rail's board at Example, as a timetable gives it: Great Example's trains (09:00 in London now) on time,
+    // late, canceled and delayed, and another line's, all asked as of [asOf].
+    private class ExampleRailBoards(private val asOf: Instant = Instant.parse("2026-09-18T08:00:00Z"), var fail: Boolean = false) : app.stopdash.domain.RailBoardSource {
+        val asked = mutableListOf<Pair<String, String?>>()
+        override val available = true
+        override suspend fun departures(crs: String) = emptyList<Departure>()
+        override suspend fun timetable(crs: String, towards: String?): app.stopdash.domain.RailTimetable {
+            asked += crs to towards
+            if (fail) throw TflException.Unreachable("HTTP 502", null)
+            fun at(minutes: Long) = asOf.plusSeconds(minutes * 60)
+            fun train(minutes: Long, line: String = "great-example") = app.stopdash.domain.RailTimetable.Train(at(minutes), line, setOf("CBG"), serviceId = "s$minutes")
+            return app.stopdash.domain.RailTimetable(
+                listOf(
+                    train(10),
+                    train(15, line = "other-example"),
+                    train(25).copy(expected = at(31)),
+                    train(40).copy(canceled = true),
+                    train(55).copy(delayed = true),
+                    train(130),
+                ),
+            )
+        }
+    }
+
+    private val exampleCodes = app.stopdash.domain.RailStationCodes(mapOf("EXAMPLE" to "EXM"))
+
+    @Test
+    fun aNationalRailPage_withNoNationalRailToAsk_offersNoTimetable() {
+        val row = exampleRailRow()
         setDetail {
             StopDashTheme(dynamicColor = false) {
                 RouteDetailScreen(
@@ -2705,6 +2735,82 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("Timetable").assertDoesNotExist()
+    }
+
+    @Test
+    fun aNationalRailPage_offersItsStationsNextHours_eachTrainAsNationalRailSaysItsRunning() {
+        val boards = ExampleRailBoards()
+        val row = exampleRailRow()
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRailTimetables provides app.stopdash.domain.RailTimetables(boards, { exampleCodes })) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Timetable").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("09:10").fetchSemanticsNodes().isNotEmpty() }
+        // Every train of the line from the station, with no route to choose between: asked toward nowhere.
+        assertEquals(listOf("EXM" to null), boards.asked)
+        composeRule.onNodeWithText("All routes from here").assertExists()
+        composeRule.onNodeWithText("Next 4 hours").assertExists()
+        // No days to choose: it reaches only the next few hours.
+        composeRule.onNodeWithText("Tomorrow").assertDoesNotExist()
+        composeRule.onNodeWithText("09:25 (09:31)").assertExists()
+        composeRule.onNodeWithContentDescription("09:25, expected 09:31").assertExists()
+        composeRule.onNodeWithText("09:40 (cancelled)").assertExists()
+        composeRule.onNodeWithText("09:55 (delayed)").assertExists()
+        composeRule.onNodeWithText("11:10").assertExists()
+        // Another line's train at the station isn't this line's.
+        composeRule.onNodeWithText("09:15").assertDoesNotExist()
+        composeRule.onNodeWithText("Live times couldn't be updated").assertDoesNotExist()
+    }
+
+    @Test
+    fun aNationalRailTimetable_pastItsLiveTimes_showsItsScheduleAlone_andSaysSo() {
+        // Asked an hour ago and failing since: its trains by their schedules, said as such (SPEC D4).
+        val boards = ExampleRailBoards()
+        var shownAt by mutableStateOf(now)
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRailTimetables provides app.stopdash.domain.RailTimetables(boards, { exampleCodes })) {
+                    TimetableScreen(
+                        lineId = "great-example",
+                        lineName = "Great Example",
+                        mode = "national-rail",
+                        place = "Example",
+                        ask = TimetableAsk.Of(TimetableSource.Rail("910GEXAMPLE", "great-example", null, ends = false), null),
+                        now = shownAt,
+                        onClose = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("09:25 (09:31)").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.runOnIdle {
+            boards.fail = true
+            shownAt = now.plusSeconds(10 * 60)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        composeRule.waitUntil(5_000) { boards.asked.size >= 2 }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Live times couldn't be updated").assertExists()
+        composeRule.onNodeWithText("09:25").assertExists()
+        composeRule.onNodeWithText("09:25 (09:31)").assertDoesNotExist()
+        composeRule.onNodeWithText("09:40").assertExists()
+        // The trains gone by now are grayed, as any timetable's; the rest still listed.
+        composeRule.onNodeWithText("11:10").assertExists()
+        captureSnapshot("route-detail-rail-timetable-stale.png")
     }
 
     @Test

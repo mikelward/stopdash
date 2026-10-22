@@ -6575,29 +6575,36 @@ internal fun RouteDetailScreen(
             }
         }
     }
-    // Its timetable, offered on every page of a TfL line, whatever its status (maintainer, 2026-10-22): a ride's from
-    // where it boards to where it gets off, else the stop's for the way the page shows ([TimetableAsk]). Not National
-    // Rail's, which TfL doesn't time.
+    // Its timetable, offered on every route page, whatever its line's status (maintainer, 2026-10-22): a ride's from
+    // where it boards to where it gets off, else the stop's for the way the page shows ([TimetableAsk]). A National Rail
+    // line's, which TfL doesn't time, is its station's board over the next few hours, where National Rail can be asked.
     val legTimetables = LocalLegTimetables.current
+    val railTimetables = LocalRailTimetables.current
     val timetableMode = (ride?.mode ?: row.mode).ifBlank { Connections.knownMode(row.lineId).orEmpty() }
-    val timetableOffered = row.lineId.isNotBlank() && !timetableMode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
-        (ride == null || legTimetables != null)
+    val railTimetable = timetableMode.equals(NATIONAL_RAIL_MODE, ignoreCase = true)
+    val timetableOffered = row.lineId.isNotBlank() &&
+        if (railTimetable) railTimetables?.available == true else ride == null || legTimetables != null
     if (timetableShown && timetableOffered) {
         val wayIndex = selectedWay
         val way = wayIndex?.let { choices?.choices?.getOrNull(it) }
+        val wayLabel = wayIndex?.let { routeChoices?.labels?.getOrNull(it) }?.let { stringResource(R.string.route_stop_to, it) }
         val ask = when {
+            ride != null && railTimetable -> TimetableAsk.Of(
+                TimetableSource.Rail(ride.fromId, ride.lineId, ride.toId, ends = false),
+                ride.toName.takeIf { it.isNotBlank() }?.let { stringResource(R.string.route_stop_to, it) },
+            )
             ride != null -> TimetableAsk.Of(
                 TimetableSource.Ride(LegTimetables.Key(ride.lineId, ride.fromId, ride.toId)),
                 ride.toName.takeIf { it.isNotBlank() }?.let { stringResource(R.string.route_stop_to, it) },
             )
-            way != null && way.path.size >= 2 -> TimetableAsk.Of(
-                TimetableSource.Stop(row.stopId, row.lineId, way.path),
-                wayIndex?.let { routeChoices?.labels?.getOrNull(it) }?.let { stringResource(R.string.route_stop_to, it) },
-            )
+            // A National Rail way is where its trains end ([RouteChoice.goesTo]): its trains are those ending there.
+            way != null && railTimetable && way.path.size >= 2 -> TimetableAsk.Of(TimetableSource.Rail(row.stopId, row.lineId, way.path.last(), ends = true), wayLabel)
+            way != null && way.path.size >= 2 -> TimetableAsk.Of(TimetableSource.Stop(row.stopId, row.lineId, way.path), wayLabel)
             way != null -> TimetableAsk.Unknown
             onChooseRoute != null && routeChoices == null -> TimetableAsk.Waiting
             chipsShown -> TimetableAsk.Choose
             // No ways to tell apart (they couldn't be had, or none are wired): every route's trains, said as such.
+            railTimetable -> TimetableAsk.Of(TimetableSource.Rail(row.stopId, row.lineId, null, ends = false), stringResource(R.string.timetable_all_routes))
             else -> TimetableAsk.Of(TimetableSource.Stop(row.stopId, row.lineId, null), stringResource(R.string.timetable_all_routes))
         }
         TimetablePage(

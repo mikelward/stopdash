@@ -145,6 +145,27 @@
     <!-- TODO: translate -->
     <!-- A route page's timetable where its ways couldn't be told apart: every route's trains from the stop. -->
     <string name="timetable_all_routes" tools:ignore="MissingTranslation">All routes from here</string>
+    <!-- TODO: translate -->
+    <!-- A National Rail timetable's train running late: its scheduled time, then its estimate, e.g. "10:15 (10:22)". -->
+    <string name="timetable_expected" tools:ignore="MissingTranslation">%1$s (%2$s)</string>
+    <!-- TODO: translate -->
+    <!-- Spoken for a National Rail timetable's train running late: "10:15, expected 10:22". -->
+    <string name="timetable_expected_spoken" tools:ignore="MissingTranslation">%1$s, expected %2$s</string>
+    <!-- TODO: translate -->
+    <!-- A National Rail timetable's canceled train, after its scheduled time, e.g. "10:15 (canceled)". -->
+    <string name="timetable_canceled" tools:ignore="MissingTranslation">%1$s (canceled)</string>
+    <!-- TODO: translate -->
+    <!-- Spoken for a National Rail timetable's canceled train: "10:15, canceled". -->
+    <string name="timetable_canceled_spoken" tools:ignore="MissingTranslation">%1$s, canceled</string>
+    <!-- TODO: translate -->
+    <!-- A National Rail timetable's train National Rail calls delayed with no estimate, e.g. "10:15 (delayed)". -->
+    <string name="timetable_delayed" tools:ignore="MissingTranslation">%1$s (delayed)</string>
+    <!-- TODO: translate -->
+    <!-- Spoken for a National Rail timetable's train delayed with no estimate: "10:15, delayed, no estimate". -->
+    <string name="timetable_delayed_spoken" tools:ignore="MissingTranslation">%1$s, delayed, no estimate</string>
+    <!-- TODO: translate -->
+    <!-- A National Rail timetable whose live times couldn't be asked for again: its trains' schedules alone. -->
+    <string name="timetable_live_stale" tools:ignore="MissingTranslation">Live times couldn\'t be updated</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
          bare. %1$s is the line's name, e.g. "Victoria" → "Victoria line". -->
     <string name="route_detail_line_name">%1$s line</string>
@@ -323,6 +344,12 @@
     <plurals name="timetable_every_spoken" tools:ignore="MissingTranslation">
         <item quantity="one">%1$s to %2$s, every minute</item>
         <item quantity="other">%1$s to %2$s, every %3$d minutes</item>
+    </plurals>
+    <!-- TODO: translate -->
+    <!-- Under a National Rail timetable's "Scheduled": how far on it reaches, e.g. "Next 4 hours". -->
+    <plurals name="timetable_next_hours" tools:ignore="MissingTranslation">
+        <item quantity="one">Next hour</item>
+        <item quantity="other">Next %d hours</item>
     </plurals>
     <plurals name="line_map_stations">
         <item quantity="one">%d station</item>
