@@ -550,9 +550,13 @@ class MainActivity : ComponentActivity() {
         )
     }
     // Found on the device from the bundled stops wherever they cover the search, else asked of TfL;
-    // either way kept in the nearby cache, which "Find a station" lists the rider's stops from.
+    // either way kept in the nearby cache, which "Find a station" lists the rider's stops from. The
+    // rider's position, so a bundle that can't be read fails the lookup rather than send it to TfL.
     private val nearbyStopFinder by lazy {
-        CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "nearby"), nearbyStopsCache(applicationContext))
+        CachingStopFinder(
+            bundledStopFinder(applicationContext, nearbyTflClient, "nearby", aroundRider = true),
+            nearbyStopsCache(applicationContext),
+        )
     }
 
     // A searched station's surroundings (From…) are looked up the same way but cached apart, in
@@ -7618,11 +7622,18 @@ private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit)
 /**
  * [tfl]'s nearby search, answered from the bundled stops ([BundledStopsStore]) wherever they cover
  * it (SPEC *Finding stops → Near me now*), so the near-me list needn't wait on TfL's slow search.
- * [label] names the lookup in the debug log ("nearby", "place stops", …).
+ * [label] names the lookup in the debug log ("nearby", "place stops", …). One [aroundRider] fails
+ * rather than ask TfL when the bundle can't be read ([BundledStopFinder]).
  */
-internal fun bundledStopFinder(context: Context, tfl: StopFinder, label: String): StopFinder {
+internal fun bundledStopFinder(context: Context, tfl: StopFinder, label: String, aroundRider: Boolean = false): StopFinder {
     val appContext = context.applicationContext
-    return BundledStopFinder(tfl, bundled = { BundledStopsStore.load(appContext) }, warn = ::logLocationWarning, label = label)
+    return BundledStopFinder(
+        tfl,
+        bundled = { BundledStopsStore.load(appContext) },
+        warn = ::logLocationWarning,
+        label = label,
+        aroundRider = aroundRider,
+    )
 }
 
 /**

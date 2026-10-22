@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.BundledStopsUnavailableException
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
@@ -776,6 +777,19 @@ class NearbyStopsViewModelTest {
 
         assertEquals(
             NearbyStopsViewModel.State.Failed(DeparturesUiState.Error.Kind.OFFLINE, origin),
+            model.state.value,
+        )
+    }
+
+    @Test
+    fun `a lookup the bundled stops couldn't answer says so, not that TfL is unreachable`() = runTest {
+        val model = vm(FakeLocation(origin), FakeFinder { throw BundledStopsUnavailableException("no bundled stops") })
+
+        model.locate()
+        advanceUntilIdle()
+
+        assertEquals(
+            NearbyStopsViewModel.State.Failed(DeparturesUiState.Error.Kind.STOPS_UNREADABLE, origin),
             model.state.value,
         )
     }

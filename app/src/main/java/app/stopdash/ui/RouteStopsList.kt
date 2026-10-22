@@ -759,8 +759,11 @@ private fun DrawScope.drawRail(color: Color) {
 internal fun routeStopsFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.route_stops_failed_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.route_stops_failed_rate_limited
-    // Wording not split yet: both still read "can't reach TfL" here.
-    DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE -> R.string.route_stops_failed_unreachable
+    // Wording not split yet: both still read "can't reach TfL" here. A route's stops are TfL's, so
+    // no plan's or near-me lookup's failure reaches it.
+    DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER, DeparturesUiState.Error.Kind.UNFOLLOWABLE,
+    DeparturesUiState.Error.Kind.STOPS_UNREADABLE,
+    -> R.string.route_stops_failed_unreachable
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.route_stops_failed_key_rejected
 }
 

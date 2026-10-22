@@ -165,7 +165,8 @@ sealed interface DeparturesUiState {
     data class Error(val kind: Kind) : DeparturesUiState {
         // NETWORK: online but the request didn't complete; SERVER: TfL answered with an error;
         // KEY_REJECTED: TfL refused the user's own key (SPEC D7), which only clearing it mends;
-        // UNFOLLOWABLE: a trip whose every route rides a service TfL names no line or stop for.
-        enum class Kind { OFFLINE, RATE_LIMITED, NETWORK, SERVER, KEY_REJECTED, UNFOLLOWABLE }
+        // UNFOLLOWABLE: a trip whose every route rides a service TfL names no line or stop for;
+        // STOPS_UNREADABLE: a near-me lookup the bundled stops couldn't answer, never sent to TfL instead.
+        enum class Kind { OFFLINE, RATE_LIMITED, NETWORK, SERVER, KEY_REJECTED, UNFOLLOWABLE, STOPS_UNREADABLE }
     }
 }

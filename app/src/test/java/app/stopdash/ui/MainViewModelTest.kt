@@ -3,6 +3,7 @@ package app.stopdash.ui
 import app.stopdash.TestWorker
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.BundledStopsUnavailableException
 import app.stopdash.domain.Departure
 import kotlinx.coroutines.CoroutineDispatcher
 import app.stopdash.domain.Workers
@@ -388,6 +389,8 @@ class MainViewModelTest {
         assertEquals(DeparturesUiState.Error.Kind.KEY_REJECTED, errorKindOf(TflException.KeyRejected(null)))
         // A trip's every route on services TfL names no line or stop for: said as that, not as TfL unreachable.
         assertEquals(DeparturesUiState.Error.Kind.UNFOLLOWABLE, errorKindOf(TflException.Unfollowable(3)))
+        // The near-me lookup's bundled stops unreadable: TfL was never asked, so not said to be unreachable.
+        assertEquals(DeparturesUiState.Error.Kind.STOPS_UNREADABLE, errorKindOf(BundledStopsUnavailableException("no bundled stops")))
     }
 
     @Test
