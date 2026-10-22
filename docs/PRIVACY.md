@@ -449,7 +449,11 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   that it was, and how many access points are learned across your places — never which place or
   network, and **never a coordinate**,
 - for each nearby-stops lookup, **how many stops it found** (a count only: several stops'
-  distances would pin down where you were),
+  distances would pin down where you were), which kind of lookup it was (around you, around a
+  station, around a place a trip goes to, or around a favorite journey's ends), and whether the
+  stops came from the list built into the app or from TfL, and why TfL (beyond that list's area, a
+  kind of stop it doesn't hold, or the list couldn't be read) — so a lookup around a place a trip
+  goes to beyond the list's area says only that,
 - on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's
   placed point or one of the station's entrances — never which stop, how far, or where,
 - on a walk, **whether its direction could be shown**, each time that changes: from the latest fix,

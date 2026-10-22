@@ -552,21 +552,21 @@ class MainActivity : ComponentActivity() {
     // Found on the device from the bundled stops wherever they cover the search, else asked of TfL;
     // either way kept in the nearby cache, which "Find a station" lists the rider's stops from.
     private val nearbyStopFinder by lazy {
-        CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient), nearbyStopsCache(applicationContext))
+        CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "nearby"), nearbyStopsCache(applicationContext))
     }
 
     // A searched station's surroundings (From…) are looked up the same way but cached apart, in
     // memory only: they aren't places near the rider, so they mustn't show in the search as stops
     // the app has shown them nearby, or push the rider's own nearby lookups out of that cache.
     private val stationAreaStopFinder by lazy {
-        CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient), stationAreaStopsCache)
+        CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "station area"), stationAreaStopsCache)
     }
 
     // The stops a short walk from a place a trip goes to ([PlaceStopsFinder]), for its Direct section:
     // cached apart again, in a file, so a place's stops hold for a day and never push the rider's own
     // nearby lookups out.
     private val placeStopsFinder by lazy {
-        PlaceStopsFinder(CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient), placeStopsCache(applicationContext)))
+        PlaceStopsFinder(CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "place stops"), placeStopsCache(applicationContext)))
     }
 
     // The stops around a favorite journey's ends, by their published positions (SPEC *Journeys*): a
@@ -574,7 +574,7 @@ class MainActivity : ComponentActivity() {
     // within the day or pushes a trip's places out (Codex, #691).
     private val journeyEndStops by lazy {
         JourneyEndStops(
-            CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient), journeyEndStopsCache(applicationContext)),
+            CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "journey ends"), journeyEndStopsCache(applicationContext)),
             ::logRouteStopsWarning,
         )
     }
@@ -7618,10 +7618,11 @@ private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit)
 /**
  * [tfl]'s nearby search, answered from the bundled stops ([BundledStopsStore]) wherever they cover
  * it (SPEC *Finding stops → Near me now*), so the near-me list needn't wait on TfL's slow search.
+ * [label] names the lookup in the debug log ("nearby", "place stops", …).
  */
-internal fun bundledStopFinder(context: Context, tfl: StopFinder): StopFinder {
+internal fun bundledStopFinder(context: Context, tfl: StopFinder, label: String): StopFinder {
     val appContext = context.applicationContext
-    return BundledStopFinder(tfl, bundled = { BundledStopsStore.load(appContext) }, warn = ::logLocationWarning)
+    return BundledStopFinder(tfl, bundled = { BundledStopsStore.load(appContext) }, warn = ::logLocationWarning, label = label)
 }
 
 /**

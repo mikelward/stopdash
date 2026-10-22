@@ -1894,10 +1894,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   drop the "if that built-in list can't be read" clause from
                   `docs/play-store/listing.md` and `docs/PRIVACY.md`, and "or a bundle that can't be
                   read" from SPEC *Finding stops → Near me now*.
-              - [ ] **Log which source answered a nearby lookup**: the bundled stops, or TfL and why
+              - [x] **Log which source answered a nearby lookup**: the bundled stops, or TfL and why
                   (outside the bundle's area, a stop type it doesn't hold, the bundle unreadable). Today
                   only the fallbacks are logged, so a bug report about a missing stop can't say whether
                   the list came from the phone or from TfL. One coarse line per lookup, no coordinate.
+                  Done (2026-10-22): one line per lookup the caches don't answer, under the lookup's
+                  name (nearby, station area, place stops, journey ends), since a report's "outside the
+                  bundled stops" couldn't say which lookup it was.
               - [ ] **Look at the stops TfL's nearby search leaves out**: a handful of bundled stops
                   (about one per mile radius tested, e.g. near Victoria and Canary Wharf) never appear
                   in TfL's own answer. If TfL hides them because they're closed or out of service, the
