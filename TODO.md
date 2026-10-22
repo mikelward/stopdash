@@ -4344,6 +4344,14 @@ Builds on Phase 1's minimal line-status marking.
       Barnet/Mill Hill East (both origins) and tapping could expand one level"). Done: the stretch behind the
       train folds into one line named by where its trains come from (`LineMap.Behind`), opening a level a tap.
       Needs a device check.
+- [x] **Draw the route page's map as its train's route alone** (maintainer, 2026-10-22: "the current branch as
+      the right most so the labels are next to the dots", "show the non-selected routes as fully dashed segments
+      with no label"). Done (2026-10-22): the train's route is the rightmost rail, every station on it labeled;
+      other routes have no rows, their tracks dashed where they meet it (a bypass, or a stub to the line's end),
+      said "Other routes meet here" to a screen reader. Needs a device check of the dashes and stubs.
+- [ ] **An All chip on the route page** (maintainer, 2026-10-22: "when viewing the whole line or when the All
+      chip is selected it would keep the current view"): a last chip in the route chips row drawing the whole
+      line's map as the line page does, every route labeled.
 - [ ] **Choose the route on the route page** (maintainer, 2026-10-21). A line row with no train (a quiet
       or status row) opens a page that can't list stops, since which direction or branch is a guess.
       Proposed: a row of chips under the title, one per route from the stop ("via Bank", "via Charing
@@ -5323,6 +5331,13 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A route page's map lays out another route's way between two of its train's stations as a stand-in
+  stop** (autopilot, 2026-10-22; Codex's third finding on #1102, the second in how other routes are collapsed
+  onto the train's). Each such way is laid out as a stop of its own, carrying the tracks it stands for, and its
+  row is dropped once laid out (every rail runs straight through it), so it keeps a dashed track of its own
+  beside any the two stations share (the Heathrow Terminal 4 loop beside a train to Terminal 5) and is drawn shut
+  with its closures. Alternative: collapse each way to a track between its two ends, merged with one they
+  already share, as #1102 first did. Reversible: `LineMap.laidOut`'s `standIns` back to a filtered route.
 - [x] **A route page's fold behind the train opens a level even with an alert on the way ahead**
   (autopilot, 2026-10-21; Codex's third finding on #1062, the second where that fold meets the alert-aware
   folding; kept, maintainer, 2026-10-22: "Keep it", so the line behind reads and opens alike with or without

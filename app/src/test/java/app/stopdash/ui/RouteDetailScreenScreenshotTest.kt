@@ -1299,7 +1299,8 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun theRoutePageOpensOneFoldAtATime() {
-        // The train runs Oxford Circus to Euston: the line folded both sides of it, south and north. Public stations.
+        // The train runs Oxford Circus to Euston, the line behind it from two ends: Brixton, and a made-up branch
+        // from Alpha joining at Victoria. Public stations otherwise.
         val line = listOf(
             "940GZZLUBXN" to "Brixton", "940GZZLUSKW" to "Stockwell", "940GZZLUVXL" to "Vauxhall", "940GZZLUPCO" to "Pimlico",
             "940GZZLUVIC" to "Victoria", "940GZZLUGPK" to "Green Park", "940GZZLUOXC" to "Oxford Circus",
@@ -1307,9 +1308,13 @@ class RouteDetailScreenScreenshotTest {
             "940GZZLUHAI" to "Highbury & Islington", "940GZZLUFPK" to "Finsbury Park", "940GZZLUSVS" to "Seven Sisters",
             "940GZZLUWWL" to "Walthamstow Central",
         )
+        val branch = listOf("ALPHA" to "Alpha", "BRAVO" to "Bravo", "CHARLIE" to "Charlie")
         val sequence = LineSequence(
-            routes = listOf(LineRoute("Brixton - Walthamstow Central", line.map { it.first }, "outbound")),
-            stopNames = line.toMap(),
+            routes = listOf(
+                LineRoute("Brixton - Walthamstow Central", line.map { it.first }, "outbound"),
+                LineRoute("Alpha - Walthamstow Central", (branch + line.drop(4)).map { it.first }, "outbound"),
+            ),
+            stopNames = (line + branch).toMap(),
             stopPositions = mapOf("940GZZLUVIC" to (51.4965 to -0.1447)),
         )
         val path = line.subList(6, 9).map { (id, name) -> RouteStop(id, name) }
@@ -1326,24 +1331,26 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria", useUnmergedTree = true).assertDoesNotExist()
+        // Past where the train ends, the line is another route's: no rows (maintainer, 2026-10-22).
+        composeRule.onNodeWithText("King's Cross St. Pancras", substring = true, useUnmergedTree = true).assertDoesNotExist()
         // Behind the train, one line named by where its trains come from, opened a level a tap (maintainer,
         // 2026-10-21): then its runs, folded as the rest of the line is.
         composeRule.onNodeWithText("Stockwell to", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Brixton").performClick()
+        composeRule.onNodeWithText("Brixton", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Stockwell to", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertExists()
-        // The next fold opened, the last folds again: never more than one stretch beyond the train's path.
-        composeRule.onNodeWithText("King's Cross St. Pancras to", substring = true).performClick()
+        // The next fold opened, the last folds again: never more than one stretch open at a time.
+        composeRule.onNodeWithText("Bravo to", substring = true).performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Highbury & Islington", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Charlie", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertDoesNotExist()
         // Another train followed: what was opened for the last one's path folds again.
         platform = "Northbound - Platform 6"
         composeRule.waitForIdle()
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithText("Highbury & Islington", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Charlie", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
