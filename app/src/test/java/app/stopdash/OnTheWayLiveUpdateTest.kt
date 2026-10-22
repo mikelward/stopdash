@@ -13,6 +13,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.ui.ActiveTripTracker
+import app.stopdash.ui.HeaderWords
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -79,6 +80,22 @@ class OnTheWayLiveUpdateTest {
         val boarding = OnTheWayLiveUpdate.boarding(onBus, TripProgress.Waiting(bus, at(20)), busBoard, now)
         assertEquals(OnTheWayLiveUpdate.Boarding("Euston", "Stop G"), boarding)
         assertEquals("➔ Euston · Stop G · Due in 20 min", OnTheWayLiveUpdate.withBoarding(app.resources, boarding, "Due in 20 min"))
+    }
+
+    @Test
+    fun `the platform or pole is named in the words the app gives it`() {
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap())
+        val platform = OnTheWayLiveUpdate.boarding(
+            trip, waiting, board(train("EXAMPLE1", "Brixton Underground Station", "Southbound - Platform 8")), now, words = german,
+        )
+        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton", "Gleis 8"), platform)
+        val onBus = trip.copy(legIndex = 2, vehicleId = "EXAMPLE2")
+        val pole = StopLocation("EXAMPLE-POLE-A", "Victoria Station", 0.0, 0.0, stopLetter = "g")
+        val busBoard = ActiveTripTracker.NextBoard(bus, listOf(Departure("24", "24", "outbound", "Euston", "G", at(20), "bus", vehicleId = "EXAMPLE2")), now, pole = pole)
+        assertEquals(
+            OnTheWayLiveUpdate.Boarding("Euston", "Haltestelle G"),
+            OnTheWayLiveUpdate.boarding(onBus, TripProgress.Waiting(bus, at(20)), busBoard, now, words = german),
+        )
     }
 
     @Test

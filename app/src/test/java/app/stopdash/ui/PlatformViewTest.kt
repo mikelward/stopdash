@@ -6,6 +6,7 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TripVia
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -25,6 +26,7 @@ class PlatformViewTest {
         splitKey: String,
         station: Boolean = false,
         meters: Map<String, Double> = emptyMap(),
+        words: HeaderWords = HeaderWords.ENGLISH,
     ): PlatformView = platformViewOf(
         source = DeparturesUiState.Loaded(stops, now),
         now = now,
@@ -38,6 +40,7 @@ class PlatformViewTest {
         hiddenModes = emptySet(),
         alertSequences = emptyMap(),
         stopDistanceMeters = meters,
+        headerWords = words,
     )
 
     private fun groups(stops: List<StopArrivals>) = StopGrouping.groupByStop(DepartureRows.across(stops, now))
@@ -60,6 +63,15 @@ class PlatformViewTest {
         assertEquals("HUB" to "Example Cross", view.mapStop)
         // Not measured (off the near-me list, D1): no map.
         assertNull(view(listOf(hub), setOf("HUB"), platform.splitKey).mapStop)
+    }
+
+    @Test
+    fun `a platform's title is in the words the app gives it`() {
+        val platform = groups(listOf(hub)).first { it.qualifier is StopQualifier.Platform }
+        val number = (platform.qualifier as StopQualifier.Platform).number
+        assertEquals("Example Cross – Platform $number", view(listOf(hub), setOf("HUB"), platform.splitKey).title)
+        val german = HeaderWords({ "Gleis $it" }, { "Haltestelle $it" }, { "Richtung $it" }, emptyMap())
+        assertEquals("Example Cross – Gleis $number", view(listOf(hub), setOf("HUB"), platform.splitKey, words = german).title)
     }
 
     @Test

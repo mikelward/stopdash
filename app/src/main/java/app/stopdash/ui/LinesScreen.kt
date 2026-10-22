@@ -589,6 +589,7 @@ internal fun LineStopPage(
     ) { padding ->
         // Scrolls, so a long name at a large text size never pushes From and To out of reach (Codex on #659).
         val listState = rememberLazyListState()
+        val headerWords = rememberHeaderWords()
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -634,7 +635,7 @@ internal fun LineStopPage(
             // frame, so nothing under it moves either (Codex on #675). Held with a no-break space, as an empty
             // Text is shorter than a line of text. No letter on a route page's stop where the ride gets off: the
             // letter and the way say where to board (maintainer, 2026-10-16). A station's zone stays.
-            val poleCue = groupHeaderSpoken(pole.takeUnless { route?.alighting == true })?.replaceFirstChar { it.uppercase() }
+            val poleCue = groupHeaderSpoken(pole.takeUnless { route?.alighting == true }, headerWords)?.replaceFirstChar { it.uppercase() }
             val cue = poleCue ?: zoneCue
             if (cueSlot || cue != null) {
                 item(key = "cue") {

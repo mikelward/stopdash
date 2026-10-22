@@ -1142,13 +1142,15 @@ fun MainScreen(
     // was opened straight from the full list.
     var parentStationIds by rememberSaveable { mutableStateOf<String?>(null) }
     var parentStationTitle by rememberSaveable { mutableStateOf("") }
+    // A platform's or pole's title words ("Platform 2", "Stop E") in the app's language.
+    val headerWords = rememberHeaderWords()
     // Its rows and title ([platformViewOf]), off the main thread; the same view's last rows stand in
     // meanwhile. Null while closed, and while a view just opened has none worked out yet.
     val platformView = rememberWorked(
         listWork.platform,
         PlatformInputs(
             platformStopIds.orEmpty(), platformKey, platformIsStation,
-            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences, topology, stopDistanceMeters),
+            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences, topology, stopDistanceMeters, headerWords),
         ),
         keep = PlatformInputs.sameView,
     ) {
@@ -1164,6 +1166,7 @@ fun MainScreen(
             platformViewOf(
                 drawn.from.source, drawn.from.now, ids, platformKey, platformIsStation, platformTitle, starred, dismissed,
                 drawn.rows, hiddenModes, alertSequences, topology, stopDistanceMeters, board = drawn.from.board,
+                headerWords = headerWords,
             ).takeUnless { view ->
                 // Its stops still coming in (a new set of nearby stops loads stop by stop): not gone, just not in yet,
                 // so the view waits for them rather than close (maintainer, 2026-10-22). A station view's keys are its
@@ -1941,7 +1944,7 @@ fun MainScreen(
                                     platformStopIds = group.rows.mapTo(LinkedHashSet()) { it.stopId }.joinToString(",")
                                     platformIsStation = false
                                     platformKey = group.splitKey
-                                    platformTitle = groupHeaderTitle(group.stopName, group.qualifier)
+                                    platformTitle = groupHeaderTitle(group.stopName, group.qualifier, headerWords)
                                 }
                             },
                             // The whole station: the tapped place's clusters, keyed blank so the view keeps all of
@@ -4249,14 +4252,15 @@ internal fun StopGroupHeader(
     val style = groupHeaderStyle()
     val closedLabel = stringResource(R.string.farther_closed)
     val openLabel = clickLabel ?: stringResource(R.string.action_show_platform)
-    val label = remember(qualifier) { groupHeaderLabel(qualifier) }
+    val words = rememberHeaderWords()
+    val label = remember(qualifier, words) { groupHeaderLabel(qualifier, words) }
     // The full spoken label: the place name, the spoken qualifier (direction/towards kept), then the
     // distance — read as one, so a screen reader hears the whole header rather than three fragments.
     val checkingLabel = stringResource(R.string.closure_checking)
-    val spoken = remember(name, spokenName, qualifier, distanceLabel, closed, closedLabel, checkingClosure, checkingLabel) {
+    val spoken = remember(name, spokenName, qualifier, words, distanceLabel, closed, closedLabel, checkingClosure, checkingLabel) {
         buildString {
             append(spokenName ?: name)
-            groupHeaderSpoken(qualifier)?.let { append(", ").append(it) }
+            groupHeaderSpoken(qualifier, words)?.let { append(", ").append(it) }
             distanceLabel?.let { append(", ").append(it) }
             if (closed) append(", ").append(closedLabel)
             else if (checkingClosure) append(", ").append(checkingLabel)
@@ -5136,7 +5140,7 @@ private fun RideStopHeader(
 ) {
     val style = groupHeaderStyle()
     // "Park, Stop L to Hill, 120 m": the stop as a heading reads it, never the drawn arrow.
-    val stop = groupHeaderSpoken(qualifier)?.let { "$name, $it" } ?: name
+    val stop = groupHeaderSpoken(qualifier, rememberHeaderWords())?.let { "$name, $it" } ?: name
     val title = stringResource(R.string.journey_title_spoken, stop, destinationForms.first())
     val spoken = distanceLabel?.let { "$title, $it" } ?: title
     val openLabel = stringResource(R.string.action_open_journey)
@@ -6747,12 +6751,13 @@ internal fun RouteDetailScreen(
                 // TfL names it ("Southbound - Platform 2"), left off a stale row's as its platform is; a bus's off its pole's
                 // compass bearing, the stop's own. Neither known, none rather than a guess. A train ending here heads
                 // nowhere: its map or list says so instead.
-                val direction = (PlatformDirection.of(followed?.platform)?.takeUnless { stale } ?: bearingDirection(row.bearing))
+                val words = rememberHeaderWords()
+                val direction = (PlatformDirection.of(followed?.platform)?.takeUnless { stale } ?: bearingDirection(row.bearing, words))
                     .takeUnless { (stops as? RouteStopsUi.Loaded)?.endsHere == true }
                 // Heard with a pause, not a dash ("From Victoria, Northbound, Platform 5").
-                val spoken = routeFromSpoken(place, direction, boarding)?.let { stringResource(R.string.route_detail_from, it) }
+                val spoken = routeFromSpoken(place, direction, boarding, words)?.let { stringResource(R.string.route_detail_from, it) }
                 Text(
-                    text = stringResource(R.string.route_detail_from, routeFromTitle(place, direction, boarding)),
+                    text = stringResource(R.string.route_detail_from, routeFromTitle(place, direction, boarding, words)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = if (service != null) 4.dp else 0.dp)

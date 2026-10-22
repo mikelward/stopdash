@@ -174,4 +174,59 @@ class HeaderQualifierTest {
         assertEquals("Highgate", routeFromTitle("Highgate", null, null))
         assertNull(routeFromSpoken("Highgate", null, null))
     }
+
+    // A caller's own words, a German-style stand-in for a translation.
+    private val german = HeaderWords(
+        platformOf = { "Gleis $it" },
+        stopOf = { "Haltestelle $it" },
+        towardsOf = { "Richtung $it" },
+        bearings = mapOf("E" to "Richtung Osten", "W" to "Richtung Westen"),
+    )
+
+    @Test
+    fun `a caller's words name a platform, a pole and its way, seen and heard`() {
+        assertEquals("Gleis 2", groupHeaderLabel(StopQualifier.Platform("2", "Eastbound"), german))
+        assertEquals("Gleis 2, Eastbound", groupHeaderSpoken(StopQualifier.Platform("2", "Eastbound"), german))
+        assertEquals("Haltestelle E", groupHeaderLabel(StopQualifier.BusStop("e", "Farringdon Or Holborn Circus"), german))
+        assertEquals("Haltestelle E, Richtung Farringdon", groupHeaderSpoken(StopQualifier.BusStop("e", "Farringdon Or Holborn Circus"), german))
+        assertEquals("Richtung Farringdon or Holborn Circus", groupHeaderSpoken(StopQualifier.Towards("Farringdon Or Holborn Circus"), german))
+        // The arrow is the glyph whatever the language.
+        assertEquals("$ARROW Farringdon", groupHeaderLabel(StopQualifier.Towards("Farringdon Or Holborn Circus"), german))
+        assertEquals("Richtung Osten", groupHeaderLabel(StopQualifier.BusBearing("e"), german))
+        assertEquals("Richtung Osten", bearingDirection("E", german))
+        // A bearing the words don't name is left as TfL gave it, and is no direction.
+        assertEquals("N", groupHeaderLabel(StopQualifier.BusBearing("N"), german))
+        assertNull(bearingDirection("N", german))
+        // A rail compass is TfL's own word, whatever the words.
+        assertEquals("Eastbound", groupHeaderLabel(StopQualifier.Compass("Eastbound"), german))
+    }
+
+    @Test
+    fun `a caller's words reach every title built from a header`() {
+        assertEquals("Park – Haltestelle K", groupHeaderTitle("Park", StopQualifier.BusStop("k", null), german))
+        assertEquals("Highgate – Southbound – Gleis 2", routeFromTitle("Highgate", "Southbound", StopQualifier.Platform("2", null), german))
+        assertEquals("Highgate, Southbound, Gleis 2", routeFromSpoken("Highgate", "Southbound", StopQualifier.Platform("2", null), german))
+        assertEquals("Haltestelle D", busPoleLabel("d", "Archway", "N", german))
+        assertEquals(
+            listOf("Richtung Westen", "Richtung Osten"),
+            busPoleLabels(listOf(BusPoleCues("", "Archway", "W"), BusPoleCues("", "Archway", "E")), german),
+        )
+        assertEquals(
+            "Example Road – Haltestelle K",
+            closureTitle("King's Cross", listOf(ClosurePole("Example Road", BusPoleCues("K", "", ""))), german),
+        )
+    }
+
+    @Test
+    fun `the default words are the English the headers have always had`() {
+        val english = HeaderWords.ENGLISH
+        assertEquals("Platform 2", english.platform("2"))
+        assertEquals("Stop E", english.stop("E"))
+        assertEquals("towards Archway", english.towards("Archway"))
+        assertEquals(
+            listOf("Northbound", "Eastbound", "Southbound", "Westbound", "Northeast-bound", "Northwest-bound", "Southeast-bound", "Southwest-bound"),
+            listOf("n", "E", "S", "W", "ne", "NW", "SE", "SW").map { english.bearing(it) },
+        )
+        assertNull(english.bearing("X"))
+    }
 }

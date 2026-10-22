@@ -27,6 +27,7 @@ import app.stopdash.domain.refreshFix
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.ON_THE_WAY_REFRESH
 import app.stopdash.ui.fromTfl
+import app.stopdash.ui.headerWords
 import app.stopdash.ui.nextStepText
 import app.stopdash.ui.stepTime
 import app.stopdash.ui.stepTimeText
@@ -110,7 +111,9 @@ class OnTheWayService : Service() {
                         if (trip != null) {
                             // Routes as the trip's board loaded them: held only, so a tick never fetches one.
                             val routes = MainActivity.routeStops(this@OnTheWayService)
-                            val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now(), placements) { routes.cached(it, "") }
+                            // In the app's language as it is now: a few string lookups, on this worker with the rest.
+                            val words = headerWords(this@OnTheWayService.resources)
+                            val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now(), placements, words) { routes.cached(it, "") }
                             OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt, boarding, gate)
                         }
                     }.flowOn(Dispatchers.Default).collect()

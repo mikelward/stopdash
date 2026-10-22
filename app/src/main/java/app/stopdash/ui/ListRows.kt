@@ -523,6 +523,8 @@ internal fun platformViewOf(
     // The drawn list's own rows of every stop ([ListRows.board]), built at [now] from [source]: the view's are
     // taken from these, so it shows the same trains as the list it opened from. Null builds them here.
     board: List<DepartureRow>? = null,
+    // The title's platform or pole words ("Platform 2", "Stop E"), in the app's language.
+    headerWords: HeaderWords = HeaderWords.ENGLISH,
 ): PlatformView {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
@@ -554,7 +556,7 @@ internal fun platformViewOf(
         // cleaned names, and the first matched group depends on row order (Codex).
         if (station) stationTitle
         else if (matched.size > 1) g.stopName
-        else groupHeaderTitle(g.stopName, g.qualifier)
+        else groupHeaderTitle(g.stopName, g.qualifier, headerWords)
     }
     // The place's closure cards are the full list's own — already folded and dismissal-filtered — so
     // a card dismissed on either screen carries one identity and stays hidden on both (Codex).
@@ -585,7 +587,7 @@ internal fun platformViewOf(
     val via = matched.firstOrNull()?.let { first ->
         val modes = matched.flatMap { it.rows }.mapNotNullTo(HashSet()) { it.mode.ifBlank { null } }
         val bus = modes == setOf("bus")
-        val name = if (station) stationTitle else if (bus && matched.size == 1) groupHeaderTitle(first.stopName, first.qualifier) else first.stopName
+        val name = if (station) stationTitle else if (bus && matched.size == 1) groupHeaderTitle(first.stopName, first.qualifier, headerWords) else first.stopName
         viaOf(platformStops, bus, name)
     }
     return PlatformView(
