@@ -184,6 +184,34 @@
     <string name="widget_refresh_key_rejected">Couldn\'t refresh: API key rejected</string>
     <!-- The compact widget's short form of any of the three above. -->
     <string name="widget_refresh_failed_short">Couldn\'t refresh</string>
+    <!-- TODO: translate -->
+    <!-- The widget's header stamp: %1$s is the clock time its departures are from, "13:00", with the
+         weekday when that isn't today, "Sun 23:50". A narrow widget shows the time alone. -->
+    <string name="widget_updated" tools:ignore="MissingTranslation">Updated %1$s</string>
+    <!-- TODO: translate -->
+    <!-- The widget's note under its header when some of its stops weren't refreshed with the rest. -->
+    <string name="widget_some_stops_out_of_date" tools:ignore="MissingTranslation">Some stops out of date</string>
+    <!-- TODO: translate -->
+    <!-- The compact widget's short form of widget_some_stops_out_of_date. -->
+    <string name="widget_partly_stale" tools:ignore="MissingTranslation">Partly stale</string>
+    <!-- TODO: translate -->
+    <!-- The widget with nothing to show and no location grant: the app finds no stops without one. -->
+    <string name="widget_allow_location" tools:ignore="MissingTranslation">Allow location in StopDash</string>
+    <!-- TODO: translate -->
+    <!-- The widget with nothing to show yet: the app fills it once opened. -->
+    <string name="widget_open_app" tools:ignore="MissingTranslation">Open StopDash to load departures</string>
+    <!-- TODO: translate -->
+    <!-- The widget when not even one departure fits at its size and font. -->
+    <string name="widget_too_small" tools:ignore="MissingTranslation">Too small</string>
+    <!-- TODO: translate -->
+    <!-- The widget's trip on the way when the phone's last update of it is old. -->
+    <string name="widget_trip_stale" tools:ignore="MissingTranslation">May be out of date</string>
+    <!-- TODO: translate -->
+    <!-- Heard (not drawn) for a widget row's disrupted line: %1$s is TfL's status, "Severe Delays". -->
+    <string name="widget_disrupted_spoken" tools:ignore="MissingTranslation">Disrupted: %1$s</string>
+    <!-- TODO: translate -->
+    <!-- The same with why the row has no times: %2$s is "No key" or "No data". -->
+    <string name="widget_disrupted_spoken_detail" tools:ignore="MissingTranslation">Disrupted: %1$s. %2$s</string>
     <!-- Heard (not drawn) before a disruptions card's line pills and stops, on a trip and the home screen. -->
     <string name="trip_disruptions_label">Disruptions:</string>
     <!-- A trip's disruptions card once every line and stop shown is checked and none is disrupted. -->

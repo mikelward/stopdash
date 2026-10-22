@@ -4953,16 +4953,17 @@ and these carry the rest as their own PRs:
       translate the strings marked `TODO: translate` into every language (terms from
       `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*).
 - [ ] **Move the English the app builds in code into string resources**, English-only and marked
-      for the translations pass. Found by a sweep: the widget's own text (its stamp, "Tap to
-      refresh", "Too small", empty states, "Disrupted:" description, an English-weekday
-      `Locale.UK` stamp); stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
+      for the translations pass. Found by a sweep: ~~the widget's own text~~ (done: its stamp's
+      "Updated", weekday in the app's language, notes, empty states, titles and "Disrupted:"
+      description, the app's own translated strings wherever it says the same thing; the stamp
+      no longer parsed back for a narrow widget); stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
       (`HeaderQualifier`); countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
       in the UI; "N min ago" (`RelativeTime`); distances' units and their "." decimal
       (`StopDistance`); mode names (`ModeIcon`, search's group names and subtitles); the
       "<name> line" label; the " to " join of a closure's stops; "via" in spoken branch labels;
-      the Live Update chip's compass letters; the watch's "Disrupted:". Four places parse that
-      English back (`removeSuffix(" min")`, `removePrefix("Updated ")`, capitalizing
-      `formatAge`'s output) and must change with it, and hidden lines are saved by their English
+      the Live Update chip's compass letters; the watch's "Disrupted:". Two places parse that
+      English back (`removeSuffix(" min")`, capitalizing `formatAge`'s output) and must change
+      with it, and hidden lines are saved by their English
       label, so a language switch would leave them English.
 
 - [ ] **Audit where content changes under the rider and should animate** (maintainer, 2026-10-09). Hold

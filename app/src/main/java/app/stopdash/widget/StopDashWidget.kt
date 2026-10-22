@@ -110,6 +110,7 @@ import java.time.Instant
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -189,7 +190,7 @@ open class StopDashWidget internal constructor(
         // model and its layouts are worked out on a worker. Its own redraw is due when it goes out of
         // date, when it's too old to show, or when a guessed train is due; once it's gone, that render
         // draws the departures and arms their redraws.
-        val trip = widgetTripModelOn(WidgetTripStore.load(context), Instant.now())
+        val trip = widgetTripModelOn(WidgetTripStore.load(context), Instant.now(), locale = widgetLocale(context))
         if (trip != null) {
             val tripNow = Instant.now()
             val tripExpiry = JavaDuration.between(tripNow, trip.redrawAt).toKotlinDuration().takeIf { it.isPositive() }
@@ -336,7 +337,7 @@ open class StopDashWidget internal constructor(
             logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
             emptyList()
         }
-        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle)
+        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle, locale = widgetLocale(context))
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
             models.all.minOf { it.rows.size },
@@ -416,6 +417,8 @@ internal suspend fun widgetModels(
     bare: Boolean = false,
     // How a ride is headed when the rides are grouped by ride ([widgetModel]); null groups them by stop.
     rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
+    // The language the stamp's weekday is said in ([widgetStamp]): the app's.
+    locale: Locale = Locale.UK,
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
@@ -427,6 +430,7 @@ internal suspend fun widgetModels(
             hiddenModes = hiddenModes,
             tap = tap,
             rideTitle = rideTitle,
+            locale = locale,
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
@@ -520,6 +524,7 @@ internal data class WidgetModel(
     val hasData: Boolean,
     val stale: Boolean,
     val uncertain: Boolean,
+    // When its departures are from ([widgetStamp]): a clock time, "13:00", headed "Updated" where there's room.
     val stamp: String?,
     val rows: List<WidgetRowModel>,
     // Too short for the title row and even one departure line (the minimum size at a large font):
@@ -619,6 +624,8 @@ internal fun widgetModel(
     // "From ➔ To", and what a screen reader says for it) over its own trains, in the app's order
     // ([pinRides]); null groups the rides' rows by the stop they board from ([pinJourneys]).
     rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
+    // The language the stamp's weekday is said in ([widgetStamp]): the app's.
+    locale: Locale = Locale.UK,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -631,7 +638,7 @@ internal fun widgetModel(
         hasData = true,
         stale = stale,
         uncertain = true,
-        stamp = widgetStamp(now.minus(age.toJavaDuration()), now),
+        stamp = widgetStamp(now.minus(age.toJavaDuration()), now, locale),
         rows = emptyList(),
         tap = tap,
     )
@@ -860,7 +867,7 @@ internal fun widgetModel(
     // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
     // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
     if (twoColumns && columnBreak == null) {
-        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, tap, columns = false, rideTitle = rideTitle)
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, tap, columns = false, rideTitle = rideTitle, locale = locale)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
@@ -881,7 +888,7 @@ internal fun widgetModel(
         stale = stale,
         uncertain = uncertain,
         statusUnknown = statusUnknown,
-        stamp = widgetStamp(now.minus(age.toJavaDuration()), now),
+        stamp = widgetStamp(now.minus(age.toJavaDuration()), now, locale),
         rows = rows,
         compact = compact,
         tooSmall = tooSmall,
@@ -1128,19 +1135,18 @@ internal fun WidgetContent(
             // so one fresh stop can't mask the others (SPEC D4); a whole-snapshot-stale widget
             // gets the stronger "tap to refresh". Its own line, only when needed, so the header
             // row stays short enough for the narrowest widget.
+            val context = LocalContext.current
             val note = when {
                 model.stamp == null -> null
-                model.tap != null -> LocalContext.current.getString(tapNoteText(model.tap))
-                model.stale -> "Tap to refresh"
-                model.uncertain -> "Some stops out of date"
-                model.statusUnknown -> LocalContext.current.getString(R.string.disruptions_unknown)
+                model.tap != null -> context.getString(tapNoteText(model.tap))
+                model.stale -> context.getString(R.string.stale_stamp)
+                model.uncertain -> context.getString(R.string.widget_some_stops_out_of_date)
+                model.statusUnknown -> context.getString(R.string.disruptions_unknown)
                 else -> null
             }
-            // A narrow widget has no room for "Updated 14 min ago" beside the title, so it drops the
-            // prefix; the age alone still reads as the update time.
-            val stamp = model.stamp?.let {
-                if (LocalSize.current.width < WIDGET_COMPACT_WIDTH) it.removePrefix("Updated ") else it
-            }
+            // A narrow widget has no room for "Updated 14:00" beside the title, so it shows the time
+            // alone, which still reads as the update time.
+            val stamp = model.stamp?.let { widgetStampText(it, narrow = LocalSize.current.width < WIDGET_COMPACT_WIDTH) }
 if (model.compact) {
                 // Compact: no title row, just one status line — the warning when there is one (the
                 // stronger claim; a stale row's own countdown is already withheld as "?"), else the
@@ -1148,11 +1154,11 @@ if (model.compact) {
                 // Short forms, so the warning stays readable at the large font that forced compact.
                 val status = when {
                     model.stamp == null -> null
-                    model.tap == WidgetTapNote.REFRESHING -> LocalContext.current.getString(R.string.widget_refreshing)
-                    model.tap != null -> LocalContext.current.getString(R.string.widget_refresh_failed_short)
-                    model.stale -> "Tap to refresh"
-                    model.uncertain -> "Partly stale"
-                    model.statusUnknown -> LocalContext.current.getString(R.string.disruptions_unknown)
+                    model.tap == WidgetTapNote.REFRESHING -> context.getString(R.string.widget_refreshing)
+                    model.tap != null -> context.getString(R.string.widget_refresh_failed_short)
+                    model.stale -> context.getString(R.string.stale_stamp)
+                    model.uncertain -> context.getString(R.string.widget_partly_stale)
+                    model.statusUnknown -> context.getString(R.string.disruptions_unknown)
                     else -> stamp
                 }
                 status?.let { Column(modifier = header) { WidgetStatusLine(it) } }
@@ -1166,20 +1172,20 @@ if (model.compact) {
             }
             when {
                 !model.hasData ->
-                    WidgetMessage(if (locationNeeded) "Allow location in StopDash" else "Open StopDash to load departures")
+                    WidgetMessage(context.getString(if (locationNeeded) R.string.widget_allow_location else R.string.widget_open_app))
                 // Not even one whole departure fits at this size and font: say how to fix it, rather
                 // than show a departure without its line or destination, or claim there are none.
                 model.tooSmall ->
-                    WidgetMessage("Too small")
+                    WidgetMessage(context.getString(R.string.widget_too_small))
                 // Has a snapshot but no rows to show — every service has departed or the
                 // stops returned none. Distinguish a trustworthy "none" from data too old to
                 // assert that (SPEC D4), rather than leaving the widget blank below the header.
                 // Every departure left is of a mode the user hid: say so, not that none are due.
                 model.rows.isEmpty() && model.onlyHidden != null ->
-                    WidgetMessage("Nothing else to show with ${model.onlyHidden} hidden")
+                    WidgetMessage(context.getString(R.string.modes_hidden_empty, model.onlyHidden))
                 model.rows.isEmpty() ->
                     WidgetMessage(
-                        if (model.uncertain) "Departures may be out of date" else "No upcoming departures",
+                        context.getString(if (model.uncertain) R.string.departures_stale_empty else R.string.departures_empty),
                     )
                 model.columnBreak != null -> Row(modifier = GlanceModifier.fillMaxWidth()) {
                     Column(modifier = GlanceModifier.defaultWeight()) {
@@ -1216,12 +1222,13 @@ internal fun WidgetTripContent(
                 .padding(12.dp)
                 .clickable(actionStartActivity<MainActivity>(openedFromWidget)),
         ) {
+            val context = LocalContext.current
             val narrow = LocalSize.current.width < WIDGET_COMPACT_WIDTH
-            WidgetHeaderRow(if (narrow) model.stamp.removePrefix("Updated ") else model.stamp, title = "On the way")
-            if (model.stale) WidgetStatusLine("May be out of date")
+            WidgetHeaderRow(widgetStampText(model.stamp, narrow), title = context.getString(R.string.on_the_way))
+            if (model.stale) WidgetStatusLine(context.getString(R.string.widget_trip_stale))
             Spacer(GlanceModifier.height(8.dp))
             if (layout.tooSmall) {
-                WidgetMessage("Too small")
+                WidgetMessage(context.getString(R.string.widget_too_small))
                 return@Column
             }
             // The trains come first (maintainer, 2026-10-05): the step shows, its text alone, only where
@@ -1303,7 +1310,7 @@ private const val GLANCE_MAX_CHILDREN = 10
  * departures start a line higher in the widget's tight height.
  */
 @androidx.compose.runtime.Composable
-private fun WidgetHeaderRow(stamp: String?, title: String = "StopDash") {
+private fun WidgetHeaderRow(stamp: String?, title: String = LocalContext.current.getString(R.string.app_name)) {
     Row(
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1535,11 +1542,17 @@ private fun widgetNoTimesText(noTimes: NoTimes): String = LocalContext.current.g
  */
 @androidx.compose.runtime.Composable
 private fun WidgetDisruption(description: String, modifier: GlanceModifier, detail: String? = null) {
+    val context = LocalContext.current
+    val spoken = if (detail == null) {
+        context.getString(R.string.widget_disrupted_spoken, description)
+    } else {
+        context.getString(R.string.widget_disrupted_spoken_detail, description, detail)
+    }
     Text(
         text = if (detail == null) "⚠ $description" else "⚠ $description · $detail",
         maxLines = 1,
         modifier = modifier.semantics {
-            contentDescription = if (detail == null) "Disrupted: $description" else "Disrupted: $description. $detail"
+            contentDescription = spoken
         },
         style = TextStyle(color = GlanceTheme.colors.error, fontWeight = FontWeight.Medium, fontSize = widgetSp(12f)),
     )
@@ -1757,23 +1770,35 @@ internal suspend fun scopedToNearby(context: Context, snapshot: DeparturesSnapsh
 }
 
 /**
- * The header's stamp: the clock time the shown data is from ("Updated 13:00"), with its weekday
- * when that isn't today in London ("Updated Sun 23:50"). A clock time, not an age ("7 min ago"):
+ * The header's [stamp] ([widgetStamp]) as drawn: "Updated 13:00", or the time alone where the widget is
+ * too [narrow] for both beside its title.
+ */
+@androidx.compose.runtime.Composable
+private fun widgetStampText(stamp: String, narrow: Boolean): String =
+    if (narrow) stamp else LocalContext.current.getString(R.string.widget_updated, stamp)
+
+/**
+ * The header's stamp: the clock time the shown data is from ("13:00"), with its weekday in [locale]'s
+ * words when that isn't today in London ("Sun 23:50"), which the header says as "Updated 13:00"
+ * ([R.string.widget_updated]) where there's room. A clock time, not an age ("7 min ago"):
  * the widget is static text that Android may not redraw for a while (a deferred boundary redraw,
  * Doze), and an age frozen at its last render reads as newer than the data is, where a clock time
  * stays true however long the widget goes unredrawn (SPEC D4, maintainer bug report 2026-10-05).
  * [shownAt] is the data's time on the [now] clock (now minus its steady age), so a clock that was
  * set since doesn't move it.
  */
-internal fun widgetStamp(shownAt: Instant, now: Instant): String {
+internal fun widgetStamp(shownAt: Instant, now: Instant, locale: Locale = Locale.UK): String {
     val at = shownAt.atZone(WIDGET_LONDON)
     val sameDay = at.toLocalDate() == now.atZone(WIDGET_LONDON).toLocalDate()
-    return "Updated " + (if (sameDay) WIDGET_STAMP_TIME else WIDGET_STAMP_DAY_TIME).format(at)
+    return (if (sameDay) WIDGET_STAMP_TIME else WIDGET_STAMP_DAY_TIME.withLocale(locale)).format(at)
 }
+
+/** The language the widget's [context] draws in, the app's own if the rider picked one, for [widgetStamp]. */
+internal fun widgetLocale(context: Context): Locale = context.resources.configuration.locales[0] ?: Locale.UK
 
 private val WIDGET_LONDON: java.time.ZoneId = java.time.ZoneId.of("Europe/London")
 private val WIDGET_STAMP_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val WIDGET_STAMP_DAY_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE HH:mm", java.util.Locale.UK)
+private val WIDGET_STAMP_DAY_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK)
 
 internal fun logWidgetSnapshotWarning(message: String) = StopdashDebugLog.warning("widget: %s", message)
 
@@ -1989,8 +2014,8 @@ private val WIDGET_LINE_GAP = 8.dp
 private val WIDGET_PILL_TEXT_HEIGHT = 16.dp
 
 /**
- * Below this width the header can't fit the title and the full "Updated 14 min ago" stamp
- * (~165dp of text plus the 24dp of padding), so the stamp drops its "Updated" prefix.
+ * Below this width the header can't fit the title and the full "Updated Sun 23:50" stamp
+ * (~165dp of text plus the 24dp of padding), so the stamp shows its time alone ([widgetStampText]).
  */
 internal val WIDGET_COMPACT_WIDTH = 220.dp
 

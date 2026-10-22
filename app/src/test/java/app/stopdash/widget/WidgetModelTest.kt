@@ -19,8 +19,11 @@ import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.ui.GroupHeader
 import app.stopdash.domain.lineAlertFingerprint
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -162,14 +165,28 @@ class WidgetModelTest {
         assertTrue(model.hasData)
         assertFalse(model.stale)
         // The clock time the data is from, in London (BST in September), not an age a frozen render keeps.
-        assertEquals("Updated 08:59", model.stamp)
+        assertEquals("08:59", model.stamp)
         assertEquals(listOf("victoria"), model.rows.map { it.row.lineId })
     }
 
     @Test
     fun `the stamp is a clock time, with the weekday once it isn't today`() {
-        assertEquals("Updated 09:00", widgetStamp(now, now))
-        assertEquals("Updated Thu 23:50", widgetStamp(Instant.parse("2026-09-17T22:50:00Z"), now))
+        assertEquals("09:00", widgetStamp(now, now))
+        assertEquals("Thu 23:50", widgetStamp(Instant.parse("2026-09-17T22:50:00Z"), now))
+    }
+
+    @Test
+    fun `the stamp's weekday is in the app's language`() {
+        val yesterday = Instant.parse("2026-09-17T22:50:00Z")
+        val thursday = DayOfWeek.THURSDAY.getDisplayName(TextStyle.SHORT, Locale.FRENCH)
+        assertEquals("$thursday 23:50", widgetStamp(yesterday, now, Locale.FRENCH))
+        assertFalse(widgetStamp(yesterday, now, Locale.FRENCH).startsWith("Thu"))
+        // And through the model, as the widget builds it.
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490000001A", listOf(departure("victoria", 120)), yesterday)),
+            fetchedAt = yesterday,
+        )
+        assertEquals("$thursday 23:50", widgetModel(snapshot, now, locale = Locale.FRENCH).stamp)
     }
 
     @Test
