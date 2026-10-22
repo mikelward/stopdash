@@ -2196,7 +2196,7 @@ private fun LoadedContent(
             // Each offers "Try again" (a refresh, as a pull is), so the notice isn't a dead end; one at a
             // time, both being the same refresh. Not for a refused TfL key, which fails again however
             // soon it's asked: the app-wide bar offers to clear it instead.
-            // The partial warning's reason, read once and only when it shows: it walks the failed stops.
+            // The partial warning's reason and names, worked out with the state: only read here.
             val partialReason = if (state.partialRefresh) state.partialReason else null
             val retries = (state.refreshFailure ?: partialReason) != DeparturesUiState.Error.Kind.KEY_REJECTED
             if (state.refreshFailure != null) {
@@ -2204,7 +2204,7 @@ private fun LoadedContent(
                 if (retries) ActionBanner(message, onTryAgain = onRefresh) else Banner(message)
             }
             if (state.partialRefresh) {
-                val message = partialRefreshMessage(state.partialStops.values.map { it.name }.distinct(), partialReason)
+                val message = partialRefreshMessage(state.partialNames, partialReason)
                 if (retries && state.refreshFailure == null) ActionBanner(message, onTryAgain = onRefresh) else Banner(message)
             }
             // Arrivals loaded but their disruption status couldn't be checked — say so

@@ -110,10 +110,14 @@ sealed interface DeparturesUiState {
         /**
          * The one reason the banner gives: the one every named stop failed with, else null — a stop
          * whose cause is unknown (a restored snapshot) or different means no single reason is true
-         * of them all, so the banner names the stops without one (SPEC principle 2).
+         * of them all, so the banner names the stops without one (SPEC principle 2). Worked out with
+         * the state, where it's built (and again by every copy), so the banner only reads it (Codex on
+         * #1069).
          */
-        val partialReason: Error.Kind?
-            get() = partialStops.values.mapTo(HashSet()) { it.reason }.singleOrNull()
+        val partialReason: Error.Kind? = partialStops.values.mapTo(HashSet()) { it.reason }.singleOrNull()
+
+        /** The names the banner gives of [partialStops], each once, nearest first: worked out with the state too. */
+        val partialNames: List<String> = partialStops.values.map { it.name }.distinct()
 
         /**
          * Some of what's shown is still to be checked for disruptions — a line's status, or a stop's

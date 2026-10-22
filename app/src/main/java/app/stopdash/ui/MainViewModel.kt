@@ -791,6 +791,10 @@ class MainViewModel(
     // still shows each stop as it lands rather than holding the rest until the whole batch is in.
     private var coldLoadUnfinished = false
 
+    // The cold load's part-shown state and what it reads cut short ([cutShort]), worked out together on the worker
+    // and published together: a relocation's [cancelFetch] then only reads it (Codex on #1084).
+    private var shownCutShort: Worked<DeparturesUiState.Loaded, DeparturesUiState.Loaded>? = null
+
     // Each line's last answer and when it came back (stamped by the steady clock, [SteadyClock]): its
     // DETERMINED status (good or disrupted), reused for [lineStatusReuse] so a refresh a minute after the
     // last one needn't re-ask about the same lines, or that TfL was asked and gave none (a no-verdict
@@ -970,21 +974,23 @@ class MainViewModel(
         journeyStopsSetDuringReconcile = false
         _refreshing.value = false
         _fetchingStops.value = FetchingStops.NONE
-        // A cold load cut short keeps the stops it showed and names the ones it never got, rather
-        // than leave them "Loading" with nothing coming (SPEC principle 2).
-        // Its line status was never checked, so that now reads "couldn't check", as does a closure
-        // check still out: nothing will finish it, so its spinner mustn't stay up.
+        // A cold load cut short keeps the stops it showed and names the ones it never got ([cutShort]), worked out with
+        // the state it's for, on the worker, when that was shown ([shownCutShort]).
         (_state.value as? DeparturesUiState.Loaded)?.takeIf { it.statusPending }?.let { shown ->
-            _state.value = shown.copy(
-                pendingStops = emptyList(),
-                closurePending = emptySet(),
-                stopsDisruptionUnknown = shown.stopsDisruptionUnknown + shown.closurePending,
-                disruptionUnknown = shown.disruptionUnknown || shown.closurePending.isNotEmpty(),
-                statusPending = false,
-                partialRefresh = shown.partialRefresh || shown.pendingStops.isNotEmpty(),
-                partialStops = shown.partialStops + shown.pendingStops.associate { it.id to DeparturesUiState.FailedStop(it.name) },
-            )
+            val cut = shownCutShort?.takeIf { it.key === shown }?.value
+            if (cut != null) {
+                _state.value = cut
+            } else {
+                // Not expected: every part-shown state is published with its cut-short one. Said, and worked out on the
+                // worker, published only over the state it was worked out from (anything since is newer).
+                warn("cold load cut short with no cut-short state worked out for it")
+                viewModelScope.launch {
+                    val worked = withContext(compute) { cutShort(shown) }
+                    if (_state.value === shown) _state.value = worked
+                }
+            }
         }
+        shownCutShort = null
     }
 
     /**
@@ -2245,14 +2251,16 @@ class MainViewModel(
             // (the loading stamp shows meanwhile), so a typical load paints once, whole, rather than
             // stop by stop; a stop still out then shows as a card (SPEC *Freshness → Cold load*).
             var inGrace = _state.value is DeparturesUiState.Loading
-            var heldPartial: DeparturesUiState.Loaded? = null
+            // With what it reads cut short ([shownCutShort]).
+            var heldPartial: Worked<DeparturesUiState.Loaded, DeparturesUiState.Loaded>? = null
             val graceJob = if (!inGrace) null else launch {
                 delay(FIRST_PAINT_GRACE_MS)
                 inGrace = false
                 val partial = heldPartial ?: return@launch
                 heldPartial = null
                 if (_state.value is DeparturesUiState.Loading) {
-                    _state.value = partial
+                    _state.value = partial.key
+                    shownCutShort = partial
                     coldLoadUnfinished = true
                 }
             }
@@ -2296,6 +2304,8 @@ class MainViewModel(
                         unavailableStopIds = failed.keys - shown.mapTo(HashSet()) { it.stopId },
                     )
                 }
+                // And as a relocation would leave it, cut short, so that only reads it ([cancelFetch]).
+                val shownAndCut = partial?.let { Worked(it, cutShort(it)) }
                 // Published on the main thread, which only decides what to show.
                 withContext(publisher) {
                     val current = _state.value
@@ -2313,15 +2323,16 @@ class MainViewModel(
                         // Said at once, so the grace is over: a closure landing after it shows at once too.
                         inGrace = false
                         heldPartial = null
-                    } else if (coldLoad && partial != null) {
+                    } else if (coldLoad && shownAndCut != null) {
                         // Every stop's departures in (or failed): painted now, whole, rather than held for
                         // closure checks still out, which fill in where they land.
                         if (inGrace && waiting.isNotEmpty()) {
-                            heldPartial = partial
+                            heldPartial = shownAndCut
                         } else {
                             inGrace = false
                             heldPartial = null
-                            _state.value = partial
+                            _state.value = shownAndCut.key
+                            shownCutShort = shownAndCut
                             coldLoadUnfinished = true
                         }
                     }
@@ -2413,6 +2424,8 @@ class MainViewModel(
                 Publish(newState, snapshot, snapshot?.takeIf { authoritative }, published)
             }
             _state.value = newState
+            // Nothing part-shown is left to cut short.
+            shownCutShort = null
             // Each stop's answer is on screen, or its aged rows are kept: none is being fetched now,
             // though the refresh still has its saves and checks to settle.
             _fetchingStops.value = FetchingStops.NONE
@@ -3433,6 +3446,25 @@ private fun nearbyPlacesOf(
         .distinctBy { it.stopId }
 
 /** [loaded] with each stop's nearer places taken from [places], or null when none moved. */
+/**
+ * [shown], a cold load's part-shown state, as a relocation leaves it ([MainViewModel.cancelFetch]): it keeps the stops
+ * it showed and names the ones it never got, rather than leave them "Loading" with nothing coming (SPEC principle 2).
+ * Its line status was never checked, so that now reads "couldn't check", as does a closure check still out: nothing
+ * will finish it, so its spinner mustn't stay up. Worked out with [shown], where a cold load's progress is: on the
+ * compute dispatcher, in the progress report `fetchBatch` makes, one at a time. Not marked `@WorkerThread`, like the
+ * rest of that report's work: lint can't see the report run off the main thread, and a hop to show it would let the
+ * reports, which must stay in order, interleave.
+ */
+internal fun cutShort(shown: DeparturesUiState.Loaded): DeparturesUiState.Loaded = shown.copy(
+    pendingStops = emptyList(),
+    closurePending = emptySet(),
+    stopsDisruptionUnknown = shown.stopsDisruptionUnknown + shown.closurePending,
+    disruptionUnknown = shown.disruptionUnknown || shown.closurePending.isNotEmpty(),
+    statusPending = false,
+    partialRefresh = shown.partialRefresh || shown.pendingStops.isNotEmpty(),
+    partialStops = shown.partialStops + shown.pendingStops.associate { it.id to DeparturesUiState.FailedStop(it.name) },
+)
+
 private fun remeasured(loaded: DeparturesUiState.Loaded, places: List<Terminating.Place>): DeparturesUiState.Loaded? {
     val moved = loaded.stops.map { stop ->
         val nearer = Terminating.nearer(stop.stopId, places)
