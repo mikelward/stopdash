@@ -51,7 +51,7 @@ import com.mikepenz.aboutlibraries.ui.compose.android.produceLibraries
 @Composable
 fun LicensesScreen(onBack: () -> Unit) {
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    RootBack(back, onBack = onBack)
     val context = LocalContext.current
     val linkFailed = stringResource(R.string.licenses_link_failed)
     // produceLibraries parses the bundled JSON off the composition thread and swaps it in when

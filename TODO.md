@@ -4027,7 +4027,8 @@ Builds on Phase 1's minimal line-status marking.
             (`dev-docs/navigation3.md`):
         - [x] 1. The spike: what the move relies on, confirmed on the app's own stack.
         - [x] 2. The near-me page's effects wait until it's on top of the stack.
-        - [ ] 3. The overlays become a back stack.
+        - [x] 3. The overlays become a back stack.
+        - [ ] 3b. The trip from here becomes a page of its own, Lines… under it on the stack.
         - [ ] 4. A route stop's windows become window entries.
         - [ ] 5. The station flow stacks.
         - [ ] 6. The in-screen views become entries, a family per PR.

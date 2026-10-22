@@ -6,7 +6,9 @@ import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +93,38 @@ internal fun PredictiveBack(follow: BackFollow, enabled: Boolean = true, onBack:
             if (followed) follow.canceled()
             throw e
         }
+    }
+}
+
+/**
+ * Where a page of the back stack takes its own Back ([RootBack]), for the stack's Back to run when the rider
+ * goes back from it (`dev-docs/navigation3.md`). Null outside the stack: a screen shown on its own.
+ */
+@Stable
+internal class PageBack {
+    var onBack: (() -> Unit)? = null
+}
+
+internal val LocalPageBack = compositionLocalOf<PageBack?> { null }
+
+/**
+ * A screen's Back at its root, the one that closes its page: on the back stack ([LocalPageBack]), the stack's
+ * own Back, which draws the page under it as the rider swipes; on its own, a [PredictiveBack] that [follow]
+ * tracks. A Back that stays within the page (an inner page closing, an editor canceled) is a [PredictiveBack]
+ * of its own, made later, so it goes first.
+ */
+@Composable
+internal fun RootBack(follow: BackFollow, enabled: Boolean = true, onBack: () -> Unit) {
+    val slot = LocalPageBack.current
+    if (slot == null) {
+        PredictiveBack(follow, enabled, onBack)
+        return
+    }
+    val current by rememberUpdatedState(onBack)
+    DisposableEffect(slot, enabled) {
+        val back = { current() }
+        if (enabled) slot.onBack = back
+        onDispose { if (slot.onBack === back) slot.onBack = null }
     }
 }
 

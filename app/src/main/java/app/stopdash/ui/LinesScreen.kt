@@ -837,10 +837,11 @@ internal fun LineSearchScreen(
     autoFocus: Boolean = true,
 ) {
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    RootBack(back, onBack = onBack)
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    if (autoFocus) LaunchedEffect(Unit) { focus.requestFocus() }
+    // Only on top: a search drawn under a back swipe (Settings over it) mustn't raise the keyboard over that swipe.
+    if (autoFocus) OnTopEffect(Unit) { focus.requestFocus() }
     // The field keeps its own value, cursor included, seeded from the query once (as the station search's).
     var field by remember { mutableStateOf(queryFieldValue(state.query)) }
     Scaffold(

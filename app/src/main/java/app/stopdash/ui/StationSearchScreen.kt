@@ -50,7 +50,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -210,7 +209,8 @@ fun StationSearchScreen(
     }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    if (autoFocus) LaunchedEffect(Unit) { focus.requestFocus() }
+    // Only on top: a search drawn under a back swipe (Licenses over it) mustn't raise the keyboard over that swipe.
+    if (autoFocus) OnTopEffect(Unit) { focus.requestFocus() }
     // The field keeps its own value, cursor included. Bound to the query as a plain String it came
     // back from a picked station (which recomposes this screen afresh) with the cursor before the
     // first letter, so typing on inserted there; now it arrives after the text, and while the

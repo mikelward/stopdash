@@ -419,6 +419,10 @@ dependencies {
     // The dispatcher every Back handler runs on, which activity-compose brings at 1.0. Declared to hold
     // it at the version Navigation 3 needs (dev-docs/navigation3.md), so the app ships what its tests run on.
     implementation(libs.androidx.navigationevent.compose)
+    // Navigation 3: the back stack the app's pages are on (dev-docs/navigation3.md), whose Back draws the page
+    // under the one being swiped. About 113 KB in the release APK with R8 on.
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material3)
@@ -479,10 +483,8 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver3)
     // Drives the widget staleness-redraw scheduler test on an in-memory WorkManager.
     testImplementation(libs.androidx.work.testing)
-    // Navigation 3, for its spike alone so far (Navigation3SpikeTest): confirms on this app's stack
-    // what the move onto it relies on (dev-docs/navigation3.md) before any page depends on it.
-    testImplementation(libs.androidx.navigation3.runtime)
-    testImplementation(libs.androidx.navigation3.ui)
+    // Navigation 3's per-page view models, for its spike alone so far (Navigation3SpikeTest), which confirms
+    // on this app's stack what the move onto it relies on (dev-docs/navigation3.md).
     testImplementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
     // Robolectric + Roborazzi drive the Compose screenshot tests (SPEC *Testing*):

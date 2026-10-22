@@ -92,9 +92,11 @@ fun FavoritePlacesScreen(
     onCancelEditor: () -> Unit,
     onDismissWriteError: () -> Unit = {},
 ) {
-    // Back closes the editor first, then the screen — so it unwinds a step at a time.
+    // Back closes the editor first, then the screen — so it unwinds a step at a time: the editor's own, made
+    // after the screen's, goes first while it's open.
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = { if (state.editor != null) onCancelEditor() else onBack() })
+    RootBack(back, onBack = onBack)
+    PredictiveBack(back, enabled = state.editor != null, onBack = onCancelEditor)
     Surface(modifier = Modifier.fillMaxSize().followsBack(back)) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             val editor = state.editor

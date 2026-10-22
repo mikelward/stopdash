@@ -1684,6 +1684,56 @@
             ]
         },
         {
+            "uniqueId": "androidx.navigation3:navigation3-runtime",
+            "artifactVersion": "1.2.0",
+            "name": "Androidx Navigation 3 Runtime",
+            "description": "Provides the building blocks for a Compose first Navigation solution that easily supports extensions.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/navigation3#1.2.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.navigation3:navigation3-ui",
+            "artifactVersion": "1.2.0",
+            "name": "Androidx Navigation 3 UI",
+            "description": "Provides a Navigation3 display that uses the building blocks from runtime to create a higher level solution.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/navigation3#1.2.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "androidx.navigationevent:navigationevent",
             "artifactVersion": "1.2.0",
             "name": "Navigation Event",

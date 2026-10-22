@@ -407,7 +407,7 @@ fun FavoriteJourneysScreen(
     onPauseAlerts: ((Boolean) -> Unit)? = null,
 ) {
     val back = rememberBackFollow()
-    PredictiveBack(back, onBack = onBack)
+    RootBack(back, onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize().followsBack(back)) {
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(modifier = Modifier.fillMaxSize()) {

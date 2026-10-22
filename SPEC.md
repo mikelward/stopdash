@@ -4514,14 +4514,24 @@ opened over a route page, or on a station's top from Licenses opened over its ro
 is forgotten: opened again, it starts afresh. Two ways land somewhere on purpose: an arrived trip's Done
 lands on the near-me list (*On the way*), as a place shared into the app does (*Finding stops*).
 
-The back gesture is predictive (maintainer, 2026-10-22, "shrink only"): as the rider swipes, the page
-follows, shrinking toward the edge swiped from over a deepening scrim, and springs back if they let go
-without going back. A page that is a window over another (a stop's details, Departures, a line's page
-from a trip, a route's timetable) shows the page under it as it shrinks. A full page doesn't draw the page under it, so a
-swipe that's let go starts nothing that page would: no location fix, no refresh, no request. Back from
-the near-me list, with nothing left to close, shows the system's own peek at the home screen, on
-Android 14 and 15 as on 16. Drawing the real page under every page waits on a back stack of real
-entries (`TODO.md`).
+The screens opened over the near-me view are a back stack, the one opened last on top: Settings,
+Licenses, Lines…, the station flow, the saved places and favorite rides, and the trip on the way's screen.
+Each opens over the page it was opened from in a quarter of a second, sliding in a little as it fades in,
+and closes the same way a little faster (maintainer, 2026-10-22: Navigation 3's 700 ms default is too
+long).
+
+The back gesture is predictive. Swiping back from Settings, Licenses, Lines…'s search, the saved places,
+the favorite rides or the trip on the way's screen draws the page it was opened over under it, as it was
+left, and the screen follows the swipe as it closes; let go without going back, and it settles back over
+that page. The page drawn under a swipe starts nothing it would start on top until the
+swipe is done: no location fix, no refresh owed on returning to the app, no report, no window. A page
+inside a screen (a line's page in Lines…, Settings' Disruptions page, a saved place's editor), the station
+flow's pages and the near-me view's own pages still follow the swipe as before (maintainer, 2026-10-22,
+"shrink only"): shrinking toward the edge swiped from over a deepening scrim, springing back if let go,
+without drawing the page under them. A page that is a window over another (a stop's details, Departures, a
+line's page from a trip, a route's timetable) shows the page under it as it shrinks. Back from the near-me
+list, with nothing left to close, shows the system's own peek at the home screen, on Android 14 and 15 as
+on 16. Drawing the real page under every page goes on, a family of pages at a time (`TODO.md`).
 
 ### Scroll cue
 
