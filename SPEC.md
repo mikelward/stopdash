@@ -4056,7 +4056,9 @@ Under the buttons are the **lines here and around it** as one row of pills, each
 place of the stop's (under, so the buttons never move as they come in): its own lines first, then those its
 interchange's other stations add (the rail lines beside a tube station), then those of the stations within
 800 m (the nearest five), each line once (maintainer, 2026-10-10). All come from the bundled station index,
-with no request, so a bus stop, which it doesn't hold, shows none.
+with no request, so a bus stop, which it doesn't hold, shows none. An index that can't be read is said in
+their place, **Couldn't load the lines here**, never shown as a stop with no lines (no Retry: the index is
+read once per process, so asking again would only say it again).
 A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
 the favorite-places editor opens over it, filled in as a custom place named for the station at its
 position (the index's, else its stops' center, as a pick from the place search, a lookup that fails

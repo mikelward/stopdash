@@ -880,6 +880,9 @@
     <!-- Atop the station search's starting list and the location-free home when a store behind the rider's starred and recent stations couldn't be read, with a Retry. -->
     <!-- TODO: translate -->
     <string name="station_search_yours_error" tools:ignore="MissingTranslation">Couldn\'t load your stations</string>
+    <!-- On a stop's page, where its lines' pills go, when the station list built into the app couldn't be read. -->
+    <!-- TODO: translate -->
+    <string name="line_stop_lines_error" tools:ignore="MissingTranslation">Couldn\'t load the lines here</string>
     <!-- Right-column tag on a To… place result, telling a place/street/postcode apart from a stop. -->
     <string name="station_search_kind_place">Place</string>
     <string name="station_search_kind_street">Street</string>

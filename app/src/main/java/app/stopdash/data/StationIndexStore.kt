@@ -10,7 +10,8 @@ import app.stopdash.domain.StationIndexFile
  * Read once per process, off the main thread.
  *
  * Fails safe to [StationIndex.EMPTY]: a bundle that can't be read leaves the search on TfL's own
- * matching, as before the index existed, rather than breaking it (SPEC principle 2).
+ * matching, as before the index existed, rather than breaking it (SPEC principle 2). A stop's page reads
+ * that empty index as the failure it is and says so ([app.stopdash.domain.StopLinks.FAILED]).
  */
 object StationIndexStore {
     /** The bundled index. Reads the bundle the first time: call it off the main thread. */

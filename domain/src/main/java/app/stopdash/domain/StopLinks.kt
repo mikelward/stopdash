@@ -26,11 +26,17 @@ class StopLinks(
     // [lines] first, then those its interchange's other stations add, then the nearby stations', nearest first,
     // each once. Worked out with the rest, on the worker.
     val nearbyLines: List<LineRef> = lines,
+    // The bundled index couldn't be read ([FAILED]): none are known, which the page says rather than show the
+    // stop as having no lines (SPEC principle 2).
+    val failed: Boolean = false,
 ) {
     val isEmpty: Boolean get() = lines.isEmpty() && sameHub.isEmpty() && nearby.isEmpty()
 
     companion object {
         val NONE = StopLinks(emptyList(), emptyList(), emptyList())
+
+        /** The index couldn't be read: no links known, unlike [NONE], a stop the index holds none for. */
+        val FAILED = StopLinks(emptyList(), emptyList(), emptyList(), failed = true)
     }
 }
 

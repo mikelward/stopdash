@@ -155,13 +155,36 @@ class LinesViewModelTest {
     }
 
     @Test
-    fun an_index_that_cannot_be_read_links_nowhere() {
+    fun an_index_that_cannot_be_read_says_so_rather_than_link_nowhere() {
+        // The store reads an unreadable bundle as an index with no stations ([StationIndexStore]).
+        index = { app.stopdash.domain.StationIndex.EMPTY }
+        val model = vm()
+        idle()
+        model.stopLinks("940GZZLUOXC")
+        releaseCompute()
+        // Not "no lines": failed, so the page says it.
+        assertTrue(model.links.value!!.links.isEmpty)
+        assertTrue(model.links.value!!.links.failed)
+    }
+
+    @Test
+    fun an_index_read_that_throws_says_so_too() {
         index = { throw IOException("unreadable") }
         val model = vm()
         idle()
         model.stopLinks("940GZZLUOXC")
         releaseCompute()
+        assertTrue(model.links.value!!.links.failed)
+    }
+
+    @Test
+    fun a_stop_the_index_doesnt_hold_has_no_lines_and_hasnt_failed() {
+        val model = vm()
+        idle()
+        model.stopLinks("490000000X")
+        releaseCompute()
         assertTrue(model.links.value!!.links.isEmpty)
+        assertFalse(model.links.value!!.links.failed)
     }
 
     @Test
