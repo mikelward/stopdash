@@ -5,6 +5,7 @@ import androidx.annotation.WorkerThread
 import app.stopdash.R
 import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineRef
@@ -82,8 +83,10 @@ internal class TripListView(
 /**
  * A card as drawn: its modes and lines for its long press, its lines' alerts ([statuses]), the walk to
  * its first stop ([walk]), its stops' closure notices ([closures]), each ride's own in its ⚠
- * ([rideClosures], by ride, [cardClosures]), its first ride's trains ([times]), and on a step-free trip
- * where each ride has lost its way on or off to a lift out, in its ⚠ too ([rideStepFree], by ride).
+ * ([rideClosures], by ride, [cardClosures]), its first ride's trains ([times]), the stop the walk
+ * starts at and each ride gets off at in the forms each shortens through ([startForms], [stopForms]:
+ * [DestinationAbbreviations.forms]), so the card only measures them, and on a step-free trip where each
+ * ride has lost its way on or off to a lift out, in its ⚠ too ([rideStepFree], by ride).
  */
 internal class TripCardView(
     val card: List<TripTiming.Estimate>,
@@ -94,6 +97,8 @@ internal class TripCardView(
     val closures: Map<String, DepartureRow>,
     val rideClosures: List<List<DepartureRow>>,
     val times: CardTimes,
+    val startForms: List<String>?,
+    val stopForms: List<List<String>>,
     val rideStepFree: List<String?> = emptyList(),
 )
 
@@ -236,6 +241,8 @@ private fun listView(
             closures = closures,
             rideClosures = card.first().route.rides.indices.map { cardClosures(card, it, closures, rideLines) },
             times = cardTimes(card, state, now, access, sequences, rideLines),
+            startForms = card.first().route.rides.firstOrNull()?.let { DestinationAbbreviations.forms(it.fromName) },
+            stopForms = card.first().route.rides.map { DestinationAbbreviations.forms(it.toName) },
             // Every route's on the card: another line's ride may have lost its way on where this one's hasn't.
             rideStepFree = rideStepFree(card.map { it.route }, notStepFree, notStepFreeText),
         )

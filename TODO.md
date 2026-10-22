@@ -1546,12 +1546,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       so only its walk on can start a road's width off). The difference is a road's width, seconds of
       walk, but the walk shown can name the wrong side. To weigh: move a walk's end with the ride it
       meets, and retime it where the move is more than a crossing.
-- [ ] **Precompute a name's shortened forms off the main thread.** `DestinationAbbreviations`
+- [x] **Precompute a name's shortened forms off the main thread.** `DestinationAbbreviations`
       `abbreviate`/`floor`/`forms` split and map a name's words inside `remember` in composition
       (`MainScreen.kt` destination label, `ShortenedName`), which the *main thread: read and
-      dispatch only* rule forbids for input-scaling work. Carry the forms on the row model, built
-      on the worker with the snapshot, and have the composables only measure. Raised by Codex on
-      PR #971 (pre-existing; that PR only added one more branch to `floor`).
+      dispatch only* rule forbids for input-scaling work. Raised by Codex on PR #971 (pre-existing;
+      that PR only added one more branch to `floor`). The forms now come with what the worker builds:
+      a stop card's route rows, their branches' short forms too (`StopCard.labels`), the route page's
+      title (`RouteDetailWork.titleForms`) and a trip card's stops (`TripCardView.startForms`/`stopForms`);
+      `ShortenedName` is gone, so a name's composable only measures (`ShortenedText`). "Destination
+      unknown", a fixed string, is still worked out where it's drawn, and so is the route page's title
+      branch: the page picks it, and the train it follows, in composition (`pageFollowed`), which wants
+      moving to the page's work as one.
+  - [ ] **On the way's own title forms**: the screen's next-step card works out its destination's and
+        step's forms in composition (`destinationTitleForms`, `stepTitleForms`), which the banner atop
+        other screens already works out on a worker (`OnTheWayBanner`); the screen could take the same.
+        Then `DestinationAbbreviations`' three could be marked `@WorkerThread`, so lint catches the next.
 
 ## Phase 2 — Watched stops and settings
 

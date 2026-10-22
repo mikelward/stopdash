@@ -29,28 +29,14 @@ import app.stopdash.domain.EvenShortening
 import kotlin.math.roundToInt
 
 /**
- * A place name shortened to fit (SPEC destination-label): in full when it fits, else with common
- * whole words shortened ("East Finchley" → "E. Finchley", "Wood Lane" → "Wood Ln"), else its floor
- * ("Battersea Power" → "Battersea P."), eliding with a single "…" only below that, never mid-glyph.
- * Each part of a slash-separated name shortens alike ([DestinationAbbreviations]), and below the
- * floor each elides on its own, so no place is lost to one trailing "…". Copy around the name
- * ("From ‹stop›") is drawn beside it, not in it, so only the name yields. The full text stays the
- * screen-reader label when a shorter form shows.
- */
-@Composable
-internal fun ShortenedName(
-    name: String,
-    style: TextStyle,
-    modifier: Modifier = Modifier,
-    color: Color = Color.Unspecified,
-) {
-    val forms = remember(name) { DestinationAbbreviations.forms(name) }
-    ShortenedText(forms, style, modifier, color)
-}
-
-/**
- * The first of [forms], longest first, that fits the width given, else the last, eliding with a
- * single "…" if even that overflows. The first form stays the screen-reader label when another shows.
+ * A place name shortened to fit (SPEC destination-label): the first of [forms], longest first, that fits
+ * the width given, else the last, eliding with a single "…" if even that overflows. For a name, [forms]
+ * are [DestinationAbbreviations.forms], worked out with the row it's drawn from, so only measuring
+ * happens here: in full when it fits, else with common whole words shortened ("East Finchley" →
+ * "E. Finchley", "Wood Lane" → "Wood Ln"), else its floor ("Battersea Power" → "Battersea P."), never
+ * cut mid-glyph. Each part of a slash-separated name shortens alike, and below the floor each elides on
+ * its own, so no place is lost to one trailing "…". Copy around the name ("From ‹stop›") is drawn beside
+ * it, not in it, so only the name yields. The first form stays the screen-reader label when another shows.
  */
 @Composable
 internal fun ShortenedText(forms: List<String>, style: TextStyle, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {

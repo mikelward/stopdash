@@ -5186,7 +5186,25 @@ private fun JourneyHeader(
  * A stop's card as [StopGroupCard] draws it: its [group], and each of its rows' route rows ([lines],
  * in row order; none for a status row), worked out together on the worker ([stopCard]).
  */
-class StopCard(val group: StopGroup, val lines: List<List<DestinationGroup>>)
+class StopCard(val group: StopGroup, val lines: List<List<DestinationGroup>>) {
+    /** Each route row's label ([RouteLabel]), in [lines]' places: worked out with the card, so the row only measures it. */
+    val labels: List<List<RouteLabel>> = lines.mapIndexed { index, routes ->
+        val directionKey = group.rows.getOrNull(index)?.directionKey.orEmpty()
+        routes.map { route ->
+            RouteLabel(
+                DepartureLabels.destinationLabel(route.destination, directionKey)?.let(DestinationAbbreviations::forms),
+                route.branch?.let(::abbreviateBranch),
+            )
+        }
+    }
+}
+
+/**
+ * A route row's destination label as its row draws it: the destination in the forms it shortens through
+ * ([DestinationAbbreviations.forms]), null where TfL names no destination nor direction (the row says
+ * "Destination unknown"), and its branch's short form ([abbreviateBranch]), null with no branch.
+ */
+class RouteLabel(val forms: List<String>?, val shortBranch: String?)
 
 /**
  * [group] as its card draws it: each row's trains grouped by destination and branch under [topology]
@@ -5400,16 +5418,18 @@ internal fun StopGroupCard(
                             // A row whose every train has no time ("Cancelled") isn't starrable: no train to rank.
                             val starrable = starringAvailable && row.stopDisruption == null && row.upcoming.isNotEmpty()
                             val destinationLines = card.lines[rowIndex]
-                            destinationLines.forEach { group2 ->
+                            val labels = card.labels[rowIndex]
+                            destinationLines.forEachIndexed { lineIndex, group2 ->
                                 val divided = !firstRow
                                 firstRow = false
                                 key(group2.destination, group2.branch) {
                                     SlidesInPlace {
                                         if (divided) RouteDivider()
                                         // The destination, or the direction key as a cue when TfL gives no destination, so
-                                        // cards TfL keeps distinct stay distinguishable (SPEC principle 1).
-                                        val label = DepartureLabels.destinationLabel(group2.destination, row.directionKey)
-                                            ?: stringResource(R.string.destination_unknown)
+                                        // cards TfL keeps distinct stay distinguishable (SPEC principle 1): worked out with
+                                        // the card ([StopCard.labels]), the fixed "Destination unknown" alone here.
+                                        val label = labels[lineIndex]
+                                        val forms = label.forms ?: unknownDestinationForms()
                                         LineRouteRow(
                                             row = row,
                                             isStarred = isStarred,
@@ -5420,7 +5440,7 @@ internal fun StopGroupCard(
                                             focus = RouteFocus.of(group2),
                                             onHideMode = onHideMode,
                                             onHideFromRide = rideLineHide?.takeIf { it.offers(row.lineId) }?.onHide,
-                                            destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
+                                            destination = { modifier -> DestinationLabelContent(forms = forms, branch = group2.branch, shortBranch = label.shortBranch, modifier = modifier) },
                                             times = {
                                                 if (timesInstead != null) {
                                                     timesInstead(row)
@@ -6511,10 +6531,13 @@ internal fun RouteDetailScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode)
-                        if (titleBranch != null) {
+                        // The only destination's forms, worked out with the page's work ([RouteDetailWork.titleForms]).
+                        val titleForms = routeWork?.second?.titleForms
+                        if (titleBranch != null && titleForms != null) {
                             DestinationLabelContent(
-                                label = destinations.single(),
+                                forms = titleForms,
                                 branch = titleBranch,
+                                shortBranch = remember(titleBranch) { abbreviateBranch(titleBranch) },
                                 modifier = Modifier.weight(1f).padding(start = 8.dp),
                             )
                         } else if (destinations.isNotEmpty()) {
@@ -7209,7 +7232,9 @@ internal fun RouteNotices(
  */
 @Composable
 internal fun DestinationLine(
-    label: String,
+    // The destination in the forms it shortens through, longest first ([DestinationAbbreviations.forms]),
+    // worked out with the row it's drawn from.
+    label: List<String>,
     times: List<Departure>,
     stale: Boolean,
     now: Instant,
@@ -7219,16 +7244,28 @@ internal fun DestinationLine(
     // services; a branch-free row whose name has no abbreviatable word takes the cheap
     // no-measuring path below.
     branch: String? = null,
+    // [branch]'s short form ([abbreviateBranch]), worked out with the row it's drawn from.
+    shortBranch: String? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DestinationLabelContent(label, branch, Modifier.weight(1f).padding(end = 12.dp))
+        DestinationLabelContent(label, branch, shortBranch, Modifier.weight(1f).padding(end = 12.dp))
         if (times.isNotEmpty()) {
             CountdownLabel(times, stale, now)
         }
     }
+}
+
+/**
+ * "Destination unknown" in the forms a destination shortens through ([DestinationAbbreviations.forms]): a
+ * fixed string, so worked out here once per locale, never a pass over anything the data brings.
+ */
+@Composable
+private fun unknownDestinationForms(): List<String> {
+    val unknown = stringResource(R.string.destination_unknown)
+    return remember(unknown) { DestinationAbbreviations.forms(unknown) }
 }
 
 /**
@@ -7238,14 +7275,15 @@ internal fun DestinationLine(
  * card's route rows render the label identically. A branch-free name shortens common whole words
  * ([DestinationAbbreviations]) then hard-clips (no ellipsis); a branching name shares the width with
  * its "/branch" cue ([branchedLabel]), the branch outranking the terminus. The full name stays the
- * screen-reader label when the visible text is shortened.
+ * screen-reader label when the visible text is shortened. [forms] and [shortBranch] are worked out with
+ * the row ([DestinationAbbreviations.forms], [abbreviateBranch]), so only measuring happens here.
  */
 @Composable
-private fun RowScope.DestinationLabelContent(label: String, branch: String?, modifier: Modifier) {
+private fun RowScope.DestinationLabelContent(forms: List<String>, branch: String?, shortBranch: String?, modifier: Modifier) {
     if (branch == null) {
         // The longest of full, word-abbreviated and floor that fits, eliding with a single "…" only
         // below the floor (SPEC destination-label — shorten before eliding, never cut mid-glyph).
-        ShortenedName(label, MaterialTheme.typography.titleMedium, modifier)
+        ShortenedText(forms, MaterialTheme.typography.titleMedium, modifier)
     } else {
         // The branch is the cue that tells a branching line's two trunks apart, so it is kept whole:
         // the branch lays out at its natural width and the terminus takes the leftover, shrinking
@@ -7257,9 +7295,13 @@ private fun RowScope.DestinationLabelContent(label: String, branch: String?, mod
         BoxWithConstraints(modifier = modifier) {
             val style = MaterialTheme.typography.titleMedium
             val measurer = rememberTextMeasurer()
-            val abbreviatedLabel = remember(label) { DestinationAbbreviations.abbreviate(label) }
-            val floorLabel = remember(label) { DestinationAbbreviations.floor(label) }
-            val shortBranch = remember(branch) { abbreviateBranch(branch) }
+            // In full, word-abbreviated and at its floor ([DestinationAbbreviations.forms]), worked out with
+            // the row: only measuring happens here.
+            val label = forms[0]
+            val abbreviatedLabel = forms[1]
+            val floorLabel = forms[2]
+            // The branch's short form, worked out with the row too; the branch whole if it came without one.
+            val shortBranch = shortBranch ?: branch
             // Key each measurement on the font scale as well as the text, so a display-size /
             // accessibility resize re-measures rather than reusing a width cached on the string alone.
             val fontScale = LocalDensity.current.fontScale
@@ -7340,6 +7382,12 @@ internal data class RouteDetailWork(
     // platforms.
     val followed: Departure? = null,
 ) {
+    /**
+     * The one of [destinations], if there's only one, in the forms it shortens through for the page's title
+     * beside its branch ([DestinationAbbreviations.forms]): worked out with the rest, so the title only measures.
+     */
+    val titleForms: List<String>? = destinations.singleOrNull()?.let(DestinationAbbreviations::forms)
+
     companion object {
         val NONE = RouteDetailWork(emptyList(), emptyList(), emptyList())
     }
