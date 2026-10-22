@@ -1124,7 +1124,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                                   rider off there, mid-ride or on a trip read back
                                                   (`OnTheWay.advance`, `withEndAsPlanned`, with
                                                   `ActiveTrip.plannedVehicleLeg`, Codex, #1070).
-                                - [ ] A step-free ride left with no call it can get off at today says so
+                                - [x] A step-free ride left with no call it can get off at today says so
                                       and offers a replan (dev-docs/station-resolution.md, *Getting off*:
                                       "else none does, and the ride says so"). On the way, a train followed
                                       on another of the ride's lines whose own end in the hub loses its
@@ -1151,7 +1151,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                                     - [x] On the way: a ride's boarding call, judged the same way by its
                                           station record (`StepFreeExits.boardingLost`), raises the same
                                           signal until the rider is aboard that ride.
-                                - [ ] The detour cut, offering every equally good ride.
+                                - [x] The detour cut, offering every equally good ride.
                                     - [x] On the way: a ride before the last gets the rider off where
                                           the route first reaches the destination, once on board: at its
                                           first call at one of the destination's ids or in its hub, or at
