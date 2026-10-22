@@ -3412,6 +3412,43 @@ class TripViewModelTest {
         assertTrue("B" in client.asked)
     }
 
+    // A detour the plan's own scan drops, riding on through Hill after the direct route gets off there, is drawn cut
+    // where it first reaches Hill's hub ([HillModel]), and kept: the trip fetches for it as the page draws it, from a
+    // boarding stop none of the other routes', and not for the ride on past where it's drawn getting off.
+    @Test
+    fun `a detour drawn cut where it first reaches the destination is fetched for as drawn`() = runTest(dispatcher) {
+        val direct = TripRoute(listOf(leg("red", "A", "940GZZLUHIL", 0, 20)))
+        val through = leg("green", "X", "F", 2, 25).copy(
+            path = listOf("940GZZLUHLE", "940GZZLUHIL", "F"),
+            pathNames = listOf("Hill East", "Hill", "F"),
+        )
+        val detour = TripRoute(listOf(through, leg("blue", "F", "940GZZLUHIL", 27, 35)))
+        val client = FakeClient(mutableMapOf())
+        fun tripTo(arriving: suspend () -> RideEnds.Destination?) = TripViewModel(
+            FakePlanner(listOf(direct, detour)), client, "A", listOf(TripDestination.Stop("940GZZLUHIL")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, compute = dispatcher, arriving = arriving,
+        )
+        val trip = tripTo { HillModel.toHill }
+        trip.refresh()
+        advanceUntilIdle()
+        // The plan's own scan drops it, but the page draws it cut at Hill East, its arrival there unknown.
+        assertEquals(listOf(direct), trip.state.value.shownRoutes(emptySet()))
+        val drawn = trip.shownRoutes(trip.state.value, StepFree.ANY).state.shownRoutes(emptySet()).orEmpty()
+        assertEquals(setOf(routeKey(direct), routeKey(detour)), drawn.mapTo(HashSet(), ::routeKey))
+        val cut = drawn.single { routeKey(it) == routeKey(detour) }
+        assertEquals("940GZZLUHLE", cut.legs.single().toId)
+        assertTrue(cut.untimed)
+        // So its boarding stop's times are fetched, and F's, where it would ride on from, aren't.
+        assertTrue("${client.asked}", "X" in client.asked)
+        assertTrue("${client.asked}", "F" !in client.asked)
+        // With no model, nothing's drawn cut: the detour stays dropped and isn't fetched for.
+        client.asked.clear()
+        tripTo { null }.refresh()
+        advanceUntilIdle()
+        assertTrue("${client.asked}", "A" in client.asked)
+        assertTrue("${client.asked}", "X" !in client.asked)
+    }
+
     // A detour another route beats is never fetched for, so a return to the screen right after a
     // refresh fetches nothing again.
     @Test

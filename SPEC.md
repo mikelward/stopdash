@@ -2629,8 +2629,9 @@ isn't shown. The Planner timed only the whole ride, so the route keeps its arriv
 latest the rider gets there, until the ride can be timed at that call (see `TODO.md`); a fare the
 Planner gave is kept only for a bus, every London bus costing the same. The cut is only how the route
 is shown (maintainer, 2026-10-21): the route itself stays as the Planner gave it, so a trip started
-from it, the plan kept for reuse and the trip's fetches read the Planner's route, and On the way moves
-the end itself (below). A route shown cut is that route wherever it's opened, kept open, ranked or
+from it and the plan kept for reuse read the Planner's route, and On the way moves the end itself
+(below). The trip's fetches read the routes as shown, so a route shown cut is timed by live trains like
+the rest, and nothing is fetched for a ride past where it's shown ending. A route shown cut is that route wherever it's opened, kept open, ranked or
 started, so two routes the cut shows alike stay two, each opening its own. A second copy kept in step with the shown one went wrong three ways in
 review. A later trip's list shows its rides cut the same way, so its card and the trip page name one
 stop. On a step-free trip, the trip page and a later trip's list do the same only where the train's line is
