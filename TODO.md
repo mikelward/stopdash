@@ -3395,10 +3395,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           with a place end is saved grayed, as one StopDash can't follow yet.
     - [ ] **Follow a grayed journey**: open it in the trip planner (Fastest/Simplest), then alerts on the
           planned route's lines, and drop the gray (*Trips with a change*).
-      - [ ] **Show a place end under its current label**: a grayed journey keeps the place's name from when
-            it was saved, so renaming Home or Work leaves the row on the old one. Look the place up by its
+      - [x] **Show a place end under its current label**: a grayed journey kept the place's name from when
+            it was saved, so renaming Home or Work left the row on the old one. Look the place up by its
             saved id (the name only a fallback for a deleted place), as following the journey must anyway
-            (Codex on #740).
+            (Codex on #740). Done (2026-10-22): the list shows each place end under its place's name now
+            (`PendingJourneys.named`, off the main thread); the file keeps the name it was saved with.
       - [ ] **Drop the gray when its pair is followed elsewhere**: a grayed station pair later followed from
             a stop page or a route's long-press stays grayed too, listed twice and counted twice, until
             removed; only the Settings picker swaps it (`addReplacingPending`). Keep the stop ids looked up

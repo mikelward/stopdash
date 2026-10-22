@@ -1882,7 +1882,8 @@ both, or an end is a favorite place — is saved anyway and listed **grayed**, a
 "Support for multi-leg journeys coming soon" under it and its own Remove (maintainer, 2026-10-10). Only
 this list sees one: the near-me list, the widget and alerts go on seeing only the journeys they can
 follow, until *Trips with a change* lets StopDash plan the rest. A place end is kept as that place, not
-its position, so moving the place moves the journey. It costs one stop lookup per station picked, as opening a station does. Favorite journeys are
+its position, so moving the place moves the journey, and renaming it renames the journey (the name it was
+saved with shown only for a place since deleted). It costs one stop lookup per station picked, as opening a station does. Favorite journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 
 ### Trips with a change
