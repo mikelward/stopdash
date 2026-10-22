@@ -12,7 +12,7 @@ class ModeIconTest {
         val match = StationMatch("940GZZZETA", "Zeta", listOf("bus", "elizabeth-line", "dlr", "overground", "tube", "national-rail"))
         assertEquals(listOf(ModeIcon.TUBE, ModeIcon.RAIL, ModeIcon.DLR, ModeIcon.BUS), match.modeIcons)
         assertNull(match.otherModesLabel)
-        assertEquals("Bus · Elizabeth · DLR · Overground · Tube · National Rail", match.modesSpoken)
+        assertEquals("Bus · Elizabeth · DLR · Overground · Tube · National Rail", modesLabel(match.modes))
     }
 
     @Test
@@ -20,7 +20,7 @@ class ModeIconTest {
         val match = StationMatch("940GZZZETA", "Zeta", listOf("tube", "some-mode", ""))
         assertEquals(listOf(ModeIcon.TUBE), match.modeIcons)
         assertEquals("Some mode", match.otherModesLabel)
-        assertEquals("Tube · Some mode", match.modesSpoken)
+        assertEquals("Tube · Some mode", modesLabel(match.modes))
     }
 
     @Test
@@ -29,12 +29,10 @@ class ModeIconTest {
         // A copy for a position (a click handler's "Add favorite") reuses the very lists: no list work.
         val placed = match.copy(latitude = 51.5, longitude = -0.12)
         assertSame(match.modeIcons, placed.modeIcons)
-        assertSame(match.modesSpoken, placed.modesSpoken)
         assertSame(match.otherModesLabel, placed.otherModesLabel)
         // New modes are worked out afresh.
         val tram = match.withModes(listOf("tram"))
         assertEquals(listOf(ModeIcon.TRAM), tram.modeIcons)
-        assertEquals("Tram", tram.modesSpoken)
         assertNull(tram.otherModesLabel)
         assertEquals(StationMatch("490000001A", "Zeta Church", listOf("tram")), tram)
     }

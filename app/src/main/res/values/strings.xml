@@ -383,6 +383,27 @@
          just this row (maintainer, 2026-09-25). -->
     <string name="hide_mode">Hide all %1$s services</string>
     <!-- TODO: translate -->
+    <!-- A TfL mode's own name, where a station's modes are said ("Tube · Elizabeth · National Rail", what a
+         screen reader hears on a search result) or one line's mode is shown under its name ("Victoria" over
+         "Tube"). The Elizabeth line goes by "Elizabeth", as the Tube's lines go by their names alone. -->
+    <string name="mode_name_tube" tools:ignore="MissingTranslation">Tube</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_bus" tools:ignore="MissingTranslation">Bus</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_dlr" tools:ignore="MissingTranslation">DLR</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_overground" tools:ignore="MissingTranslation">Overground</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_elizabeth_line" tools:ignore="MissingTranslation">Elizabeth</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_national_rail" tools:ignore="MissingTranslation">National Rail</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_tram" tools:ignore="MissingTranslation">Tram</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_river_bus" tools:ignore="MissingTranslation">River Bus</string>
+    <!-- TODO: translate -->
+    <string name="mode_name_cable_car" tools:ignore="MissingTranslation">Cable car</string>
+    <!-- TODO: translate -->
     <!-- The mode groups' names, in the near-me list's overflow menu, Settings and the trip's mode
          chips: "Underground" holds the Tube, the DLR and the Elizabeth line. -->
     <string name="mode_group_tube" tools:ignore="MissingTranslation">Underground</string>

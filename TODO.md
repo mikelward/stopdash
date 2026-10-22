@@ -4996,7 +4996,7 @@ and these carry the rest as their own PRs:
       trip notification, the pole labels the phone sends the watch, and the widget's and the watch's own
       headers); ~~countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
       in the UI~~ (done: the app's screens, the widget and the watch); ~~"N min ago" (`RelativeTime`)~~ (done: the top bar's age stamp); ~~distances' units and their "." decimal
-      (`StopDistance`)~~ (done; the bug report keeps its English); mode names (`ModeIcon`; ~~search's group names and subtitles~~ done, with the count of hidden lines); the
+      (`StopDistance`)~~ (done; the bug report keeps its English); ~~mode names (`ModeIcon`)~~ (done: search's group names and subtitles, with the count of hidden lines, what a screen reader hears for a search or favorite place's modes, and a line's mode on the line list); the
       "<name> line" label; ~~the " to " join of a closure's stops~~ (done); ~~"via" in spoken branch labels~~ (done);
       ~~the Live Update chip's compass letters~~ (done, and the walk row's); ~~the watch's "Disrupted:"~~ (done). ~~One place parses that
       English back (`removeSuffix(" min")`)~~ (gone with the app's countdowns), and hidden lines are saved by their English
