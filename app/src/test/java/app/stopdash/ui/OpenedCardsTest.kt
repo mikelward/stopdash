@@ -6,6 +6,8 @@ import app.stopdash.domain.StopLocation
 import java.time.Instant
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -128,6 +130,49 @@ class OpenedCardsTest {
             opened.fold(own) { all, ids -> all + ids }
         })
         assertEquals(setOf("NA", "MA"), fetching.first())
+        assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.all { it == "test-compute" })
+    }
+
+    @Test
+    fun theCardsAsDrawn_andTheOpenOnesDistances_comeWithTheirStanding() = runBlocking {
+        val place = CollapsedPlaces.Place("a", "MA", "Farther", 2000.0, emptyList())
+        val other = CollapsedPlaces.Place("b", "MB", "Farther still", 2500.0, emptyList())
+        val loads = MutableStateFlow(Picked(listOf(place, other), mapOf("a" to open, "b" to FartherLoad.Loading)))
+        // One collection, as the screen's is.
+        val seen = Channel<OpenedCards>(Channel.UNLIMITED)
+        val collecting = launch { openedCards(loads, compute).collect { seen.send(it) } }
+        suspend fun next(matching: (OpenedCards) -> Boolean): OpenedCards {
+            while (true) seen.receive().takeIf(matching)?.let { return it }
+        }
+
+        val first = seen.receive()
+        assertEquals(listOf(FartherCard(place, open), FartherCard(other, FartherLoad.Loading)), first.drawn)
+        assertEquals(mapOf("MA" to 2000.0), first.openDistanceMeters)
+        // The card's departures changing leaves the cards and distances as they were, the same ones.
+        val failed = clean.copy(refreshFailure = DeparturesUiState.Error.Kind.NETWORK)
+        state.value = failed
+        val updated = next { it.cards.single().second === failed }
+        assertSame(first.drawn, updated.drawn)
+        assertSame(first.openDistanceMeters, updated.openDistanceMeters)
+        // The cards' standing changing works them out again.
+        val closedLoads = mapOf<String, FartherLoad>("a" to FartherLoad.Loading)
+        loads.value = Picked(listOf(place), closedLoads)
+        val closed = next { it.loads === closedLoads }
+        assertEquals(listOf(FartherCard(place, FartherLoad.Loading)), closed.drawn)
+        assertEquals(emptyMap<String, Double>(), closed.openDistanceMeters)
+        collecting.cancel()
+    }
+
+    @Test
+    fun theCardsAsDrawn_areWorkedOutOnTheWorker() = runBlocking {
+        val ranOn = mutableListOf<String>()
+        val place = CollapsedPlaces.Place("a", "MA", "Farther", 2000.0, emptyList())
+        val loads = MutableStateFlow(Picked(listOf(place), mapOf("a" to open)))
+        val opened = openedCards(loads, compute, drawnOf = { offered, standing ->
+            ranOn += Thread.currentThread().name.substringBefore(" @")
+            fartherCardsOf(offered, standing)
+        })
+        assertEquals(listOf(FartherCard(place, open)), opened.first().drawn)
         assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.all { it == "test-compute" })
     }
 

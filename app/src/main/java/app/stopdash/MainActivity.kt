@@ -30,12 +30,9 @@ import app.stopdash.domain.BundledStopFinder
 import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.StopFinder
-import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DestinationViaChoice
-import app.stopdash.domain.FartherBuses
-import app.stopdash.domain.FartherStations
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
@@ -290,7 +287,6 @@ import app.stopdash.ui.distanceText
 import app.stopdash.ui.DeparturesUiState
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
-import app.stopdash.ui.FartherCard
 import app.stopdash.ui.FartherCardsViewModel
 import app.stopdash.ui.FartherFor
 import app.stopdash.ui.FartherLoad
@@ -388,7 +384,7 @@ import app.stopdash.ui.WidgetUpdateActions
 import app.stopdash.ui.WriteFailures
 import app.stopdash.ui.chipsPending
 import app.stopdash.ui.fartherCardsKey
-import app.stopdash.ui.fartherReached
+import app.stopdash.ui.fartherPlacesOf
 import app.stopdash.ui.Inputs
 import app.stopdash.ui.ShownJourneys
 import app.stopdash.ui.Worked
@@ -396,7 +392,6 @@ import app.stopdash.ui.rememberShownJourneys
 import app.stopdash.ui.favoriteRouteName
 import app.stopdash.ui.hereAnchor
 import app.stopdash.ui.keptTripStart
-import app.stopdash.ui.reachedStopIds
 import app.stopdash.ui.rememberFarReveal
 import app.stopdash.ui.rememberHereOrigin
 import app.stopdash.ui.rememberLastPull
@@ -3970,11 +3965,9 @@ class MainActivity : ComponentActivity() {
             // Null until the picks are worked out (the bundled list loads off the main thread), so a
             // recreated screen (a rotation, a return from Settings) doesn't read "nothing offered" and
             // close the cards the retained list has open.
-            val shownNearStops by viewModel.shownNearStops.collectByIdentityWithLifecycle()
-            // The shown stops the loaded list has departures for (null while still loading): one whose
-            // fetch failed isn't on the list, so its lines keep their farther cards.
-            val loadedStopIds = reachedStopIds(state)
-            val reachedStops = remember(shownNearStops, loadedStopIds) { fartherReached(shownNearStops, loadedStopIds) }
+            // The shown stops the farther cards count as reached, worked out on the worker (null until
+            // first worked out): one whose fetch failed isn't on the list, so its lines keep their cards.
+            val reachedStops by viewModel.reachedStops.collectByIdentityWithLifecycle()
             // Every list offers them, near me and a From… station's page alike (SPEC *Finding stops
             // → Farther stations*): the cards are how farther stations and bus stops page in.
             // Tagged with the set they were picked for: a re-locate to another set shows none (not
@@ -3982,19 +3975,13 @@ class MainActivity : ComponentActivity() {
             val fartherFor by produceState<FartherFor?>(null, ready, hiddenModes, reachedStops) {
                 // Each shown nearby stop's lines, and its ids: its index record says which route
                 // ends its services reach.
-                val reached = reachedStops
+                val reached = reachedStops ?: return@produceState
                 // The candidate bus places come from the nearby lookup's farther tier, already in
-                // memory; the screen narrows them to the cards to show, against the rows it draws. Each
-                // place records the eager stations it stands by; one the screen shows wins it a tie.
-                val stationStops = FartherBuses.stationStops(ready.eager, hiddenModes)
-                val buses = FartherBuses.candidates(ready.more, hiddenModes, stationStops).map { CollapsedPlaces.of(it) }
+                // memory, and are worked out with the stations, off the main thread.
                 value = FartherFor(
                     ready.clusterSetKey,
-                    withContext(Dispatchers.IO) {
-                        val index = StationIndexStore.load(appContext)
-                        val stations = FartherStations.pick(index.stations, ready.location, reached, hiddenModes)
-                            .map { CollapsedPlaces.of(it, index.lineNames) }
-                        CollapsedPlaces.ordered(stations, buses)
+                    fartherPlacesOf(ready.eager, ready.more, ready.location, reached, hiddenModes, Dispatchers.IO) {
+                        StationIndexStore.load(appContext)
                     },
                 )
             }
@@ -4090,11 +4077,9 @@ class MainActivity : ComponentActivity() {
                 .collectAsStateWithLifecycle()
             val fartherLoads = shownFarther.loads
             LaunchedEffect(farther, ready.location) { farther?.let { fartherModels.retain(it, ready.location) } }
-            val fartherOffered = shownFarther.offered
-            val fartherCards = remember(fartherOffered, fartherLoads) { fartherOffered.orEmpty().map { FartherCard(it, fartherLoads[it.key]) } }
-            val fartherDistanceMeters = remember(fartherLoads) {
-                fartherLoads.values.filterIsInstance<FartherLoad.Open>().fold(emptyMap<String, Double>()) { acc, open -> acc + open.distanceMeters }
-            }
+            // Worked out with the cards' standing, off the main thread.
+            val fartherCards = shownFarther.cards
+            val fartherDistanceMeters = shownFarther.distanceMeters
             // Each open card's departures, kept live while shown as the list's are, then shown
             // through the list's own rows beside its card.
             for ((cardKey, load) in fartherLoads) {

@@ -21,6 +21,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FartherStations
 import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.Dismissed
@@ -80,6 +81,11 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
@@ -300,8 +306,6 @@ class MainViewModel(
     // Each stop's distance as this model last took it ([remeasure]), for tests.
     internal val distanceMeters: Map<String, Double> get() = stopDistanceMeters
     private var more: List<NearbySelection.NearbyCluster> = initialMore
-
-    private fun nearbyPlaces(): List<Terminating.Place> = nearbyPlacesOf(eagerStops, more, stopDistanceMeters)
 
     // The near-me set actually fetched and shown: the eager tier.
     private val nearStops: List<StopRef>
@@ -699,6 +703,16 @@ class MainViewModel(
     // tiers goes stale on those.
     private val _shownNearStops = MutableStateFlow(nearStops)
     val shownNearStops: StateFlow<List<StopRef>> = _shownNearStops.asStateFlow()
+
+    // The shown near-me stops the farther cards count as reached ([fartherReached]): those the list has
+    // departures for, or every one while it loads. Worked out on the worker as the stops or the list
+    // change, and published only when it changes, so the screen picks its farther cards again only then.
+    // Null until first worked out.
+    val reachedStops: StateFlow<List<FartherStations.ReachedStop>?> =
+        combine(_shownNearStops, _state) { shown, state -> fartherReached(shown, reachedStopIds(state)) }
+            .distinctUntilChanged()
+            .flowOn(compute)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     // Drives the pull-to-refresh indicator (SPEC D6); true only while a fetch is in flight.
     private val _refreshing = MutableStateFlow(false)
