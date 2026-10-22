@@ -69,6 +69,7 @@ import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
@@ -96,6 +97,7 @@ import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.lineCode
 import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
+import app.stopdash.ui.countdownWords
 import app.stopdash.ui.spokenText
 import app.stopdash.ui.BranchSpoken
 import app.stopdash.ui.BudgetedRow
@@ -192,7 +194,7 @@ open class StopDashWidget internal constructor(
         // model and its layouts are worked out on a worker. Its own redraw is due when it goes out of
         // date, when it's too old to show, or when a guessed train is due; once it's gone, that render
         // draws the departures and arms their redraws.
-        val trip = widgetTripModelOn(WidgetTripStore.load(context), Instant.now(), locale = widgetLocale(context))
+        val trip = widgetTripModelOn(WidgetTripStore.load(context), Instant.now(), locale = widgetLocale(context), countdownWords = countdownWords(context.resources))
         if (trip != null) {
             val tripNow = Instant.now()
             val tripExpiry = JavaDuration.between(tripNow, trip.redrawAt).toKotlinDuration().takeIf { it.isPositive() }
@@ -342,6 +344,7 @@ open class StopDashWidget internal constructor(
         val models = widgetModels(
             shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle, locale = widgetLocale(context),
             hiddenLabel = { hiddenGroupsLabel(it, context.resources) },
+            countdownWords = countdownWords(context.resources),
         )
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
@@ -426,6 +429,8 @@ internal suspend fun widgetModels(
     locale: Locale = Locale.UK,
     // Names hidden modes for the empty widget ([widgetModel]), on the worker with the rest.
     hiddenLabel: (Set<String>) -> String = { it.joinToString(", ") },
+    // The countdowns' words, in the app's language ([widgetModel]).
+    countdownWords: CountdownWords = CountdownWords.ENGLISH,
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
@@ -439,6 +444,7 @@ internal suspend fun widgetModels(
             tap = tap,
             rideTitle = rideTitle,
             locale = locale,
+            countdownWords = countdownWords,
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
@@ -638,6 +644,8 @@ internal fun widgetModel(
     rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
     // The language the stamp's weekday is said in ([widgetStamp]): the app's.
     locale: Locale = Locale.UK,
+    // The countdowns' words, in the app's language: a line's stacking is decided from the countdown it draws.
+    countdownWords: CountdownWords = CountdownWords.ENGLISH,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -783,7 +791,7 @@ internal fun widgetModel(
     // geometry nothing stacks. The planned-work calendar sits before the first line's countdown.
     fun stacked(row: DepartureRow, line: DestinationGroup): Boolean {
         if (geometry == null) return false
-        val countdown = if (Staleness.isStale(row.fetchedAt, now)) Countdown.staleLabel(line.times) else Countdown.mergedLabel(line.times, now)
+        val countdown = if (Staleness.isStale(row.fetchedAt, now)) Countdown.staleLabel(line.times) else Countdown.mergedLabel(line.times, now, countdownWords)
         val calendar = row.status == null && row.plannedAlerts.isNotEmpty() &&
             DepartureRows.destinationLines(row, WIDGET_MAX_TIMES, topology).firstOrNull() == line
         return widgetRowStacked(listOf(countdown), calendar, rowWidth!!, geometry.fontScale)
@@ -879,7 +887,7 @@ internal fun widgetModel(
     // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
     // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
     if (twoColumns && columnBreak == null) {
-        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, locale = locale)
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, locale = locale, countdownWords = countdownWords)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
@@ -1431,6 +1439,8 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float) 
     // live-looking numbers (SPEC D4): the soonest train's predicted time, dimmed and marked "21:14?",
     // stands in for it ([Countdown.staleLabel]), as on every surface.
     val stale = Staleness.isStale(row.fetchedAt, now)
+    // Its countdowns in the app's language, as [widgetModel] measured them.
+    val words = countdownWords(LocalContext.current.resources)
     // A branching (service, direction) row keeps each destination — and each via-branch of one
     // terminus — on its own line with its own countdown, so a divergent train's time never sits
     // under the wrong destination or branch (SPEC D8). The groups were chosen (and line-budgeted)
@@ -1481,7 +1491,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float) 
             if (index > 0) Spacer(GlanceModifier.height(4.dp))
             val label = widgetLineLabel(row, group)
             val spoken = widgetLineSpoken(row, group)?.spokenText(LocalContext.current.resources)
-            val countdown = if (stale) Countdown.staleLabel(group.times) else Countdown.mergedLabel(group.times, now)
+            val countdown = if (stale) Countdown.staleLabel(group.times) else Countdown.mergedLabel(group.times, now, words)
             val calendar = planned?.takeIf { index == 0 }
             if (rowModel.stackedLines.getOrElse(index) { false }) {
                 // Too narrow at this font for all three on one line: pill and countdown, then the

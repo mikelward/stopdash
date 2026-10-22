@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.annotation.VisibleForTesting
 import app.stopdash.data.WatchTrip
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.CountdownWords
 import app.stopdash.domain.Departure
 import app.stopdash.domain.SteadyClock
 import java.io.File
@@ -241,8 +242,10 @@ internal suspend fun widgetTripModelOn(
     worker: CoroutineDispatcher = Dispatchers.Default,
     // The language the stamp's weekday is said in ([widgetStamp]): the app's.
     locale: Locale = Locale.UK,
+    // The trains' countdowns' words, in the app's language.
+    countdownWords: CountdownWords = CountdownWords.ENGLISH,
 ): WidgetTripModel? = withContext(worker) {
-    kept?.let { widgetTripModel(it.trip, now, SteadyClock.age(it.steadyAt, now), locale) }
+    kept?.let { widgetTripModel(it.trip, now, SteadyClock.age(it.steadyAt, now), locale, countdownWords) }
 }
 
 /**
@@ -258,6 +261,7 @@ internal fun widgetTripModel(
     now: Instant,
     age: Duration = trip?.let { Duration.between(Instant.ofEpochMilli(it.sentAt), now) } ?: Duration.ZERO,
     locale: Locale = Locale.UK,
+    countdownWords: CountdownWords = CountdownWords.ENGLISH,
 ): WidgetTripModel? {
     if (trip == null) return null
     // Its time as the wall clock reads it now, for the stamp and the redraws, which go by the wall clock.
@@ -281,7 +285,7 @@ internal fun widgetTripModel(
                 lineName = first.lineName,
                 mode = first.mode,
                 destination = first.destination,
-                countdown = if (stale || old) Countdown.staleLabel(departures) else Countdown.mergedLabel(departures, now),
+                countdown = if (stale || old) Countdown.staleLabel(departures) else Countdown.mergedLabel(departures, now, countdownWords),
                 stop = stop,
                 missed = group.first().second.missed,
                 guess = old,
