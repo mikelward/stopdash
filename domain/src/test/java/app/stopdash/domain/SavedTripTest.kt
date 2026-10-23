@@ -30,6 +30,18 @@ class SavedTripTest {
     }
 
     @Test
+    fun `the stations open round-trip, each with its own name, lead, level and To`() {
+        val stations = mapOf(
+            "940GZZLUKSX" to OpenStation("King's Cross St. Pancras", to = toCanaryWharf.startPicking()),
+            // Opened from one of King's Cross & St Pancras's station names, at the level its row said.
+            "HUBKGX" to OpenStation("St Pancras International", StationLead("St Pancras International", listOf("national-rail")), "hub", toPlace),
+            "940GZZLUCYF" to OpenStation("Canary Wharf"),
+        )
+        assertEquals(stations, SavedTrip.openStationsOf(SavedTrip.openStationsFields(stations)))
+        assertEquals(emptyMap<String, OpenStation>(), SavedTrip.openStationsOf(SavedTrip.openStationsFields(emptyMap())))
+    }
+
+    @Test
     fun `a change of start round-trips with its To`() {
         val changes = listOf(
             OriginChange.NearMe(ToChoice.NONE.startPicking()),

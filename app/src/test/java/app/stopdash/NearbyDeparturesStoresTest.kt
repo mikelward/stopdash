@@ -60,6 +60,31 @@ class NearbyDeparturesStoresTest {
     }
 
     @Test
+    fun `each open station keeps its models while another is shown over it, and a closed one's go with it`() {
+        // Codex on #1147: a station opened over another dropped that one's models, so it came back looked up again.
+        val holder = NearbyDeparturesStores()
+        val open = mutableSetOf("a")
+        val ownerA = holder.ownerAmong("a", open = open)
+        val vmA = ViewModelProvider(ownerA, ViewModelProvider.NewInstanceFactory())[SentinelViewModel::class.java]
+        // A station opened over it: both open.
+        open += "b"
+        val ownerB = holder.ownerAmong("b", open = open)
+        val vmB = ViewModelProvider(ownerB, ViewModelProvider.NewInstanceFactory())[SentinelViewModel::class.java]
+        assertFalse("the station under keeps its models", vmA.cleared)
+        // Drawn under the swipe from the one over it: its own store again, the other's kept.
+        assertSame(ownerA.viewModelStore, holder.ownerAmong("a", open = open).viewModelStore)
+        assertFalse(vmB.cleared)
+        // The one over it closed: its models go, the one under's stay.
+        open -= "b"
+        holder.keepOnly(open)
+        assertTrue(vmB.cleared)
+        assertFalse(vmA.cleared)
+        // A station no longer open goes the next time a store is asked for.
+        holder.ownerAmong("c", open = setOf("c"))
+        assertTrue(vmA.cleared)
+    }
+
+    @Test
     fun `clearAll drops every store so a recovered set rebuilds its model`() {
         val holder = NearbyDeparturesStores()
         val ownerA = holder.ownerFor("a")

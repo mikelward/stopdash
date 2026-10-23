@@ -93,4 +93,33 @@ object SavedTrip {
     private const val ORIGIN_FIELDS_WITHOUT_LEAD = 2 + TO_FIELDS_WITHOUT_ART
     private const val LEGACY_STATION_FIELDS = 2
     private const val LEGACY_NEAR_ME_FIELDS = 1
+
+    /**
+     * The stations open on the back stack, by id ([OpenStation]): five fields for each, its id, its name, its lead (the
+     * [StationLead.name], then its modes; empty for none), its level's code and its To… ([toChoiceFields]).
+     */
+    fun openStationsFields(stations: Map<String, OpenStation>): List<Any?> = stations.flatMap { (id, station) ->
+        listOf(
+            id,
+            station.name,
+            ArrayList(station.lead?.let { listOf(it.name) + it.modes }.orEmpty()),
+            station.level,
+            ArrayList(toChoiceFields(station.to)),
+        )
+    }
+
+    /** What [openStationsFields] saved. */
+    fun openStationsOf(saved: List<Any?>): Map<String, OpenStation> = saved.chunked(OPEN_STATION_FIELDS).associate { fields ->
+        val lead = (fields[2] as List<*>).map { it as String }
+        @Suppress("UNCHECKED_CAST")
+        val to = toChoiceOf(fields[4] as List<Any?>)
+        fields[0] as String to OpenStation(
+            name = fields[1] as String,
+            lead = lead.firstOrNull()?.let { StationLead(it, lead.drop(1)) },
+            level = fields[3] as String?,
+            to = to,
+        )
+    }
+
+    private const val OPEN_STATION_FIELDS = 5
 }

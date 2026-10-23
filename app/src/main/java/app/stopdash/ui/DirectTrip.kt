@@ -187,6 +187,14 @@ internal fun rememberHereOrigin(
     work: HereOriginWork = viewModel(key = "here-origin"),
 ): List<StopRef>? = rememberWorked(work.slot, Inputs(ready, hidden)) { hereOrigin(ready, hidden) }
 
+/**
+ * A station page's [HereOriginWork], shared by its list and the trip it opens: its own, in the station's store
+ * ([androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner]), never the activity's, so two stations drawn at
+ * once (one under the back swipe from another opened over it) never take each other's answer (Codex on #1147).
+ */
+@Composable
+internal fun stationOriginWork(): HereOriginWork = viewModel(key = "here-origin-station")
+
 /** [rememberHereOrigin]'s last answer, held by a view model store rather than one screen's composition. */
 internal class HereOriginWork : ViewModel() {
     internal val slot: MutableState<Worked<Inputs, List<StopRef>>?> = mutableStateOf(null)

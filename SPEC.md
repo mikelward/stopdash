@@ -4034,7 +4034,9 @@ its stations stay inert.
 A stop tapped on a route page's stop list opens the same details over the route page, headed by the
 departure tapped with Go in place of From and To, and without the letter and way of a bus stop the ride gets off at (*Route detail*). Its line pills open the line in Lines…
 only where Lines… would show, the details stepping aside for it and coming back on its Back, as they do
-for the saved places' editor their Favorite opens (*Back*); elsewhere they're shown, not tapped.
+for the saved places' editor their Favorite opens (*Back*); elsewhere they're shown, not tapped. A station
+around it opens its page over the details and the page they're over, another station's included: Back
+returns to the details, and theirs to that station as it was left.
 A bus stop shows its **letter and the way its buses go** under From and To ("Stop H, towards Oxford
 Circus"), or its compass heading where TfL gives no letter or "towards", as the near-me list heads its
 poles: from its stop area's poles, the area as the line's route data places the stop, both from the
@@ -4526,7 +4528,7 @@ lands on the near-me list (*On the way*), as a place shared into the app does (*
 
 The screens opened over the near-me view are a back stack, the one opened last on top: Settings,
 Licenses, Lines…, the From… search and a station's page (over the search it was picked in, or the page it was
-opened from), the saved places and favorite rides, the trip on the way's screen, and
+opened from, another station's for one around a route page's stop), the saved places and favorite rides, the trip on the way's screen, and
 the trip from here, over the page it was opened from (the near-me list, or Lines… for a stop's To). Each
 opens over the page it was opened from in a quarter of a second, sliding in a little as it fades in, and
 closes the same way a little faster (maintainer, 2026-10-22: Navigation 3's 700 ms default is too long),

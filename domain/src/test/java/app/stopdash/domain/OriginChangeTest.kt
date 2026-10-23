@@ -60,14 +60,14 @@ class OriginChangeTest {
     }
 
     @Test
-    fun `backing out of a station mid-change keeps the next station opening at the trip's To`() {
+    fun `a station picked mid-change opens at the trip's To, even after backing out of one`() {
         // The station was still loading, or failed: the change isn't done, so its To… goes on.
-        assertEquals(searching, OriginChange.toAfterStationClosed(OriginChange.NearMe(searching)))
-        assertEquals(searching, OriginChange.toAfterStationClosed(fromSearch))
-        assertEquals(toCanaryWharf, OriginChange.toAfterStationClosed(OriginChange.NearMe(toCanaryWharf)))
-        assertEquals(toCanaryWharf, OriginChange.toAfterStationClosed(fromRoutes))
-        // An ordinary From… station leaves nothing behind.
-        assertEquals(ToChoice.NONE, OriginChange.toAfterStationClosed(null))
+        assertEquals(searching, OriginChange.pickedTo(OriginChange.NearMe(searching)))
+        assertEquals(searching, OriginChange.pickedTo(fromSearch))
+        assertEquals(toCanaryWharf, OriginChange.pickedTo(OriginChange.NearMe(toCanaryWharf)))
+        assertEquals(toCanaryWharf, OriginChange.pickedTo(fromRoutes))
+        // With no change under way, a station opens with nothing picked.
+        assertEquals(ToChoice.NONE, OriginChange.pickedTo(null))
     }
 
     @Test
