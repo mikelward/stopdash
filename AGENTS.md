@@ -298,9 +298,10 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 
 ## Talking to the user
 
-- **One question at a time** — in plain chat or the client's question tool
-  (`AskUserQuestion` in Claude Code, `ask_question` in Antigravity). Stop and wait after
-  asking; acknowledge the answer before acting. Never ask while the user is typing.
+- **One question at a time**, in the client's question tool (`AskUserQuestion` in Claude
+  Code, `ask_question` in Antigravity; plain chat only without one), carrying its own context
+  (what, why, each option's cost) so it answers without scrolling back (maintainer,
+  2026-10-23). Stop and wait; acknowledge the answer before acting. Never ask mid-typing.
 - **Ask only a real product trade-off** (maintainer, 2026-09-30). Fix clear bugs and fetch
   feature data through existing caches without asking. Check a question's premise in code
   first.
@@ -314,8 +315,10 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   routine machinery, or a mistake caught and fixed before reaching the repo. The
   session-start `AGENTS.md` line still opens every session.
 - **Keep replies short**; lead with the single most important point.
-- **End the turn by restating any pending decision** — the last line is the question you
-  are waiting on, written out, every turn until answered. Nothing pending, no line.
+- **A pending decision stays answerable**: asked in the tool, don't repeat it; asked in chat,
+  restate it whole (context and options, never a bare one-liner) as the last line of a turn
+  that speaks anyway; a routine event never gets a message just to repeat it (maintainer,
+  2026-10-23: one-liners buried the context). Nothing pending, no line.
 
 ## Language and spelling
 
