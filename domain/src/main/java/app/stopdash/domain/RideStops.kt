@@ -7,7 +7,8 @@ import androidx.annotation.WorkerThread
  * it calls at through where it gets off, by name, and [here], the index of the one the rider is at or last
  * passed — where it boards until they're on board, then the stop before the next one the trip counts to.
  * Null [here] where on board but the trip can't place them, so no stop is marked as theirs. [missing] when a stop
- * had no name to show, so the line's route is worth reading for it.
+ * had no name to show, so the line's route is worth reading for it. [ids] are the stops' own, beside [names], each
+ * blank where the Planner gave none (a bus stop named for a station), for a tap to open its details.
  */
 class RideStopList(
     val names: List<String>,
@@ -16,6 +17,7 @@ class RideStopList(
     // [here] comes from TfL's calls for the train (not where the rider was seen, nor the boarding stop): it goes as
     // soon as the trip's answer is too old to stand behind, before the list is worked out again ([shownStops]).
     val fromCalls: Boolean = false,
+    val ids: List<String> = emptyList(),
 ) {
     /**
      * This list as shown now, before it's worked out again for the trip's latest answer: unmarked where that answer
@@ -23,8 +25,8 @@ class RideStopList(
      */
     fun shownStops(stale: Boolean, progress: TripProgress?, boarded: Boolean): RideStopList = when {
         // Where it boards while the rider is still to board, as [rideStopList] marks it (Codex, #968).
-        marksBoarding(progress, boarded) -> if (here == 0 || names.isEmpty()) this else RideStopList(names, 0, missing, fromCalls = false)
-        here != null && ((stale && fromCalls) || marksNoStop(progress, boarded, stale)) -> RideStopList(names, null, missing, fromCalls)
+        marksBoarding(progress, boarded) -> if (here == 0 || names.isEmpty()) this else RideStopList(names, 0, missing, fromCalls = false, ids)
+        here != null && ((stale && fromCalls) || marksNoStop(progress, boarded, stale)) -> RideStopList(names, null, missing, fromCalls, ids)
         else -> this
     }
 }
@@ -97,7 +99,9 @@ fun rideStopList(
     // The rider's stop among those named: theirs, else the last named before it.
     val shownHere = here?.let { h -> kept.indexOfLast { it <= h }.takeIf { it >= 0 } }
     val fromCalls = (progress is TripProgress.Riding && progress.seen && !progress.byPosition) || (progress is TripProgress.Lost && boarded)
-    return RideStopList(kept.map { all[it]!! }, shownHere, missing = kept.size < all.size, fromCalls = fromCalls)
+    // all[0] is where it boards, all[i + 1] is path[i].
+    val ids = kept.map { if (it == 0) on.fromId else on.path[it - 1] }
+    return RideStopList(kept.map { all[it]!! }, shownHere, missing = kept.size < all.size, fromCalls = fromCalls, ids = ids)
 }
 
 /**

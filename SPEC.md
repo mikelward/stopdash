@@ -3120,7 +3120,10 @@ as it was.
   it's loading meanwhile rather than grow under the rider; a route that can't be read says why, as the route
   page does, and isn't asked for again until the list is reopened), and
   one named by neither is left out rather than shown by its code; closed by default, so the
-  route's legs stay one row each.
+  route's legs stay one row each. **A stop tapped opens its details**, as a route page's stop does (maintainer,
+  2026-10-23): its departures, its lines and the stations around it, headed by the ride's line, where it's boarded and,
+  where the Planner names one, where it heads; with no Go and no journey to star, the trip already being on its way.
+  Back returns to the trip. A stop the Planner gave no id (the bus stop named for a station) opens none.
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
   left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · 08:31", unmarked when it's TfL's prediction for where
   the rider gets off the ride they're on, with only walks after (it read "~08:31" until 2026-10-16). It's "est." when any of it is the

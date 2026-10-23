@@ -121,6 +121,7 @@ import app.stopdash.domain.routeAnchor
 import app.stopdash.domain.OffPlan
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.cleanStopName
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.UsageEvent
@@ -418,6 +419,7 @@ internal fun OnTheWayScreen(
         val stopsLevel = trip?.stepFree ?: StepFree.DEFAULT
         val rideStops = rememberRideStops(stopsOn, stopsLevel, stopsProgress, stopsBoarded, stopsOpen, stale = !current)
         val stopsRail = stopsOn?.let { railColorFor(it) }
+        val openStop = LocalOpenRouteStop.current
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -608,7 +610,12 @@ internal fun OnTheWayScreen(
                         val failure = rideStops?.failure
                         if (stops != null && stops.names.size >= 2) {
                             items(stops.names.size, key = { "stop${step.leg}/$it" }) { i ->
-                                RideStopRow(stops.names, i, stops.here, stopsRail, joinGap = 12.dp)
+                                // A stop tapped opens its details, as a route page's does (maintainer, 2026-10-23); one the
+                                // Planner gave no id opens none.
+                                val id = stops.ids.getOrNull(i)?.takeIf { it.isNotBlank() }
+                                val head = rideStops?.head
+                                val onOpen = openStop?.takeIf { id != null && head != null }?.let { open -> { open(rideStopOpen(head!!, id!!, stops.names[i], i)) } }
+                                RideStopRow(stops.names, i, stops.here, stopsRail, joinGap = 12.dp, onOpen = onOpen)
                             }
                         }
                         if (failure != null) {
@@ -2366,16 +2373,18 @@ private fun rememberRideStops(on: TripLeg?, stepFree: StepFree, progress: TripPr
             needed = true
             list = withContext(worker) { rideStopList(ride, progress, boarded, read?.names.orEmpty(), stale) }
         }
+        // What a tapped stop's details are headed by, worked out here so the tap only reads it.
+        val head = withContext(worker) { rideStopHead(ride, list) }
         // None to show: the screen says the list is unavailable, or why it couldn't be read, rather than leave the
         // opened space blank.
-        shown = on to StopsShown(list ?: RideStopList(emptyList(), null), read?.failure?.takeIf { needed })
+        shown = on to StopsShown(list ?: RideStopList(emptyList(), null), read?.failure?.takeIf { needed }, head)
     }
     // A list held from an earlier answer drops its stop at once, not when it's worked out again, where the answer now is
     // stale (a TfL-placed stop) or places no one (Codex, #968).
     // Held only while the ride runs the same stops: a train found taking another branch between the same two stops is
     // still the same ride by [sameRide], but not the same list (Codex, #968).
     return shown?.takeIf { open && on != null && sameRide(it.first, on) && (sameStops(it.first, on) || samePath?.let { (a, b) -> a === it.first && b === on } == true) }
-        ?.second?.let { StopsShown(it.list.shownStops(stale, progress, boarded), it.failure) }
+        ?.second?.let { StopsShown(it.list.shownStops(stale, progress, boarded), it.failure, it.head) }
 }
 
 /**
@@ -2406,10 +2415,44 @@ internal class RideStopsReads : ViewModel() {
 internal class RouteRead(val lineId: String, val sequence: LineSequence?, val names: Map<String, String>, val failure: DeparturesUiState.Error.Kind?)
 
 /** A ride's stops as Show stops lists them, and why its line's route couldn't be read, where it couldn't. */
-private class StopsShown(val list: RideStopList, val failure: DeparturesUiState.Error.Kind?)
+private class StopsShown(val list: RideStopList, val failure: DeparturesUiState.Error.Kind?, val head: RideStopHead)
 
 // Whether [a] and [b] run the same stops, by their lists' identity alone: a refresh copies a ride, keeping its lists.
 private fun sameStops(a: TripLeg, b: TripLeg): Boolean = a.path === b.path && a.pathNames === b.pathNames
+
+/**
+ * What the details of a stop tapped under Show stops are headed by ([rideStopOpen]): the ride's [line], where it's
+ * boarded ([fromName]) and, where the Planner names one place, where it heads ([towards]); and each listed stop's
+ * position where the Planner gave it (its ends'), beside [RideStopList.ids].
+ */
+internal class RideStopHead(val line: LineRef, val fromName: String, val towards: String, val positions: List<Coordinates?>)
+
+/** [ride]'s [RideStopHead] for its listed [stops]. Cleans the heading's name: off the main thread. */
+@WorkerThread
+internal fun rideStopHead(ride: TripLeg, stops: RideStopList?): RideStopHead = RideStopHead(
+    line = LineRef(ride.lineId, ride.lineName.ifBlank { ride.lineId }, ride.mode),
+    fromName = ride.fromName,
+    towards = ride.headings.singleOrNull()?.let { DepartureLabels.destinationLabel(it, "") }.orEmpty(),
+    positions = stops?.ids.orEmpty().mapIndexed { i, id -> if (i == 0) ride.fromAt else ride.toAt?.takeIf { id == ride.toId } },
+)
+
+/**
+ * The details a stop tapped under Show stops opens, as a route page's stop's do: its departures, lines and the stations
+ * around it, headed by [head]. No Go nor journey to star: the trip is already on its way. [index] is the stop's place in
+ * the list, where it boards first. Reads only what's worked out already: a tap's work.
+ */
+internal fun rideStopOpen(head: RideStopHead, id: String, name: String, index: Int): RouteStopOpen = RouteStopOpen(
+    stationId = id,
+    name = name,
+    journey = null,
+    stopId = id,
+    line = head.line,
+    fromName = head.fromName,
+    towards = head.towards,
+    position = head.positions.getOrNull(index),
+    boarding = index == 0,
+    ridden = index > 0,
+)
 
 /** A line under Show stops in place of the ride's stops: why they aren't there yet, or at all. */
 @Composable

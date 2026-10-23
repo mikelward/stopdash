@@ -69,7 +69,7 @@ internal sealed interface Page : NavKey {
     @Serializable
     data class StationTrip(val id: String) : Page
 
-    /** A stop's details, tapped on a route page's stop list: a window over the page that route page is on. */
+    /** A stop's details, tapped on a route page's stop list or a trip's Show stops: a window over the page it's on. */
     @Serializable
     data object RouteStop : Page
 

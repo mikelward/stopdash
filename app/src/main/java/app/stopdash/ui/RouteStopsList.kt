@@ -761,7 +761,15 @@ private fun StopOnRail(
  * above it, which it reaches up over so the rail runs on unbroken, flush under its button.
  */
 @Composable
-internal fun RideStopRow(names: List<String>, index: Int, here: Int?, railColor: Color, joinGap: Dp = 0.dp) {
+internal fun RideStopRow(
+    names: List<String>,
+    index: Int,
+    here: Int?,
+    railColor: Color,
+    joinGap: Dp = 0.dp,
+    // Opens the stop's details, as a route page's stop does; null leaves it inert.
+    onOpen: (() -> Unit)? = null,
+) {
     // Indented as Show stops' chevron is (its button's 12dp padding), so the rail runs down from under it.
     Box(Modifier.testTag("onTheWayRideStop").pullUp(joinGap).padding(start = 12.dp)) {
         StopOnRail(
@@ -772,6 +780,7 @@ internal fun RideStopRow(names: List<String>, index: Int, here: Int?, railColor:
             last = index == names.lastIndex,
             here = index == here,
             passed = here != null && index < here,
+            onOpen = onOpen,
         )
     }
 }
