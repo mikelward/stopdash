@@ -210,6 +210,18 @@ class FartherCardsViewModel(
     private val opened: StateFlow<OpenedCards> = openedCards(picked, compute)
         .stateIn(viewModelScope, SharingStarted.Eagerly, OpenedCards.NONE)
 
+    // The list's own stops' distances, as the screen last handed them over ([showDistances]), kept here with the
+    // merge so a recreated screen keeps both.
+    private val listDistances = MutableStateFlow(ListDistances(emptyMap()))
+
+    /**
+     * The list's own stops' distances, from the screen as they change, for [shownWith] to merge with the open cards'
+     * stops' on [compute]. Compared by identity only, so handing them over walks nothing on the caller's thread.
+     */
+    fun showDistances(meters: Map<String, Double>) {
+        if (listDistances.value.meters !== meters) listDistances.value = ListDistances(meters)
+    }
+
     // The list this set's screen shows, with its merge ([shownWith]); one per list, kept across a rotation.
     private var shown: Pair<StateFlow<DeparturesUiState>, StateFlow<ShownFarther>>? = null
 
@@ -218,14 +230,17 @@ class FartherCardsViewModel(
      * ([ShownFarther]), worked out on [compute] whenever either changes ([shownWithOpened]). The screen
      * reads only finished merges, so it never draws the list without the opened rows (which would
      * collapse them and lose the list's place) or with rows from a moment other than their cards' and
-     * their failures'. Kept here, in the set's store, so a recreated screen draws the last one at once.
-     * A call from composition reads or builds the flow, no more.
+     * their failures'. The list's own stops' distances ([showDistances], [distances] the first time) come out
+     * with the open cards' stops' merged in ([ShownFarther.listDistanceMeters]), so the list measures its rows by
+     * distances from the same moment as them. Kept here, in the set's store, so a recreated screen draws the last
+     * one at once. A call from composition reads or builds the flow, no more.
      */
-    fun shownWith(list: StateFlow<DeparturesUiState>): StateFlow<ShownFarther> {
+    fun shownWith(list: StateFlow<DeparturesUiState>, distances: Map<String, Double>): StateFlow<ShownFarther> {
         shown?.let { (from, flow) -> if (from === list) return flow }
-        // No card standing yet, so no rows to miss, until the first merge is in.
-        val flow = shownWithOpened(list, opened, compute)
-            .stateIn(viewModelScope, SharingStarted.Eagerly, ShownFarther(list.value, null, emptyMap()))
+        showDistances(distances)
+        // No card standing yet, so no rows to miss and no distances of theirs, until the first merge is in.
+        val flow = shownWithOpened(list, opened, compute, listDistances.map { it.meters })
+            .stateIn(viewModelScope, SharingStarted.Eagerly, ShownFarther(list.value, null, emptyMap(), listDistanceMeters = distances))
         shown = list to flow
         return flow
     }
@@ -297,7 +312,8 @@ class OpenedCards(
 /**
  * The list as the screen shows it, its opened cards merged in ([state]), with the places offered as
  * cards ([offered], null until first picked) and those cards' standing ([loads]) it was merged with,
- * the cards as drawn ([cards]) and the open ones' stops' distances ([distanceMeters]).
+ * the cards as drawn ([cards]), the open ones' stops' distances ([distanceMeters]), and the list's own stops'
+ * distances with those merged in ([listDistanceMeters]), the list's own map itself while none is open.
  */
 class ShownFarther(
     val state: DeparturesUiState,
@@ -305,7 +321,11 @@ class ShownFarther(
     val loads: Map<String, FartherLoad>,
     val cards: List<FartherCard> = emptyList(),
     val distanceMeters: Map<String, Double> = emptyMap(),
+    val listDistanceMeters: Map<String, Double> = emptyMap(),
 )
+
+/** The list's own stops' distances, equal only to itself, so a new map is a new value without comparing the two. */
+private class ListDistances(val meters: Map<String, Double>)
 
 /** Each place in [offered] as a card, with where it stands in [loads]. */
 @WorkerThread
@@ -327,11 +347,13 @@ internal fun shownWithOpened(
     list: Flow<DeparturesUiState>,
     opened: Flow<OpenedCards>,
     compute: CoroutineDispatcher,
+    listDistances: Flow<Map<String, Double>> = flowOf(emptyMap()),
     merge: (DeparturesUiState.Loaded, List<Pair<Set<String>, DeparturesUiState>>) -> DeparturesUiState.Loaded = ::withOpenedFarther,
-): Flow<ShownFarther> = combine(list, opened) { state, cards -> state to cards }
-    .mapLatest { (state, cards) ->
+): Flow<ShownFarther> = combine(list, opened, listDistances) { state, cards, distances -> Triple(state, cards, distances) }
+    .mapLatest { (state, cards, distances) ->
         val merged = if (state is DeparturesUiState.Loaded && cards.cards.isNotEmpty()) merge(state, cards.cards) else state
-        ShownFarther(merged, cards.offered, cards.loads, cards.drawn, cards.openDistanceMeters)
+        val open = cards.openDistanceMeters
+        ShownFarther(merged, cards.offered, cards.loads, cards.drawn, open, if (open.isEmpty()) distances else distances + open)
     }
     .flowOn(compute)
 

@@ -5877,6 +5877,34 @@ class MainViewModelTest {
     private fun openModel(cards: FartherCardsViewModel) = cards.model(fartherPlace.key)!!
 
     @Test
+    fun `the list's distances merge with an opened card's, kept for a recreated screen and handed over by reference`() = runTest(dispatcher) {
+        val cards = FartherCardsViewModel(
+            stationStops = { listOf(fartherStop) },
+            newModel = { stops, distances -> MainViewModel(twoStopClient(), stops, clock = { now }, io = dispatcher, stopDistanceMeters = distances) },
+            io = dispatcher,
+            compute = dispatcher,
+        )
+        val list = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loaded(stops = listOf(StopArrivals("E", "Euston", emptyList(), now)), fetchedAt = now))
+        // Comparing these on the caller's thread would walk them (Codex, #1187): handing one over never does.
+        fun uncompared(vararg pairs: Pair<String, Double>): Map<String, Double> = object : HashMap<String, Double>(mapOf(*pairs)) {
+            override fun equals(other: Any?): Boolean = error("compared")
+        }
+        val shown = cards.shownWith(list, uncompared("E" to 300.0))
+        cards.open(fartherPlace, Coordinates(0.0, 0.0))
+        advanceUntilIdle()
+        // The card's stop measured from the fix, where it stands.
+        assertEquals(mapOf("E" to 300.0, "MA" to 0.0), HashMap(shown.value.listDistanceMeters))
+        // A recreated screen gets the same merge, its opened card's stops still in it, not one started again.
+        assertSame(shown, cards.shownWith(list, uncompared("E" to 300.0)))
+        assertEquals(0.0, shown.value.listDistanceMeters["MA"])
+        // The list's distances changing, the merge follows.
+        cards.showDistances(uncompared("E" to 150.0))
+        advanceUntilIdle()
+        assertEquals(150.0, shown.value.listDistanceMeters["E"])
+        assertEquals(0.0, shown.value.listDistanceMeters["MA"])
+    }
+
+    @Test
     fun `a pull fetches an opened farther card afresh too`() = runTest(dispatcher) {
         val client = CountingClient(emptyMap())
         val cards = FartherCardsViewModel(
