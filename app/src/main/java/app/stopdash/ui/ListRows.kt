@@ -8,6 +8,7 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
@@ -202,6 +203,13 @@ internal class ShownRows(
     val cardRowsByKey: RowsByKey = RowsByKey.NONE,
     // Each of [cards]' ride pages, by journey key ([rideViews]).
     val rides: Map<String, RideView> = emptyMap(),
+    // Grouped by platform with Group favorite rides By station: the rides whose trains stay in their own platforms'
+    // groups rather than a card of their own, by journey key, and those rows, by identity, each with its ride: it wears
+    // the ride's star and its long press hides a line from that ride, as the ride's card offers.
+    val ridesInPlatforms: Set<String> = emptySet(),
+    val rideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
+    // Those rows' rides' far ends, by identity: tapped, a row opens its route page as its ride's card would.
+    val rideEnds: Map<DepartureRow, Set<String>> = emptyMap(),
 )
 
 /**
@@ -495,12 +503,34 @@ internal fun shownRowsOf(
     last: ShownRows? = null,
     // The list is grouped by station: its groups split by mode too ([ListCards.of]).
     byStation: Boolean = false,
+    // How Group favorite rides groups a ride's trains ([inPlatforms]).
+    rideGrouping: RideGrouping? = RideGrouping.RIDE,
 ): ShownRows {
+    val inPlatforms = if (byStation || rideGrouping != RideGrouping.STATION) emptyList() else ridesInPlatforms(cards, nearbyRows)
+    val joined = inPlatforms.mapTo(HashSet()) { it.journey.key }
+    // What the cards drawn above show: a ride kept in its platforms isn't drawn above, so its trains stay in the list.
+    val above = if (joined.isEmpty()) journeyRowsShown else cards.filter { it.journey.key !in joined }.flatMap { it.state.drawn?.shownRows.orEmpty() }
+    // Each kept ride's rows' keys, to its ride.
+    val rideKeys = HashMap<List<String>, JourneyCard>()
+    inPlatforms.forEach { card -> card.state.drawn?.shownRows.orEmpty().forEach { rideKeys.putIfAbsent(platformRideKey(it), card) } }
     val rows = DepartureRows.pinStarred(
-        DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown, stopDistanceMeters, topology),
+        DepartureRows.withoutShownAbove(nearbyRows, above, stopDistanceMeters, topology),
         starred,
         warningsLead = stopDistanceMeters.isEmpty(),
+        // A ride's trains lead with the starred band, so their platform's group leads its place, as a star lifts it.
+        lifted = { platformRideKey(it) in rideKeys },
+        anyLifted = rideKeys.isNotEmpty(),
     )
+    val rideRows = IdentityHashMap<DepartureRow, FavoriteJourney>()
+    val rideEnds = IdentityHashMap<DepartureRow, Set<String>>()
+    if (rideKeys.isNotEmpty()) {
+        rows.forEach { row ->
+            rideKeys[platformRideKey(row)]?.let { card ->
+                rideRows[row] = card.journey
+                rideEnds[row] = card.destinationIds
+            }
+        }
+    }
     val dismissedClosures =
         if (stopDistanceMeters.isEmpty()) {
             emptyList()
@@ -520,9 +550,40 @@ internal fun shownRowsOf(
         // train, which the list's page keeps (maintainer, 2026-10-20).
         RowsByKey.of(journeyRowsShown),
         rideViews(cards, from, last?.rides),
+        joined,
+        if (rideRows.isEmpty()) emptyMap() else rideRows,
+        if (rideEnds.isEmpty()) emptyMap() else rideEnds,
     )
 }
 
+/** A row's line at its stop, platform and direction: what a ride's train and the list's row of it share. */
+private fun platformRideKey(row: DepartureRow) = listOf(row.stopId, row.lineId, row.directionKey, row.platform)
+
+/**
+ * The rides of [cards] whose trains the list's own [nearbyRows] show as whole rows, each at its own stop, platform and
+ * direction: kept there, starred, rather than drawn as a card of their own (Group favorite rides: By station,
+ * maintainer 2026-10-23). A ride keeps its card where a row it would join also has trains it can't take (another
+ * branch, a train turning short), which a star would claim for it (Codex, #1185); where it has a train the list
+ * doesn't show, none yet, or one to change from; and where it has more to say than its trains, as it does grouped by station
+ * ([joinsStationCard]: a far end or route it couldn't check, trains behind "+N more", a closure).
+ */
+@WorkerThread
+internal fun ridesInPlatforms(cards: List<JourneyCard>, nearbyRows: List<DepartureRow>): List<JourneyCard> {
+    // Each listed row's trains, by its line at its stop, platform and direction.
+    val listed = HashMap<List<String>, Int>()
+    nearbyRows.filter { it.hasTrains }.forEach { row -> listed.merge(platformRideKey(row), row.upcoming.size, Int::plus) }
+    return cards.filter { card ->
+        val drawn = card.state.drawn ?: return@filter false
+        // A train to change from says so only on the ride's own card (its destination in brackets, where to change
+        // heard), which a platform's row has no room for (Codex, #1185): such a ride keeps its card.
+        if (drawn.visibleChanges.isNotEmpty() || !joinsStationCard(card)) return@filter false
+        val rows = drawn.shownRows
+        if (rows.isEmpty()) return@filter false
+        val trains = HashMap<List<String>, Int>()
+        rows.forEach { row -> trains.merge(platformRideKey(row), row.upcoming.size, Int::plus) }
+        trains.all { (key, count) -> listed[key]?.let { it <= count } == true }
+    }
+}
 /** [stops]' board rows: from [board], built already, else built at [now] ([DepartureRows.across] with `grace`). */
 private fun platformRowsOf(
     stops: List<StopArrivals>,

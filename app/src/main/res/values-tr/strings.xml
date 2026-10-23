@@ -755,6 +755,7 @@
     <string name="station_unfold">Genişlet</string>
     <string name="station_folded">Daraltıldı</string>
     <string name="station_unfolded">Genişletildi</string>
+    <string name="ride_row_star">Favori biniş</string>
     <string name="menu_send_bug_report">Hata raporu gönder</string>
     <string name="bug_report_consent_title">Hata raporu gönder</string>
     <string name="bug_report_consent_body">Bir sorunun giderilmesine yardımcı olmak için şunlar paylaşılır:\n\n• bir tanılama günlüğü (uygulamanın gördüğü duraklar, hatlar ve hatalar)\n• bu ekranın ekran görüntüsü\n• son 15 dakikadaki tam konumunuz\n• en yakın duraklara olan uzaklığınız\n\nDevam\'a dokunduğunuzda rapor panoya kopyalanır ve seçeceğiniz bir uygulamaya aktarılır.</string>

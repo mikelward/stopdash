@@ -761,6 +761,7 @@
     <string name="station_unfold">Extindeți</string>
     <string name="station_folded">Restrâns</string>
     <string name="station_unfolded">Extins</string>
+    <string name="ride_row_star">Cursă preferată</string>
     <string name="menu_send_bug_report">Trimiteți un raport de eroare</string>
     <string name="bug_report_consent_title">Trimiteți un raport de eroare</string>
     <string name="bug_report_consent_body">Pentru a ajuta la remedierea unei probleme, raportul include:\n\n• un jurnal de diagnosticare (stațiile, liniile și erorile întâlnite de aplicație)\n• o captură a acestui ecran\n• locația dvs. exactă din ultimele 15 minute\n• distanța până la cele mai apropiate stații\n\nCând atingeți „Continuați”, raportul este copiat în clipboard și oferit unei aplicații pe care o alegeți.</string>

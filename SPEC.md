@@ -1445,9 +1445,11 @@ how far the station is, a chevron folding it apart from the station), over a car
 2026-10-23). With no direct train due, its trains to change from fill that card, each destination in brackets
 at its size ("(Morden/Charing X)"; where to change is only heard, a second line being too small to read), with no
 dash for the direct train it hasn't got. A ride boarding at two places has each train in the group before the station it
-leaves from (its own station's where that one is a loading or farther card, drawn under its own heading). So **Group
-favorite rides** doesn't change the list here (it still groups a faraway ride, the list By stop/platform, and the
-widget). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
+leaves from (its own station's where that one is a loading or farther card, drawn under its own heading). **Group
+favorite rides** By stop/platform splits a ride boarding from several stops into a group per stop, each headed by the
+stop and its platform or pole ➔ where the ride goes ("King's X – Plat 5 ➔ Bank"), each just before its station's; By
+station gives it no group at all: its trains lead its station's card, after the starred rows, each with the ride's star
+after where it goes (maintainer, 2026-10-23). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
 group just before the station's too, headed the same way, its own line with a spinner or dash and what it says under
 it as By stop/platform draws them: a closure, a far end it couldn't check, trains behind "+N more" or routes it
 couldn't check. A ride boarding nowhere on the list, and a faraway one, keep their places atop and at the foot of the list. With
@@ -1604,8 +1606,11 @@ reads, the stop with its platform or pole ➔ where the ride goes, then the ride
 own title, then how far the stop is ("Park – Stop L ➔ Hill ★ (120 m)"; the distance is the first thing to go on a
 tight line, and a far ride's, measured to its origin, heads only the origin's stop). A tap on one
 opens the journey's own view, where Swap direction is. Until the ride has departures to group (checking, couldn't check, none due) it keeps
-its heading, so the row or note under it says which ride. Either way the journey's own view heads every
-group.
+its heading, so the row or note under it says which ride. **By station** (maintainer, 2026-10-23) gives the ride no
+group at all: its trains stay in their own platform's or stop's group on the list, each with the ride's star after
+where it goes, and that group leads its place, as a starred row lifts it. A ride with a train the list doesn't show,
+none yet, or more to say than its trains (a closure) keeps its own heading and card. Grouped by station, its trains
+lead its station's card instead (*Grouped by station*). Whichever, the journey's own view heads every group.
 
 **Long names shorten evenly** (maintainer, 2026-10-14): a ride's two ends, or a stop and where its
 ride goes, step down together through the same steps every shortened name takes (*Departures →
@@ -1725,8 +1730,8 @@ ahead of a nearer one it couldn't refresh (principle 1: a guessed time is the on
 least), so a ride left with none has no heading; a suspended line's status, with no train to repeat, shows under every ride it
 holds up, as the list never leaves one out. The app saves each ride's ends, in the direction shown, with its pins, every ride's
 at once; until it has (an earlier build's pins, before the app next opens), the whole widget goes by
-stop, so no stop is headed twice (maintainer, 2026-10-15). By stop/platform, the widget heads its rides'
-departures by the stop they board from, so it orders those stops: each in the place of the nearest
+stop, so no stop is headed twice (maintainer, 2026-10-15). By stop/platform, and By station, which the widget has no
+station groups for, the widget heads its rides' departures by the stop they board from, so it orders those stops: each in the place of the nearest
 ride boarding there, its rows together and soonest first. Either way a ride or stop the app hasn't
 placed yet follows, soonest first, and the compact widget heads neither. A change to the setting
 redraws the widget at once. The widget can't load routes, so the app saves, with the widget's
@@ -4525,7 +4530,7 @@ data folder, syncing when the app comes on screen and a few seconds after a ride
 last sync went (`dev-docs/drive-sync.md`). A release build offers no row and sends nothing to Drive. "Fix train spacing" sits with the
 rows that decide what the boards show (*Bunched tube trains are spaced out*), with **Group nearby departures**
 under it: By stop/platform, the default, or By station (*Grouped by station*); then **Group favorite rides**: By
-ride, the default, or By stop/platform (*Journeys*). Both say stop/platform: a bus boards at a stop, a train at a
+ride, the default, By stop/platform, or By station (*Journeys*). Both say stop/platform: a bus boards at a stop, a train at a
 platform. **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
 precise location, or opens Android's settings for the app when precise is already allowed or

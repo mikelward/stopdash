@@ -156,6 +156,117 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `rides grouped By station lead their station's card, with no group of their own`() {
+        val platform1 = StopGroup(
+            stopName = "Near", key = "n1", showHeader = true, rows = listOf(row("N1", "N")), placeKey = "N",
+            qualifier = StopQualifier.Platform("1", null),
+        )
+        val platform2 = StopGroup(
+            stopName = "Near", key = "n2", showHeader = true, rows = listOf(row("N2", "N")), placeKey = "N",
+            qualifier = StopQualifier.Platform("2", null),
+        )
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        // Its train, a row of its own (the list has already left it out of the platform's).
+        val train = row("N2", "N").copy(destination = "Far end")
+        val ride = JourneyCard(journey, JourneyCardState.Trains(listOf(train)), boardingIds = listOf("N2"), destinationIds = setOf("Z"))
+        val layout = StationLayout.of(
+            groups = listOf(platform2, platform1),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(ride),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = app.stopdash.domain.RideGrouping.STATION,
+        )
+        assertTrue(layout.rideGroups.isEmpty())
+        val card = layout.cards.getValue("N|TUBE")
+        // The ride's train first, then the platforms by number, each block marked off.
+        assertEquals(listOf("Far end", "Somewhere", "Somewhere"), card.group.rows.map { it.destination })
+        assertEquals(listOf("N2", "N1", "N2"), card.group.rows.map { it.stopId })
+        assertEquals(setOf(1, 2), card.breaks)
+        // Known as the ride's, to wear its star and open as its card would.
+        assertTrue(card.group.rows.first() in layout.rideEnds.keys)
+        assertFalse(card.group.rows[2] in layout.rideEnds.keys)
+    }
+
+    @Test
+    fun `grouped by platform, a ride stays in its platforms only where the list shows every train of it`() {
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        // Rows with trains: a line's status alone shows none of a ride's.
+        fun train(minutes: Long) = app.stopdash.domain.Departure("line", "Line", "", "Somewhere", null, Instant.EPOCH.plusSeconds(minutes * 60), "tube")
+        fun timed(stopId: String, vararg minutes: Long) = row(stopId, "N").copy(upcoming = minutes.map(::train))
+        val listed = listOf(timed("N1", 2), timed("N2", 3))
+        fun ride(vararg rows: DepartureRow) = JourneyCard(journey, JourneyCardState.Trains(rows.toList()), boardingIds = listOf("N1"), destinationIds = setOf("Z"))
+        val shown = ride(timed("N1", 2))
+        assertEquals(listOf(shown), ridesInPlatforms(listOf(shown), listed))
+        // A train the list doesn't show (another stop's), or none yet: its own card.
+        assertTrue(ridesInPlatforms(listOf(ride(timed("X1", 2))), listed).isEmpty())
+        assertTrue(ridesInPlatforms(listOf(ride()), listed).isEmpty())
+        assertTrue(ridesInPlatforms(listOf(shown), listOf(row("N1", "N"))).isEmpty())
+        // A row with a train the ride can't take (another branch) would wear its star: its own card instead.
+        assertTrue(ridesInPlatforms(listOf(shown), listOf(timed("N1", 2, 5))).isEmpty())
+        // Nor where it has more to say than its trains: a closure, a far end it couldn't check, trains behind "+N more".
+        assertTrue(ridesInPlatforms(listOf(shown.copy(closures = listOf(listOf(row("Z", "Z"))))), listed).isEmpty())
+        assertTrue(ridesInPlatforms(listOf(shown.copy(destinationUnchecked = true)), listed).isEmpty())
+        assertTrue(ridesInPlatforms(listOf(shown.copy(state = (shown.state as JourneyCardState.Trains).copy(incomplete = true))), listed).isEmpty())
+        // A train to change from says where to change only on the ride's own card.
+        val change = app.stopdash.domain.JourneyChange("FORK", "Fork", timed("N1", 2))
+        val changing = shown.copy(state = JourneyCardState.Trains(emptyList(), changes = listOf(change)))
+        assertTrue(ridesInPlatforms(listOf(changing), listed).isEmpty())
+    }
+
+    @Test
+    fun `rides grouped By stop have a group for each stop they board from, each headed by its stop`() {
+        val platform1 = StopGroup(
+            stopName = "Near", key = "n1", showHeader = true, rows = listOf(row("N1", "N")), placeKey = "N",
+            qualifier = StopQualifier.Platform("1", null),
+        )
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        val trains = JourneyCardState.Trains(
+            listOf(
+                row("N1", "N").copy(destination = "Far end", platform = "Platform 1"),
+                row("N2", "N").copy(destination = "Far end", platform = "Platform 2"),
+            ),
+        )
+        val ride = JourneyCard(journey, trains, boardingIds = listOf("N1", "N2"), destinationIds = setOf("Z"))
+        fun layout(grouping: app.stopdash.domain.RideGrouping) = StationLayout.of(
+            groups = listOf(platform1),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(ride),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = grouping,
+        )
+        val byStop = layout(app.stopdash.domain.RideGrouping.STOP).rideGroups.getValue("N|TUBE")
+        assertEquals(trains.groups.size, byStop.size)
+        assertTrue(byStop.size > 1)
+        // Each with that stop's trains alone, headed by that stop, kept apart from the others.
+        assertEquals(trains.groups.map { group -> group.rows.map { it.stopId } }, byStop.map { part -> part.card.group.rows.map { it.stopId } })
+        assertEquals(byStop.size, byStop.map { it.part }.distinct().size)
+        assertTrue(byStop.all { it.fromForms.first().startsWith("Place") })
+        assertEquals(byStop.size, byStop.map { it.fromForms.first() }.distinct().size)
+        // A ride boarding from one stop there, By stop, is headed by that stop too, folding as one group.
+        val single = JourneyCard(journey, JourneyCardState.Trains(listOf(trains.rows.first())), boardingIds = listOf("N1"), destinationIds = setOf("Z"))
+        val one = StationLayout.of(
+            groups = listOf(platform1),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(single),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = app.stopdash.domain.RideGrouping.STOP,
+        ).rideGroups.getValue("N|TUBE").single()
+        assertTrue(one.fromForms.first().startsWith("Place"))
+        assertTrue(one.fromForms != single.fromForms)
+        assertEquals("", one.part)
+        // By ride, one group for them all.
+        val byRide = layout(app.stopdash.domain.RideGrouping.RIDE).rideGroups.getValue("N|TUBE")
+        assertEquals(1, byRide.size)
+        assertEquals(2, byRide.single().card.group.rows.size)
+    }
+
+    @Test
     fun `the layout worked out on the worker orders the stations, places the rides and builds each card`() {
         val nearPlatform2 = StopGroup(
             stopName = "Near", key = "n2", showHeader = true, rows = listOf(row("N2", "N")), placeKey = "N",

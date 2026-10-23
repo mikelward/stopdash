@@ -755,6 +755,7 @@
     <string name="station_unfold">Ausklappen</string>
     <string name="station_folded">Eingeklappt</string>
     <string name="station_unfolded">Ausgeklappt</string>
+    <string name="ride_row_star">Lieblingsstrecke</string>
     <string name="menu_send_bug_report">Fehlerbericht senden</string>
     <string name="bug_report_consent_title">Fehlerbericht senden</string>
     <string name="bug_report_consent_body">Damit ein Problem behoben werden kann, wird Folgendes geteilt:\n\n• ein Diagnoseprotokoll (Haltestellen, Linien und Fehler, die die App gesehen hat)\n• ein Screenshot dieses Bildschirms\n• dein genauer Standort der letzten 15 Minuten\n• wie weit du von den nächsten Haltestellen entfernt bist\n\nBei „Weiter“ wird der Bericht in die Zwischenablage kopiert und an eine App deiner Wahl übergeben.</string>

@@ -888,15 +888,19 @@ object DepartureRows {
         rows: List<DepartureRow>,
         starred: Set<StarredRow>,
         warningsLead: Boolean = true,
+        // Rows lifted with the starred band though not starred: a favorite ride's trains kept in their own
+        // platform's group (Group favorite rides: By station).
+        lifted: (DepartureRow) -> Boolean = { false },
+        anyLifted: Boolean = false,
     ): List<DepartureRow> {
-        if (starred.isEmpty()) return rows
+        if (starred.isEmpty() && !anyLifted) return rows
         return rows.sortedBy { row ->
             when {
                 // Warnings (closures, no-prediction status) lead only where warnings are meant to —
                 // the watched list. On the near-me list (warningsLead=false) an unstarred alert is
                 // not hoisted; a starred alert still lifts with the starred band.
                 warningsLead && (row.stopDisruption != null || (!row.hasTrains && !row.quiet)) -> 0
-                StarredRow.of(row) in starred -> 1
+                StarredRow.of(row) in starred || lifted(row) -> 1
                 else -> 2
             }
         }

@@ -1,5 +1,8 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.JourneyEnd
+import app.stopdash.domain.RideGrouping
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
@@ -112,7 +115,9 @@ class TapHoldsStillTest {
         composeRule.runOnIdle { assertTrue("the list scrolls", listState.firstVisibleItemIndex > 0) }
     }
 
-    private fun opensFartherInPlace(stationGroups: Boolean) {
+    // With [rideGrouping], a favorite ride from the first stop rides along, grouped that way.
+    private fun opensFartherInPlace(stationGroups: Boolean, rideGrouping: RideGrouping? = null) {
+        val journeys = if (rideGrouping == null) emptyList() else listOf(FavoriteJourney(JourneyEnd("S1", "Stop 1"), JourneyEnd("D1", "Dest 1"), "l1", mode = "bus"))
         var farther by mutableStateOf(listOf(FartherCard(fartherPlace)))
         val departures = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
         // The activity merges an opened card's departures and distances into the list's own ([FartherMerge]).
@@ -132,6 +137,9 @@ class TapHoldsStillTest {
                             farther = farther,
                             onOpenFarther = {},
                             stationGroups = stationGroups,
+                            journeys = journeys,
+                            onToggleJourney = {},
+                            rideGrouping = rideGrouping ?: RideGrouping.RIDE,
                         )
                     }
                 }
@@ -161,6 +169,18 @@ class TapHoldsStillTest {
 
     @Test
     fun `grouped by station, opening a faraway place holds it still`() = opensFartherInPlace(stationGroups = true)
+
+    @Test
+    fun `grouped by platform with rides By station, opening a faraway place holds it still`() =
+        opensFartherInPlace(stationGroups = false, rideGrouping = RideGrouping.STATION)
+
+    @Test
+    fun `grouped by station with rides By station, opening a faraway place holds it still`() =
+        opensFartherInPlace(stationGroups = true, rideGrouping = RideGrouping.STATION)
+
+    @Test
+    fun `grouped by station with rides By stop, opening a faraway place holds it still`() =
+        opensFartherInPlace(stationGroups = true, rideGrouping = RideGrouping.STOP)
 
     @Test
     fun `grouped by station, unfolding a station holds its heading still`() {

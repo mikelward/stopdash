@@ -10,6 +10,13 @@ enum class RideGrouping {
 
     /** Under each stop it boards from, starred and saying where the ride goes, with no ride heading. */
     STOP,
+
+    /**
+     * In its station's own group, with no ride heading: grouped by station, its trains lead the station's card; grouped by
+     * stop/platform, they stay in their platform's group, which leads its place. Each wears a star after where it goes
+     * (maintainer, 2026-10-23).
+     */
+    STATION,
     ;
 
     companion object {

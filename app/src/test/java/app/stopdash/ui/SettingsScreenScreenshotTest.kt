@@ -164,6 +164,20 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun favorite_rides_can_be_grouped_by_station_too() {
+        val chosen = mutableListOf<RideGrouping>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, onRideGroupingChange = { chosen += it })
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("rideGrouping-STATION").performScrollTo().assert(hasText("By station")).assertIsNotSelected()
+        composeRule.onNodeWithTag("rideGrouping-STATION").performClick()
+        assertEquals(listOf(RideGrouping.STATION), chosen)
+    }
+
+    @Test
     fun nearby_departures_group_by_platform_by_default_and_a_tap_groups_them_by_station() {
         val chosen = mutableListOf<NearbyGrouping>()
         composeRule.setContent {
@@ -177,7 +191,8 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithTag("nearbyGrouping-STATION").assertIsNotSelected()
         // By its own row: the favorite rides' grouping says "By stop/platform" too.
         composeRule.onNodeWithTag("nearbyGrouping-PLATFORM").assert(hasText("By stop/platform")).assertIsDisplayed()
-        composeRule.onNodeWithText("By station").assertIsDisplayed()
+        // By its own row too: the favorite rides' grouping offers By station as well.
+        composeRule.onNodeWithTag("nearbyGrouping-STATION").assert(hasText("By station")).assertIsDisplayed()
         captureSnapshot("settings-nearby-grouping.png")
         composeRule.onNodeWithTag("nearbyGrouping-STATION").performClick()
         assertEquals(listOf(NearbyGrouping.STATION), chosen)
