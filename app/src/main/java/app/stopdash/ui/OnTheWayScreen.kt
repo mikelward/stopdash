@@ -135,6 +135,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.toJavaDuration
 
 /**
  * A trip on the way (SPEC *On the way*): the next step over the route, leg by leg, the leg the rider
@@ -773,6 +774,12 @@ internal fun rememberNextTrains(
     // Where the ride ends when it's a piece of a branch the trip took by itself ([OffPlan.boardShortTo]):
     // its trains are named by it, not by TfL's terminus.
     shortTo: String? = null,
+    // The lines' statuses the trip's last check found ([ActiveTripTracker.lineChecks]): each board row of a
+    // line it found disrupted carries the list's ⚠, as every board does (SPEC *Disruptions*: a disrupted
+    // line is always kept flagged). Read on the worker ([boardStatuses]).
+    lineChecks: RouteDisruption.LinesChecked? = null,
+    // The near-me list's dismissed alerts, which the board's rows honor as the list's do ([withDismissedMarked]).
+    dismissed: Set<DismissedAlert> = emptySet(),
 ): NextTrains? {
     val worker = LocalWorker.current
     // The lines whose routes the board's trains are checked against, read off its departures on the
@@ -799,13 +806,15 @@ internal fun rememberNextTrains(
     // departures and only picks the entry for now (AGENTS.md *Main thread: read and dispatch only*).
     // Only once its own lines are read: the last board's may leave out a line it brings back, already
     // loaded, so its routes would be missed with no new load to work the board out again (Codex on #557).
-    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version, topology, shortTo) }
+    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version, topology, shortTo, lineChecks, dismissed) }
     var held by remember { mutableStateOf<HeldTrains?>(null) }
     LaunchedEffect(key, worker) {
         key ?: return@LaunchedEffect
         if (held?.key == key) return@LaunchedEffect
         val at = now
-        val timeline = withContext(worker) { trainsTimeline(key.board, currentSequences, at, key.topology, key.shortTo) }
+        val timeline = withContext(worker) {
+            trainsTimeline(key.board, currentSequences, at, key.topology, key.shortTo, boardStatuses(key.lineChecks, at), key.dismissed)
+        }
         held = HeldTrains(key, timeline, index = 0)
         // A train its route couldn't place, logged where every trip filter logs it, so "Couldn't check
         // every line" can be explained. Later entries hold fewer trains, so the first has every miss.
@@ -832,12 +841,22 @@ internal fun rememberNextTrains(
     // come again, so the worker finds the entry for now, or works the board out afresh from before its
     // timeline began, and meanwhile the section says it's loading.
     val rewound = timeline.startsAfter(shown.index, now)
-    LaunchedEffect(shown, lapsed, rewound, worker) {
-        if (!lapsed && !rewound) return@LaunchedEffect
+    // A line check the rows are marked from gone stale with no new one in (Codex, #1174): worked out afresh,
+    // so a ⚠ never outlasts the check behind it. One comparison here; the worker found when.
+    val expired = timeline.statusesExpired(now)
+    LaunchedEffect(shown, lapsed, rewound, expired, worker) {
+        if (!lapsed && !rewound && !expired) return@LaunchedEffect
         val at = now
-        val rebuilt = timeline.startsAfter(0, at)
+        val rebuilt = expired || timeline.startsAfter(0, at)
         val (index, window) = withContext(worker) {
-            val from = if (rebuilt) trainsTimeline(shown.key.board, currentSequences, at, shown.key.topology, shown.key.shortTo) else timeline
+            val from = if (rebuilt) {
+                trainsTimeline(
+                    shown.key.board, currentSequences, at, shown.key.topology, shown.key.shortTo,
+                    boardStatuses(shown.key.lineChecks, at), shown.key.dismissed,
+                )
+            } else {
+                timeline
+            }
             from.indexAt(at).let { it to from.around(it) }
         }
         if (held !== shown) return@LaunchedEffect
@@ -912,11 +931,49 @@ private class BoardLines(val board: ActiveTripTracker.NextBoard?, val ids: List<
 // What a board's trains are worked out from: the board by identity (a new one each read), so the key
 // compares no departures, its routes' [LineLoads.version], and the route topology its cards are grouped
 // under, by identity: replaced once its patterns load, the board's rows are worked out again (Codex, #588).
-// [shortTo], where the trains are named by the ride's end ([OffPlan.boardShortTo]).
-private class TrainsKey(val board: ActiveTripTracker.NextBoard, val routes: Int, val topology: RouteTopology, val shortTo: String? = null) {
+// [shortTo], where the trains are named by the ride's end ([OffPlan.boardShortTo]). The trip's line checks by
+// identity (a new one each check) and the dismissed alerts, which mark the rows' ⚠s.
+private class TrainsKey(
+    val board: ActiveTripTracker.NextBoard,
+    val routes: Int,
+    val topology: RouteTopology,
+    val shortTo: String? = null,
+    val lineChecks: RouteDisruption.LinesChecked? = null,
+    val dismissed: Set<DismissedAlert> = emptySet(),
+) {
     override fun equals(other: Any?): Boolean =
-        other is TrainsKey && other.board === board && other.routes == routes && other.topology === topology && other.shortTo == shortTo
-    override fun hashCode(): Int = ((System.identityHashCode(board) * 31 + routes) * 31 + System.identityHashCode(topology)) * 31 + shortTo.hashCode()
+        other is TrainsKey && other.board === board && other.routes == routes && other.topology === topology &&
+            other.shortTo == shortTo && other.lineChecks === lineChecks && other.dismissed === dismissed
+    override fun hashCode(): Int =
+        (((System.identityHashCode(board) * 31 + routes) * 31 + System.identityHashCode(topology)) * 31 + shortTo.hashCode()) * 31 +
+            System.identityHashCode(lineChecks)
+}
+
+/**
+ * The [statuses] a board's rows are marked with, and when the first of the checks behind them goes stale
+ * ([until], wall clock; null with none), when they're worked out again.
+ */
+internal class BoardStatuses(val statuses: Map<String, LineStatus>, val until: Instant?) {
+    companion object {
+        val NONE = BoardStatuses(emptyMap(), null)
+    }
+}
+
+/**
+ * The statuses of [checks] a board's rows are marked with at [at]: each line's while that check stands behind
+ * it ([boardLineStatus]: asked, still followed, and current), none otherwise, so a row never carries a verdict
+ * the check can't stand behind and a line newly disrupted is marked from the check that finds it.
+ */
+@WorkerThread
+internal fun boardStatuses(checks: RouteDisruption.LinesChecked?, at: Instant): BoardStatuses {
+    checks ?: return BoardStatuses.NONE
+    val kept = checks.statuses.keys.mapNotNull { id ->
+        boardLineStatus(checks, id, at).takeIf { !it.unknown && !it.checking }?.status?.let { id to it }
+    }.toMap()
+    val until = kept.keys.mapNotNull { id ->
+        checks.atOf(id)?.let { at.plus(Staleness.remainingUntilStale(Staleness.age(it, at)).toJavaDuration()) }
+    }.minOrNull()
+    return BoardStatuses(kept, until)
 }
 
 // A board's timeline and the entry of it in force when last looked up ([index]).
@@ -935,6 +992,9 @@ internal class TrainsTimeline(
     // How a stop card groups a branching line's trains ([stopCardLines]).
     private val topology: RouteTopology = RouteTopology.EMPTY,
     private val rows: Map<Int, NextTrains> = emptyMap(),
+    // The lines' statuses and dismissed alerts the rows are marked with ([nextTrainsGroups]).
+    private val statuses: BoardStatuses = BoardStatuses.NONE,
+    private val dismissed: Set<DismissedAlert> = emptySet(),
     // What each entry with rows holds that may count a train twice ([DoubledTrains]), found with them.
     private val doubledAt: Map<Int, DoubledTrains.Found?> = emptyMap(),
 ) {
@@ -946,6 +1006,9 @@ internal class TrainsTimeline(
         val at = index.coerceAtMost(entries.lastIndex)
         return rows[at]
     }
+
+    /** Whether a line check the rows are marked from has gone stale by [now] ([BoardStatuses.until]). */
+    fun statusesExpired(now: Instant): Boolean = statuses.until?.let { !now.isBefore(it) } == true
 
     /** Whether entry [index] starts after [now]: the clock set back before it. */
     fun startsAfter(index: Int, now: Instant): Boolean = now.isBefore(starts[index.coerceAtMost(starts.lastIndex)])
@@ -964,17 +1027,17 @@ internal class TrainsTimeline(
     @WorkerThread
     fun around(index: Int): TrainsTimeline {
         val window = (index..(index + 1).coerceAtMost(entries.lastIndex)).associateWith { i ->
-            rows[i] ?: entries[i].withGroups(starts[i], topology)
+            rows[i] ?: entries[i].withGroups(starts[i], topology, statuses.statuses, dismissed)
         }
         val doubled = window.mapValues { (i, entry) -> if (i in doubledAt) doubledAt[i] else DoubledTrains.find(entry.heldTrains(), starts[i]) }
-        return TrainsTimeline(starts, entries, misses, topology, window, doubled)
+        return TrainsTimeline(starts, entries, misses, topology, window, statuses, dismissed, doubled)
     }
 
     /** The entry in force at [now] ([indexAt]), with its rows. */
     @WorkerThread
     fun at(now: Instant): NextTrains {
         val index = indexAt(now)
-        return entries[index].withGroups(starts[index], topology)
+        return entries[index].withGroups(starts[index], topology, statuses.statuses, dismissed)
     }
 }
 
@@ -992,6 +1055,9 @@ internal fun trainsTimeline(
     topology: RouteTopology = RouteTopology.EMPTY,
     // Where the ride ends, when its trains are named by it ([OffPlan.boardShortTo]); null for TfL's terminus.
     shortTo: String? = null,
+    // The lines' statuses the rows are marked with ([boardStatuses]), and the alerts dismissed on the list.
+    statuses: BoardStatuses = BoardStatuses.NONE,
+    dismissed: Set<DismissedAlert> = emptySet(),
 ): TrainsTimeline {
     val fetchedAt = checkNotNull(board.fetchedAt) { "a board never read has no trains" }
     val own = OnTheWay.placeTrains(board.ride, board.departures, fetchedAt, sequences, at)
@@ -1007,7 +1073,7 @@ internal fun trainsTimeline(
             .copy(offPlan = offPlanRows(board.ride, offPlan.map { branch -> branch.copy(trains = branch.trains.filter { !Countdown.hasDeparted(it, instant) }) }))
     }
     // Misses are reported once per board, so only the first instant's are gathered.
-    return TrainsTimeline(instants, entries, own.missesAt(at) + others.flatMap { it.second.missesAt(at) }, topology).around(0)
+    return TrainsTimeline(instants, entries, own.missesAt(at) + others.flatMap { it.second.missesAt(at) }, topology, statuses = statuses, dismissed = dismissed).around(0)
 }
 
 /** [board]'s ride as it boards at [other], another pole of the pair: only another line's way to the same stop. */
@@ -1080,8 +1146,13 @@ internal fun NextTrains.heldTrains(): List<Departure> =
 
 /** These trains with their [NextTrains.groups] worked out at [now] ([nextTrainsGroups]), and each one's card ([NextTrains.cards]). */
 @WorkerThread
-internal fun NextTrains.withGroups(now: Instant, topology: RouteTopology = RouteTopology.EMPTY): NextTrains {
-    val groups = nextTrainsGroups(this, now)
+internal fun NextTrains.withGroups(
+    now: Instant,
+    topology: RouteTopology = RouteTopology.EMPTY,
+    statuses: Map<String, LineStatus> = emptyMap(),
+    dismissed: Set<DismissedAlert> = emptySet(),
+): NextTrains {
+    val groups = nextTrainsGroups(this, now, statuses, dismissed)
     // The branches with trains listed, and the one stop they all turn off at, if they share it.
     val listed = offPlan.filter { it.trains.isNotEmpty() }
     val fork = listed.map { it.branch.forkName }.distinct().singleOrNull()?.takeIf { it.isNotBlank() }
@@ -1089,20 +1160,31 @@ internal fun NextTrains.withGroups(now: Instant, topology: RouteTopology = Route
     return copy(groups = groups, cards = groups.map { stopCard(it, topology, ride.toId) }, offPlanListed = listed.isNotEmpty(), offPlanFork = fork, plannedHeading = heading)
 }
 
-/** [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own header ("Stop N"). */
+/**
+ * [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own
+ * header ("Stop N"). A row of a line [statuses] has disrupted carries the list's ⚠, less what was [dismissed].
+ */
 @WorkerThread
-internal fun nextTrainsGroups(next: NextTrains, now: Instant): List<StopGroup> {
+internal fun nextTrainsGroups(
+    next: NextTrains,
+    now: Instant,
+    statuses: Map<String, LineStatus> = emptyMap(),
+    dismissed: Set<DismissedAlert> = emptySet(),
+): List<StopGroup> {
     val fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now)
+    val shown = LineStatus.asOf(statuses, now)
     return StopGrouping.groupByStop(
-        DepartureRows.forStop(
-            next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = fetchedAt,
-            stopLetter = next.stopLetter, towards = next.towards, bearing = next.bearing,
-        ) + next.others.flatMap { pole ->
+        (
             DepartureRows.forStop(
-                pole.stopId, pole.stopName, pole.trains, now, fetchedAt = fetchedAt,
-                stopLetter = pole.stopLetter, towards = pole.towards, bearing = pole.bearing,
-            )
-        },
+                next.ride.fromId, next.ride.fromName, next.trains, now, shown, fetchedAt = fetchedAt,
+                stopLetter = next.stopLetter, towards = next.towards, bearing = next.bearing,
+            ) + next.others.flatMap { pole ->
+                DepartureRows.forStop(
+                    pole.stopId, pole.stopName, pole.trains, now, shown, fetchedAt = fetchedAt,
+                    stopLetter = pole.stopLetter, towards = pole.towards, bearing = pole.bearing,
+                )
+            }
+            ).map { withDismissedMarked(it, dismissed) },
     )
 }
 

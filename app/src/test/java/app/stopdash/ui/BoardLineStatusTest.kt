@@ -101,4 +101,18 @@ class BoardLineStatusTest {
         assertFalse(boardLineStatus(mixed, "dlr", later).unknown)
         assertTrue(boardLineStatus(mixed, "jubilee", later).unknown)
     }
+
+    @Test
+    fun `a board's rows are marked only with statuses the check stands behind`() {
+        // Current and followed: marked.
+        val marked = boardStatuses(checked, now)
+        assertEquals(mapOf("jubilee" to delays), marked.statuses)
+        // Until its check goes stale, when the rows are worked out again (Codex, #1174).
+        assertEquals(now.plus(Duration.ofMinutes(5)), marked.until)
+        // Gone stale, no longer followed, or no check: nothing, never a verdict it can't stand behind.
+        assertTrue(boardStatuses(checked, now.plus(Duration.ofHours(1))).statuses.isEmpty())
+        assertTrue(boardStatuses(checked.copy(following = setOf("dlr")), now).statuses.isEmpty())
+        assertTrue(boardStatuses(null, now).statuses.isEmpty())
+        assertNull(boardStatuses(null, now).until)
+    }
 }
