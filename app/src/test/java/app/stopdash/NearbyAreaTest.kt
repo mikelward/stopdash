@@ -22,7 +22,6 @@ import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
-import app.stopdash.ui.KeptPages
 import app.stopdash.ui.LocalPageOnTop
 import app.stopdash.ui.PredictiveBack
 import app.stopdash.ui.RootBack
@@ -54,9 +53,6 @@ class NearbyAreaTest {
     // The pages each screen's own Back closed, and whether each page drawn was on top as it last composed.
     private val closed = ArrayList<String>()
     private val onTop = HashMap<String, Boolean>()
-
-    // The station open on its page ([Page.Station]), over the search it was picked in ([Page.StationSearch]).
-    private var stationId by mutableStateOf<String?>(null)
 
     // The near-me list's departures, as the activity holds them: each model the list builds, and when it was dropped.
     private val stores = NearbyDeparturesStores()
@@ -99,10 +95,8 @@ class NearbyAreaTest {
                 pages = pages,
                 aboveOverlay = {},
                 overlayContent = { page ->
-                    if (page == Page.Station) {
-                        KeptPages(stationFlowPage(stationId), setOf(stationFlowPage(stationId))) {
-                            Screen("Station $stationId", page)
-                        }
+                    if (page is Page.Station) {
+                        Screen("Station ${page.id}", page)
                     } else if (page == Page.StationSearch) {
                         Screen("Search", page)
                     } else if (page == Page.OnTheWay) {
@@ -182,8 +176,7 @@ class NearbyAreaTest {
     @Test
     fun `a page covered by another keeps its pages for Back`() {
         show()
-        composeRule.runOnIdle { stationId = "A" }
-        open(Page.Station)
+        open(Page.Station("A"))
         composeRule.onNodeWithText("Station A").performClick()
         // About → Licenses over the station's route page, and Back.
         open(Page.Licenses)
@@ -197,8 +190,7 @@ class NearbyAreaTest {
         show()
         open(Page.StationSearch)
         composeRule.onNodeWithText("Search").performClick()
-        composeRule.runOnIdle { stationId = "A" }
-        open(Page.Station)
+        open(Page.Station("A"))
         // The swipe from the station draws the search under it, as it was left, and let go of leaves both as they were.
         startSwipe()
         composeRule.onNodeWithText("Search's route page").assertExists()
@@ -211,26 +203,25 @@ class NearbyAreaTest {
         assertEquals(listOf("Station A"), closed)
         composeRule.onNodeWithText("Search's route page").assertIsDisplayed()
         // A station closed is forgotten: opened again, it starts afresh.
-        open(Page.Station)
+        open(Page.Station("A"))
         composeRule.onNodeWithText("Station A").performClick()
-        composeRule.runOnIdle { pages.close(Page.Station) }
+        composeRule.runOnIdle { pages.close(Page.Station("A")) }
         composeRule.waitForIdle()
-        open(Page.Station)
+        open(Page.Station("A"))
         composeRule.onNodeWithText("Station A").assertIsDisplayed()
     }
 
     @Test
-    fun `a station opened in another's place starts afresh, its own pages apart`() {
+    fun `a station opened over another starts afresh, and its Back finds the one under it as it was`() {
         show()
-        composeRule.runOnIdle { stationId = "A" }
-        open(Page.Station)
+        open(Page.Station("A"))
         composeRule.onNodeWithText("Station A").performClick()
-        // A station beside a route page's stop opens in its place, until stations stack: not with A's pages.
-        composeRule.runOnIdle { stationId = "B" }
+        // A station beside a stop on that route page: over it, not with its pages.
+        open(Page.Station("B"))
         composeRule.onNodeWithText("Station B").assertIsDisplayed()
-        // And A's went with it.
-        composeRule.runOnIdle { stationId = "A" }
-        composeRule.onNodeWithText("Station A").assertIsDisplayed()
+        back()
+        assertEquals(listOf("Station B"), closed)
+        composeRule.onNodeWithText("Station A's route page").assertIsDisplayed()
     }
 
     @Test

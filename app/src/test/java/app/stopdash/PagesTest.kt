@@ -20,13 +20,100 @@ class PagesTest {
     private var favoritePlacesOpen by pages.flag(Page.FavoritePlaces)
     private var favoriteJourneysOpen by pages.flag(Page.FavoriteJourneys)
     private var stationSearchOpen by pages.kept(Page.StationSearch, mutableStateOf(false)) { it }
-    private var openStationId by pages.kept(Page.Station, mutableStateOf<String?>(null)) { it != null }
+    // A station opened as the activity opens one, over whatever is up ([Pages.openStation]); null closes the one showing.
+    private var openStationId: String?
+        get() = pages.station?.id
+        set(value) = if (value == null) pages.closeStation() else pages.openStation(value)
     private var linesOpen by pages.flag(Page.Lines)
     private var hereTripOpen by pages::tripOpen
     private var routeStopTrail by pages.kept(Page.RouteStop, mutableStateOf<String?>(null)) { it != null }
     private var departuresStationId by pages.kept(Page.StopDepartures, mutableStateOf<String?>(null)) { it != null }
 
     private fun shown(vararg page: Page) = assertEquals(listOf(Page.NearMe(0), *page), pages.stack.toList())
+
+    @Test
+    fun `a station opened beside a route page's stop goes over the details and the station they're over`() {
+        openStationId = KINGS_CROSS
+        routeStopTrail = "stop"
+        // From on the details: the station beside the stop over them, the station under them kept for Back.
+        openStationId = EUSTON
+        shown(Page.Station(KINGS_CROSS), Page.RouteStop, Page.Station(EUSTON))
+        assertEquals(Page.Station(EUSTON), pages.station)
+        assertFalse(pages.shows(Page.RouteStop))
+        // Its Back: the details again, over the station under them, which is the station showing once more.
+        openStationId = null
+        shown(Page.Station(KINGS_CROSS), Page.RouteStop)
+        assertTrue(pages.shows(Page.RouteStop))
+        assertEquals(Page.Station(KINGS_CROSS), pages.topPage)
+        assertEquals(Page.Station(KINGS_CROSS), pages.station)
+    }
+
+    @Test
+    fun `a stop's details a station was opened from or over are the station flow's, closed as it ends`() {
+        routeStopTrail = "stop"
+        assertFalse(pages.inStationFlow(Page.RouteStop))
+        // From on the details over the near-me list: the station over them.
+        openStationId = KINGS_CROSS
+        assertTrue(pages.inStationFlow(Page.RouteStop))
+        openStationId = null
+        assertFalse(pages.inStationFlow(Page.RouteStop))
+        // The details on a station's route page.
+        routeStopTrail = null
+        openStationId = KINGS_CROSS
+        routeStopTrail = "stop"
+        assertTrue(pages.inStationFlow(Page.RouteStop))
+    }
+
+    @Test
+    fun `a change of start from a station opened at another's details brings the search it was picked in up`() {
+        // King's Cross picked in the search, then Euston from a stop's details on its route page.
+        stationSearchOpen = true
+        openStationId = KINGS_CROSS
+        routeStopTrail = "stop"
+        openStationId = EUSTON
+        assertFalse(pages.isUnder(Page.StationSearch, Page.Station(EUSTON), directly = true))
+        assertTrue(pages.isUnder(Page.StationSearch, Page.Station(EUSTON)))
+        // Euston's From row, as the activity runs it: the search up over it, and Euston closed for the change.
+        pages.show(Page.StationSearch)
+        stationSearchOpen = true
+        pages.close(Page.Station(EUSTON))
+        shown(Page.Station(KINGS_CROSS), Page.RouteStop, Page.StationSearch)
+        assertEquals(Page.StationSearch, pages.topPage)
+        // Picked in the search with nothing between: right under the station, which shows it as it closes.
+        openStationId = EUSTON
+        assertTrue(pages.isUnder(Page.StationSearch, Page.Station(EUSTON), directly = true))
+    }
+
+    @Test
+    fun `a station open already is brought up, and the flow's end closes every station`() {
+        openStationId = KINGS_CROSS
+        settingsOpen = true
+        openStationId = EUSTON
+        openStationId = KINGS_CROSS
+        shown(Page.Settings, Page.Station(EUSTON), Page.Station(KINGS_CROSS))
+        pages.closeStations()
+        shown(Page.Settings)
+        assertEquals(null, pages.station)
+    }
+
+    @Test
+    fun `Plan again's station takes the place of the station showing`() {
+        openStationId = KINGS_CROSS
+        onTheWayOpen = true
+        pages.replaceStation(EUSTON)
+        shown(Page.Station(EUSTON), Page.OnTheWay)
+        // The same again: left as it is.
+        pages.replaceStation(EUSTON)
+        shown(Page.Station(EUSTON), Page.OnTheWay)
+        // One open already, under the station showing: brought up in that one's place.
+        pages.openStation(KINGS_CROSS)
+        pages.replaceStation(EUSTON)
+        shown(Page.OnTheWay, Page.Station(EUSTON))
+        // None showing: opened.
+        pages.closeStations()
+        pages.replaceStation(KINGS_CROSS)
+        shown(Page.OnTheWay, Page.Station(KINGS_CROSS))
+    }
 
     @Test
     fun `the licenses opened from On the way's About show over the trip, and close back to it`() {
@@ -60,8 +147,8 @@ class PagesTest {
         shown(Page.Lines, Page.Settings)
         settingsOpen = false
         // A stop's From opens its station page over Lines….
-        openStationId = "940GZZLUKSX"
-        shown(Page.Lines, Page.Station)
+        openStationId = KINGS_CROSS
+        shown(Page.Lines, Page.Station(KINGS_CROSS))
         openStationId = null
         assertEquals(Page.Lines, pages.top)
     }
@@ -83,8 +170,8 @@ class PagesTest {
     fun `a station picked in the search opens over it, and its Back returns to the search`() {
         stationSearchOpen = true
         shown(Page.StationSearch)
-        openStationId = "940GZZLUKSX"
-        shown(Page.StationSearch, Page.Station)
+        openStationId = KINGS_CROSS
+        shown(Page.StationSearch, Page.Station(KINGS_CROSS))
         // Settings over the station, then the station's Back: the search, as it was, under Settings.
         settingsOpen = true
         openStationId = null
@@ -93,8 +180,8 @@ class PagesTest {
         stationSearchOpen = false
         shown()
         // A station opened on its own (a route page's stop), closed with nothing under it.
-        openStationId = "940GZZLUKSX"
-        shown(Page.Station)
+        openStationId = KINGS_CROSS
+        shown(Page.Station(KINGS_CROSS))
         openStationId = null
         shown()
     }
@@ -103,26 +190,26 @@ class PagesTest {
     fun `a change of start from a station leaves the search where it was, and Back to the station goes over it`() {
         // A station picked in the search, then its From row: the search under it again, the station closed.
         stationSearchOpen = true
-        openStationId = "940GZZLUKSX"
+        openStationId = KINGS_CROSS
         stationSearchOpen = true
         openStationId = null
         shown(Page.StationSearch)
         // Back to the station: over the search, which stays for its Back ([searchAfterChange]).
-        openStationId = "940GZZLUKSX"
+        openStationId = KINGS_CROSS
         stationSearchOpen = searchAfterChange(stationSearchOpen, openedForChange = false)
-        shown(Page.StationSearch, Page.Station)
+        shown(Page.StationSearch, Page.Station(KINGS_CROSS))
         openStationId = null
         stationSearchOpen = false
         // A station opened over Lines…, whose From row opens a search the rider never had: over the station, and
         // closed again as the change goes back to it.
         linesOpen = true
-        openStationId = "940GZZLUKSX"
+        openStationId = KINGS_CROSS
         stationSearchOpen = true
         openStationId = null
         shown(Page.Lines, Page.StationSearch)
-        openStationId = "940GZZLUKSX"
+        openStationId = KINGS_CROSS
         stationSearchOpen = searchAfterChange(stationSearchOpen, openedForChange = true)
-        shown(Page.Lines, Page.Station)
+        shown(Page.Lines, Page.Station(KINGS_CROSS))
     }
 
     @Test
@@ -229,13 +316,14 @@ class PagesTest {
 
     @Test
     fun `the stack holds each page once, however often it's opened`() {
-        // Its walks in composition are bounded by the kinds of page ([Pages]), not by how the rider got there.
+        // Its walks in composition are bounded by the pages the rider opened ([Pages]), each kind once, a station once
+        // for each station, not by how often they were opened.
         repeat(3) {
             settingsOpen = true
             licensesOpen = true
             hereTripOpen = true
             linesOpen = true
-            openStationId = "940GZZLUKSX"
+            openStationId = KINGS_CROSS
             routeStopTrail = "stop"
             departuresStationId = "940GZZLUKSX"
             pages.show(Page.RouteStop)
@@ -265,5 +353,11 @@ class PagesTest {
         // A station opened from the search: the search stays under it, for its Back.
         assertEquals(true, searchAfterChange(open = true, openedForChange = false))
         assertEquals(false, searchAfterChange(open = false, openedForChange = false))
+    }
+
+    private companion object {
+        // Hubs, not anyone's place.
+        const val KINGS_CROSS = "940GZZLUKSX"
+        const val EUSTON = "940GZZLUEUS"
     }
 }

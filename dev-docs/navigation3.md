@@ -156,12 +156,13 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
 5. **The station flow stacks.** Search, `Station(id)`, then the station's trip. A station opened from a
    route stop's details now goes on top of the station under it instead of replacing it, which is
    `TODO.md`'s "takes the place of the station under it". `KeptPages`, which keeps the flow's pages apart
-   inside its one page until then, goes. In three PRs:
+   inside its one page until then, goes. In four PRs:
    - **5a. Done:** the From… search and a station become pages of their own (*Step 5a: what changed*).
-   - **5b.** Stations stack, each with its own id, name and To…, the one under the top reloading as it
-     comes back, since the flow keeps models for one station at a time. A change of start leaves its
-     station under the From… search, so Back from the search to it is the stack's, the swipe drawing it.
-   - **5c.** A station's trip becomes a page over the station.
+   - **5b. Done:** stations stack, each with its own id, name, To… and models, so the one under the top comes
+     back as it was (*Step 5b: what changed*).
+   - **5c.** A change of start leaves its station under the From… search, so Back from the search to it is
+     the stack's, the swipe drawing it.
+   - **5d.** A station's trip becomes a page over the station.
 6. **In-screen views become entries, a family per PR.** The near-me page's platform, station and
    journey views and its route and ride pages; the trip's open route and later list; Settings'
    Disruptions page; the favorite rides' alerts and picker. Each family gets the real page underneath
@@ -360,6 +361,43 @@ Lines…'s From, a favorite ride's Whole station, the trip on the way's Plan aga
 `PagesTest` follows the two pages: a station over its search, its Back to it, a change of start leaving the
 search where it was. `NearbyAreaTest` checks the swipe from a station draws the search under it as it was left,
 and that a station opened in another's place starts afresh.
+
+## Step 5b: what changed
+
+Each station is a page of its own, `Station(id)`, and what it shows is kept for each station open (`OpenStation`:
+its name, the order its rows lead in, the level it was picked at and its To…). A station around a route page's
+stop opens over the details and the page they're over, another station's included, where it used to close the
+details and take the station's place: Back returns to the details, and theirs to that station.
+
+- **The station showing is the one opened last** (`Pages.station`), under whatever is over it.
+- **Each station open keeps its models** (`NearbyDeparturesStores.ownerAmong`), where the flow kept one station's
+  at a time: the one under another is drawn as it was under the swipe from that one, and comes back so, its saved
+  page (a route page, a scroll) with it. A closed station's go with it, kept in step with the stations open
+  (`KeepOpenStationModels`) rather than dropped at each way out, one of which (Back from a change of start's search)
+  dropped those of the station still open under it (Codex on #1147). A placeholder in its place under the one
+  over it, the first try, dropped its saved page as it went under (Codex on #1147). None of the flow's models
+  fetch on their own, so a station kept under another costs memory, not battery. Two stations can be drawn at
+  once, so what each works out is its own: the origin its list and trip share and its list's chips, which the
+  activity held for every station, are in the station's store (`stationOriginWork`, Codex on #1147). The list
+  takes both from whoever draws it, so it keeps none of its own: the near-me list's stay the activity's.
+- **A station opened again is brought up** as it was, from under the pages opened since, but picked as a trip's
+  new start it opens at that trip's To… (`OpenStation.opened`, Codex on #1147). The trip on the way's Plan again
+  opens its station in place of the one showing, as it did.
+- **The end of the flow closes every station** (an arrived trip's Done, leaving for near me or the list, a
+  place shared in), and a stop's details a station was opened from or over (`Pages.inStationFlow`), which would
+  otherwise come back over wherever the app lands; a station's Back closes only that one (Codex on #1147).
+- **A station's From row brings up the search it was picked in** when pages are kept between them (another
+  station and its stop's details): closing the station alone would show those instead (Codex on #1147).
+- **A station picked in the From… search opens at the trip's To…** while a change of start is under way
+  (`OriginChange.pickedTo`), where that To… used to wait in the open station's.
+- **`KeptPages` went:** each station's page keeps what it saved as any page does.
+- **The stack holds a station once for each station open,** each a page the rider goes back through, so its
+  walks are of the pages the rider opened, not of anything they have.
+
+`PagesTest` checks a station around a route page's stop going over the details and the station under them, a
+station brought up, the flow's end closing every station, and Plan again's in place. `NearbyAreaTest` checks a
+station opened over another starts afresh and its Back finds the one under it as it was; `SavedTripTest` checks the
+stations open round-trip.
 
 ## Decided (maintainer, 2026-10-22)
 

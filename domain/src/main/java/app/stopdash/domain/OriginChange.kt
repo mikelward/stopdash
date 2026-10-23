@@ -83,11 +83,11 @@ sealed interface OriginChange {
         fun closesLines(landing: Landing?): Boolean = landing !is Landing.Station
 
         /**
-         * The *To…* a station's page leaves behind when the rider backs out of it to the *From…* search.
-         * A change of start stays under way until the new station's trip appears, so backing out of one
-         * still loading its stops, or that failed, keeps the trip's *To…*: the next station picked opens
-         * at it too. With no change under way, nothing is kept.
+         * The *To…* a station picked in the *From…* search opens at: the trip's, while a change of start is
+         * under way. The change stays under way until the new station's trip appears, so backing out of one
+         * still loading its stops, or that failed, leaves the next station picked opening at it too. With no
+         * change under way, none.
          */
-        fun toAfterStationClosed(change: OriginChange?): ToChoice = change?.to ?: ToChoice.NONE
+        fun pickedTo(change: OriginChange?): ToChoice = change?.to ?: ToChoice.NONE
     }
 }

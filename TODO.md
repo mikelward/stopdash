@@ -4078,10 +4078,10 @@ Builds on Phase 1's minimal line-status marking.
   - [x] **Back returns to the page a screen was opened from** (maintainer, 2026-10-21: "back skips
         pages"): every overlay keeps the near-me view's pages and the pages of any overlay under it
         (SPEC *Back*), and a route stop's details step aside for the line and editor they open.
-    - [ ] **A station opened from a route page stop's details takes the place of the station under
-          it**: From there closes the details and replaces the open station, so Back skips both the
-          details and the first station. Needs a stack of stations under the flow; going back
-          reloads the first one, as the flow's models are kept for one station at a time.
+    - [x] **A station opened from a route page stop's details takes the place of the station under
+          it**: From there closed the details and replaced the open station, so Back skipped both the
+          details and the first station. Now it opens over both (Navigation 3 step 5b), each station
+          open keeping its models, so Back finds the first one as it was.
     - [x] **Predictive back** (maintainer, 2026-10-21: "use the standard android back peeking"):
           every page follows the back gesture over a scrim, and the system's back-to-home peek shows on
           Android 14 and 15 too (maintainer, 2026-10-22: "shrink only", SPEC *Back*).
@@ -4098,10 +4098,10 @@ Builds on Phase 1's minimal line-status marking.
         - [ ] 5. The station flow stacks.
           - [x] 5a. The From… search and a station become pages of their own, a station over the search it
                 was picked in.
-          - [ ] 5b. Stations stack: one opened from a route page stop's details goes over the station
-                under it (the entry above), and a change of start leaves its station under the search, so
-                Back to it is the stack's.
-          - [ ] 5c. A station's trip becomes a page over the station.
+          - [x] 5b. Stations stack: one opened from a route page stop's details goes over the station
+                under it (the entry above).
+          - [ ] 5c. A change of start leaves its station under the search, so Back to it is the stack's.
+          - [ ] 5d. A station's trip becomes a page over the station.
         - [ ] 6. The in-screen views become entries, a family per PR.
         - [ ] 7. Cleanup: the flag rules the stack replaces go.
   - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their
