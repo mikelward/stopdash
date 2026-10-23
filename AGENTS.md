@@ -181,9 +181,9 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 ## Commit messages
 
 - **Title like a changelog line** (maintainer, 2026-10-23): an imperative verb, then the
-  feature in the rider's plain words (no identifiers), sentence case, ≤ ~70 chars: `Fix …`
-  for what was broken (`Fix bus stop lists missing train stations`), `Improve …` (`Improve
-  "Get off soon" notification timing`), `Show …`/`Add …` for what's new; an optional
+  feature in the rider's plain words (no identifiers), sentence case, ≤ ~70 chars, e.g.
+  `Fix …` for what was broken (`Fix bus stop lists missing train stations`), `Improve …`
+  (`Improve "Get off soon" notification timing`), `Show …`/`Add …` for what's new; an optional
   parenthetical says how (`Fix National Rail stop lists (using National Rail instead of
   TfL data)`). Never the scenario or mechanism (that's the body). PR titles and
   release-note bullets match. Rebase-merges land every subject on `main` and in release
