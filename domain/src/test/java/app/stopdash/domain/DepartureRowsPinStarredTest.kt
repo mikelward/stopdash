@@ -72,6 +72,16 @@ class DepartureRowsPinStarredTest {
     }
 
     @Test
+    fun `a favorite ride's train kept in its platform lifts with the starred band, with no stars at all`() {
+        val central = timed("A", "central", "e", 60)
+        val victoria = timed("B", "victoria", "s", 120)
+        val rows = listOf(central, victoria)
+        assertEquals(listOf(victoria, central), DepartureRows.pinStarred(rows, emptySet(), lifted = { it === victoria }, anyLifted = true))
+        // Told there are none to lift, the list is left as it is.
+        assertEquals(rows, DepartureRows.pinStarred(rows, emptySet(), lifted = { it === victoria }))
+    }
+
+    @Test
     fun `soonest-first order is preserved within the starred and unstarred bands`() {
         val a = timed("A", "central", "e", 60)
         val b = timed("B", "victoria", "s", 120)

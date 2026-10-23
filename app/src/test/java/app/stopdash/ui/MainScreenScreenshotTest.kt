@@ -6180,6 +6180,8 @@ class MainScreenScreenshotTest {
         starred: Set<StarredRow>,
         stopDistanceMeters: Map<String, Double>,
         stops: List<StopArrivals>,
+        rideGrouping: RideGrouping = RideGrouping.RIDE,
+        stationGroups: Boolean = true,
     ): @Composable () -> Unit = {
         val repository = RouteStopsRepository(
             object : RouteSequenceSource {
@@ -6224,7 +6226,10 @@ class MainScreenScreenshotTest {
                     FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "tube"),
                 ),
                 onToggleJourney = {},
-                stationGroups = true,
+                onHideMode = {},
+                onSetRideLineHidden = { _, _, _ -> },
+                rideGrouping = rideGrouping,
+                stationGroups = stationGroups,
             )
         }
     }
@@ -6243,7 +6248,7 @@ class MainScreenScreenshotTest {
             SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(name))
 
     // King's Cross with a starred row, and a bus stop's two poles a walk apart.
-    private fun groupedByStationOn() {
+    private fun groupedByStationOn(rideGrouping: RideGrouping = RideGrouping.RIDE, stationGroups: Boolean = true) {
         // Every train with its direction, so the ride judges them all and says nothing couldn't be checked.
         val kingsCross = kingsCrossStPancras().let { stop ->
             stop.copy(departures = stop.departures.map { if (it.direction.isEmpty()) it.copy(direction = "inbound") else it })
@@ -6261,6 +6266,8 @@ class MainScreenScreenshotTest {
                         starred = setOf(StarredRow.of(highBarnet)),
                         stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "490000001E" to 60.0, "490000001F" to 150.0),
                         stops = stops,
+                        rideGrouping = rideGrouping,
+                        stationGroups = stationGroups,
                     )()
                 }
             }
@@ -6289,6 +6296,42 @@ class MainScreenScreenshotTest {
         val order = listOf("Brixton", "High Barnet", "Walthamstow Central", "Cockfosters", "Heathrow Terminal 5", "Morden", "Barking", "Uxbridge")
         assertEquals(order, order.sortedBy { top(it) })
         captureSnapshot("main-station-groups.png", heightPx = 4200)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station with rides By station, a ride's train leads its station's card, starred, with no heading`() {
+        // Group favorite rides By station (maintainer, 2026-10-23): King's Cross to Warren Street's Brixton train in King's
+        // Cross's own card, after its starred row, a star after where it goes, and no ride heading.
+        groupedByStationOn(RideGrouping.STATION)
+        composeRule.onAllNodes(hasContentDescription("➔ Warren Street", substring = true)).assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
+        composeRule.onAllNodesWithText("120 m").assertCountEquals(1)
+        fun top(text: String) = composeRule.onNodeWithText(text).getUnclippedBoundsInRoot().top
+        val order = listOf("King's Cross St. Pancras", "High Barnet", "Brixton", "Walthamstow Central", "Cockfosters")
+        assertEquals(order, order.sortedBy { top(it) })
+        captureSnapshot("main-station-groups-ride-in-station.png", heightPx = 4200)
+        // A long press on the ride's train offers what its own card does, never hiding the line everywhere.
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by platform with rides By station, a ride's train stays in its platform, starred, which goes first`() {
+        // By stop/platform, the ride's Brixton train stays in its own platform's group, starred, with no ride heading, and
+        // that group leads King's Cross's, which leads the nearer bus stop, as a starred row lifts its place.
+        groupedByStationOn(RideGrouping.STATION, stationGroups = false)
+        composeRule.onAllNodes(hasContentDescription("➔ Warren Street", substring = true)).assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
+        composeRule.onAllNodesWithText("Brixton").assertCountEquals(1)
+        fun top(text: String) = composeRule.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().minOf { it.boundsInRoot.top }
+        assertTrue(top("Brixton") < top("Sudbury"))
+        captureSnapshot("main-platform-groups-ride-in-platform.png", heightPx = 4200)
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
     }
 
     @Test

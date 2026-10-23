@@ -1623,11 +1623,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       lines, its starred rows first, each favorite ride a group of its own just before it, and folds it from
       its heading.
   - [ ] **The widget doesn't follow it yet**: it keeps its own place headings by platform.
-  - [ ] **Group favorite rides: a By station option** (maintainer, 2026-10-23; mocks in chat). Beside By ride
+  - [x] **Group favorite rides: a By station option** (maintainer, 2026-10-23; mocks in chat). Beside By ride
         and By stop, By station keeps a ride's trains in their own station's or platform's group, starred,
         with no ride heading, the group holding them sorted first: By station, they lead the station's card;
         By stop/platform, their platform's group goes first.
-  - [ ] **By station, Group favorite rides By stop splits a ride by stop** (maintainer, 2026-10-23): one group per
+  - [x] **By station, Group favorite rides By stop splits a ride by stop** (maintainer, 2026-10-23): one group per
         stop the ride boards from ("Stop E ➔ X", "Stop F ➔ X"), each just before its station's, as By stop
         heads them By stop/platform; today By station ignores the setting, so By stop draws as By ride does.
   - [x] **By station, opening a faraway place holds still** (maintainer, 2026-10-23): a tap on a faraway place's

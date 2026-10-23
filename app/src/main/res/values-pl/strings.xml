@@ -779,6 +779,7 @@
     <string name="station_unfold">Rozwiń</string>
     <string name="station_folded">Zwinięte</string>
     <string name="station_unfolded">Rozwinięte</string>
+    <string name="ride_row_star">Ulubiony przejazd</string>
 
     <string name="menu_send_bug_report">Wyślij raport o błędzie</string>
     <string name="bug_report_consent_title">Wyślij raport o błędzie</string>

@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import app.stopdash.domain.Departure
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import java.time.Instant
@@ -46,7 +47,7 @@ class ListReturnScrollTest {
         )
     }
 
-    private fun returnKeepsPlace(stationGroups: Boolean) {
+    private fun returnKeepsPlace(stationGroups: Boolean, rideGrouping: RideGrouping = RideGrouping.RIDE) {
         val scheduler = TestCoroutineScheduler()
         val worker = StandardTestDispatcher(scheduler)
         // Held above the list, as the activity holds them.
@@ -65,6 +66,7 @@ class ListReturnScrollTest {
                                 listWork = listWork,
                                 listState = listState,
                                 stationGroups = stationGroups,
+                                rideGrouping = rideGrouping,
                             )
                         }
                     }
@@ -96,4 +98,9 @@ class ListReturnScrollTest {
 
     @Test
     fun `back to the list grouped by station lands where it was left`() = returnKeepsPlace(stationGroups = true)
+
+    @Test
+    fun `back to the list with rides grouped by station lands where it was left`() {
+        returnKeepsPlace(stationGroups = false, rideGrouping = RideGrouping.STATION)
+    }
 }

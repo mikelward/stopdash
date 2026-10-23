@@ -761,6 +761,7 @@
     <string name="station_unfold">Déplier</string>
     <string name="station_folded">Replié</string>
     <string name="station_unfolded">Déplié</string>
+    <string name="ride_row_star">Trajet favori</string>
     <string name="menu_send_bug_report">Envoyer un rapport de bug</string>
     <string name="bug_report_consent_title">Envoyer un rapport de bug</string>
     <string name="bug_report_consent_body">Pour aider à résoudre un problème, ce rapport partage :\n\n• un journal de diagnostic (arrêts, lignes et erreurs détectés par l’application)\n• une capture de cet écran\n• votre position exacte des 15 dernières minutes\n• votre distance par rapport aux arrêts les plus proches\n\nSi vous appuyez sur Continuer, le rapport est copié dans le presse-papiers et proposé à l’application de votre choix.</string>
