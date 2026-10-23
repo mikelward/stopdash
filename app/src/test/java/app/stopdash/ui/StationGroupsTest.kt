@@ -305,6 +305,25 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a list carries on from the last while it keeps every place, so the last stations may stand in for it`() {
+        fun list(vararg places: String, last: ListCards? = null) =
+            ListCards.of(places.map { row("${it}1", it) }, warningsLead = false, RouteTopology.EMPTY, last = last)
+        val first = list("A", "B")
+        val refreshed = list("A", "B", last = first)
+        val opened = list("A", "B", "C", last = refreshed)
+        // The same places, or more: the earlier lists' stations stand in, through any number of them.
+        assertTrue(refreshed.grownFrom(first))
+        assertTrue(opened.grownFrom(refreshed))
+        assertTrue(opened.grownFrom(first))
+        // Never the other way, nor once a place has gone, nor for a list worked out apart from them.
+        assertFalse(first.grownFrom(opened))
+        val moved = list("A", "C", last = opened)
+        assertFalse(moved.grownFrom(opened))
+        assertFalse(moved.grownFrom(first))
+        assertFalse(list("A", "B").grownFrom(first))
+    }
+
+    @Test
     fun `a station's card leads with its starred rows and its rides' trains, then its platforms by number`() {
         val platform5 = StopGroup(
             stopName = "Place", key = "p5", showHeader = true, rows = listOf(row("S5", "S")), placeKey = "S",

@@ -118,7 +118,14 @@ internal class RowsByKey private constructor(private val byKey: Map<String, Depa
  * itself ([of], by identity, so a lookup compares no rows). Worked out with the rows on the list's
  * worker, never in composition (AGENTS.md *Main thread*).
  */
-internal class ListCards private constructor(val groups: List<StopGroup>, private val byGroup: Map<StopGroup, StopCard>) {
+internal class ListCards private constructor(
+    val groups: List<StopGroup>,
+    private val byGroup: Map<StopGroup, StopCard>,
+    // The lists before it that it holds every place of, and maybe more ([grownFrom]): one token for the run of them,
+    // each with its place in the run, worked out on the worker against the last list.
+    private val lineage: Any = Any(),
+    private val generation: Int = 0,
+) {
     /** [group]'s card; [group] must be one of [groups]. */
     fun of(group: StopGroup): StopCard = checkNotNull(byGroup[group]) { "a group the list didn't work out" }
 
@@ -128,6 +135,17 @@ internal class ListCards private constructor(val groups: List<StopGroup>, privat
      */
     val places: String = groups.map(::groupPlace).distinct().joinToString("\u0001")
 
+    // The same places as a set, worked out with them, for the next list's [lineage].
+    private val placeSet: Set<String> = groups.mapTo(HashSet(), ::groupPlace)
+
+    /**
+     * Whether this list holds every place [other] does, and maybe more (a faraway place opened, a stop come in): its
+     * last stations may stand in while the new ones are worked out, each for a place still listed, rather than none
+     * at all, which drew the list empty for a frame and lost its position (maintainer, 2026-10-23). Read from what
+     * the worker worked out with each list, comparing no places on the main thread (Codex, #1183).
+     */
+    fun grownFrom(other: ListCards): Boolean = lineage === other.lineage && generation >= other.generation
+
     companion object {
         val NONE = ListCards(emptyList(), emptyMap())
 
@@ -136,9 +154,23 @@ internal class ListCards private constructor(val groups: List<StopGroup>, privat
          * each mode apart where the list is grouped by station ([splitByMode], [StopGrouping.groupByStop]).
          */
         @WorkerThread
-        fun of(rows: List<DepartureRow>, warningsLead: Boolean, topology: RouteTopology, splitByMode: Boolean = false): ListCards {
+        fun of(
+            rows: List<DepartureRow>,
+            warningsLead: Boolean,
+            topology: RouteTopology,
+            splitByMode: Boolean = false,
+            // The list worked out before it, which it carries on from while it holds every one of its places ([grownFrom]).
+            last: ListCards? = null,
+        ): ListCards {
             val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead, splitByMode = splitByMode)
-            return ListCards(groups, groups.associateWithTo(IdentityHashMap()) { stopCard(it, topology) })
+            val places = groups.mapTo(HashSet(), ::groupPlace)
+            val grown = last != null && places.containsAll(last.placeSet)
+            return ListCards(
+                groups,
+                groups.associateWithTo(IdentityHashMap()) { stopCard(it, topology) },
+                lineage = if (grown) last!!.lineage else Any(),
+                generation = if (grown) last!!.generation + 1 else 0,
+            )
         }
     }
 }
@@ -478,7 +510,7 @@ internal fun shownRowsOf(
         }
     // On the near-me list (distances present) a place is ordered by distance, not lifted for carrying a
     // line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
-    val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology, splitByMode = byStation)
+    val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology, splitByMode = byStation, last = last?.listCards)
     return ShownRows(
         rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
         ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),
