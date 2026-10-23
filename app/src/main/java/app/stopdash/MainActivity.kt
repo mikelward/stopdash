@@ -1163,9 +1163,14 @@ class MainActivity : ComponentActivity() {
                 val openStationId by remember(pages) { derivedStateOf { pages.station?.id } }
                 // A station opened over whatever is up, or brought up from under it as it was; picked as a trip's new start
                 // ([carryTo]), at the trip's To… it was picked for, even if it was open already (Codex on #1147).
+                // A station's trip is a page of its own over it, open while its To… is ([Page.StationTrip]).
+                val syncStationTrip: (String) -> Unit = { id ->
+                    if (stations[id]?.to?.open == true) pages.openStationTrip(id) else pages.closeStationTrip(id)
+                }
                 val openStation: (String, OpenStation, Boolean) -> Unit = { id, station, carryTo ->
                     stations[id] = OpenStation.opened(stations[id], station, carryTo)
                     pages.openStation(id)
+                    syncStationTrip(id)
                 }
                 // The favorite ride a station was opened from (its Whole station): the station's id, the ride's
                 // key and the stop it was shown boarding from ([RideReturn]). Only that station's own Back reopens
@@ -1232,7 +1237,10 @@ class MainActivity : ComponentActivity() {
                 // "To…" from an open station (SPEC *Finding stops → From… To…*) is the station's own ([OpenStation.to]):
                 // whether its destination search is up, and the destination picked — a stop, or a place routed to by its
                 // coordinate (SPEC D9), as for [hereFavorite].
-                val setStationTo: (String, ToChoice) -> Unit = { id, to -> stations[id]?.let { stations[id] = it.copy(to = to) } }
+                val setStationTo: (String, ToChoice) -> Unit = { id, to ->
+                    stations[id]?.let { stations[id] = it.copy(to = to) }
+                    syncStationTrip(id)
+                }
                 // A To… search's From row opened the station search (maintainer, 2026-09-28): where it
                 // was tapped, so leaving the search goes back there rather than dropping the trip.
                 var originChange by rememberSaveable(stateSaver = ORIGIN_CHANGE_SAVER) { mutableStateOf<OriginChange?>(null) }
@@ -2031,6 +2039,9 @@ class MainActivity : ComponentActivity() {
                                 }
                                 is Page.StartSearch -> leaveStartSearch(page)
                                 is Page.Station -> closeStation()
+                                // Closed as its own Back closes it: its To… search and the destination picked.
+                                is Page.StationTrip -> stations[page.id]?.let { setStationTo(page.id, it.to.closePicker().clearDestination()) }
+                                    ?: pages.closeStationTrip(page.id)
                                 // Its origin still being worked out, or the location gate in its place: ended as its
                                 // own Back would, its models with it.
                                 is Page.HereTrip -> {
@@ -2154,6 +2165,7 @@ class MainActivity : ComponentActivity() {
                                     openStationId?.let(stations::remove)
                                     stations[stop.id] = OpenStation(stop.name, to = stop.to)
                                     pages.replaceStation(stop.id)
+                                    syncStationTrip(stop.id)
                                     // Opened for the trip, not from Lines…, whatever's under it.
                                     stationFromLines = null
                                     replanning = true
@@ -2760,7 +2772,7 @@ class MainActivity : ComponentActivity() {
                                         onDepartures = openDepartures,
                                     )
                                 }
-                            } else if (page == Page.StationSearch || page is Page.StartSearch || page is Page.Station) {
+                            } else if (page == Page.StationSearch || page is Page.StartSearch || page is Page.Station || page is Page.StationTrip) {
                                 // Closed last by an arrived trip's Done: the search opens empty, not on that query.
                                 if (stationSearchReset) {
                                     val search = fromSearchModel()
@@ -2775,8 +2787,8 @@ class MainActivity : ComponentActivity() {
                                 val leaveLines = { linesUnder?.let(closeLines) }
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
                                 val replanActions = replanActionsOr(LocalOnTheWay.current, replanning)
-                                // The search, or a station on its page, with what it shows.
-                                val station = page as? Page.Station
+                                // The search, or a station on its page or its trip's, with what it shows.
+                                val station = (page as? Page.Station) ?: (page as? Page.StationTrip)?.let { Page.Station(it.id) }
                                 val shown = station?.let { stations[it.id] }
                                 // A change of start's search's query, cleared as it closes on its own station picked again.
                                 val fromSearch = if (page is Page.StartSearch) fromSearchModel() else null
@@ -2789,6 +2801,7 @@ class MainActivity : ComponentActivity() {
                                         stationId = station?.id,
                                         stationName = shown?.name.orEmpty(),
                                         stationLead = shown?.lead,
+                                        tripPage = page is Page.StationTrip,
                                         // A change of start stays under way while the station loads: it's
                                         // done only once the station's To… search appears (below).
                                         onOpenStation = { match ->
@@ -4747,6 +4760,8 @@ class MainActivity : ComponentActivity() {
         rootBack: Boolean = false,
         // The stations open on the back stack, whose models are kept for Back to them ([NearbyDeparturesStores.ownerAmong]).
         openStations: Set<String> = emptySet(),
+        // The station's trip's page ([Page.StationTrip]), over the station's own, which shows its list.
+        tripPage: Boolean = false,
     ) {
         val search = fromSearchModel()
         // Each open station's retained models (its stops, the nearby set around it, its list and any trip from it),
@@ -4831,6 +4846,7 @@ class MainActivity : ComponentActivity() {
                     changeTo = changeTo,
                     onChangeFrom = changeFrom,
                     rootBack = rootBack,
+                    tripPage = tripPage,
                 )
                 return@CompositionLocalProvider
             }
@@ -4889,6 +4905,7 @@ class MainActivity : ComponentActivity() {
                 changeTo = changeTo,
                 onChangeFrom = changeFrom,
                 rootBack = rootBack,
+                tripPage = tripPage,
             )
         }
     }
@@ -5001,6 +5018,9 @@ class MainActivity : ComponentActivity() {
         // The station is its page ([Page.Station]): Back from the page itself, or from a trip that is all it has,
         // closes the page, which the back swipe draws closing ([RootBack]).
         rootBack: Boolean = false,
+        // The page of its trip ([Page.StationTrip]), over the page of its list: this one draws the trip, that one the
+        // list, sharing the station's models, so the swipe from the trip draws the list as it was left.
+        tripPage: Boolean = false,
     ) {
         val fromNearby: NearbyStopsViewModel = viewModel(
             key = "from-nearby",
@@ -5103,7 +5123,9 @@ class MainActivity : ComponentActivity() {
                 keepSearchOnEmptyOrigin = changeTo != null,
                 here = planFrom,
                 noneNearby = noneNearby,
-                rootBack = rootBack && noneNearby,
+                // A page of its own: its Back at its root closes it, onto the station's list (or, with none, the
+                // station), which the back swipe draws.
+                rootBack = rootBack,
             )
         }
         val ready = state as? NearbyStopsViewModel.State.Ready
@@ -5114,12 +5136,12 @@ class MainActivity : ComponentActivity() {
             // A saved place with no stop in range has no list to show, but a trip plans from its
             // coordinate alone, as one from Here does with none nearby (Codex on #558): straight to
             // its To… search (or the To… a change of start carries), and leaving that leaves the page.
-            val opened = to.openedWithoutStops(changeTo)
-            if (opened != null) {
-                LaunchedEffect(Unit) { onTo(opened) }
-                return
+            if (tripPage) {
+                Trip(emptyList(), emptyMap(), emptyList(), noneNearby = true)
+            } else {
+                // The station's own page, under its trip's, is that trip opening.
+                to.openedWithoutStops(changeTo)?.let { opened -> LaunchedEffect(Unit) { onTo(opened) } }
             }
-            Trip(emptyList(), emptyMap(), emptyList(), noneNearby = true)
             return
         }
         if (ready == null) {
@@ -5158,12 +5180,12 @@ class MainActivity : ComponentActivity() {
         // Mid-change of start, a station with nothing to start from (every mode there hidden) shows
         // its own page, which says so and offers "Show all"; once there is somewhere to start, the
         // trip opens at the To… the change carries rather than leaving the rider to pick it again.
-        if (!to.open && changeTo != null && !origin.isNullOrEmpty()) {
+        if (!tripPage && !to.open && changeTo != null && !origin.isNullOrEmpty()) {
             LaunchedEffect(Unit) { onTo(changeTo) }
         }
-        if (to.open && origin == null) {
+        if (tripPage && origin == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else if (to.open && origin != null) {
+        } else if (tripPage && origin != null) {
             Trip(origin, ready.distanceMeters, ready.eager + ready.more, noneNearby = false)
         } else {
             DeparturesForStops(

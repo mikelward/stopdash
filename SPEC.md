@@ -4543,16 +4543,17 @@ whatever opens after them covers them until its Back, which finds them as they w
 
 The back gesture is predictive. Swiping back from Settings, Licenses, Lines…'s search, the saved places,
 the favorite rides, the trip on the way's screen, the trip from here (its routes, or its To… search with
-nothing picked yet), the From… search or a station's page (its list, or a trip that is all it has) draws the
-page it was opened over under it, as it was left, and the screen follows the
+nothing picked yet), the From… search, a station's page or its trip (its routes, or its To… search with nothing
+picked yet; the station's list under it) draws the page it was opened over under it, as it was left, and the
+screen follows the
 swipe as it closes; let go without going back, and it settles back over that page. The page drawn under a
 swipe starts nothing it would start on top until the swipe is done: no location fix, no refresh owed on
 returning to the app, no report, no window. Under the trip from here, the near-me list's place holds a
 spinner: its departures are dropped while the trip is up, so that they neither refresh nor fall behind the
 trip's re-locates, and are fetched again when the trip closes, not for a look. Back from the location gate
 standing in for the trip closes the trip, onto the page under it. A page
-inside a screen (a line's page in Lines…, Settings' Disruptions page, a saved place's editor), a station's trip
-and the near-me view's own pages still follow the swipe as before (maintainer, 2026-10-22,
+inside a screen (a line's page in Lines…, Settings' Disruptions page, a saved place's editor) and the near-me
+view's own pages still follow the swipe as before (maintainer, 2026-10-22,
 "shrink only"): shrinking toward the edge swiped from over a deepening scrim, springing back if let go,
 without drawing the page under them. A page that is a window over another (a stop's details, Departures, a
 line's page from a trip, a route's timetable) shows the page under it as it shrinks. Back from the near-me

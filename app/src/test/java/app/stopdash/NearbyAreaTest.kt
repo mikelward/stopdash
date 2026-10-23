@@ -237,6 +237,22 @@ class NearbyAreaTest {
     }
 
     @Test
+    fun `a station's trip opens over its list, which the swipe from it draws as it was left`() {
+        show()
+        open(Page.Station("A"))
+        composeRule.onNodeWithText("Station A").performClick()
+        // Its To…: the trip over it, the list under it as it was.
+        open(Page.StationTrip("A"))
+        startSwipe()
+        composeRule.onNodeWithText("Station A's route page").assertExists()
+        assertEquals(false, onTop["Station A"])
+        letGo()
+        back()
+        assertEquals(listOf(Page.StationTrip("A").toString()), closed)
+        composeRule.onNodeWithText("Station A's route page").assertIsDisplayed()
+    }
+
+    @Test
     fun `a station opened over another starts afresh, and its Back finds the one under it as it was`() {
         show()
         open(Page.Station("A"))

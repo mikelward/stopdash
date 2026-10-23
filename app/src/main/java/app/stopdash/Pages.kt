@@ -62,6 +62,13 @@ internal sealed interface Page : NavKey {
     @Serializable
     data class Station(val id: String) : Page
 
+    /**
+     * The trip from the station [id] (its To… search, then its routes): a page right over the station's, so the swipe
+     * from it draws the station's list as it was left. Open while the station's To… is ([Pages.openStationTrip]).
+     */
+    @Serializable
+    data class StationTrip(val id: String) : Page
+
     /** A stop's details, tapped on a route page's stop list: a window over the page that route page is on. */
     @Serializable
     data object RouteStop : Page
@@ -84,8 +91,8 @@ internal val Page.isWindow: Boolean get() = this == Page.RouteStop || this == Pa
  * keeps working as it did, and what shows is what was opened last.
  *
  * Each page is on the stack at most once (opening one already open leaves it or brings it up), so it holds one of
- * each kind of page, twelve, but for stations: one for each station the rider opened over another, and a search
- * over one changing where its trip starts, each a page they go back through. Walking it is work of the pages the rider opened, never of anything they have (saved places,
+ * each kind of page, twelve, but for stations: one for each station the rider opened over another, with its trip
+ * and a search over one changing where its trip starts, each a page they go back through. Walking it is work of the pages the rider opened, never of anything they have (saved places,
  * favorites, departures), and it's read in composition like any other state (AGENTS.md *Main thread*). A hop to a
  * worker would draw a frame of the stack as it was.
  */
@@ -154,21 +161,47 @@ internal class Pages(val stack: NavBackStack<Page>) {
     val station: Page.Station? get() = stack.lastOrNull { it is Page.Station } as Page.Station?
 
     /**
-     * The station [id]'s page showing: opened over whatever is on top, or brought up from under it ([show]). A change
-     * of start's search over it goes as it moves ([Page.StartSearch]): picked again there, it comes back from under the
-     * search as it was, so its Back still finds what it was opened over, and no search is left over another page.
+     * The station [id]'s page showing: opened over whatever is on top, or brought up from under it ([show]), its trip
+     * with it, right over it ([Page.StationTrip]). A change of start's search over it goes as it moves
+     * ([Page.StartSearch]): picked again there, it comes back from under the search as it was, so its Back still finds
+     * what it was opened over, and no search is left over another page.
      */
     fun openStation(id: String) {
         stack.remove(Page.StartSearch(id))
-        show(Page.Station(id))
+        val station = Page.Station(id)
+        val trip = Page.StationTrip(id)
+        val pages = if (trip in stack) listOf(station, trip) else listOf(station)
+        if (stack.takeLast(pages.size) == pages) return
+        stack.removeAll(pages)
+        stack.addAll(pages)
     }
 
-    /** The station showing ([station]) closed, a change of start's search over it with it, the one before it showing. */
+    /** The station showing ([station]) closed, its trip and a change of start's search with it, the one before showing. */
     fun closeStation() {
-        station?.let {
-            stack.remove(Page.StartSearch(it.id))
-            stack.remove(it)
-        }
+        station?.let { closeStationPages(it.id) }
+    }
+
+    // The station [id]'s pages: its own, its trip's and the search changing its trip's start.
+    private fun closeStationPages(id: String) {
+        stack.remove(Page.StartSearch(id))
+        stack.remove(Page.StationTrip(id))
+        stack.remove(Page.Station(id))
+    }
+
+    /**
+     * The trip from the station [id] showing, right over the station's page ([Page.StationTrip]): opened, as its To…
+     * opens, over the station if it's on top, or left where it is if it's open already. None for a station not open.
+     */
+    fun openStationTrip(id: String) {
+        val trip = Page.StationTrip(id)
+        if (trip in stack) return
+        val at = stack.indexOf(Page.Station(id))
+        if (at >= 0) stack.add(at + 1, trip)
+    }
+
+    /** The trip from the station [id] closed, as its To… closes, the station's list showing under it. */
+    fun closeStationTrip(id: String) {
+        stack.remove(Page.StationTrip(id))
     }
 
     /**
@@ -177,9 +210,9 @@ internal class Pages(val stack: NavBackStack<Page>) {
      */
     fun inStationFlow(window: Page): Boolean = isOpen(window) && station != null
 
-    /** Every station closed, and the searches changing their trips' starts: the station flow ended. */
+    /** Every station closed, with their trips and the searches changing their starts: the station flow ended. */
     fun closeStations() {
-        stack.removeAll { it is Page.Station || it is Page.StartSearch }
+        stack.removeAll { it is Page.Station || it is Page.StationTrip || it is Page.StartSearch }
     }
 
     /** The From… search to start the trip from [stationId] elsewhere, over that station ([Page.StartSearch]). */
@@ -191,9 +224,10 @@ internal class Pages(val stack: NavBackStack<Page>) {
      */
     fun replaceStation(id: String) {
         val replaced = station ?: return openStation(id)
-        // A change of start's search over it goes too: Plan again starts the trip afresh, and would leave the search
-        // over the station that takes its place.
+        // Its trip and a change of start's search over it go too: Plan again starts the trip afresh, and would leave
+        // them over the station that takes its place. The new trip opens with the To… it comes with.
         stack.remove(Page.StartSearch(replaced.id))
+        stack.remove(Page.StationTrip(replaced.id))
         if (replaced.id == id) return
         if (Page.Station(id) in stack) {
             stack.remove(replaced)
