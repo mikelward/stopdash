@@ -1617,6 +1617,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         watch, search and Lines stop using them; the gold bar, the route page's unpin star and the rows' Unpin
         go with them. Meanwhile a pinned row whose long press opens "Add favorite…" at once (no menu: a
         station page's rows, a ride's own line) is unpinned only from its route page's star.
+  - [ ] **Stop letters on a bus route's map** (maintainer, 2026-10-23): the route map names a pole as
+        "– Stop N"; how it should show the letter on the pole is to be designed with the maintainer first.
 
 - [x] **Group nearby departures: By stop/platform or By station** (maintainer, 2026-10-23; SPEC *Grouped by
       station*). By station heads each station once over one card, its rows by platform behind heavier
