@@ -7343,7 +7343,7 @@ class TripViewModelTest {
         assertEquals(setOf("A", "A2"), card.rows.mapTo(HashSet()) { it.stopId })
         // Its × dismisses every copy: none comes back (Codex, #1160).
         val dismissed = card.rows.mapTo(HashSet()) { DismissedAlert.ofStopClosure(it) }
-        assertEquals(emptyList<TripNotice>(), tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), dismissed).notices)
+        assertEquals(emptyList<TripClosureCard>(), tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), dismissed).notices)
         // One copy dismissed elsewhere leaves the other's card.
         val oneOnly = setOf(DismissedAlert.ofStopClosure(card.rows.first()))
         assertEquals(1, tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), oneOnly).notices.size)
@@ -7372,6 +7372,18 @@ class TripViewModelTest {
         assertEquals(closureTitleOf(both), notice.title)
         val alone = closureTitleOf(routeClosureRows(one, state, now, poleOf = poleOf))
         assertNotEquals(alone, notice.title)
+    }
+
+    @Test
+    fun `the lines page lists the open route's own notice cards`() {
+        val lift = listOf(StopDisruption("Lift out of service to the westbound platform"))
+        val state = TripViewModel.State(routes = listOf(route), closures = mapOf("A" to lift, "B" to stationClosed, "C" to emptyList()))
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        val row = tripRow(estimates.map { listOf(it) }, TripRideLines.NONE, state, now, emptyMap(), emptySet())
+        // One source for both screens: the same notices, titled, keyed and dismissed alike (Codex, #1160).
+        val open = routeNoticeCards(route, state, now, emptyMap(), TripRideLines.NONE, emptySet(), { null }, { _, _ -> null }, HeaderWords.ENGLISH).values.toList()
+        assertEquals(open.map { it.key to it.title }, row.notices.map { it.key to it.title })
+        assertTrue(open.indices.all { open[it].sameAs(row.notices[it]) })
     }
 
     @Test

@@ -5443,7 +5443,7 @@ class TripScreenScreenshotTest {
     fun a_stop_placed_two_ways_lists_its_notice_under_each_without_a_clash() {
         // One route's line has placed the stop in its interchange, another's not yet: two notices, each keyed
         // by its own place, so the page shows both rather than failing on a repeated key (Codex, #1160).
-        val placed = TripNotice.of(TripClosureCard(eustonNotice.row.copy(interchangeId = "HUBEUS"), title = "Euston"))
+        val placed = TripClosureCard(eustonNotice.row.copy(interchangeId = "HUBEUS"), title = "Euston")
         assertNotEquals(eustonNotice.key, placed.key)
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(TripRow(checking = false, notices = listOf(eustonNotice, placed))) } } }
         composeRule.onAllNodes(hasText("Euston: reduced escalator service", substring = true)).assertCountEquals(2)
@@ -7111,14 +7111,12 @@ class TripScreenScreenshotTest {
     }
 
     // TfL's wording of a real notice at a major station (public data), as the lines page lists it.
-    private val eustonNotice = TripNotice.of(
-        TripClosureCard(
-            DepartureRow(
-                stopId = "940GZZLUEUS", stopName = "Euston", lineId = "", lineName = "", direction = "", directionKey = "",
-                destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = Instant.EPOCH, stopDisruption = ESCALATOR,
-            ),
-            title = "Euston",
+    private val eustonNotice = TripClosureCard(
+        DepartureRow(
+            stopId = "940GZZLUEUS", stopName = "Euston", lineId = "", lineName = "", direction = "", directionKey = "",
+            destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = Instant.EPOCH, stopDisruption = ESCALATOR,
         ),
+        title = "Euston",
     )
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

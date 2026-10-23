@@ -166,8 +166,6 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StopDisruption
-import app.stopdash.domain.stopPlaceKey
-import app.stopdash.domain.ClosedNotice
 import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
@@ -1101,7 +1099,7 @@ internal fun TripScreen(
     // dismiss that didn't persist ([dismissWriteFailed]) is said once, then acknowledged.
     dismissed: Set<DismissedAlert> = emptySet(),
     onDismissAlert: ((DepartureRow) -> Unit)? = null,
-    // A stop notice's every copy dismissed at once from the lines page ([TripNotice.rows]); null offers no ×.
+    // A stop notice's every copy dismissed at once from the lines page ([TripClosureCard.rows]); null offers no ×.
     onDismissAlerts: ((List<DepartureRow>) -> Unit)? = null,
     // A line's alert dismissed from the disruptions row's lines page ([TripLinesPage]); null offers none.
     onDismissLineAlert: ((LineStatus) -> Unit)? = null,
@@ -3784,7 +3782,7 @@ internal class TripRow(
     // The rider's starred stops (rows and journeys' ends), which a line's map never folds away.
     val starredStops: Set<String> = emptySet(),
     // Each stop notice in force on the cards, once per place, as the lines page shows it.
-    val notices: List<TripNotice> = emptyList(),
+    val notices: List<TripClosureCard> = emptyList(),
 ) {
     /**
      * [lines]' and [unknownLines]' names, as a screen reader hears a one-line row that draws only the
@@ -3837,64 +3835,6 @@ internal class TripRow(
 }
 
 /**
- * A stop notice as a trip's lines page lists it ([TripRow.notices]): the [row] it's dismissed by, its
- * stop's [title] as the open route's card heads it, its [text] with that name taken off the front, and
- * whether it says the stop is [closed] (its tone, as on the list). Worked out on the worker.
- */
-internal class TripNotice(
-    val row: DepartureRow,
-    val title: String,
-    val text: String,
-    val closed: Boolean,
-    // Every copy it stands for, [row] first: another route can reach another stop of the same place carrying
-    // the same words in other windows, each dismissed by its own identity, so the card's × dismisses them all,
-    // as the list's card does for a notice on two poles (Codex, #1160).
-    val rows: List<DepartureRow> = listOf(row),
-) {
-    // Which notice it is ([keyOf]): the row lists each once by it and the page keys its card by it.
-    val key = keyOf(row)
-
-    // What a dismiss of it saves ([DismissedAlert.ofStopClosure]), copy by copy: its place and windows as well
-    // as its words.
-    private val dismissals = rows.mapTo(LinkedHashSet()) { DismissedAlert.ofStopClosure(it) }
-
-    /** This notice also standing for [other]'s copies, kept once each by what dismisses them. */
-    fun with(other: TripNotice): TripNotice {
-        val more = other.rows.filter { DismissedAlert.ofStopClosure(it) !in dismissals }
-        return if (more.isEmpty()) this else TripNotice(row, title, text, closed, rows + more)
-    }
-
-    /** This notice headed by [title] instead, as when the poles it covers across routes are known ([tripRow]). */
-    fun titled(title: String): TripNotice = if (title == this.title) this else TripNotice(row, title, text, closed, rows)
-
-    /**
-     * Whether [other] draws the same and is dismissed the same: its row's times and stamps aside, which a
-     * notice never shows. A notice TfL moved the window of, or whose place was resolved since, is a new one,
-     * so a dismiss from a kept row never saves what the trip no longer hides (Codex, #1160).
-     */
-    fun sameAs(other: TripNotice): Boolean =
-        key == other.key && title == other.title && text == other.text && closed == other.closed &&
-            row.stopId == other.row.stopId && dismissals == other.dismissals
-
-    companion object {
-        /**
-         * A notice's identity: its place, as a dismissal knows it ([stopPlaceKey]), and its words. Two stops
-         * of one place carrying the same notice are one notice; the same stop placed two ways (an interchange
-         * one route's line has loaded, a stop area another's falls back to) is two, each keyed apart (Codex,
-         * #1160).
-         */
-        fun keyOf(row: DepartureRow): String = "${stopPlaceKey(row)}|${row.stopDisruption.orEmpty()}"
-
-        @WorkerThread
-        fun of(card: TripClosureCard): TripNotice {
-            val notice = card.row.stopDisruption.orEmpty()
-            val text = cleanDisruptionBody(notice, stopName = card.row.stopName, hubName = card.row.hubName, aliases = card.row.placeAliases)
-            return TripNotice(card.row, card.title, text, ClosedNotice.saysClosed(notice))
-        }
-    }
-}
-
-/**
  * The disruptions row for [cards] ([TripRow]): each card's disrupted lines as its ⚠ judges them
  * ([cardStatuses] along its rides, less what was [dismissed]) and its closure notices
  * ([routeClosures]), then the check's word ([statusNote]): checking while a check runs or a line's
@@ -3923,31 +3863,22 @@ internal fun tripRow(
     val lines = LinkedHashMap<String, TripLeg>()
     val stops = LinkedHashSet<String>()
     // Each notice at a place once, however many cards reach it, titled as the open route titles it.
-    val notices = LinkedHashMap<String, TripNotice>()
-    // Each notice's rows before folding, every pole of every route listing it: what its title covers.
-    val noticePoles = HashMap<String, MutableList<DepartureRow>>()
+    val notices = LinkedHashMap<String, TripClosureCard>()
     for (card in cards) {
         val statuses = shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
         card.first().route.rides.indices.flatMap { cardRideLines(card, it, rideLines) }
             .filter { statuses[it.lineId]?.disrupted == true && it.lineId.isNotBlank() }
             .forEach { lines.putIfAbsent(it.lineId, pillNamed(it)) }
         for (estimate in card) {
-            val rows = routeClosureRows(estimate.route, state, now, sequences, rideLines, hubOf, poleOf)
-            val listed = tripClosureCards(foldedClosures(rows, dismissed), rows, words).values.map(TripNotice::of)
-            val keys = listed.mapTo(HashSet()) { it.key }
-            rows.filter { TripNotice.keyOf(it) in keys }.forEach { noticePoles.getOrPut(TripNotice.keyOf(it)) { ArrayList() } += it }
-            for (notice in listed) {
-                stops += notice.row.stopName
-                notices[notice.key] = notices[notice.key]?.with(notice) ?: notice
+            for (card in routeNoticeCards(estimate.route, state, now, sequences, rideLines, dismissed, hubOf, poleOf, words).values) {
+                stops += card.row.stopName
+                notices[card.key] = notices[card.key]?.with(card) ?: card
             }
         }
     }
     // A notice routes reach at more than one pole of its place is headed by them all, as one route's card is
     // ([tripClosureCards]), never by the first route's pole alone (Codex, #1160).
-    for (entry in notices.entries) {
-        val poles = noticePoles[entry.key] ?: continue
-        if (poles.distinctBy { it.stopId }.size > 1) entry.setValue(entry.value.titled(closureTitleOf(poles, words)))
-    }
+    notices.replaceAll { _, notice -> notice.titled(closureTitleOf(notice.poles, words)) }
     // Lines not yet checked rank as unchecked, and say so: checking while a check runs, and only a
     // finished check says it couldn't. A route revealed since the last refresh (a mode shown again)
     // counts by its own lines; so does another line shown with its trains grayed ([RideLines.unchecked]):
@@ -4328,9 +4259,7 @@ private fun rememberTripRow(
     val key = Inputs(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking, routeStops, words)
     val previous = work.value?.value
     val latest = rememberWorked(work, key, keep = { _, _ -> true }) {
-        tripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking, { routeStops?.hubOf(it) }, words) { id, area ->
-            area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
-        }
+        tripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking, { routeStops?.hubOf(it) }, words, cachedPoleOf(routeStops))
             .let { row -> if (previous != null && row.sameAs(previous)) previous else row }
     }
     val stale = work.value?.key != key

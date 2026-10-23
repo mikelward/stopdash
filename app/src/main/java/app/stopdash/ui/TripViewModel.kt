@@ -993,7 +993,7 @@ class TripViewModel(
 
     /**
      * Dismisses each of [rows]' notices, as one × does for every copy of a notice its lines page card stands
-     * for ([TripNotice.rows]): hopped to [io] first, so the copies are walked off the caller's (the main)
+     * for ([TripClosureCard.rows]): hopped to [io] first, so the copies are walked off the caller's (the main)
      * thread (AGENTS.md *Main thread*; Codex, #1160).
      */
     fun dismissAlerts(rows: List<DepartureRow>) {
