@@ -3106,7 +3106,10 @@ as it was.
   ride's mode, as the board shows) in the same request as the trip's, so it costs no request of its own: "Checking…" while a check under way
   asks about it, and "Couldn't check" where that check failed, left the line out or has gone stale, or
   where no check asks about it any more (the board failed, or moved on to the next ride), never a good
-  service it can't stand behind (D4). The walk's check costs one GPS fix
+  service it can't stand behind (D4). **The board's own rows carry the list's ⚠** for a line that check
+  finds disrupted, minor delays included (bug report, 2026-10-23: minor delays after a signal failure, and the
+  board's trains read as a clean service), less what the list dismissed; only while the check is current and
+  still follows the line, so a row never carries a verdict it can't stand behind. The walk's check costs one GPS fix
   per refresh until the rider is seen there or the walk's estimated time is up. Below the next step
   the route's legs are listed, a ride by
   its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers Start

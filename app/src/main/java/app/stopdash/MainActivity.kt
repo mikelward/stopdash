@@ -2185,6 +2185,8 @@ class MainActivity : ComponentActivity() {
                                         readyAt = onTheWayTrip?.let { OnTheWay.readyAt(it, onTheWayProgress) },
                                         ride = onTheWayTrip?.let(OnTheWay::upcomingRide),
                                         shortTo = OffPlan.boardShortTo(onTheWayTrip),
+                                        lineChecks = lineChecks,
+                                        dismissed = boardDismissals.dismissed.collectByIdentityWithLifecycle().value,
                                     ),
                                     trip = onTheWayTrip,
                                     progress = onTheWayProgress,

@@ -7,9 +7,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OffPlan
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
@@ -61,6 +63,30 @@ class NextTrainsOffMainTest {
         ActiveTripTracker.NextBoard(ride, trains.toList(), fetchedAt = now, others = others)
 
     private fun times(next: NextTrains) = next.trains.map { it.expectedArrival }
+
+    @Test
+    fun a_disrupted_lines_rows_carry_its_warning_less_a_dismissed_one() {
+        // Bug report: minor delays on the line (an earlier signal failure) and the board said nothing, its trains
+        // read as a clean service (SPEC *Disruptions*: a disrupted line is always kept flagged).
+        val delays = LineStatus("red", 9, "Minor Delays", fullText = "Red line: minor delays due to an earlier signal failure.")
+        val rows = { timeline: TrainsTimeline -> timeline.at(now).groups.flatMap { it.rows } }
+        val flagged = rows(trainsTimeline(board(train(3), train(5)), routes, now, statuses = BoardStatuses(mapOf("red" to delays), null)))
+        assertTrue(flagged.isNotEmpty())
+        assertTrue(flagged.all { it.status?.severity == 9 })
+        // A good service, or no verdict, marks none.
+        val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
+        assertTrue(rows(trainsTimeline(board(train(3)), routes, now, statuses = BoardStatuses(mapOf("red" to good), null))).all { it.status == null })
+        assertTrue(rows(trainsTimeline(board(train(3)), routes, now)).all { it.status == null })
+        // Dismissed on the list, as the list's rows have it.
+        val dismissed = rows(trainsTimeline(board(train(3)), routes, now, statuses = BoardStatuses(mapOf("red" to delays), null), dismissed = setOf(DismissedAlert.ofLineStatus(delays))))
+        assertTrue(dismissed.isNotEmpty())
+        assertTrue(dismissed.all { it.status == null && it.statusDismissed })
+        // Its check gone stale, the timeline says so, to be worked out again without the ⚠ (Codex, #1174).
+        val until = at(4)
+        val marked = trainsTimeline(board(train(3)), routes, now, statuses = BoardStatuses(mapOf("red" to delays), until))
+        assertFalse(marked.statusesExpired(at(3)))
+        assertTrue(marked.statusesExpired(until))
+    }
 
     @Test
     fun on_a_ride_cut_short_by_the_trip_its_trains_are_named_by_where_it_ends() {
