@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">Abfahrten möglicherweise veraltet</string>
     <string name="refresh">Aktualisieren</string>
     <string name="locate_here">Meinen Standort verwenden</string>
-    <string name="star">Oben anpinnen</string>
     <string name="unstar">Nicht mehr oben anpinnen</string>
     <string name="star_write_failed">Anpinnen konnte nicht gespeichert werden</string>
     <string name="dismiss_write_failed">Meldung konnte nicht ausgeblendet werden</string>

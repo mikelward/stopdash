@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">Plecările pot fi neactualizate</string>
     <string name="refresh">Actualizați</string>
     <string name="locate_here">Folosiți locația mea</string>
-    <string name="star">Fixați sus</string>
     <string name="unstar">Anulați fixarea</string>
     <string name="star_write_failed">Fixarea nu a putut fi salvată</string>
     <string name="dismiss_write_failed">Alerta nu a putut fi închisă</string>

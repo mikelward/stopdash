@@ -1131,9 +1131,11 @@ chose ahead of time, not "nearest to me" — ordered **location-free** so the vi
 with location denied: soonest-first, with **starred** rows pinned to the top. Starring is
 ranking only, separate from which stops are watched (add/remove membership). A star keys on
 the row's `(stop, service, resolved direction key)` identity, so it restores to exactly one
-row and survives restart. Starring is toggled by a **long-press on a route row**, and a starred
-route is marked by a **gold leading-edge bar** on its row (no in-row element, so it costs no width)
-plus its position at the top; the earlier per-row star button was removed because it consumed width
+row and survives restart. **Pins are being replaced by favorite rides** (maintainer, 2026-10-23): a
+**long-press on a route row** now opens **"Add favorite…"** (*Journeys*), and nothing new is pinned; a
+route pinned before keeps its **gold leading-edge bar** on its row (no in-row element, so it costs no width)
+and its place at the top until pins are removed (`TODO.md`), and is unpinned from its row's menu, where it
+has one, or its route page's filled star. The earlier per-row star button was removed because it consumed width
 on every card. (A card now holds several route rows — one per route — so the mark is a per-row bar
 rather than the whole-card border the one-service card used.) A **tap on a route row opens a
 full-screen route detail page** for **the route tapped** — a card shows one row per destination,
@@ -1142,7 +1144,7 @@ destination by branch), not whichever of the line's trains is soonest
 (once the tapped route has no trains left at any of the stop's platforms it falls back to the row's
 soonest, and the title follows, so the title and stop list always name the same train) — its own app bar naming the route (line pill +
 destination, with the branch where the card showed one, "Hainault/Newbury Park") and
-carrying the star (so the long-press is the shortcut, the page the discoverable path), then, heading
+offering "Add favorite…" in its menu (the long press is the shortcut, the page the discoverable path), then, heading
 the body, the service's **full name** — "Victoria line", "London Northwestern Railway" — so a short
 pill code is never a puzzle (left off where the pill already is the name: a bus number, DLR), then
 **every upcoming departure on that route** — not the card's first three — on one full-width
@@ -1551,6 +1553,19 @@ its own atop the stop's page from 2026-10-06): the discoverable path, the long p
 being read rather than guess which way a tap goes, says a change it couldn't save, and a removal
 drops the widget's pins as Settings' Remove does. The boarding stop's details offer no journey, and no star. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
 favorite journeys the rider never meant to, which then pinned to the widget.
+**A long press on a route row asks where the ride goes** (maintainer, 2026-10-23, replacing pinning
+the row): **"Add favorite…"** opens the row's own route page, as a tap does, picking: titled **Add
+favorite**, then where it's from, **"To…"** and its stop list (or map) alone — no times, notices or
+actions, which are the departure's, not the ride's (maintainer, 2026-10-23). The stops are the train's as
+ever, those after the boarding stop on its way and branch, and a
+**tap on one saves the favorite ride** from the boarding stop to it — built as a long press on that stop
+saves it, saved as Settings' Add saves one — then closes the page to where the long press was, where
+the list says how it went (added, already a favorite, couldn't save). The boarding stop picks nothing,
+and while it picks, a long press on a stop picks it as a tap does (never toggling a ride behind the pick). The route page's menu offers the same
+"Add favorite…", putting the page into it (Back then only stops picking). Outside it the page is as
+ever. The ride then shows, edits and is removed as any other (Settings → Favorite rides), far ones held
+back under Faraway favorites, and a ride to a stop only one branch reaches counts only the trains that
+call there.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
 or the 134 between two shared stops) are the same journey. Favorite journeys lead the near-me list as
 cards, **nearest first** (maintainer, 2026-10-15): by how far the rider is from the nearer of its two

@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">Kalkışlar güncel olmayabilir</string>
     <string name="refresh">Yenile</string>
     <string name="locate_here">Konumumu kullan</string>
-    <string name="star">Üste sabitle</string>
     <string name="unstar">Sabitlemeyi kaldır</string>
     <string name="star_write_failed">Sabitleme kaydedilemedi</string>
     <string name="dismiss_write_failed">Uyarı kapatılamadı</string>

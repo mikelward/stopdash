@@ -1,6 +1,22 @@
 package app.stopdash.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithTag
+import app.stopdash.domain.LineRoute
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RouteSequenceSource
+import app.stopdash.domain.RouteStop
+import app.stopdash.domain.RouteStopsRepository
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
@@ -18,6 +34,7 @@ import app.stopdash.ui.theme.StopDashTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,16 +43,15 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Starring a departure is a long-press on the card, not a per-row button (SPEC D8): the button
- * ate width on every row, so it was removed entirely — a starred card carries no in-row element,
- * only a gold border and its position at the top. A long-press on a timed card toggles the pin
- * and carries the "Pin to top" / "Unpin from top" accessibility label. The gold border is a
- * paint-only mark with no queryable node, so it's covered by the screenshot tests; the ordering
- * the star drives is covered by [app.stopdash.domain.DepartureRowsPinStarredTest]. This pins the
- * gesture and its wiring.
+ * A long press on a departure's route row is "Add favorite…" (maintainer, 2026-10-23): it opens the row's route page,
+ * as a tap does, asking "To…", and a tap on a stop there saves the favorite ride to it ([MainScreen]'s `onAddRide`)
+ * and closes the page, its outcome said on the list. The long press carries the "Add favourite…" accessibility label.
+ * Pins are going: nothing new is pinned, and a row pinned before keeps its gold bar (a paint-only mark covered by the
+ * screenshot tests) and is unpinned from its menu or its page. The page's pick mode itself is
+ * [RoutePickScreenshotTest]'s.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StarLongPressTest {
 
@@ -58,28 +74,90 @@ class StarLongPressTest {
 
     private fun loaded() = DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now)
 
+    // The Victoria line southbound from King's Cross, public stations only.
+    private val southbound = LineSequence(
+        routes = listOf(
+            LineRoute(
+                "Walthamstow Central ↔ Brixton",
+                listOf("940GZZLUWWL", "940GZZLUKSX", "940GZZLUEUS", "940GZZLUWRR", "940GZZLUOXC", "940GZZLUGPK", "940GZZLUVIC", "940GZZLUBXN"),
+            ),
+        ),
+        stopNames = mapOf(
+            "940GZZLUWWL" to "Walthamstow Central", "940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUEUS" to "Euston",
+            "940GZZLUWRR" to "Warren Street", "940GZZLUOXC" to "Oxford Circus", "940GZZLUGPK" to "Green Park",
+            "940GZZLUVIC" to "Victoria", "940GZZLUBXN" to "Brixton",
+        ),
+    )
+
     @Test
-    fun `long-pressing an unstarred card invokes the callback for that row`() {
+    fun `long-pressing a card opens its route page asking where the ride goes, and a stop tapped saves it`() {
+        val added = mutableListOf<Pair<DepartureRow, RouteStop>>()
         var toggled: DepartureRow? = null
+        var outcome by mutableStateOf<RideAdded?>(null)
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = southbound
+            },
+            io = Dispatchers.Main,
+            compute = Dispatchers.Main,
+        )
         composeRule.setContent {
             StopDashTheme {
-                MainScreen(
-                    state = loaded(),
-                    now = now,
-                    onRefresh = {},
-                    starred = emptySet(),
-                    onToggleStar = { toggled = it },
-                )
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides Dispatchers.Main) {
+                    MainScreen(
+                        state = loaded(),
+                        now = now,
+                        onRefresh = {},
+                        starred = emptySet(),
+                        onToggleStar = { toggled = it },
+                        onAddRide = { row, _, to -> added += row to to },
+                        rideAdded = outcome,
+                        onRideAddedShown = { outcome = null },
+                    )
+                }
             }
         }
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
-        assertEquals(theRow.stopId, toggled?.stopId)
-        assertEquals(theRow.lineId, toggled?.lineId)
-        assertEquals(theRow.directionKey, toggled?.directionKey)
+        composeRule.waitForIdle()
+        // The row's own page, asking "To…"; nothing is pinned.
+        composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
+        assertNull(toggled)
+
+        composeRule.onNodeWithText("Warren Street", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(theRow.detailKey(), added.single().first.detailKey())
+        assertEquals(RouteStop("940GZZLUWRR", "Warren Street"), added.single().second)
+        // The page closes to the list, which says how it went.
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        composeRule.runOnIdle { outcome = RideAdded("King's Cross St. Pancras", "Warren Street", null) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Added King's Cross St. Pancras ⇄ Warren Street").assertExists()
+
+        // A plain tap still opens the page as it was, its stops opening nothing new and saving nothing.
+        composeRule.onNodeWithText("Brixton").performTouchInput { click() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        composeRule.onNodeWithText("Warren Street", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(1, added.size)
     }
 
     @Test
-    fun `long-pressing a starred card invokes the callback to unpin it`() {
+    fun `the long press is labeled Add favourite for a screen reader`() {
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(state = loaded(), now = now, onRefresh = {}, onAddRide = { _, _, _ -> })
+            }
+        }
+        val labels = composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick))
+            .fetchSemanticsNodes().mapNotNull { it.config.getOrNull(SemanticsActions.OnLongClick)?.label }
+        assertTrue(labels.toString(), "Add favourite…" in labels)
+        assertTrue(labels.toString(), "Pin to top" !in labels)
+    }
+
+    @Test
+    fun `long-pressing a pinned card asks where the ride goes too, never pinning or unpinning`() {
         var toggled: DepartureRow? = null
         composeRule.setContent {
             StopDashTheme {
@@ -89,15 +167,22 @@ class StarLongPressTest {
                     onRefresh = {},
                     starred = setOf(StarredRow.of(theRow)),
                     onToggleStar = { toggled = it },
+                    onAddRide = { _, _, _ -> },
                 )
             }
         }
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
-        assertEquals(theRow.lineId, toggled?.lineId)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
+        assertNull(toggled)
+        // Back from it returns to the list, where the long press was.
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        composeRule.onNodeWithText("Brixton").assertExists()
     }
 
     @Test
-    fun `on the near-me list a long press opens a menu to pin the row or hide its mode`() {
+    fun `on the near-me list a long press opens a menu to add a favorite ride or hide its mode`() {
         var toggled: DepartureRow? = null
         var hidden: String? = null
         composeRule.setContent {
@@ -109,16 +194,18 @@ class StarLongPressTest {
                     starred = emptySet(),
                     onToggleStar = { toggled = it },
                     onHideMode = { hidden = it },
+                    onAddRide = { _, _, _ -> },
                 )
             }
         }
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
-        // The menu opens; nothing is pinned or hidden until an item is picked.
-        assertNull(toggled)
-        composeRule.onNodeWithText("Pin to top").assertExists()
+        // The menu opens; nothing is opened or hidden until an item is picked, and nothing offers a pin.
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        composeRule.onNodeWithText("Add favourite…").assertExists()
+        composeRule.onNodeWithText("Pin to top").assertDoesNotExist()
+        composeRule.onNodeWithText("Unpin from top").assertDoesNotExist()
         composeRule.onNodeWithText("Hide all Underground services").performClick()
         assertEquals("tube", hidden)
-        assertNull(toggled)
 
         // Or just the row's own line, handed over as its key.
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
@@ -126,7 +213,30 @@ class StarLongPressTest {
         assertEquals(HiddenModes.lineKey("victoria", "Victoria line"), hidden)
 
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Pin to top").performClick()
+        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
+        assertNull(toggled)
+    }
+
+    @Test
+    fun `a row pinned before pins went is unpinned from its menu`() {
+        var toggled: DepartureRow? = null
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(
+                    state = loaded(),
+                    now = now,
+                    onRefresh = {},
+                    starred = setOf(StarredRow.of(theRow)),
+                    onToggleStar = { toggled = it },
+                    onHideMode = {},
+                    onAddRide = { _, _, _ -> },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Unpin from top").performClick()
         assertEquals(theRow.lineId, toggled?.lineId)
     }
 
@@ -232,9 +342,8 @@ class StarLongPressTest {
     }
 
     @Test
-    fun `long-press does not toggle when starring is unavailable`() {
-        // A newer-schema star file this build can't read: the card isn't long-pressable, so a
-        // long-press must not toggle (and there's no gold border to falsely imply a pin).
+    fun `a long press does nothing where the list offers no row actions`() {
+        // A board that offers no row actions: nothing happens.
         var toggled: DepartureRow? = null
         composeRule.setContent {
             StopDashTheme {
@@ -245,10 +354,27 @@ class StarLongPressTest {
                     starred = emptySet(),
                     onToggleStar = { toggled = it },
                     starringAvailable = false,
+                    onAddRide = { _, _, _ -> },
                 )
             }
         }
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        assertNull(toggled)
+    }
+
+    @Test
+    fun `without a way to save a ride a long press does nothing`() {
+        var toggled: DepartureRow? = null
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(state = loaded(), now = now, onRefresh = {}, onToggleStar = { toggled = it })
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
         assertNull(toggled)
     }
 }

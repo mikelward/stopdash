@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">Le partenze potrebbero non essere aggiornate</string>
     <string name="refresh">Aggiorna</string>
     <string name="locate_here">Usa la mia posizione</string>
-    <string name="star">Fissa in alto</string>
     <string name="unstar">Non fissare più in alto</string>
     <string name="star_write_failed">Impossibile salvare la modifica</string>
     <string name="dismiss_write_failed">Impossibile ignorare l\'avviso</string>

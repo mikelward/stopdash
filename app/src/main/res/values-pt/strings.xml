@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">As partidas podem estar desatualizadas</string>
     <string name="refresh">Atualizar</string>
     <string name="locate_here">Usar a minha localização</string>
-    <string name="star">Fixar no topo</string>
     <string name="unstar">Desafixar do topo</string>
     <string name="star_write_failed">Não foi possível guardar a fixação</string>
     <string name="dismiss_write_failed">Não foi possível ignorar o alerta</string>

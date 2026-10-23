@@ -116,20 +116,18 @@ class RouteChipsTest {
         composeRule.onNodeWithText("Morden/Charing X").assertIsDisplayed()
         composeRule.onNodeWithTag("routeChoice-2").assertIsNotSelected()
 
-        // North, which has a train: the page is that row's, its train counted down and its star back.
+        // North, which has a train: the page is that row's, its train counted down.
         composeRule.onNodeWithTag("routeChoice-2").performClick()
         settle(scheduler)
         composeRule.onNodeWithTag("routeChoice-2").assertIsSelected()
         composeRule.onNodeWithText("5 min").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
 
-        // By Charing Cross, which has none at the stop: its stops, with no live times and no star.
+        // By Charing Cross, which has none at the stop: its stops, with no live times.
         composeRule.onNodeWithTag("routeChoice-1").performClick()
         settle(scheduler)
         composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
         composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(1)
-        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
 
         // And back to the row's own route.
         composeRule.onNodeWithTag("routeChoice-2").performClick()
@@ -264,7 +262,6 @@ class RouteChipsTest {
         composeRule.onNodeWithText("No live times").assertDoesNotExist()
         composeRule.onNodeWithText("4 min").assertIsDisplayed()
         composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
     }
 
     @Test
@@ -1031,13 +1028,12 @@ class RouteChipsTest {
         composeRule.onNodeWithTag("routeChoice-0").assertIsSelected()
         composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(0)
 
-        // By Charing Cross, whose train is the row's later one: the page follows that train, its stops and its star.
+        // By Charing Cross, whose train is the row's later one: the page follows that train and its stops.
         composeRule.onNodeWithTag("routeChoice-1").performClick()
         settle(scheduler)
         composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
         composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(1)
         composeRule.onNodeWithText("No live times").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
 
         // And back by Bank.
         composeRule.onNodeWithTag("routeChoice-0").performClick()

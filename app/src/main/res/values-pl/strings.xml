@@ -13,7 +13,6 @@
     <string name="departures_stale_empty">Odjazdy mogą być nieaktualne</string>
     <string name="refresh">Odśwież</string>
     <string name="locate_here">Użyj mojej lokalizacji</string>
-    <string name="star">Przypnij na górze</string>
     <string name="unstar">Odepnij z góry</string>
     <string name="star_write_failed">Nie udało się zapisać przypięcia</string>
     <string name="dismiss_write_failed">Nie udało się odrzucić komunikatu</string>

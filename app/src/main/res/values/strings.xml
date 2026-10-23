@@ -29,19 +29,26 @@
     <string name="refresh">Refresh</string>
     <!-- The app bar's crosshairs: re-locate, or back to the near-me list from a From… station. -->
     <string name="locate_here">Use my location</string>
-    <!-- Star (pin-to-top) on a departure card, toggled by a long-press on the card; a pinned
-         card is marked by a gold border, not an in-row element. `star` / `unstar` are the
-         long-press action labels, so they flip with the state (a screen reader hears what the
-         long-press does). -->
-    <string name="star">Pin to top</string>
+    <!-- Takes a pin off a departure row pinned before pins went (maintainer, 2026-10-23: nothing new is
+         pinned): its menu item, and the label of its route page's filled star. -->
     <string name="unstar">Unpin from top</string>
+    <!-- TODO: translate -->
+    <!-- A departure row's long press and its route page's menu: the route page asking "To…", where a tap on a stop
+         saves the favorite ride from the row's stop to it (SPEC *Journeys*); the long-press label a screen reader hears. -->
+    <string name="add_favorite_ride" tools:ignore="MissingTranslation">Add favorite…</string>
+    <!-- The route page's title while picking where a favorite ride goes, its stops under "To…". -->
+    <!-- TODO: translate -->
+    <string name="route_pick_title" tools:ignore="MissingTranslation">Add favorite</string>
+    <!-- TODO: translate -->
+    <!-- Said on the list once a ride picked that way is saved: %1$s and %2$s are its ends, as Add's notes name them. -->
+    <string name="ride_added" tools:ignore="MissingTranslation">Added %1$s ⇄ %2$s</string>
     <!-- Transient snackbar when saving a pin/unpin fails (storage full, an IO error), so a
          tap that didn't take isn't silent. -->
     <string name="star_write_failed">Couldn\'t save your pin</string>
     <!-- Transient snackbar when dismissing a stop-closure alert fails to persist (storage full, an
          IO error), so a tap that didn't take isn't silent (mirrors star_write_failed). -->
     <string name="dismiss_write_failed">Couldn\'t dismiss alert</string>
-    <!-- Route detail screen, opened by a tap on a departure/route card (a long-press still pins).
+    <!-- Route detail screen, opened by a tap on a departure/route card (a long press opens "Add favorite…").
          `departure_details` is the card's tap action label a screen reader announces. The screen's
          app bar names the route (line pill + destination) and carries the star; the body names the
          boarding stop and the line's full disruption text. -->
