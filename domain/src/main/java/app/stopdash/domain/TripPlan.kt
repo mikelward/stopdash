@@ -269,7 +269,9 @@ interface JourneyPlanner {
      * The quickest routes of [journeys], each passing the stop [via], for a trip from where the rider is
      * asked about once more via a bus stop towards its destination ([TowardStops]). Throws
      * [TflException.NotFound] where the Planner finds no route through [via]. [at] is a later trip's time
-     * ([TripTime]), none for now. A planner that can't route via a stop has nothing to add.
+     * ([TripTime]), none for now. [sent] is told when the request goes to the Planner, past any wait for the
+     * app's own request budget, so how long the Planner takes is timed from then. A planner that can't route
+     * via a stop has nothing to add.
      */
     suspend fun quickestVia(
         from: TripOrigin,
@@ -280,6 +282,7 @@ interface JourneyPlanner {
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
         at: TripTime? = null,
+        sent: () -> Unit = {},
     ): List<TripRoute> = emptyList()
 
     /**

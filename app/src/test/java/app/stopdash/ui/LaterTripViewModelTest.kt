@@ -125,8 +125,10 @@ class LaterTripViewModelTest {
             stepFree: StepFree,
             modes: TripModes,
             at: TripTime?,
+            sent: () -> Unit,
         ): List<TripRoute> {
             synchronized(towardAsked) { towardAsked += via to at }
+            sent()
             if (via in towardFails) throw TflException.Offline(null)
             return byToward[via].orEmpty()
         }

@@ -7,6 +7,7 @@ import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TflRateLimiter
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripOrigin
@@ -29,7 +30,10 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import app.stopdash.domain.TripRoute
@@ -598,6 +602,7 @@ class JourneyPlannerTest {
     // A client answering each request by [answer]: its body and status.
     private fun clientBy(
         warn: (String) -> Unit = {},
+        limiter: TflRateLimiter = TflRateLimiter.UNLIMITED,
         answer: (HttpRequestData) -> Pair<String, HttpStatusCode>,
     ): KtorTflClient {
         val engine = MockEngine { request ->
@@ -608,7 +613,10 @@ class JourneyPlannerTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" }, warn = warn)
+        return KtorTflClient(
+            httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" }, warn = warn,
+            rateLimiterFor = { limiter },
+        )
     }
 
     // Constructed: an answer of one route per entry of [minutes], each a walk between two stations
@@ -885,6 +893,23 @@ class JourneyPlannerTest {
         assertEquals("Fast", request.url.parameters["walkingSpeed"])
         // Said apart from the via the fastest route's last stop asks, by which request it was.
         assertTrue(warnings.toString(), warnings.any { it.startsWith("journey planner (quickest via a stop): 1 routes in ") })
+    }
+
+    @Test
+    fun `a request via a bus stop says when it's sent, once its wait for the rate limit is over`() = runTest {
+        val budget = CompletableDeferred<Unit>()
+        val client = clientBy(limiter = object : TflRateLimiter {
+            override suspend fun acquire() = budget.await()
+        }) { busAnswer("10") to HttpStatusCode.OK }
+        var sent = 0
+        val routes = async {
+            client.quickestVia(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUEUS"), "490G000002") { sent++ }
+        }
+        runCurrent()
+        assertEquals(0, sent)
+        budget.complete(Unit)
+        assertEquals(listOf("10"), routes.await().map { it.rides.single().lineId })
+        assertEquals(1, sent)
     }
 
     @Test
