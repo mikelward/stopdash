@@ -131,10 +131,13 @@ internal class ListCards private constructor(val groups: List<StopGroup>, privat
     companion object {
         val NONE = ListCards(emptyList(), emptyMap())
 
-        /** [rows] grouped as the list draws them, warnings first unless [warningsLead] is false, under [topology]. */
+        /**
+         * [rows] grouped as the list draws them, warnings first unless [warningsLead] is false, under [topology];
+         * each mode apart where the list is grouped by station ([splitByMode], [StopGrouping.groupByStop]).
+         */
         @WorkerThread
-        fun of(rows: List<DepartureRow>, warningsLead: Boolean, topology: RouteTopology): ListCards {
-            val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead)
+        fun of(rows: List<DepartureRow>, warningsLead: Boolean, topology: RouteTopology, splitByMode: Boolean = false): ListCards {
+            val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead, splitByMode = splitByMode)
             return ListCards(groups, groups.associateWithTo(IdentityHashMap()) { stopCard(it, topology) })
         }
     }
@@ -458,6 +461,8 @@ internal fun shownRowsOf(
     topology: RouteTopology = RouteTopology.EMPTY,
     // The last ones built, whose ride pages' planned-work days are kept where unchanged ([rideViews]).
     last: ShownRows? = null,
+    // The list is grouped by station: its groups split by mode too ([ListCards.of]).
+    byStation: Boolean = false,
 ): ShownRows {
     val rows = DepartureRows.pinStarred(
         DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown, stopDistanceMeters, topology),
@@ -473,7 +478,7 @@ internal fun shownRowsOf(
         }
     // On the near-me list (distances present) a place is ordered by distance, not lifted for carrying a
     // line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
-    val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology)
+    val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology, splitByMode = byStation)
     return ShownRows(
         rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
         ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),

@@ -1426,7 +1426,11 @@ search, the trip already going via the view's stop (*Going via a stop*). A notic
 opens its station where it heads one, else shows it on the map.
 
 **Grouped by station** (maintainer, 2026-10-23), Settings → **Group nearby departures**: **By stop/platform**, the
-default, is the card per platform or pole above; **By station** heads each station once, in bold, with how far
+default, is the card per platform or pole above; **By station** heads each station once, in bold, a station being
+one place's stops of one mode (a place's Underground, rail and bus stops are three stations, each its own heading;
+National Rail, the Overground and the Elizabeth line, sharing an icon, are one). Everything the list keys by
+station goes by its mode too: a departure, a ride and its trains, a notice (under its own stop's station) and
+the distance (its own mode's nearest stop), so nothing shows under another mode's heading. It shows how far
 its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**
 of all its departures. The near-me list and a searched
 station's page follow it; a platform's or a ride's own view doesn't. The card's rows stay **grouped by platform**,
@@ -1446,7 +1450,8 @@ first with **no starred band**: a starred row leads its own station rather than 
 notice sits under its heading and folds with it, on a searched station's page too (By stop/platform puts its notices
 first there), and a notice about one bus pole names its pole, there being no pole heading to; the heading says
 "Closed" where the notice does, and until then shows the small spinner
-while any of its stops' closure checks is out (*Freshness → Cold load*). A tap on the
+while any of its stops' closure checks is out (*Freshness → Cold load*). The heading leads with its mode's icon, as a search result
+does. A tap on the
 heading's **name** shows the whole station, as a platform's "Whole station" does; only its **chevron** folds the
 station to its heading alone, its rides, starred rows and notices included, and unfolds it again; what's folded is
 kept while the list is, not saved. Platform headings, and the tap that opens one platform, are

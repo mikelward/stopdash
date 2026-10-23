@@ -38,6 +38,33 @@ class NoticePlanTest {
     }
 
     @Test
+    fun `grouped by station, an interchange's notice heads its own stop's mode, not the first listed`() {
+        val tube = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", listOf(departure("victoria", "Brixton", "Southbound - Platform 2")),
+            fetchedAt = now,
+            interchangeId = "HUBKGX",
+        )
+        val rail = StopArrivals(
+            "910GKNGX", "London King's Cross", listOf(Departure("lner", "LNER", "outbound", "Edinburgh", "Platform 4", now.plusSeconds(600), "national-rail")),
+            fetchedAt = now,
+            interchangeId = "HUBKGX",
+            disruptions = listOf(StopDisruption("London King's Cross station is closed.")),
+        )
+        val rows = DepartureRows.across(listOf(tube, rail), now)
+        val groups = StopGrouping.groupByStop(rows, warningsLead = false, splitByMode = true)
+        val hubs = mapOf("940GZZLUKSX" to "HUBKGX", "910GKNGX" to "HUBKGX")
+        val notices = rows.filter { it.stopDisruption != null }
+        val tubeGroup = groups.indexOfFirst { g -> g.rows.any { it.stopId == "940GZZLUKSX" } }
+        val railGroup = groups.indexOfFirst { g -> g.rows.any { it.stopId == "910GKNGX" } }
+        // The Underground's sooner train lists it first.
+        assertTrue(tubeGroup in 0 until railGroup)
+        // By stop/platform, as before: above the interchange's first section.
+        assertEquals(listOf(tubeGroup), planNotices(notices, groups, groups, hubs).aboveGroup.keys.toList())
+        // Grouped by station: above its own stop's, so the rail station's heading says it, not the Underground's.
+        assertEquals(listOf(railGroup), planNotices(notices, groups, groups, hubs, stationOf = { g -> g.rows.first().let { "${it.clusterId}|${it.mode}" } }).aboveGroup.keys.toList())
+    }
+
+    @Test
     fun `a lettered pole's notice stays on that pole`() {
         fun pole(id: String, letter: String, notice: String? = null) = StopArrivals(
             id, "Euston Road", listOf(departure("18", "Sudbury", null, mode = "bus")),

@@ -63,7 +63,13 @@ object StopGrouping {
      * place, so a lone departures group beside a closure-only stop still shows its name header.
      */
     @WorkerThread
-    fun groupByStop(rows: List<DepartureRow>, warningsLead: Boolean = true): List<StopGroup> {
+    fun groupByStop(
+        rows: List<DepartureRow>,
+        warningsLead: Boolean = true,
+        // A list grouped by station heads each place's modes apart ([ModeIcon]), so no group mixes them: one
+        // station ID's Underground and Overground can share a platform number (maintainer, 2026-10-23).
+        splitByMode: Boolean = false,
+    ): List<StopGroup> {
         // Stop closures form NO group — the screen renders them as header-less cards that title
         // themselves on expand (SPEC *Disruptions*) — but a closure's stop is still a **place on
         // the screen**, so it is counted toward the header decision below (see [placeKeys]).
@@ -112,7 +118,7 @@ object StopGrouping {
             // a warned stop stays (clusterKeyOf), so a "No departures" row is still not merged with a
             // same-named pole's live same-line departures.
             val split = splitOf(row)
-            val key = "$place\u0001${split.keyPart}"
+            val key = "$place\u0001${split.keyPart}" + if (splitByMode) "\u0001${ModeIcon.of(row.mode)?.name ?: row.mode}" else ""
             infoOf.getOrPut(key) { GroupInfo(place, split) }
             byGroup.getOrPut(key) { mutableListOf() }.add(row)
         }
