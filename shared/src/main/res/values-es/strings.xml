@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Andén %1$s</string>
+    <string name="header_platform_short">Andén %1$s</string>
+    <string name="header_stop">Parada %1$s</string>
+    <string name="header_towards">dirección %1$s</string>
+    <string name="header_bearing_n">Dirección norte</string>
+    <string name="header_bearing_e">Dirección este</string>
+    <string name="header_bearing_s">Dirección sur</string>
+    <string name="header_bearing_w">Dirección oeste</string>
+    <string name="header_bearing_ne">Dirección noreste</string>
+    <string name="header_bearing_nw">Dirección noroeste</string>
+    <string name="header_bearing_se">Dirección sureste</string>
+    <string name="header_bearing_sw">Dirección suroeste</string>
+</resources>

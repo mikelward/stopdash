@@ -22,7 +22,10 @@
     <string name="complication_unknown">\?</string>
     <string name="complication_uncertain_time">~^1</string>
     <string name="watch_no_rail_key">Sem chave</string>
+    <string name="watch_rail_key_rejected">Chave rejeitada</string>
     <string name="watch_no_data">Sem dados</string>
+    <string name="watch_disrupted_spoken">Com perturbações: %1$s</string>
+    <string name="watch_disrupted_spoken_detail">Com perturbações: %1$s. %2$s</string>
     <string name="planned_alert_description">Alerta planeado: %1$s, a partir de %2$s</string>
     <string name="watch_disruptions_unknown">Não foi possível verificar perturbações</string>
     <string name="complication_line_disrupted">%1$s (%2$s)</string>
@@ -40,6 +43,8 @@
     <string name="watch_trip_channel_description">A etapa em que está, enquanto o telemóvel acompanha uma viagem</string>
     <string name="watch_trip_previous">Etapa anterior</string>
     <string name="watch_trip_next">Próxima etapa</string>
+    <string name="countdown_minutes">%1$s min</string>
+    <string name="countdown_between">" · "</string>
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">Mais %d paragem no telemóvel</item>
         <item quantity="many">Mais %d paragens no telemóvel</item>

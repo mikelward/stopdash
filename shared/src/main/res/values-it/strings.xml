@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Binario %1$s</string>
+    <string name="header_platform_short">Bin. %1$s</string>
+    <string name="header_stop">Fermata %1$s</string>
+    <string name="header_towards">direzione %1$s</string>
+    <string name="header_bearing_n">Direzione nord</string>
+    <string name="header_bearing_e">Direzione est</string>
+    <string name="header_bearing_s">Direzione sud</string>
+    <string name="header_bearing_w">Direzione ovest</string>
+    <string name="header_bearing_ne">Direzione nord-est</string>
+    <string name="header_bearing_nw">Direzione nord-ovest</string>
+    <string name="header_bearing_se">Direzione sud-est</string>
+    <string name="header_bearing_sw">Direzione sud-ovest</string>
+</resources>

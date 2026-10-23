@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Plataforma %1$s</string>
+    <string name="header_platform_short">Plat. %1$s</string>
+    <string name="header_stop">Paragem %1$s</string>
+    <string name="header_towards">em direção a %1$s</string>
+    <string name="header_bearing_n">Sentido norte</string>
+    <string name="header_bearing_e">Sentido este</string>
+    <string name="header_bearing_s">Sentido sul</string>
+    <string name="header_bearing_w">Sentido oeste</string>
+    <string name="header_bearing_ne">Sentido nordeste</string>
+    <string name="header_bearing_nw">Sentido noroeste</string>
+    <string name="header_bearing_se">Sentido sudeste</string>
+    <string name="header_bearing_sw">Sentido sudoeste</string>
+</resources>

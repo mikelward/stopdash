@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">প্ল্যাটফর্ম %1$s</string>
+    <string name="header_platform_short">প্ল্যা. %1$s</string>
+    <string name="header_stop">স্টপ %1$s</string>
+    <string name="header_towards">%1$s অভিমুখে</string>
+    <string name="header_bearing_n">উত্তরমুখী</string>
+    <string name="header_bearing_e">পূর্বমুখী</string>
+    <string name="header_bearing_s">দক্ষিণমুখী</string>
+    <string name="header_bearing_w">পশ্চিমমুখী</string>
+    <string name="header_bearing_ne">উত্তর-পূর্বমুখী</string>
+    <string name="header_bearing_nw">উত্তর-পশ্চিমমুখী</string>
+    <string name="header_bearing_se">দক্ষিণ-পূর্বমুখী</string>
+    <string name="header_bearing_sw">দক্ষিণ-পশ্চিমমুখী</string>
+</resources>

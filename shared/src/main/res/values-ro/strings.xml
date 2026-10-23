@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Peronul %1$s</string>
+    <string name="header_platform_short">Peron %1$s</string>
+    <string name="header_stop">Stația %1$s</string>
+    <string name="header_towards">spre %1$s</string>
+    <string name="header_bearing_n">Spre nord</string>
+    <string name="header_bearing_e">Spre est</string>
+    <string name="header_bearing_s">Spre sud</string>
+    <string name="header_bearing_w">Spre vest</string>
+    <string name="header_bearing_ne">Spre nord-est</string>
+    <string name="header_bearing_nw">Spre nord-vest</string>
+    <string name="header_bearing_se">Spre sud-est</string>
+    <string name="header_bearing_sw">Spre sud-vest</string>
+</resources>

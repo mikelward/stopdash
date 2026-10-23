@@ -1,34 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings the phone app, its widget and the watch share (HeaderWords): the en-US base. -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
-    <!-- TODO: translate -->
     <!-- A stop header's platform, %1$s its number as TfL gives it: "King's Cross St. Pancras – Platform 1". -->
-    <string name="header_platform" tools:ignore="MissingTranslation">Platform %1$s</string>
-    <!-- TODO: translate -->
+    <string name="header_platform">Platform %1$s</string>
     <!-- [header_platform] cut short where a ride's stop heading needs the room: "Plat 6". -->
-    <string name="header_platform_short" tools:ignore="MissingTranslation">Plat %1$s</string>
-    <!-- TODO: translate -->
+    <string name="header_platform_short">Plat %1$s</string>
     <!-- A bus stop's pole, %1$s the letter on its flag: "Turnpike Lane – Stop E". -->
-    <string name="header_stop" tools:ignore="MissingTranslation">Stop %1$s</string>
-    <!-- TODO: translate -->
+    <string name="header_stop">Stop %1$s</string>
     <!-- Where a pole's buses go, as a screen reader hears it after the pole ("Stop G, towards Farringdon"),
          %1$s the place on its sign. Lowercase: it follows a comma. -->
-    <string name="header_towards" tools:ignore="MissingTranslation">towards %1$s</string>
-    <!-- TODO: translate -->
+    <string name="header_towards">towards %1$s</string>
     <!-- A bus pole with no letter, headed by the way it faces: its compass bearing as a direction word. -->
-    <string name="header_bearing_n" tools:ignore="MissingTranslation">Northbound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_e" tools:ignore="MissingTranslation">Eastbound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_s" tools:ignore="MissingTranslation">Southbound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_w" tools:ignore="MissingTranslation">Westbound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_ne" tools:ignore="MissingTranslation">Northeast-bound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_nw" tools:ignore="MissingTranslation">Northwest-bound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_se" tools:ignore="MissingTranslation">Southeast-bound</string>
-    <!-- TODO: translate -->
-    <string name="header_bearing_sw" tools:ignore="MissingTranslation">Southwest-bound</string>
+    <string name="header_bearing_n">Northbound</string>
+    <string name="header_bearing_e">Eastbound</string>
+    <string name="header_bearing_s">Southbound</string>
+    <string name="header_bearing_w">Westbound</string>
+    <string name="header_bearing_ne">Northeast-bound</string>
+    <string name="header_bearing_nw">Northwest-bound</string>
+    <string name="header_bearing_se">Southeast-bound</string>
+    <string name="header_bearing_sw">Southwest-bound</string>
 </resources>

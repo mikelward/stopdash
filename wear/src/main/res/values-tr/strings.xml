@@ -22,7 +22,10 @@
     <string name="complication_unknown">\?</string>
     <string name="complication_uncertain_time">~^1</string>
     <string name="watch_no_rail_key">Anahtar yok</string>
+    <string name="watch_rail_key_rejected">Anahtar reddedildi</string>
     <string name="watch_no_data">Veri yok</string>
+    <string name="watch_disrupted_spoken">Aksaklık: %1$s</string>
+    <string name="watch_disrupted_spoken_detail">Aksaklık: %1$s. %2$s</string>
     <string name="planned_alert_description">Planlı %1$s, %2$s itibarıyla</string>
     <string name="watch_disruptions_unknown">Aksaklıklar kontrol edilemedi</string>
     <string name="complication_line_disrupted">%1$s (%2$s)</string>
@@ -40,6 +43,8 @@
     <string name="watch_trip_channel_description">Telefonunuz bir yolculuğu takip ederken bulunduğunuz adım</string>
     <string name="watch_trip_previous">Önceki adım</string>
     <string name="watch_trip_next">Sonraki adım</string>
+    <string name="countdown_minutes">%1$s dk</string>
+    <string name="countdown_between">" · "</string>
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">Telefonda %d durak daha</item>
         <item quantity="other">Telefonda %d durak daha</item>

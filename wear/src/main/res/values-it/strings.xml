@@ -22,7 +22,10 @@
     <string name="complication_unknown">\?</string>
     <string name="complication_uncertain_time">~^1</string>
     <string name="watch_no_rail_key">Senza chiave</string>
+    <string name="watch_rail_key_rejected">Chiave rifiutata</string>
     <string name="watch_no_data">Nessun dato</string>
+    <string name="watch_disrupted_spoken">Disservizio: %1$s</string>
+    <string name="watch_disrupted_spoken_detail">Disservizio: %1$s. %2$s</string>
     <string name="planned_alert_description">%1$s in programma dal giorno %2$s</string>
     <string name="watch_disruptions_unknown">Impossibile verificare i disservizi</string>
     <string name="complication_line_disrupted">%1$s (%2$s)</string>
@@ -40,6 +43,8 @@
     <string name="watch_trip_channel_description">La tappa attuale, mentre il telefono segue un viaggio</string>
     <string name="watch_trip_previous">Tappa precedente</string>
     <string name="watch_trip_next">Tappa successiva</string>
+    <string name="countdown_minutes">%1$s min</string>
+    <string name="countdown_between">" · "</string>
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">%d altra fermata sul telefono</item>
         <item quantity="many">%d altre fermate sul telefono</item>

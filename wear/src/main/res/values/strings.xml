@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources>
     <string name="app_name" translatable="false">StopDash</string>
     <!-- Nothing has come from the phone yet. -->
     <string name="watch_open_phone">Open StopDash on your phone</string>
@@ -45,17 +45,14 @@
     <string name="complication_uncertain_time">~^1</string>
     <!-- A disrupted National Rail line with no times because no National Rail key is set on the phone. -->
     <string name="watch_no_rail_key">No key</string>
-    <!-- TODO: translate -->
     <!-- A disrupted National Rail line with no times because National Rail refused the phone's key. -->
-    <string name="watch_rail_key_rejected" tools:ignore="MissingTranslation">Key rejected</string>
+    <string name="watch_rail_key_rejected">Key rejected</string>
     <!-- A disrupted line with no times because its board couldn't be fetched. -->
     <string name="watch_no_data">No data</string>
-    <!-- TODO: translate -->
     <!-- Heard (not drawn) for a disrupted line's row: %1$s is TfL's status, "Severe Delays". -->
-    <string name="watch_disrupted_spoken" tools:ignore="MissingTranslation">Disrupted: %1$s</string>
-    <!-- TODO: translate -->
+    <string name="watch_disrupted_spoken">Disrupted: %1$s</string>
     <!-- The same with why the line has no times: %2$s is "No key", "Key rejected" or "No data". -->
-    <string name="watch_disrupted_spoken_detail" tools:ignore="MissingTranslation">Disrupted: %1$s. %2$s</string>
+    <string name="watch_disrupted_spoken_detail">Disrupted: %1$s. %2$s</string>
     <!-- A shown line's service status couldn't be checked, so its countdowns aren't vouched for. -->
     <!-- What a screen reader says for the calendar beside a row's countdown: "Planned Part Closure from 13 Oct". -->
     <string name="planned_alert_description">Planned %1$s from %2$s</string>
@@ -90,13 +87,11 @@
     <string name="watch_trip_previous">Previous step</string>
     <!-- Pages forward through the trip's steps; spoken by a screen reader. -->
     <string name="watch_trip_next">Next step</string>
-    <!-- TODO: translate -->
     <!-- A countdown's minutes on the tile and in the app: %1$s is one or more numbers already joined
          ("3 · 7"), the unit written once after them ("3 · 7 min"). The phone's countdown_minutes. -->
-    <string name="countdown_minutes" tools:ignore="MissingTranslation">%1$s min</string>
-    <!-- TODO: translate -->
+    <string name="countdown_minutes">%1$s min</string>
     <!-- What goes between a countdown's times ("3 · 7 min"), spaces included. -->
-    <string name="countdown_between" tools:ignore="MissingTranslation">" · "</string>
+    <string name="countdown_between">" · "</string>
     <!-- Stops left out because the snapshot was too big to send. -->
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">%d more stop on phone</item>
