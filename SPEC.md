@@ -1455,8 +1455,10 @@ while any of its stops' closure checks is out (*Freshness → Cold load*). The h
 does. A tap on the
 heading's **name** shows the whole station, as a platform's "Whole station" does; only its **chevron** folds the
 station to its heading alone, its rides, starred rows and notices included, and unfolds it again; what's folded is
-kept while the list is, not saved. Platform headings, and the tap that opens one platform, are
-By stop/platform's.
+kept while the list is, not saved. The **farther places** below the loaded ones are headed the same way
+(maintainer, 2026-10-23): an opened one as any station, its stations one card each; one not yet opened folded, over its
+lines and "Tap to see", its chevron (or its card) opening it in place. Platform headings, and the tap that opens one
+platform, are By stop/platform's.
 
 TfL's endpoint is named "Arrivals"; for a bus stop these are departures *from* that
 stop, which is what a rider wants. StopDash calls them departures throughout the UI.
