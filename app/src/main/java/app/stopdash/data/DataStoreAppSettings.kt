@@ -12,6 +12,7 @@ import app.stopdash.domain.AppSettings
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.HiddenModesChoice
@@ -184,6 +185,13 @@ class DataStoreAppSettings internal constructor(
 
     override suspend fun setRideGrouping(grouping: RideGrouping) {
         dataStore.updateData { (it ?: PersistedSettings()).copy(rideGrouping = grouping.name) }
+    }
+
+    override fun nearbyGrouping(): Flow<NearbyGrouping> =
+        persisted().map { NearbyGrouping.fromStored(it?.nearbyGrouping) }
+
+    override suspend fun setNearbyGrouping(grouping: NearbyGrouping) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(nearbyGrouping = grouping.name) }
     }
 
     override fun summaryNetworks(): Flow<Set<String>?> =
@@ -379,6 +387,8 @@ data class PersistedSettings(
     // How the near-me list groups a favorite ride's departures, by enum name, or null for the default
     // (by stop); a string for the same reason as [distanceUnits].
     val rideGrouping: String? = null,
+    // How the near-me list groups its departures, by enum name, or null for the default (by platform).
+    val nearbyGrouping: String? = null,
 )
 
 /**

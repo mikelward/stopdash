@@ -5,6 +5,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
@@ -228,6 +229,24 @@ class DataStoreAppSettingsTest {
         val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
         assertNull(checkNotNull(older).rideGrouping)
         assertEquals(RideGrouping.RIDE, DataStoreAppSettings(FakeDataStore(older)).rideGrouping().first())
+    }
+
+    @Test
+    fun `nearby departures group by platform by default and persist grouping by station`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertEquals(NearbyGrouping.PLATFORM, store.nearbyGrouping().first())
+        store.setNearbyGrouping(NearbyGrouping.STATION)
+        assertEquals(NearbyGrouping.STATION, store.nearbyGrouping().first())
+        store.setNearbyGrouping(NearbyGrouping.PLATFORM)
+        assertEquals(NearbyGrouping.PLATFORM, store.nearbyGrouping().first())
+    }
+
+    @Test
+    fun `a settings file from before nearby grouping reads it as by platform`() = runTest {
+        // Written by an older build: no nearbyGrouping key at all.
+        val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
+        assertNull(checkNotNull(older).nearbyGrouping)
+        assertEquals(NearbyGrouping.PLATFORM, DataStoreAppSettings(FakeDataStore(older)).nearbyGrouping().first())
     }
 
     @Test

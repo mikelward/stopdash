@@ -1220,6 +1220,14 @@
     <string name="settings_train_spacing_summary">Adjust times when trains are impossibly close</string>
     <!-- How the near-me list groups a favorite ride's departures: under each stop the ride leaves
          from, starred and saying where it goes (the default), or under the ride's own name. -->
+    <!-- How the near-me list groups its departures: a card per platform or bus stand (the default), or
+         one card per station under a heading that folds it. -->
+    <!-- TODO: translate -->
+    <string name="settings_nearby_grouping_title" tools:ignore="MissingTranslation">Group nearby departures</string>
+    <!-- TODO: translate -->
+    <string name="settings_nearby_grouping_platform" tools:ignore="MissingTranslation">By platform</string>
+    <!-- TODO: translate -->
+    <string name="settings_nearby_grouping_station" tools:ignore="MissingTranslation">By station</string>
     <string name="settings_ride_grouping_title">Group favorite rides</string>
     <string name="settings_ride_grouping_ride">Group by ride</string>
     <string name="settings_ride_grouping_stop">Group by stop</string>
@@ -1413,6 +1421,20 @@
     <string name="farther_retry">Tap to retry</string>
     <!-- A collapsed card whose stop has nothing running and a notice saying it is closed. -->
     <string name="farther_closed">Closed</string>
+    <!-- A station's heading on the list grouped by station, which folds everything under it: what a tap
+         does, then whether it's folded, for a screen reader. -->
+    <!-- TODO: translate -->
+    <string name="station_fold" tools:ignore="MissingTranslation">Collapse</string>
+    <!-- TODO: translate -->
+    <string name="station_unfold" tools:ignore="MissingTranslation">Expand</string>
+    <!-- TODO: translate -->
+    <string name="station_folded" tools:ignore="MissingTranslation">Collapsed</string>
+    <!-- TODO: translate -->
+    <string name="station_unfolded" tools:ignore="MissingTranslation">Expanded</string>
+    <!-- A star after a row's destination on a station drawn as one card: its trains are a favorite ride's,
+         for a screen reader. -->
+    <!-- TODO: translate -->
+    <string name="ride_row_star" tools:ignore="MissingTranslation">Favorite ride</string>
 
     <!-- Bug report (SPEC Privacy). Overflow item, then the consent screen that spells out what
          leaves the device before anything is shared. The copy is deliberately plain that it

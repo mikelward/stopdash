@@ -18,6 +18,7 @@ import app.stopdash.data.HubsStore
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.NearbyLinesSetting
 import app.stopdash.data.RailApiKeySetting
+import app.stopdash.data.NearbyGroupingSetting
 import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.StepFreeSetting
 import app.stopdash.data.SummaryNetworksSetting
@@ -379,6 +380,7 @@ open class StopdashApp : Application() {
         WifiPlacesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         TrainSpacingSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         RideGroupingSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
+        NearbyGroupingSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         SummaryNetworksSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         WalkingSpeedSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         MaxWalkSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))

@@ -306,7 +306,8 @@ The app finds stops two ways:
   are equidistant). **A line-status alert (a suspended line's status row) rides with its
   stop and gets no special order** — it is not hoisted above a closer stop, nor lifted within its
   own stop's section; it simply trails that stop's departures, so a nearer stop is never pushed
-  below a farther one for carrying an alert. Starred rows are still pinned to the top. **A stop
+  below a farther one for carrying an alert. Starred rows are still pinned to the top (grouped by station, to
+  the top of their own station, *Grouped by station*). **A stop
   notice rides with its place too** (maintainer, 2026-09-26): drawn at the place's distance, not
   lifted to the top (*Disruptions*). Earlier the alert lifted its whole stop above closer ones, which read as
   the app ignoring distance. Distance orders only this location-derived list — never the
@@ -1423,6 +1424,32 @@ near-me list measured one (D1). With no maps app installed it says so rather tha
 **Via** (maintainer, 2026-10-16), after those two so they stay put, opens the near-me trip with To…'s
 search, the trip already going via the view's stop (*Going via a stop*). A notice's own heading (a closure with nothing else to show) has no platform to open: its one tap
 opens its station where it heads one, else shows it on the map.
+
+**Grouped by station** (maintainer, 2026-10-23), Settings → **Group nearby departures**: **By platform**, the
+default, is the card per platform or pole above; **By station** heads each station once, in bold, with how far
+its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**
+of all its departures. The near-me list and a searched
+station's page follow it; a platform's or a ride's own view doesn't. The card's rows stay **grouped by platform**,
+never sorted by when trains leave: its **starred rows first**, then a **favorite ride's trains**, then each
+platform in turn by number (a bus stop's poles by letter), a line twice as thick between those blocks so the grouping
+reads without a heading for each. A favorite ride boarding at the station has no heading of its own: its trains
+join the card, each with a **gold star after its destination**, and a tap opens its train as the ride's card
+would; a ride boarding at two places has each train in the card of the station it leaves from (its own station's
+where that one is a loading or farther card, drawn under its own heading). So **Group
+favorite rides** doesn't change the list here (it still groups a faraway ride, the list By platform, and the
+widget). A ride with more to say than its trains keeps a heading, a step smaller, under the station's, its trains
+and what it says under it as By platform draws them: until its check is done (checking, none due), and where it has
+a closure, a far end it couldn't check, a train to change for, trains behind "+N more" or routes it couldn't check.
+A ride boarding nowhere on the list, and a faraway one, keep their places atop and at the foot of the list. With
+no platform headings there's one distance per station, so a bus stop says its nearest pole's. Stations go nearest
+first with **no starred band**: a starred row leads its own station rather than lifting it to the top. A station's
+notice sits under its heading and folds with it, on a searched station's page too (By platform puts its notices
+first there), and a notice about one bus pole names its pole, there being no pole heading to; the heading says
+"Closed" where the notice does, and until then shows the small spinner
+while any of its stops' closure checks is out (*Freshness → Cold load*). The **whole heading is one tap target**
+that folds the station to its heading alone, its rides, starred rows and notices included, and unfolds it again;
+what's folded is kept while the list is, not saved. Platform headings, and the tap that opens one platform, are
+By platform's.
 
 TfL's endpoint is named "Arrivals"; for a bus stop these are departures *from* that
 stop, which is what a rider wants. StopDash calls them departures throughout the UI.
@@ -4443,8 +4470,9 @@ form says so (maintainer, 2026-10-22), **Sync with Google Drive** sits under the
 default, it keeps the favorite rides the same on each of the rider's phones through their own Drive's app
 data folder, syncing when the app comes on screen and a few seconds after a ride changes, and says how the
 last sync went (`dev-docs/drive-sync.md`). A release build offers no row and sends nothing to Drive. "Fix train spacing" sits with the
-rows that decide what the boards show (*Bunched tube trains are spaced out*), with **Group favorite
-rides** under it: Group by ride, the default, or Group by stop (*Journeys*). **Location** says how much location
+rows that decide what the boards show (*Bunched tube trains are spaced out*), with **Group nearby departures**
+under it: By platform, the default, or By station (*Grouped by station*); then **Group favorite rides**: Group by
+ride, the default, or Group by stop (*Journeys*). **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
 precise location, or opens Android's settings for the app when precise is already allowed or
 Android has stopped asking. Next comes "Remember Wi-Fi at saved places" (*Finding stops*), on by

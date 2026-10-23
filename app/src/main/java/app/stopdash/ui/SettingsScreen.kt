@@ -75,6 +75,7 @@ import app.stopdash.LocationAccess
 import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.AvoidedLines
@@ -243,6 +244,12 @@ fun SettingsScreen(
     rideGroupingLoaded: Boolean = true,
     rideGroupingWriteFailed: Boolean = false,
     onDismissRideGroupingError: () -> Unit = {},
+    // How the near-me list groups its departures (SPEC *Grouped by station*), handled as [rideGrouping] is.
+    nearbyGrouping: NearbyGrouping = NearbyGrouping.PLATFORM,
+    onNearbyGroupingChange: (NearbyGrouping) -> Unit = {},
+    nearbyGroupingLoaded: Boolean = true,
+    nearbyGroupingWriteFailed: Boolean = false,
+    onDismissNearbyGroupingError: () -> Unit = {},
     // Opens StopDash's Play Store page on a connected watch that doesn't have it (SPEC *Wear OS*),
     // the near-me card's offer kept here for good; null (no such watch) shows no row.
     onInstallOnWatch: (() -> Unit)? = null,
@@ -418,11 +425,34 @@ fun SettingsScreen(
                         onDismiss = onDismissTrainSpacingError,
                     )
                 }
-                // Under the train spacing: like it, it decides how the boards read.
-                RideGroupingRow(
+                // Under the train spacing: like it, they decide how the boards read.
+                GroupingRow(
+                    title = stringResource(R.string.settings_nearby_grouping_title),
+                    options = listOf(
+                        NearbyGrouping.PLATFORM to stringResource(R.string.settings_nearby_grouping_platform),
+                        NearbyGrouping.STATION to stringResource(R.string.settings_nearby_grouping_station),
+                    ),
+                    selected = nearbyGrouping,
+                    onSelect = onNearbyGroupingChange,
+                    enabled = nearbyGroupingLoaded,
+                    tag = "nearbyGrouping",
+                )
+                if (nearbyGroupingWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.hidden_modes_write_failed),
+                        onDismiss = onDismissNearbyGroupingError,
+                    )
+                }
+                GroupingRow(
+                    title = stringResource(R.string.settings_ride_grouping_title),
+                    options = listOf(
+                        RideGrouping.RIDE to stringResource(R.string.settings_ride_grouping_ride),
+                        RideGrouping.STOP to stringResource(R.string.settings_ride_grouping_stop),
+                    ),
                     selected = rideGrouping,
                     onSelect = onRideGroupingChange,
                     enabled = rideGroupingLoaded,
+                    tag = "rideGrouping",
                 )
                 if (rideGroupingWriteFailed) {
                     SettingErrorRow(
@@ -1019,18 +1049,22 @@ private fun DistanceUnitsRow(selected: DistanceUnits, onSelect: (DistanceUnits) 
 }
 
 /**
- * How the near-me list groups a favorite ride's departures ([RideGrouping]), as [DistanceUnitsRow]
- * lays out its choice: nothing selected until the stored choice is read.
+ * How the near-me list groups its departures ([NearbyGrouping]) or a favorite ride's ([RideGrouping]), as
+ * [DistanceUnitsRow] lays out its choice under [title]: nothing selected until the stored choice is read. Each
+ * option's row is tagged "[tag]-‹name›".
  */
 @Composable
-private fun RideGroupingRow(selected: RideGrouping, onSelect: (RideGrouping) -> Unit, enabled: Boolean) {
-    val options = listOf(
-        RideGrouping.RIDE to stringResource(R.string.settings_ride_grouping_ride),
-        RideGrouping.STOP to stringResource(R.string.settings_ride_grouping_stop),
-    )
+private fun <T : Enum<T>> GroupingRow(
+    title: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    enabled: Boolean,
+    tag: String,
+) {
     Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
         Text(
-            text = stringResource(R.string.settings_ride_grouping_title),
+            text = title,
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
         )
@@ -1045,7 +1079,7 @@ private fun RideGroupingRow(selected: RideGrouping, onSelect: (RideGrouping) -> 
                         role = Role.RadioButton,
                         onClick = { onSelect(grouping) },
                     )
-                    .testTag("rideGrouping-${grouping.name}")
+                    .testTag("$tag-${grouping.name}")
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

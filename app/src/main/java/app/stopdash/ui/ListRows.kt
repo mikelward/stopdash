@@ -122,6 +122,12 @@ internal class ListCards private constructor(val groups: List<StopGroup>, privat
     /** [group]'s card; [group] must be one of [groups]. */
     fun of(group: StopGroup): StopCard = checkNotNull(byGroup[group]) { "a group the list didn't work out" }
 
+    /**
+     * Its places ([groupPlace]) in order, as one value worked out with them: a list grouped by station lets its last
+     * stations stand in only for the same places, compared without walking the groups on the main thread.
+     */
+    val places: String = groups.map(::groupPlace).distinct().joinToString("\u0001")
+
     companion object {
         val NONE = ListCards(emptyList(), emptyMap())
 

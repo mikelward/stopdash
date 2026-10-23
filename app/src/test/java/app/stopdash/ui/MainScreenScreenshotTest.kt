@@ -6117,6 +6117,242 @@ class MainScreenScreenshotTest {
         assertEquals(listOf(emptySet<String>()), reports)
     }
 
+    // The list grouped by station (Settings' Group nearby departures, maintainer 2026-10-23): King's Cross headed
+    // once over one card, its starred row and a ride from it leading it, then its platforms in turn; a bus stop's
+    // two poles a walk apart. Public place and line names only (SPEC *Privacy*).
+    private fun groupedByStation(
+        starred: Set<StarredRow>,
+        stopDistanceMeters: Map<String, Double>,
+        stops: List<StopArrivals>,
+    ): @Composable () -> Unit = {
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                // Each line's own ends through King's Cross, so every departure there is judged and the card
+                // says nothing couldn't be checked; only the Victoria line calls at Warren Street.
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    val (first, last) = when (lineId) {
+                        "victoria" -> "Walthamstow Central" to "Brixton"
+                        "piccadilly" -> "Cockfosters" to "Heathrow Terminal 5"
+                        "northern" -> "High Barnet" to "Morden"
+                        "circle" -> "Edgware Road" to "Hammersmith (H&C)"
+                        "metropolitan" -> "Uxbridge" to "Aldgate"
+                        else -> "Barking" to "Hammersmith (H&C)"
+                    }
+                    val via = if (lineId == "victoria") listOf("Euston", "Warren Street", "Victoria") else emptyList()
+                    val names = listOf(first, "King's Cross St. Pancras") + via + last
+                    // King's Cross and Warren Street by their own ids, so the ride boards where the list has it.
+                    fun idOf(name: String) = when (name) {
+                        "King's Cross St. Pancras" -> "940GZZLUKSX"
+                        "Warren Street" -> "940GZZLUWRR"
+                        else -> "940G$name"
+                    }
+                    // Both ways, so a train to either end is found running on from King's Cross.
+                    return LineSequence(
+                        routes = listOf(
+                            LineRoute("$first ↔ $last", names.map(::idOf)),
+                            LineRoute("$last ↔ $first", names.reversed().map(::idOf)),
+                        ),
+                        stopNames = names.associateBy(::idOf),
+                    )
+                }
+            },
+        )
+        CompositionLocalProvider(LocalRouteStops provides repository) {
+            MainScreen(
+                DeparturesUiState.Loaded(stops, now.minusSeconds(60)),
+                now,
+                {},
+                starred = starred,
+                stopDistanceMeters = stopDistanceMeters,
+                journeys = listOf(
+                    FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria"),
+                ),
+                onToggleJourney = {},
+                stationGroups = true,
+            )
+        }
+    }
+
+    private fun eustonRoadPole(id: String, letter: String, vararg deps: Departure) = StopArrivals(
+        id, "Euston Road", deps.toList(),
+        fetchedAt = now.minusSeconds(60),
+        clusterId = "490G000EXAMPLE",
+        stopLetter = letter,
+        towards = "Marble Arch",
+    )
+
+    // King's Cross with a starred row, and a bus stop's two poles a walk apart.
+    private fun groupedByStationOn() {
+        // Every train with its direction, so the ride judges them all and says nothing couldn't be checked.
+        val kingsCross = kingsCrossStPancras().let { stop ->
+            stop.copy(departures = stop.departures.map { if (it.direction.isEmpty()) it.copy(direction = "inbound") else it })
+        }
+        val stops = listOf(
+            kingsCross,
+            eustonRoadPole("490000001E", "E", dep("18", "18", "outbound", "Sudbury", 240, "", mode = "bus")),
+            eustonRoadPole("490000001F", "F", dep("205", "205", "outbound", "Paddington", 420, "", mode = "bus")),
+        )
+        val highBarnet = DepartureRows.across(listOf(kingsCross), now).first { it.destination == "High Barnet" }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    groupedByStation(
+                        starred = setOf(StarredRow.of(highBarnet)),
+                        stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "490000001E" to 60.0, "490000001F" to 150.0),
+                        stops = stops,
+                    )()
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station, each station is one card by platform, saying how far it is, no platform, pole or ride headed`() {
+        groupedByStationOn()
+        composeRule.onNodeWithText("Platform 1", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Stop E", substring = true).assertDoesNotExist()
+        // The bus stop by its nearer pole, King's Cross by its own.
+        composeRule.onNodeWithText("60 m").assertExists()
+        composeRule.onNodeWithText("150 m").assertDoesNotExist()
+        composeRule.onNodeWithText("120 m").assertExists()
+        // The ride has no heading: its train joins King's Cross's card, a star after where it goes.
+        composeRule.onNodeWithText("King's Cross St. Pancras ➔ Warren Street", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Brixton").assertExists()
+        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
+        // Its starred row first, the ride's train next, then its platforms by number, not by when trains leave:
+        // Platform 1's train (1 min) before Platform 3's (2 min) before Platform 4's (5 min), though Platform 7's
+        // (2 min) and 6's (4 min) leave sooner than 4's.
+        fun top(text: String) = composeRule.onNodeWithText(text).getUnclippedBoundsInRoot().top
+        val order = listOf("High Barnet", "Brixton", "Walthamstow Central", "Cockfosters", "Heathrow Terminal 5", "Morden", "Barking", "Uxbridge")
+        assertEquals(order, order.sortedBy { top(it) })
+        captureSnapshot("main-station-groups.png", heightPx = 4200)
+    }
+
+    @Test
+    fun `grouped by station, a searched station's page, which has no distances, is grouped too`() {
+        capture("main-station-groups-searched.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(listOf(kingsCrossStPancras()), now.minusSeconds(60)),
+                now,
+                {},
+                stationTitle = "King's Cross St. Pancras",
+                stationGroups = true,
+            )
+        }
+        // One station heading, folding nothing yet and saying no distance, over one card with no platform headings.
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+            .assertExists()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras")))
+        composeRule.onNodeWithText("Platform 1", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Heathrow Terminal 5").assertExists()
+    }
+
+    @Test
+    fun `grouped by station, a searched station's notice sits under its heading and folds with it`() {
+        // A searched station's page has no distances, which left its notices leading above the station's heading,
+        // unfolded and with no "Closed" on it.
+        val closed = kingsCrossStPancras().copy(disruptions = listOf(StopDisruption("Station closed due to strike action.")))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(closed), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stationTitle = "King's Cross St. Pancras",
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val heading = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded")
+        composeRule.onNode(heading)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras, Closed")))
+        fun top(matcher: SemanticsMatcher) = composeRule.onNode(matcher).getUnclippedBoundsInRoot().top
+        val notice = hasText("Station closed due to strike action.", substring = true)
+        composeRule.onAllNodes(notice).assertCountEquals(1)
+        assertTrue(top(heading) < top(notice))
+        composeRule.onNode(heading).performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(notice).assertCountEquals(0)
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras, Closed")))
+    }
+
+    @Test
+    fun `grouped by station, one pole's notice names its pole, there being no pole heading to`() {
+        // TfL's "Bus Stop Closed" names no pole, and By station draws no pole headings: over the one card of both
+        // poles, an unnamed notice read as the whole stop's.
+        val closedPole = eustonRoadPole("490000001E", "E", dep("18", "18", "outbound", "Sudbury", 240, "", mode = "bus"))
+            .copy(disruptions = listOf(StopDisruption("Bus Stop Closed")))
+        val openPole = eustonRoadPole("490000001F", "F", dep("205", "205", "outbound", "Paddington", 420, "", mode = "bus"))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(closedPole, openPole), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001E" to 60.0, "490000001F" to 150.0),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Euston Road – Stop E").assertExists()
+        composeRule.onNodeWithText("Stop F", substring = true).assertDoesNotExist()
+        // The station's own heading doesn't say the whole stop is closed.
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Euston Road, 60 m")))
+    }
+
+    @Test
+    fun `grouped by station, a station whose closure check is still out shows a spinner in its heading, folded or not`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(eustonSouthbound()), now.minusSeconds(60), closurePending = setOf("940GZZLUEUS")),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUEUS" to 80.0),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val checking = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Euston, 80 m, Checking for closures"))
+        composeRule.onNode(checking).assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+        composeRule.onNode(checking).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNode(checking).assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station, a tap on a station's heading folds all of it, rides and starred rows too`() {
+        groupedByStationOn()
+        composeRule.onNodeWithText("King's Cross St. Pancras").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Brixton").assertDoesNotExist()
+        composeRule.onNodeWithText("High Barnet").assertDoesNotExist()
+        composeRule.onNodeWithText("Cockfosters").assertDoesNotExist()
+        composeRule.onNodeWithText("Sudbury").assertExists()
+        captureSnapshot("main-station-groups-folded.png", heightPx = 4200)
+
+        // Unfolded, all of it comes back.
+        composeRule.onNodeWithText("King's Cross St. Pancras").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Brixton").assertExists()
+        composeRule.onNodeWithText("High Barnet").assertExists()
+        composeRule.onNodeWithText("Cockfosters").assertExists()
+    }
+
     @Test
     fun `loaded, dark`() {
         capture("main-loaded-dark.png", dark = true) {
