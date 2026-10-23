@@ -36,4 +36,11 @@ class ModeIconTest {
         assertNull(tram.otherModesLabel)
         assertEquals(StationMatch("490000001A", "Zeta Church", listOf("tram")), tram)
     }
+
+    @Test
+    fun `one mode's icon, any case, and none for a mode no icon stands for`() {
+        assertEquals(ModeIcon.RAIL, ModeIcon.of("Elizabeth-Line"))
+        assertEquals(ModeIcon.BUS, ModeIcon.of("bus"))
+        assertNull(ModeIcon.of("some-mode"))
+    }
 }

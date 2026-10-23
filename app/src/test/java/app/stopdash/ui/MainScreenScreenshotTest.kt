@@ -2732,6 +2732,48 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station, a closed station with nothing running sits between a place's stations by their own distances`() {
+        // One place's bus stop near and its rail stop far: a closed station between them goes between their headings,
+        // not after both for the place's nearest stop.
+        val bus = StopArrivals(
+            "490000001E", "Euston", listOf(dep("18", "18", "outbound", "Sudbury", 240, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "HUBEUS",
+            stopLetter = "E",
+        )
+        val rail = StopArrivals(
+            "910GEUSTON", "Euston", listOf(dep("lo", "London Overground", "outbound", "Watford Junction", 600, "Platform 9", mode = "overground")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "HUBEUS",
+        )
+        val closed = StopArrivals(
+            "940GZZLUESQ", "Euston Square", emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("circle", "Circle", "tube")),
+            disruptions = listOf(StopDisruption("Station closed due to strike action.")),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(bus, rail, closed), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001E" to 60.0, "910GEUSTON" to 500.0, "940GZZLUESQ" to 200.0),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        fun top(description: String) = composeRule.onNodeWithContentDescription(description, substring = true).getUnclippedBoundsInRoot().top
+        val notice = composeRule.onNodeWithText("Station closed due to strike action.", substring = true).getUnclippedBoundsInRoot().top
+        assertTrue(top("Euston, Bus, 60 m") < notice)
+        assertTrue(notice < top("Euston, Overground, 0.5 km"))
+    }
+
+    @Test
     fun `a stop whose closure check is still out shows a spinner in its heading, not a clear stop`() {
         val warrenStreet = StopArrivals(
             "940GZZLUWRR",
@@ -6255,7 +6297,7 @@ class MainScreenScreenshotTest {
         // One station heading, folding nothing yet and saying no distance, over one card with no platform headings.
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
             .assertExists()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras")))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras, Tube")))
         composeRule.onNodeWithText("Platform 1", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Heathrow Terminal 5").assertExists()
         // The page already is the whole station, so the heading's name opens nothing; only its chevron acts.
@@ -6284,8 +6326,8 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val heading = stationChevron("King's Cross St. Pancras")
-        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Closed").assertExists()
+        val heading = stationChevron("King's Cross St. Pancras, Tube")
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Tube, Closed").assertExists()
         fun top(matcher: SemanticsMatcher) = composeRule.onNode(matcher).getUnclippedBoundsInRoot().top
         val notice = hasText("Station closed due to strike action.", substring = true)
         composeRule.onAllNodes(notice).assertCountEquals(1)
@@ -6293,8 +6335,43 @@ class MainScreenScreenshotTest {
         composeRule.onNode(heading).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(notice).assertCountEquals(0)
-        composeRule.onNode(stationChevron("King's Cross St. Pancras", "Collapsed")).assertExists()
-        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Closed").assertExists()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube", "Collapsed")).assertExists()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Tube, Closed").assertExists()
+    }
+
+    @Test
+    fun `grouped by station, a closure at one mode's stop marks that mode's heading closed, not another's`() {
+        // One place's Underground and rail stops, the rail one closed: each mode its own heading, and the notice
+        // under its own stop's, whichever was listed first.
+        val tube = kingsCrossStPancras().copy(clusterId = "HUBKGX", interchangeId = "HUBKGX")
+        val rail = StopArrivals(
+            "910GKNGX", "King's Cross St. Pancras",
+            listOf(dep("lner", "LNER", "outbound", "Edinburgh", 900, "Platform 4", mode = "national-rail")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "HUBKGX",
+            interchangeId = "HUBKGX",
+            disruptions = listOf(StopDisruption("London King's Cross station is closed.")),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(tube, rail), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "910GKNGX" to 150.0),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, National Rail, 150 m, Closed").assertExists()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Tube, 120 m").assertExists()
+        // Folding the Underground leaves the rail closure showing.
+        composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube")).performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasText("station is closed", substring = true)).assertCountEquals(1)
     }
 
     @Test
@@ -6321,7 +6398,7 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Euston Road – Stop E").assertExists()
         composeRule.onNodeWithText("Stop F", substring = true).assertDoesNotExist()
         // The station's own heading doesn't say the whole stop is closed.
-        composeRule.onNodeWithContentDescription("Euston Road, 60 m").assertExists()
+        composeRule.onNodeWithContentDescription("Euston Road, Bus, 60 m").assertExists()
     }
 
     @Test
@@ -6340,11 +6417,11 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val checking = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Euston, 80 m, Checking for closures"))
+        val checking = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Euston, Tube, 80 m, Checking for closures"))
         composeRule.onNode(checking).assertExists()
-        composeRule.onNode(stationChevron("Euston")).performClick()
+        composeRule.onNode(stationChevron("Euston, Tube")).performClick()
         composeRule.waitForIdle()
-        composeRule.onNode(stationChevron("Euston", "Collapsed")).assertExists()
+        composeRule.onNode(stationChevron("Euston, Tube", "Collapsed")).assertExists()
         composeRule.onNode(checking).assertExists()
     }
 
@@ -6352,7 +6429,7 @@ class MainScreenScreenshotTest {
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
     fun `grouped by station, a tap on a station's chevron folds all of it, rides and starred rows too`() {
         groupedByStationOn()
-        composeRule.onNode(stationChevron("King's Cross St. Pancras")).performClick()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube")).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertDoesNotExist()
         composeRule.onNodeWithText("High Barnet").assertDoesNotExist()
@@ -6361,7 +6438,7 @@ class MainScreenScreenshotTest {
         captureSnapshot("main-station-groups-folded.png", heightPx = 4200)
 
         // Unfolded, all of it comes back.
-        composeRule.onNode(stationChevron("King's Cross St. Pancras", "Collapsed")).performClick()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube", "Collapsed")).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertExists()
         composeRule.onNodeWithText("High Barnet").assertExists()
@@ -6385,7 +6462,7 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, 120 m").performClick()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Tube, 120 m").performClick()
         composeRule.waitForIdle()
         // The whole station, grouped by platform with its view's buttons, as a platform's "Whole station" shows it:
         // every King's Cross platform, nothing from Manor House.

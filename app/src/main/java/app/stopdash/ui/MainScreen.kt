@@ -170,6 +170,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.WayStatus
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.RailKeyDefault
@@ -1012,7 +1013,7 @@ fun MainScreen(
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
             journeyPoleKeys, journeyPoles, journeyFarEnds, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
-            journeyViewKey, quietPending, headerWords, lineWord,
+            journeyViewKey, quietPending, headerWords, lineWord, stationGroups,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -1029,7 +1030,7 @@ fun MainScreen(
             val cards = withoutRepeatedRoutes(heldWhileChecking(judgeCards(from), lastShown?.cards, journeyViewKey), journeyViewKey, topology, stopDistanceMeters)
             // What the journey cards above already show, held ones too: a near-me row they cover isn't repeated.
             val cardRows = cards.flatMap { it.state.drawn?.shownRows.orEmpty() }
-            shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology, lastShown)
+            shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology, lastShown, stationGroups)
         }
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()
@@ -3075,7 +3076,7 @@ private fun DepartureList(
     val checkingStationSlot = listWork?.checkingStations ?: remember { mutableStateOf<Worked<Inputs, Set<String>>?>(null) }
     val checkingStations = if (byStation && closurePending.isNotEmpty()) {
         rememberWorked(checkingStationSlot, Inputs(groups, closurePending), keep = { held, wanted -> held.parts[0] === wanted.parts[0] }) {
-            checkingPlaces(groups, closurePending)
+            checkingStations(groups, closurePending)
         }.orEmpty()
     } else {
         emptySet()
@@ -3145,10 +3146,10 @@ private fun DepartureList(
     val stationLayout = if (byStation) {
         rememberWorked(
             stationSlot,
-            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopClusterIds, farther, held),
+            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held),
             keep = { kept, wanted -> (kept.parts[0] as ListCards).places == (wanted.parts[0] as ListCards).places },
         ) {
-            StationLayout.of(listCards.groups, listCards::of, journeyCards, starred, placeDistanceMeters, stopClusterIds, farther, held.values)
+            StationLayout.of(listCards.groups, listCards::of, journeyCards, starred, placeDistanceMeters, stopClusterIds, farther, held.values, stopDistanceMeters)
         }
     } else {
         null
@@ -3499,7 +3500,7 @@ private fun DepartureList(
         val listed = unfarther.filter { groupPlace(it) !in heldKeys }
             .let { if (stationLayout != null) it.sortedBy { group -> stationLayout.rank[group.key] ?: Int.MAX_VALUE } else it }
         // Grouped by station, each station's listed groups, by place ([groupPlace]).
-        val stationMembers = if (byStation) listed.groupBy { groupPlace(it) } else emptyMap()
+        val stationMembers = if (byStation) listed.groupBy { groupStation(it) } else emptyMap()
         // Grouped by station, each ride is drawn under the station it boards from, where that station is
         // listed ([StationLayout.rideStations]); the rest lead the list as ever.
         val rideStations: Map<String?, List<JourneyCard>> = when {
@@ -3588,8 +3589,13 @@ private fun DepartureList(
         val starredPlaces = if (byStation) emptySet() else {
             listed.filter { group -> group.rows.any { StarredRow.of(it) in starred } }.mapTo(HashSet()) { it.placeKey }
         }
+        // Each listed group's distance for slotting in what has no section yet: grouped by station, its own station's
+        // (its own mode's nearest stop, [StationLayout.meters]), as the stations themselves are ordered by.
+        val groupMeters = listed.map { g ->
+            (if (byStation) stationLayout?.meters?.get(groupStation(g)) else null) ?: placeDistanceMeters[g.placeKey]
+        }
         val slots = pendingSlots(
-            listed.map { placeDistanceMeters[it.placeKey] },
+            groupMeters,
             listed.map { it.placeKey in starredPlaces },
             cards.map { it.first },
         )
@@ -3602,12 +3608,12 @@ private fun DepartureList(
             .filter { (place, _) -> place.placeKey !in pendingTracker.opened }
             .flatMapTo(HashSet()) { (place, _) -> groupsByPlace[place.placeKey].orEmpty().map { it.key } }
         val plan = if (noticesInPlace) {
-            planNotices(closureRows, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys)
+            planNotices(closureRows, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys, stationOf = if (byStation) ::groupStation else null)
         } else {
             NoticePlan()
         }
         val dismissedPlan = if (noticesInPlace) {
-            planNotices(dismissedClosures, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys)
+            planNotices(dismissedClosures, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys, stationOf = if (byStation) ::groupStation else null)
         } else {
             NoticePlan()
         }
@@ -3659,7 +3665,7 @@ private fun DepartureList(
             loose.map { 0 }
         } else {
             distanceSlots(
-                listed.map { placeDistanceMeters[it.placeKey] },
+                groupMeters,
                 listed.map { it.placeKey in starredPlaces },
                 loose.map { (notice, _) -> noticeNearest(notice)?.second },
             )
@@ -3773,6 +3779,8 @@ private fun DepartureList(
                 StationHeader(
                     members.first().stopName,
                     distanceLabel,
+                    modes = stationLayout?.modes?.get(station).orEmpty(),
+                    modeIds = stationLayout?.modeIds?.get(station).orEmpty(),
                     folded = folded,
                     onToggle = { foldedStations = if (station in foldedStations) foldedStations - station else foldedStations + station },
                     onOpen = onOpenStation?.takeIf { stationHeadingOpens }?.let { open -> { open(members.first()) } },
@@ -3786,16 +3794,17 @@ private fun DepartureList(
         listed.forEachIndexed { index, group ->
             slotItems(index)
             if (byStation && stationLayout == null) return@forEachIndexed
-            // A place-wide notice: its own group, directly above the place's first section.
+            // A place-wide notice: its own group, directly above the place's first section; grouped by station,
+            // above its own station's first ([planNotices] `stationOf`), so its heading says "Closed".
             // A dismissed pole's closure keeps its heading while its buses are listed (a place-wide
             // one doesn't, the place having its sections to show).
             val above = plan.aboveGroup[index].orEmpty().map { it to false } +
                 dismissedPlan.aboveGroup[index].orEmpty().filter { poleOnly(it) }.map { it to true }
-            val station = groupPlace(group)
+            val station = groupStation(group)
             if (byStation) {
-                if (index == 0 || groupPlace(listed[index - 1]) != station) {
-                    stationItems(station, closed = above.any { (notice, _) -> ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()) })
-                }
+                val first = index == 0 || groupStation(listed[index - 1]) != station
+                if (!first) return@forEachIndexed
+                stationItems(station, closed = above.any { (notice, _) -> ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()) })
                 if (station in foldedStations) return@forEachIndexed
                 // Under the station's heading, which names the place and says "Closed": the notice alone.
                 above.filterNot { (_, dismissed) -> dismissed }.forEach { (notice, _) ->
@@ -3804,7 +3813,7 @@ private fun DepartureList(
                     }
                 }
                 // One card for the whole station, drawn with its first group, its poles' own notices above it.
-                if (index == 0 || groupPlace(listed[index - 1]) != station) {
+                run {
                     val members = stationMembers[station].orEmpty()
                     members.forEach { member ->
                         poleNotices[member.key]?.let { notice ->
@@ -4221,6 +4230,18 @@ internal fun groupPlace(group: StopGroup): String =
     group.rows.first().let { placeOf(it.clusterId, it.stopId) }
 
 /**
+ * A station on a list grouped by station: a [place] ([placeOf]) and a [mode] together, so each station heading stands
+ * for one mode, its one icon, and everything keyed by station — its groups, rides, rides' trains, notices — splits by
+ * mode with it, never through a lookup by stop or place alone (maintainer, 2026-10-23). Modes sharing an icon stay
+ * together (National Rail, the Overground and the Elizabeth line). One lookup: safe on the main thread.
+ */
+internal fun stationKey(place: String, mode: String): String = "$place|${ModeIcon.of(mode)?.name ?: mode}"
+
+/** The station a group is drawn under ([stationKey]); grouped by station, a group holds one mode's rows. */
+internal fun groupStation(group: StopGroup): String =
+    group.rows.first().let { row -> stationKey(placeOf(row.clusterId, row.stopId), row.mode) }
+
+/**
  * [groups] grouped by station ([groupPlace]) as a list grouped by station draws them: each station's groups
  * together in the order they came, the stations nearest first by their nearest group's [meters] (one with
  * none last), a tie kept in the order they came. Nothing is lifted for a star: a starred row's group already
@@ -4229,21 +4250,31 @@ internal fun groupPlace(group: StopGroup): String =
 @WorkerThread
 internal fun stationOrdered(groups: List<StopGroup>, meters: (StopGroup) -> Double?): List<StopGroup> {
     val byStation = LinkedHashMap<String, MutableList<StopGroup>>()
-    groups.forEach { byStation.getOrPut(groupPlace(it)) { mutableListOf() }.add(it) }
+    groups.forEach { byStation.getOrPut(groupStation(it)) { mutableListOf() }.add(it) }
     return byStation.values
         .sortedBy { members -> members.mapNotNull(meters).minOrNull() ?: Double.MAX_VALUE }
         .flatten()
 }
 
+/** The stop a ride boards from: its first boarding stop once placed, else its saved origin. */
+internal fun rideOrigin(card: JourneyCard): String = card.boardingIds.firstOrNull() ?: card.journey.from.stopId
+
 /**
- * The station a ride boards from, as a list grouped by station keys it ([groupPlace]): its origin's, from
- * [stationOfStop] (each listed stop's station), else the origin's StopArea ([stopClusterIds]); null when
- * neither knows it.
+ * A ride's mode: as saved, else its trains' (a ride saved before rides kept their mode); blank where neither says.
  */
-internal fun rideStation(card: JourneyCard, stationOfStop: Map<String, String>, stopClusterIds: Map<String, String>): String? {
-    val origin = card.boardingIds.firstOrNull() ?: card.journey.from.stopId
-    return stationOfStop[origin] ?: stopClusterIds[origin]
-}
+internal fun rideMode(card: JourneyCard): String =
+    card.journey.mode.ifBlank { card.state.drawn?.shownRows?.firstOrNull()?.mode.orEmpty() }
+
+/**
+ * The station a ride boards from ([stationKey]): its origin's place, from [placeOfStop] (each listed stop's place),
+ * else the origin's StopArea ([stopClusterIds]), with the ride's own [mode]; null when neither knows the place.
+ */
+internal fun rideStation(
+    card: JourneyCard,
+    placeOfStop: Map<String, String>,
+    stopClusterIds: Map<String, String>,
+    mode: String = rideMode(card),
+): String? = (placeOfStop[rideOrigin(card)] ?: stopClusterIds[rideOrigin(card)])?.let { stationKey(it, mode) }
 
 /**
  * A ride whose trains join its station's card, a star after each destination for its heading: one whose check is
@@ -4271,12 +4302,12 @@ internal class StationRideRows(
 /**
  * The trains of the rides that join a station's card ([joinsStationCard]), from [rides] by the station each
  * boards at ([rideStation]; null for none listed, which keep their own card), put by the station each train
- * leaves from ([stationOfStop]), so a ride boarding at two places has each train in its own place's card, and
- * its own station's where the other isn't listed. Whichever way Group favorite rides groups them, a ride has no
- * heading here.
+ * leaves from ([stationOf], by its own stop's place and its own mode; null for none drawn), so a ride boarding at
+ * two places has each train in its own place's card, and its own station's where the other isn't listed. Whichever
+ * way Group favorite rides groups them, a ride has no heading here.
  */
 @WorkerThread
-internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOfStop: Map<String, String>): StationRideRows {
+internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: (DepartureRow) -> String?): StationRideRows {
     val byStation = LinkedHashMap<String, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>()
     val ends = IdentityHashMap<DepartureRow, Set<String>>()
     rides.forEach { (station, cards) ->
@@ -4284,7 +4315,7 @@ internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOfSt
         cards.filter(::joinsStationCard).forEach { ride ->
             val card = ride.state.drawn?.rideCard ?: return@forEach
             card.group.rows.zip(card.lines).forEach { pair ->
-                byStation.getOrPut(stationOfStop[pair.first.stopId] ?: station) { mutableListOf() }.add(pair)
+                byStation.getOrPut(stationOf(pair.first) ?: station) { mutableListOf() }.add(pair)
                 ends[pair.first] = ride.destinationIds
             }
         }
@@ -4296,7 +4327,7 @@ internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOfSt
  * A list grouped by station as worked out on the worker ([of]), for the list to read: each group's [rank] in the
  * stations' order ([stationOrdered]), each ride's station by journey key ([rideStation]), each station's
  * nearest stop's [meters], its one [cards] ([stationCard]) with the trains of the rides that join it
- * ([stationRideRows]), and those trains' far ends ([StationRideRows.ends]).
+ * ([stationRideRows]), those trains' far ends ([StationRideRows.ends]), and the [modes] its heading shows.
  */
 internal class StationLayout(
     val rank: Map<String, Int>,
@@ -4305,6 +4336,10 @@ internal class StationLayout(
     val cards: Map<String, StopCard>,
     // By the row itself, by identity ([StationRideRows.ends]).
     val rideEnds: Map<DepartureRow, Set<String>>,
+    // Each station's modes, an icon each before its name, as a search result shows a stop's (maintainer, 2026-10-23).
+    val modes: Map<String, List<ModeIcon>> = emptyMap(),
+    // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
+    val modeIds: Map<String, List<String>> = emptyMap(),
 ) {
     companion object {
         @WorkerThread
@@ -4319,18 +4354,34 @@ internal class StationLayout(
             // station's card, so no ride's train is put in one ([offCard]).
             farther: List<FartherCard> = emptyList(),
             held: Collection<PendingPlace> = emptyList(),
+            // Each stop's own distance: a station is as near as its own mode's stops, not its place's nearest.
+            stopDistanceMeters: Map<String, Double> = emptyMap(),
         ): StationLayout {
-            val ordered = stationOrdered(groups) { placeDistanceMeters[it.placeKey] }
-            val offCard = offCardPlaces(ordered, farther, held)
-            val stationOfStop = HashMap<String, String>()
-            ordered.forEach { group -> group.rows.forEach { stationOfStop.putIfAbsent(it.stopId, groupPlace(group)) } }
-            val stations = stationOfStop.values.toHashSet()
+            fun metersOf(group: StopGroup): Double? =
+                group.rows.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull() ?: placeDistanceMeters[group.placeKey]
+            val ordered = stationOrdered(groups, ::metersOf)
+            val offPlaces = offCardPlaces(ordered, farther, held)
+            val offCard = ordered.filter { groupPlace(it) in offPlaces }.mapTo(HashSet(), ::groupStation)
+            // A stop's place is the same whichever mode it's for; its station is that place with the mode in hand.
+            val placeOfStop = HashMap<String, String>()
+            // For a ride that says no mode, its origin's first station: the one guess left.
+            val firstStationOfStop = HashMap<String, String>()
+            ordered.forEach { group ->
+                group.rows.forEach {
+                    placeOfStop.putIfAbsent(it.stopId, placeOf(it.clusterId, it.stopId))
+                    firstStationOfStop.putIfAbsent(it.stopId, groupStation(group))
+                }
+            }
+            val members = ordered.groupBy { groupStation(it) }
+            val drawn = members.keys - offCard
             val rideStations = HashMap<String, String>()
             journeyCards.forEach { card ->
-                rideStation(card, stationOfStop, stopClusterIds)?.takeIf { it in stations && it !in offCard }?.let { rideStations[card.journey.key] = it }
+                val station = if (rideMode(card).isBlank()) firstStationOfStop[rideOrigin(card)] else rideStation(card, placeOfStop, stopClusterIds)
+                station?.takeIf { it in drawn }?.let { rideStations[card.journey.key] = it }
             }
-            val rides = stationRideRows(journeyCards.groupBy { rideStations[it.journey.key] }, stationOfStop.filterValues { it !in offCard })
-            val members = ordered.groupBy { groupPlace(it) }
+            val rides = stationRideRows(journeyCards.groupBy { rideStations[it.journey.key] }) { row ->
+                placeOfStop[row.stopId]?.let { stationKey(it, row.mode) }?.takeIf { it in drawn }
+            }
             val cards = members.mapValues { (station, stationGroups) ->
                 val rideCard = rides.byStation[station]?.let { pairs ->
                     StopCard(
@@ -4341,9 +4392,11 @@ internal class StationLayout(
                 stationCard(listOfNotNull(rideCard), stationGroups.map(cardOf), starred)
             }
             val meters = members.mapNotNull { (station, stationGroups) ->
-                stationGroups.mapNotNull { placeDistanceMeters[it.placeKey] }.minOrNull()?.let { station to it }
+                stationGroups.mapNotNull(::metersOf).minOrNull()?.let { station to it }
             }.toMap()
-            return StationLayout(ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends)
+            val modeIds = members.mapValues { (_, stationGroups) -> stationGroups.flatMap { group -> group.rows.map { it.mode } }.distinct() }
+            val modes = modeIds.mapValues { (_, ids) -> ModeIcon.of(ids) }
+            return StationLayout(ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, modes, modeIds)
         }
     }
 }
@@ -4363,10 +4416,10 @@ internal fun offCardPlaces(groups: List<StopGroup>, farther: List<FartherCard>, 
     return places
 }
 
-/** The places ([groupPlace]) of [groups] with a stop whose closure check is still out ([pending]). */
+/** The stations ([groupStation]) of [groups] with a stop whose closure check is still out ([pending]). */
 @WorkerThread
-internal fun checkingPlaces(groups: List<StopGroup>, pending: Set<String>): Set<String> =
-    groups.filter { group -> group.rows.any { it.stopId in pending } }.mapTo(HashSet(), ::groupPlace)
+internal fun checkingStations(groups: List<StopGroup>, pending: Set<String>): Set<String> =
+    groups.filter { group -> group.rows.any { it.stopId in pending } }.mapTo(HashSet(), ::groupStation)
 
 /** The folded stations of a list grouped by station, kept across a configuration change. */
 private val FoldedStationsSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })
@@ -4577,7 +4630,7 @@ internal fun groupHeaderStyle(): TextStyle = MaterialTheme.typography.titleMediu
 internal fun stationGroupHeaderStyle(): TextStyle = MaterialTheme.typography.titleSmall
 
 /**
- * A station's heading on a list grouped by station (maintainer, 2026-10-23): its [name], bold, how far it is
+ * A station's heading on a list grouped by station (maintainer, 2026-10-23): its [modes]' icons, its [name], bold, how far it is
  * ([distanceLabel]), and a chevron. Two tap targets: the name and distance open the whole station ([onOpen];
  * null leaves them inert, as on a station's own page), and the chevron alone folds and unfolds everything
  * under it — its rides, starred rows, notices and platforms ([folded]). A "Closed" chip after the name where
@@ -4588,6 +4641,10 @@ internal fun stationGroupHeaderStyle(): TextStyle = MaterialTheme.typography.tit
 private fun StationHeader(
     name: String,
     distanceLabel: String?,
+    // Its precomputed [StationLayout.modes]: decorative, the station's name says where it is.
+    modes: List<ModeIcon>,
+    // Its precomputed [StationLayout.modeIds], said with its name: a place's stations by mode share the name.
+    modeIds: List<String>,
     folded: Boolean,
     onToggle: () -> Unit,
     onOpen: (() -> Unit)?,
@@ -4600,7 +4657,9 @@ private fun StationHeader(
     val closedLabel = stringResource(R.string.farther_closed)
     val checkingLabel = stringResource(R.string.closure_checking)
     val status = if (closed) closedLabel else checkingLabel.takeIf { checkingClosure }
-    val spoken = listOfNotNull(name, distanceLabel, status).joinToString(", ")
+    val modesLabel = rememberModesSpoken(modeIds).ifBlank { null }
+    val named = listOfNotNull(name, modesLabel).joinToString(", ")
+    val spoken = listOfNotNull(named, distanceLabel, status).joinToString(", ")
     val style = groupHeaderStyle()
     // Both targets span the break above the heading, as a platform's heading's does. None sits below the name,
     // so the heading is as close to its own card as a platform's is (maintainer, 2026-10-23: 12dp more below
@@ -4616,6 +4675,18 @@ private fun StationHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                if (modes.isNotEmpty()) {
+                    Row(Modifier.padding(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (mode in modes) {
+                            Icon(
+                                painterResource(modeIcon(mode)),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = name,
                     style = style,
@@ -4666,7 +4737,7 @@ private fun StationHeader(
                 .clickable(onClickLabel = action, onClick = onToggle)
                 .padding(top = top)
                 .semantics {
-                    contentDescription = name
+                    contentDescription = named
                     stateDescription = state
                 },
             contentAlignment = Alignment.Center,

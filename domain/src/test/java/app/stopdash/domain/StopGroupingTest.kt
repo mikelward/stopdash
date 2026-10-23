@@ -734,4 +734,19 @@ class StopGroupingTest {
         assertNull(depot.towards)
         assertNull(depot.compass)
     }
+
+    @Test
+    fun `grouped by station, one station ID's modes sharing a platform number are grouped apart`() {
+        val rows = listOf(
+            row("T", "Highbury", clusterId = "HIG", lineId = "victoria", platform = "Platform 2", mode = "tube"),
+            row("O", "Highbury", clusterId = "HIG", lineId = "mildmay", platform = "Platform 2", mode = "overground"),
+            row("E", "Highbury", clusterId = "HIG", lineId = "elizabeth", platform = "Platform 2", mode = "elizabeth-line"),
+        )
+        // By stop/platform, as before: one card for the platform.
+        assertEquals(listOf(listOf("T", "O", "E")), StopGrouping.groupByStop(rows).map { group -> group.rows.map { it.stopId } })
+        // Grouped by station: the Underground apart; the Overground and the Elizabeth line, sharing an icon, together.
+        val byMode = StopGrouping.groupByStop(rows, splitByMode = true)
+        assertEquals(listOf(listOf("T"), listOf("O", "E")), byMode.map { group -> group.rows.map { it.stopId } })
+        assertEquals(2, byMode.map { it.key }.distinct().size)
+    }
 }

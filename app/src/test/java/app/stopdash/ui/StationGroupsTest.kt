@@ -5,6 +5,7 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.JourneyEnd
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopQualifier
@@ -57,15 +58,17 @@ class StationGroupsTest {
     }
 
     @Test
-    fun `a ride's station is its origin's, else its origin's stop area, else none`() {
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUVIC", "Victoria"), "victoria")
+    fun `a ride's station is its origin's place, else its origin's stop area, else none, with its own mode`() {
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUVIC", "Victoria"), "victoria", mode = "tube")
         val card = JourneyCard(journey, JourneyCardState.NotChecked(), boardingIds = listOf("940GZZLUKSX"))
-        assertEquals("KX", rideStation(card, mapOf("940GZZLUKSX" to "KX"), emptyMap()))
+        assertEquals("KX|TUBE", rideStation(card, mapOf("940GZZLUKSX" to "KX"), emptyMap()))
         // Every row of its origin moved onto its card: the origin's StopArea still finds the station.
-        assertEquals("HUBKGX", rideStation(card, emptyMap(), mapOf("940GZZLUKSX" to "HUBKGX")))
+        assertEquals("HUBKGX|TUBE", rideStation(card, emptyMap(), mapOf("940GZZLUKSX" to "HUBKGX")))
         assertNull(rideStation(card, mapOf("940GZZLUEUS" to "EUS"), emptyMap()))
         // Not yet placed: its saved origin.
-        assertEquals("KX", rideStation(card.copy(boardingIds = emptyList()), mapOf("940GZZLUKSX" to "KX"), emptyMap()))
+        assertEquals("KX|TUBE", rideStation(card.copy(boardingIds = emptyList()), mapOf("940GZZLUKSX" to "KX"), emptyMap()))
+        // A rail ride boarding at the same stop is the place's rail station, never its Underground one.
+        assertEquals("KX|RAIL", rideStation(card.copy(journey = journey.copy(mode = "national-rail")), mapOf("940GZZLUKSX" to "KX"), emptyMap()))
     }
 
     @Test
@@ -73,7 +76,7 @@ class StationGroupsTest {
         val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far"), "line")
         val trains = JourneyCardState.Trains(listOf(row("A1", "A"), row("B1", "B"), row("C1", "C")))
         val card = JourneyCard(journey, trains, boardingIds = listOf("A1", "B1", "C1"), destinationIds = setOf("Z"))
-        val rows = stationRideRows(mapOf("A" to listOf(card)), stationOfStop = mapOf("A1" to "A", "B1" to "B"))
+        val rows = stationRideRows(mapOf("A" to listOf(card))) { mapOf("A1" to "A", "B1" to "B")[it.stopId] }
         assertEquals(mapOf("A" to listOf("A1", "C1"), "B" to listOf("B1")), rows.byStation.mapValues { (_, pairs) -> pairs.map { it.first.stopId } })
         // Each opens as the ride's card would, with its far end.
         assertEquals(3, rows.ends.size)
@@ -87,7 +90,7 @@ class StationGroupsTest {
         assertFalse(stationsOwn in rows.ends.keys)
         // Still checking, with nothing drawn: it keeps its own heading and card.
         val checking = card.copy(state = JourneyCardState.Checking("route"))
-        assertTrue(stationRideRows(mapOf("A" to listOf(checking)), mapOf("A1" to "A")).byStation.isEmpty())
+        assertTrue(stationRideRows(mapOf("A" to listOf(checking))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
         // As does one with more to say than its trains, so what it says stays with them under its heading: a
         // route it couldn't check, a far end it couldn't check, a closure, a train held again while it checks.
         val saying = listOf(
@@ -98,11 +101,11 @@ class StationGroupsTest {
         )
         saying.forEach { ride ->
             assertFalse(joinsStationCard(ride))
-            assertTrue(stationRideRows(mapOf("A" to listOf(ride)), mapOf("A1" to "A")).byStation.isEmpty())
+            assertTrue(stationRideRows(mapOf("A" to listOf(ride))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
         }
         assertTrue(joinsStationCard(card))
         // A ride boarding nowhere listed leads the list instead.
-        assertTrue(stationRideRows(mapOf(null to listOf(card)), mapOf("A1" to "A")).byStation.isEmpty())
+        assertTrue(stationRideRows(mapOf(null to listOf(card))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
     }
 
     @Test
@@ -127,14 +130,63 @@ class StationGroupsTest {
             stopClusterIds = emptyMap(),
         )
         assertEquals(listOf("n2", "n1", "f"), layout.rank.entries.sortedBy { it.value }.map { it.key })
-        assertEquals(mapOf(journey.key to "N"), layout.rideStations)
-        assertEquals(mapOf("N" to 100.0, "F" to 300.0), layout.meters)
+        assertEquals(mapOf(journey.key to "N|TUBE"), layout.rideStations)
+        assertEquals(mapOf("N|TUBE" to 100.0, "F|TUBE" to 300.0), layout.meters)
         // The ride's train first, then the platforms by number.
-        assertEquals(listOf("N1", "N1", "N2"), layout.cards.getValue("N").group.rows.map { it.stopId })
-        assertEquals(setOf(1, 2), layout.cards.getValue("N").breaks)
+        assertEquals(listOf("N1", "N1", "N2"), layout.cards.getValue("N|TUBE").group.rows.map { it.stopId })
+        assertEquals(setOf(1, 2), layout.cards.getValue("N|TUBE").breaks)
         assertEquals(setOf("Z"), layout.rideEnds.values.single())
-        assertTrue(layout.cards.getValue("N").group.rows.first() in layout.rideEnds.keys)
-        assertFalse(layout.cards.getValue("N").group.rows[1] in layout.rideEnds.keys)
+        assertTrue(layout.cards.getValue("N|TUBE").group.rows.first() in layout.rideEnds.keys)
+        assertFalse(layout.cards.getValue("N|TUBE").group.rows[1] in layout.rideEnds.keys)
+    }
+
+    @Test
+    fun `a place's stations go by mode, each heading one icon, modes sharing an icon together`() {
+        val bus = StopGroup(stopName = "Place", key = "b", showHeader = true, rows = listOf(row("A3", "A").copy(mode = "bus")), placeKey = "A")
+        val rail = StopGroup(
+            stopName = "Place", key = "r", showHeader = true,
+            rows = listOf(row("A2", "A").copy(mode = "national-rail"), row("A2", "A").copy(mode = "elizabeth-line")), placeKey = "A",
+        )
+        val layout = StationLayout.of(
+            groups = listOf(bus, group("t", "A1", "A"), rail, group("o", "B1", "B")),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = emptyList(),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("A" to 100.0, "B" to 200.0),
+            stopClusterIds = emptyMap(),
+        )
+        assertEquals(
+            mapOf("A|BUS" to listOf(ModeIcon.BUS), "A|TUBE" to listOf(ModeIcon.TUBE), "A|RAIL" to listOf(ModeIcon.RAIL), "B|TUBE" to listOf(ModeIcon.TUBE)),
+            layout.modes,
+        )
+        // Each of the place's stations as near as the place, in the order they came.
+        assertEquals(listOf("b", "t", "r", "o"), layout.rank.entries.sortedBy { it.value }.map { it.key })
+        assertEquals(listOf("A2", "A2"), layout.cards.getValue("A|RAIL").group.rows.map { it.stopId })
+        // Its modes by name too, for a screen reader to tell the place's stations apart.
+        assertEquals(listOf("national-rail", "elizabeth-line"), layout.modeIds.getValue("A|RAIL"))
+    }
+
+    @Test
+    fun `a ride boarding at a stop not listed goes under its own mode's station at its place, or none`() {
+        val bus = StopGroup(stopName = "Place", key = "b", showHeader = true, rows = listOf(row("A3", "A").copy(mode = "bus")), placeKey = "A")
+        val rail = StopGroup(stopName = "Place", key = "r", showHeader = true, rows = listOf(row("A2", "A").copy(mode = "national-rail")), placeKey = "A")
+        fun ride(mode: String) = JourneyCard(
+            FavoriteJourney(JourneyEnd("A9", "Place"), JourneyEnd("Z", "Far end"), lineId = mode, mode = mode),
+            JourneyCardState.Trains(emptyList()),
+            boardingIds = listOf("A9"),
+        )
+        val overground = ride("overground")
+        val tube = ride("tube")
+        val layout = StationLayout.of(
+            groups = listOf(bus, rail),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(overground, tube),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("A" to 100.0),
+            stopClusterIds = mapOf("A9" to "A"),
+        )
+        // The Overground shares rail's icon, so rail's station; no Underground station is listed, so no station.
+        assertEquals(mapOf(overground.journey.key to "A|RAIL"), layout.rideStations)
     }
 
     @Test
@@ -165,8 +217,8 @@ class StationGroupsTest {
             held = listOf(held),
         )
         // All three of its trains in its own station's card; the others' cards have only their own rows.
-        assertEquals(listOf("A1", "H1", "F1", "A1"), layout.cards.getValue("A").group.rows.map { it.stopId })
-        assertEquals(listOf("H1"), layout.cards.getValue("H").group.rows.map { it.stopId })
+        assertEquals(listOf("A1", "H1", "F1", "A1"), layout.cards.getValue("A|TUBE").group.rows.map { it.stopId })
+        assertEquals(listOf("H1"), layout.cards.getValue("H|TUBE").group.rows.map { it.stopId })
         assertEquals(3, layout.rideEnds.size)
         // A ride boarding at a held place itself joins no card: it leads the list with its own heading.
         val fromHeld = ride.copy(journey = journey.copy(from = JourneyEnd("H1", "Held")), boardingIds = listOf("H1"))
@@ -185,10 +237,10 @@ class StationGroupsTest {
         val a2 = group("a2", "A2", "A")
         val b = group("b", "B1", "B")
         val groups = listOf(a1, a2, b)
-        assertEquals(setOf(groupPlace(a1)), checkingPlaces(groups, setOf("A2")))
-        assertEquals(setOf(groupPlace(a1), groupPlace(b)), checkingPlaces(groups, setOf("A1", "B1")))
-        assertTrue(checkingPlaces(groups, setOf("Z9")).isEmpty())
-        assertTrue(checkingPlaces(groups, emptySet()).isEmpty())
+        assertEquals(setOf(groupStation(a1)), checkingStations(groups, setOf("A2")))
+        assertEquals(setOf(groupStation(a1), groupStation(b)), checkingStations(groups, setOf("A1", "B1")))
+        assertTrue(checkingStations(groups, setOf("Z9")).isEmpty())
+        assertTrue(checkingStations(groups, emptySet()).isEmpty())
     }
 
     @Test

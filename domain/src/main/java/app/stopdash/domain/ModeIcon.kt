@@ -24,6 +24,9 @@ enum class ModeIcon {
             "bus" to BUS,
         )
 
+        /** One TfL mode id's icon, or null where none stands for it: one lookup, safe on any thread. */
+        fun of(mode: String): ModeIcon? = BY_MODE[mode.lowercase(Locale.ROOT)]
+
         /** [modes]' icons, each once, in this enum's order. Work that grows with [modes]: off the main thread. */
         @WorkerThread
         fun of(modes: List<String>): List<ModeIcon> =

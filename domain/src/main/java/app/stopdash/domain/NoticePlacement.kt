@@ -30,6 +30,10 @@ fun planNotices(
     // The groups not drawn right now (a held loading card's, until it's tapped open): a pole's notice
     // there goes with the card instead ([placeless]), so it isn't hidden behind the tap.
     hiddenGroupKeys: Set<String> = emptySet(),
+    // A list grouped by station, whose groups go by mode, names each group's station: a notice goes above the first
+    // group of the station holding its own stop where one is listed, so it heads its own mode's station, never the
+    // first of its place's (maintainer, 2026-10-23), and the list reads it there with no gathering of its own.
+    stationOf: ((StopGroup) -> String)? = null,
 ): NoticePlan {
     if (notices.isEmpty()) return NoticePlan()
     val onPole = LinkedHashMap<String, DepartureRow>()
@@ -48,7 +52,8 @@ fun planNotices(
             }
         }
         val place = noticePlaceOf(notice)
-        val first = listed.indexOfFirst { g ->
+        val own = if (stationOf != null) listed.indexOfFirst { g -> g.rows.any { it.stopId == notice.stopId } } else -1
+        val first = if (own >= 0) listed.indexOfFirst { stationOf!!(it) == stationOf(listed[own]) } else listed.indexOfFirst { g ->
             g.rows.any { r ->
                 r.stopId == notice.stopId ||
                     noticePlaceOf(r) == place ||
