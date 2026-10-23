@@ -289,6 +289,8 @@ fun MainScreen(
     // A ride's own view's Whole station (All stops for a bus ride), for the end it boards from, and Show on
     // map, for that end (SPEC *Journeys*); null hides the button.
     onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+    // A faraway place's station page, from its heading's name on a list grouped by station; null leaves it inert.
+    onOpenFartherStation: ((CollapsedPlaces.Place) -> Unit)? = null,
     onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     // A ride whose own view the screen opens on, as it first shows (Back from that ride's station page), and
     // its taking it, so a later return to the screen opens on the list.
@@ -1943,6 +1945,7 @@ fun MainScreen(
                             holdLanded = platformRows == null,
                             pendingTracker = pendingTracker,
                             onOpenFarther = onOpenFarther,
+                            onOpenFartherStation = onOpenFartherStation,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
                             onOpenCardDetail = openCardDetail,
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD, fromCard = true),
@@ -2137,6 +2140,8 @@ private fun LoadedContent(
     journeyView: Boolean = false,
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
     onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+    // A faraway place's station page, from its heading's name on a list grouped by station; null leaves it inert.
+    onOpenFartherStation: ((CollapsedPlaces.Place) -> Unit)? = null,
     onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
     onShowRideLine: ((FavoriteJourney, String) -> Unit)? = null,
@@ -2424,6 +2429,7 @@ private fun LoadedContent(
                         journeyView = journeyView,
                         onUnstarJourney = onUnstarJourney,
                         onOpenRideStation = onOpenRideStation,
+                        onOpenFartherStation = onOpenFartherStation,
                         onShowRideOnMap = onShowRideOnMap,
                         onHideRideLine = onHideRideLine,
                         onShowRideLine = onShowRideLine,
@@ -2992,6 +2998,8 @@ private fun DepartureList(
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
     // Its own view's Whole station and Show on map, for the end it boards from; null hides the button.
     onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+    // A faraway place's station page, from its heading's name on a list grouped by station; null leaves it inert.
+    onOpenFartherStation: ((CollapsedPlaces.Place) -> Unit)? = null,
     onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     // Hides a line from a ride, from its rows' long press, and shows one again (by its entry) from its
     // own view (SPEC *Hiding a line from a ride*); null offers neither.
@@ -4004,7 +4012,8 @@ private fun DepartureList(
                             modeIds = stationLayout?.fartherModeIds?.get(card.place.key).orEmpty(),
                             folded = true,
                             onToggle = { if (cue.tappable) onOpenFarther(card.place) },
-                            onOpen = null,
+                            // Its name opens its station's page, as a nearby station's does (maintainer, 2026-10-23).
+                            onOpen = onOpenFartherStation?.takeIf { stationHeadingOpens }?.let { open -> { open(card.place) } },
                         )
                     }
                 }
@@ -4037,6 +4046,18 @@ private fun DepartureList(
 
 /** A farther station's collapsed card and where it stands ([FartherLoad]; null until tapped). */
 data class FartherCard(val place: CollapsedPlaces.Place, val load: FartherLoad? = null)
+
+/**
+ * The page a faraway place's heading opens ([onOpenFartherStation]): its station's, else its first pole's stop area,
+ * so the page holds all its poles, else that pole's own. A cluster id that is only the stop's name (TfL gave no stop
+ * area: [StopLocation.clusterId] falls back to it) is no page to open (Codex, #1184). Null with nothing to open.
+ */
+internal fun fartherStationId(place: CollapsedPlaces.Place): String? {
+    if (place.stationId.isNotBlank()) return place.stationId
+    val stop = place.stops.firstOrNull() ?: return null
+    val area = stop.clusterId.takeIf { it.isNotBlank() && it != stop.name && ' ' !in it }
+    return (area ?: stop.id).takeIf { it.isNotBlank() }
+}
 
 /**
  * The farther stations' collapsed cards in a plain column, for the empty near-me list, where the

@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.SaveableStateHolder
+import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.HeldTrains
 import app.stopdash.domain.NewestArrivals
@@ -119,6 +120,7 @@ import app.stopdash.domain.widgetQuestionsSettled
 import app.stopdash.domain.widgetUpdateCardGone
 import app.stopdash.domain.widgetUpdateCardShown
 import app.stopdash.sync.rememberDriveSyncSwitch
+import app.stopdash.ui.fartherStationId
 import app.stopdash.ui.LineStopWindow
 import app.stopdash.ui.LocalWorker
 import app.stopdash.ui.RouteStopMode
@@ -3312,6 +3314,11 @@ class MainActivity : ComponentActivity() {
                                                     rideStation = RideReturn.record(id, journey)
                                                     openStation(id, OpenStation(end.name), false)
                                                 },
+                                                // A faraway place's page opens over the list, as a searched station's does: its
+                                                // station, else its bus stops' area, so the page holds all its poles.
+                                                onOpenFartherStation = { place ->
+                                                    fartherStationId(place)?.let { id -> openStation(id, OpenStation(place.name), false) }
+                                                },
                                                 reopenJourneyKey = RideReturn.key(rideToReopen),
                                                 reopenOrigin = RideReturn.origin(rideToReopen),
                                                 onJourneyReopened = { rideToReopen = null },
@@ -3862,6 +3869,8 @@ class MainActivity : ComponentActivity() {
         // A favorite ride's own view's Whole station: the page of the end it boards from. Null (a
         // station's page, which starts nothing) offers no button.
         onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+        // A faraway place's station page, from its heading on a list grouped by station.
+        onOpenFartherStation: ((CollapsedPlaces.Place) -> Unit)? = null,
         // The ride the list opens on, Back from its station having brought the rider here, and taking it.
         reopenJourneyKey: String? = null,
         // The stop it was shown boarding from, which it reopens boarding from.
@@ -4457,6 +4466,7 @@ class MainActivity : ComponentActivity() {
                     // A reopened ride's ends are held back until it boards from its stop again ([rideOrigin]):
                     // until then it may face the other way, and either button would act on the wrong end (Codex, #959).
                     onOpenRideStation = onOpenRideStation?.takeIf { rideOrigin == null },
+                    onOpenFartherStation = onOpenFartherStation,
                     reopenJourneyKey = reopenJourneyKey,
                     onJourneyReopened = onJourneyReopened,
                     // Its published position (TfL's, never the rider's), so a far ride's shows too.

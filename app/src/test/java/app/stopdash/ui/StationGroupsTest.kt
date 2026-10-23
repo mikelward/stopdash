@@ -109,6 +109,20 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a faraway place's heading opens its station, else its stop area, never a stop's name`() {
+        fun stop(id: String, name: String, cluster: String) = app.stopdash.domain.StopLocation(id, name, 0.0, 0.0, emptyList(), clusterId = cluster)
+        fun place(stationId: String, vararg stops: app.stopdash.domain.StopLocation) =
+            CollapsedPlaces.Place(key = "k", stationId = stationId, name = "Euston Road", meters = 600.0, lines = emptyList(), stops = stops.toList())
+        assertEquals("940GZZLUEUS", fartherStationId(place("940GZZLUEUS")))
+        assertEquals("490G000EXAMPLE", fartherStationId(place("", stop("490000001E", "Euston Road", "490G000EXAMPLE"))))
+        // TfL gave no stop area: the cluster is the stop's name, which is no page, so the pole's own.
+        assertEquals("490000001E", fartherStationId(place("", stop("490000001E", "Euston Road", "Euston Road"))))
+        assertEquals("490000001E", fartherStationId(place("", stop("490000001E", "Euston Road", "Euston Rd Stop"))))
+        assertEquals("490000001E", fartherStationId(place("", stop("490000001E", "Euston Road", ""))))
+        assertNull(fartherStationId(place("")))
+    }
+
+    @Test
     fun `two lists read through as one, in order, without copying either`() {
         val first = mutableListOf("a", "b")
         val joined = Joined(first, listOf("c"))
