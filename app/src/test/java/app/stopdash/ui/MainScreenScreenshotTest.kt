@@ -6187,6 +6187,11 @@ class MainScreenScreenshotTest {
         towards = "Marble Arch",
     )
 
+    // A station heading's chevron, the one tap that folds it, by the station it folds and whether it is.
+    private fun stationChevron(name: String, state: String = "Expanded") =
+        SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, state) and
+            SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(name))
+
     // King's Cross with a starred row, and a bus stop's two poles a walk apart.
     private fun groupedByStationOn() {
         // Every train with its direction, so the ride judges them all and says nothing couldn't be checked.
@@ -6253,6 +6258,11 @@ class MainScreenScreenshotTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras")))
         composeRule.onNodeWithText("Platform 1", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Heathrow Terminal 5").assertExists()
+        // The page already is the whole station, so the heading's name opens nothing; only its chevron acts.
+        composeRule.onAllNodes(
+            SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras, Tube")) and
+                SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick),
+        ).assertCountEquals(1)
     }
 
     @Test
@@ -6274,9 +6284,8 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val heading = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded")
-        composeRule.onNode(heading)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras, Closed")))
+        val heading = stationChevron("King's Cross St. Pancras")
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Closed").assertExists()
         fun top(matcher: SemanticsMatcher) = composeRule.onNode(matcher).getUnclippedBoundsInRoot().top
         val notice = hasText("Station closed due to strike action.", substring = true)
         composeRule.onAllNodes(notice).assertCountEquals(1)
@@ -6284,8 +6293,8 @@ class MainScreenScreenshotTest {
         composeRule.onNode(heading).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(notice).assertCountEquals(0)
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("King's Cross St. Pancras, Closed")))
+        composeRule.onNode(stationChevron("King's Cross St. Pancras", "Collapsed")).assertExists()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Closed").assertExists()
     }
 
     @Test
@@ -6312,8 +6321,7 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Euston Road – Stop E").assertExists()
         composeRule.onNodeWithText("Stop F", substring = true).assertDoesNotExist()
         // The station's own heading doesn't say the whole stop is closed.
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Euston Road, 60 m")))
+        composeRule.onNodeWithContentDescription("Euston Road, 60 m").assertExists()
     }
 
     @Test
@@ -6333,17 +6341,18 @@ class MainScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         val checking = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Euston, 80 m, Checking for closures"))
-        composeRule.onNode(checking).assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
-        composeRule.onNode(checking).performClick()
+        composeRule.onNode(checking).assertExists()
+        composeRule.onNode(stationChevron("Euston")).performClick()
         composeRule.waitForIdle()
-        composeRule.onNode(checking).assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+        composeRule.onNode(stationChevron("Euston", "Collapsed")).assertExists()
+        composeRule.onNode(checking).assertExists()
     }
 
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
-    fun `grouped by station, a tap on a station's heading folds all of it, rides and starred rows too`() {
+    fun `grouped by station, a tap on a station's chevron folds all of it, rides and starred rows too`() {
         groupedByStationOn()
-        composeRule.onNodeWithText("King's Cross St. Pancras").performClick()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras")).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertDoesNotExist()
         composeRule.onNodeWithText("High Barnet").assertDoesNotExist()
@@ -6352,11 +6361,41 @@ class MainScreenScreenshotTest {
         captureSnapshot("main-station-groups-folded.png", heightPx = 4200)
 
         // Unfolded, all of it comes back.
-        composeRule.onNodeWithText("King's Cross St. Pancras").performClick()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras", "Collapsed")).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertExists()
         composeRule.onNodeWithText("High Barnet").assertExists()
         composeRule.onNodeWithText("Cockfosters").assertExists()
+    }
+
+    @Test
+    fun `grouped by station, a tap on a station's name shows the whole station, folding nothing`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(kingsCrossStPancras(), manorHouse()), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "940GZZLUMRH" to 400.0),
+                        onOpenStopMap = { _, _ -> },
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, 120 m").performClick()
+        composeRule.waitForIdle()
+        // The whole station, grouped by platform with its view's buttons, as a platform's "Whole station" shows it:
+        // every King's Cross platform, nothing from Manor House.
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onNodeWithText("Platform 1", substring = true).assertExists()
+        composeRule.onNodeWithTag("viewActions").assertExists()
+        composeRule.onNodeWithText("Show on map").assertExists()
+        composeRule.onNodeWithText("Walthamstow Central").assertExists()
+        composeRule.onNodeWithText("Cockfosters").assertExists()
+        composeRule.onAllNodesWithText("Manor House", substring = true).assertCountEquals(0)
     }
 
     @Test

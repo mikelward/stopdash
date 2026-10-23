@@ -1446,9 +1446,10 @@ first with **no starred band**: a starred row leads its own station rather than 
 notice sits under its heading and folds with it, on a searched station's page too (By stop/platform puts its notices
 first there), and a notice about one bus pole names its pole, there being no pole heading to; the heading says
 "Closed" where the notice does, and until then shows the small spinner
-while any of its stops' closure checks is out (*Freshness → Cold load*). The **whole heading is one tap target**
-that folds the station to its heading alone, its rides, starred rows and notices included, and unfolds it again;
-what's folded is kept while the list is, not saved. Platform headings, and the tap that opens one platform, are
+while any of its stops' closure checks is out (*Freshness → Cold load*). A tap on the
+heading's **name** shows the whole station, as a platform's "Whole station" does; only its **chevron** folds the
+station to its heading alone, its rides, starred rows and notices included, and unfolds it again; what's folded is
+kept while the list is, not saved. Platform headings, and the tap that opens one platform, are
 By stop/platform's.
 
 TfL's endpoint is named "Arrivals"; for a bus stop these are departures *from* that

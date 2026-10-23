@@ -1985,6 +1985,9 @@ fun MainScreen(
                                     platformTitle = group.stopName
                                 }
                             },
+                            // A searched station's page already shows the whole station, so its station headings'
+                            // names stay inert there (their chevrons still fold).
+                            stationHeadingOpens = stationTitle == null,
                             // A platform/station drill-down shows one place's stops, not the near-me set, so
                             // the "your location is low-confidence" banner doesn't apply there.
                             locationBanner = if (platformRows != null) null else locationBanner,
@@ -2167,6 +2170,8 @@ private fun LoadedContent(
     onOpenPlatform: ((StopGroup) -> Unit)? = null,
     // Drill into the whole place of the tapped group, from a tap on the header's place name.
     onOpenStation: ((StopGroup) -> Unit)? = null,
+    // Whether a station heading's name opens its station (By station); false leaves it inert.
+    stationHeadingOpens: Boolean = true,
     // Non-null when the shown stops are backed by a low-confidence location: a top banner says so
     // and offers "Try again" (runs [onRefresh], a re-locate). Null hides it.
     locationBanner: LocationBanner? = null,
@@ -2409,6 +2414,7 @@ private fun LoadedContent(
                         },
                         onOpenPlatform = onOpenPlatform,
                         onOpenStation = onOpenStation,
+                        stationHeadingOpens = stationHeadingOpens,
                         onOpenStopMap = onOpenStopMap,
                         journeyCards = journeyCards,
                         onFlipJourney = onFlipJourney,
@@ -2960,6 +2966,7 @@ private fun DepartureList(
     modesByPlace: Map<String, Set<String>> = emptyMap(),
     onOpenPlatform: ((StopGroup) -> Unit)? = null,
     onOpenStation: ((StopGroup) -> Unit)? = null,
+    stationHeadingOpens: Boolean = true,
     onOpenStopMap: ((String, String) -> Unit)? = null,
     journeyCards: List<JourneyCard> = emptyList(),
     onFlipJourney: (FavoriteJourney) -> Unit = {},
@@ -3759,7 +3766,6 @@ private fun DepartureList(
         // there with no trains yet to join its card ([rideStations], [joinsStationCard]).
         fun stationItems(station: String, closed: Boolean) {
             val members = stationMembers[station].orEmpty()
-            val first = headingLeads
             headingLeads = false
             val distanceLabel = distanceSystem?.let { system -> stationLayout?.meters?.get(station)?.let { distanceText(it, system, resources) } }
             val folded = station in foldedStations
@@ -3769,7 +3775,7 @@ private fun DepartureList(
                     distanceLabel,
                     folded = folded,
                     onToggle = { foldedStations = if (station in foldedStations) foldedStations - station else foldedStations + station },
-                    firstOnScreen = first,
+                    onOpen = onOpenStation?.takeIf { stationHeadingOpens }?.let { open -> { open(members.first()) } },
                     closed = closed,
                     checkingClosure = station in checkingStations,
                 )
@@ -4572,11 +4578,11 @@ internal fun stationGroupHeaderStyle(): TextStyle = MaterialTheme.typography.tit
 
 /**
  * A station's heading on a list grouped by station (maintainer, 2026-10-23): its [name], bold, how far it is
- * ([distanceLabel]), and a chevron. The whole row is its one tap
- * target, folding and unfolding everything under it — its rides, starred rows, notices and platforms
- * ([folded]). A "Closed" chip after the name where a notice says the place is closed, folded or not, and
- * until then a small spinner while any of its stops' closure checks is out ([checkingClosure]), as a
- * platform's heading has ([StopGroupHeader]).
+ * ([distanceLabel]), and a chevron. Two tap targets: the name and distance open the whole station ([onOpen];
+ * null leaves them inert, as on a station's own page), and the chevron alone folds and unfolds everything
+ * under it — its rides, starred rows, notices and platforms ([folded]). A "Closed" chip after the name where
+ * a notice says the place is closed, folded or not, and until then a small spinner while any of its stops'
+ * closure checks is out ([checkingClosure]), as a platform's heading has ([StopGroupHeader]).
  */
 @Composable
 private fun StationHeader(
@@ -4584,77 +4590,90 @@ private fun StationHeader(
     distanceLabel: String?,
     folded: Boolean,
     onToggle: () -> Unit,
-    firstOnScreen: Boolean,
+    onOpen: (() -> Unit)?,
     closed: Boolean = false,
     checkingClosure: Boolean = false,
 ) {
     val action = stringResource(if (folded) R.string.station_unfold else R.string.station_fold)
     val state = stringResource(if (folded) R.string.station_folded else R.string.station_unfolded)
+    val openLabel = stringResource(R.string.action_show_station)
     val closedLabel = stringResource(R.string.farther_closed)
     val checkingLabel = stringResource(R.string.closure_checking)
     val status = if (closed) closedLabel else checkingLabel.takeIf { checkingClosure }
     val spoken = listOfNotNull(name, distanceLabel, status).joinToString(", ")
     val style = groupHeaderStyle()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            // The tap target spans the break above it too, as a platform's heading's does.
-            .clickable(onClickLabel = action, onClick = onToggle)
-            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else GROUP_BREAK)
-            .heightIn(min = 48.dp)
-            .semantics(mergeDescendants = true) {
-                contentDescription = spoken
-                stateDescription = state
-            },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = name,
-                style = style,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            if (closed) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.padding(start = 8.dp),
-                ) {
-                    Text(
-                        text = closedLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 4.dp),
+    // Both targets span the break above the heading, as a platform's heading's does. None sits below the name,
+    // so the heading is as close to its own card as a platform's is (maintainer, 2026-10-23: 12dp more below
+    // read as detached), and the first on screen takes the same room above as the rest (maintainer, 2026-10-23).
+    val top = GROUP_BREAK + 12.dp
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.Bottom) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .then(if (onOpen != null) Modifier.clickable(onClickLabel = openLabel, onClick = onOpen) else Modifier)
+                .padding(top = top)
+                .semantics(mergeDescendants = true) { contentDescription = spoken },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = name,
+                    style = style,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (closed) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) {
+                        Text(
+                            text = closedLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                } else if (checkingClosure) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 8.dp).size(12.dp),
                     )
                 }
-            } else if (checkingClosure) {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
+            }
+            if (distanceLabel != null) {
+                Text(
+                    text = distanceLabel,
+                    style = stationGroupHeaderStyle(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp).size(12.dp),
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 8.dp),
                 )
             }
         }
-        if (distanceLabel != null) {
-            Text(
-                text = distanceLabel,
-                style = stationGroupHeaderStyle(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                softWrap = false,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-        Box(Modifier.size(STATION_CHEVRON_BOX), contentAlignment = Alignment.Center) {
+        // As wide as before, so a ride's distance still lines up, and as tall as the name's target.
+        Box(
+            modifier = Modifier
+                .width(STATION_CHEVRON_BOX)
+                .clickable(onClickLabel = action, onClick = onToggle)
+                .padding(top = top)
+                .semantics {
+                    contentDescription = name
+                    stateDescription = state
+                },
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 if (folded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                // The row's click label and state say it.
+                // The box's description, click label and state say it.
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
