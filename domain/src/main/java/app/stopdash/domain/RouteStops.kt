@@ -440,6 +440,33 @@ object RouteStops {
     }
 
     /**
+     * How far a train TfL names no destination for ([isUnknownDestination]) goes at least: the stops every way it can
+     * run from [stopId] calls at before they part ([candidatePaths]), boarding stop first (a Northern line train at
+     * Morden reaching Kennington by either branch). So its platform's [bound] wins over its TfL [direction], as on a
+     * loop (Codex on #1045). A guess from the route data, never TfL's destination; null for a train naming one, where
+     * neither its bound nor its [direction] is known, or where its ways part at once.
+     */
+    @WorkerThread
+    fun atLeast(
+        sequence: LineSequence,
+        stopId: String,
+        destination: String,
+        branch: String?,
+        bus: Boolean = false,
+        bound: Bound? = null,
+        direction: String = "",
+        destinationId: String = "",
+        via: String = "",
+    ): List<String>? {
+        if (!isUnknownDestination(destination)) return null
+        if (bound == null && direction.isBlank()) return null
+        val ways = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction, destinationId, via)
+        if (ways.isEmpty()) return null
+        val shared = ways.reduce { a, b -> a.zip(b).takeWhile { (x, y) -> x == y }.map { it.first } }
+        return shared.takeIf { it.size >= 2 }
+    }
+
+    /**
      * Every distinct way a train at [stopId] bound for [destination] via [branch] may take, from the
      * boarding stop through where it ends (see [resolve] for the matching rules). With no known
      * destination ([isUnknownDestination]), every way from here to its route's end. Where there's

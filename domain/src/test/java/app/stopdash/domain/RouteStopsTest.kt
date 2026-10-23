@@ -1136,6 +1136,30 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a train naming no destination is sure of the stops every way it can take shares`() {
+        // A made-up line forking past C to E or W, and back: a train at A with no destination goes at least to C.
+        val forked = LineSequence(
+            routes = listOf(
+                LineRoute("A - E", listOf("A", "B", "C", "D", "E"), direction = "outbound"),
+                LineRoute("A - W", listOf("A", "B", "C", "V", "W"), direction = "outbound"),
+                LineRoute("E - A", listOf("E", "D", "C", "B", "A"), direction = "inbound"),
+            ),
+            stopNames = mapOf("A" to "Alpha", "B" to "Bravo", "C" to "Charlie", "D" to "Delta", "E" to "Echo", "V" to "Victor", "W" to "Whiskey"),
+        )
+        val unknown = RouteStops.CHECK_FRONT_OF_TRAIN
+        assertEquals(listOf("A", "B", "C"), RouteStops.atLeast(forked, "A", unknown, null, direction = "outbound"))
+        // Its platform's bound reads its way as well as its direction does.
+        assertEquals(listOf("A", "B", "C"), RouteStops.atLeast(forked, "A", unknown, null, bound = RouteStops.Bound.EAST))
+        // One way only: as far as it goes.
+        assertEquals(listOf("C", "B", "A"), RouteStops.atLeast(forked, "C", unknown, null, direction = "inbound"))
+        // Neither its bound nor its direction known: no guess, nor where its ways part at once.
+        assertNull(RouteStops.atLeast(forked, "A", unknown, null))
+        assertNull(RouteStops.atLeast(forked, "C", unknown, null, direction = "outbound"))
+        // A train naming its destination isn't guessed at; its stops are its own.
+        assertNull(RouteStops.atLeast(forked, "A", "Echo", null, direction = "outbound"))
+    }
+
+    @Test
     fun `a trip gets off at the station whichever of its ids the way calls at`() {
         // Northbound from Farringdon to St Pancras's main id: the way calls there by its low level.
         assertEquals(true, RouteStops.reaches(thameslink, "ZFD", "Bedford", null, setOf("STP")))

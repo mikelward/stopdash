@@ -4521,7 +4521,8 @@ Builds on Phase 1's minimal line-status marking.
       from Edgware Road, say, may always reach Aldgate. Mark it as a guess, never as TfL's destination;
       learn what's common from the route data (and the train's later predictions, where it has them).
       Done (2026-10-21): its chip says how far it goes at least, the farthest stop every route its way runs from
-      here reaches before they part; "Aldgate+" since 2026-10-23. The rest is the next item.
+      here reaches before they part; "Aldgate+" since 2026-10-23, when its route page began listing the stops as
+      far as that one rather than "Stop list unavailable". The rest is the next item.
 - [ ] **The "Aldgate+" guess on a "Check Front of Train" train's list row** (maintainer, 2026-10-21, the rest of
       the item above). Only its route page's chip says it today. The lean is the chip's wording, "Aldgate+", on the
       list row and the departure cards too, not "At least to Aldgate?" (maintainer, 2026-10-23), and a main view

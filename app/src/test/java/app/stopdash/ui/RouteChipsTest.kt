@@ -1098,6 +1098,11 @@ class RouteChipsTest {
         // Its own chip, chosen, says the guess, marked as one; TfL's words aren't its destination.
         composeRule.onNodeWithText("Camden Town+").assertIsDisplayed()
         composeRule.onNodeWithText("Camden Town+").assertIsSelected()
+        // Its stops as far as that, none past it, where its ways part (maintainer, 2026-10-23).
+        composeRule.onNodeWithText("Stop list unavailable").assertDoesNotExist()
+        composeRule.onNodeWithText("Camden Town").assertExists()
+        composeRule.onAllNodesWithText("Euston").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(0)
         // The ways it could take are chips too.
         composeRule.onNodeWithText("Morden/Bank").assertIsDisplayed()
         composeRule.onNodeWithText("Morden/Charing X").assertIsDisplayed()

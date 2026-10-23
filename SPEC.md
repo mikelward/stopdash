@@ -1166,7 +1166,9 @@ the same stops from here one chip, and a way its trains take that no route ends 
 A chip is named by where it goes, with its via where two go to one place ("Morden/Bank", "Morden/Charing X"),
 else by the first stop that tells them apart. A train TfL names no destination for ("Check Front of Train") has its
 own chip, named by how far it goes at least, a guess and marked as one: "Camden Town+", the farthest
-stop every way it can run from here reaches before they part (maintainer, 2026-10-21; its words 2026-10-23). Its ways are found as any
+stop every way it can run from here reaches before they part (maintainer, 2026-10-21; its words 2026-10-23). Chosen,
+its map or list runs as far as that stop, the stops it is sure to call at, the way on past it left open rather than
+drawn as where it ends (maintainer, 2026-10-23). Its ways are found as any
 train's are: its platform's bound first, else its TfL direction, which on a loop can name the other way round (Codex
 on #1045). Such trains guessed to go different distances have a chip each, so a chip's guess holds for every train
 on it, whichever platform's the page follows. TfL's own words stay on
@@ -1289,8 +1291,9 @@ platforms no compass, so a train round a loop to one terminus ("via Wimbledon") 
 calling at every station the via names after boarding. The via narrows the path only — it isn't
 shown, nor does it narrow the trains the page lists — and a via no path calls at leaves the list
 unavailable rather than guessed. **A train TfL shows as "Check Front
-of Train"** keeps TfL's wording on the list, as the platform board has it, but names no place: it
-has no stop list, and a trip or journey counts it only where every way it may run from its platform
+of Train"** keeps TfL's wording on the list, as the platform board has it, but names no place: its
+stop list runs only as far as every way it may run from its platform shares before they part (none where they part
+at once), and a trip or journey counts it only where every way it may run from its platform
 agrees (all pass the rider's stop, at least as far as where they part, or none does); otherwise it's
 one of the routes that couldn't be checked. **A service ending at the stop it's listed at** (a bus
 arriving at its stand, a train turned short there during engineering works) has no stops ahead: should

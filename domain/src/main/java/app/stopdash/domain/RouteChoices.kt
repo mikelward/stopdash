@@ -416,23 +416,15 @@ data class RouteChoices(val choices: List<RouteChoice>, val current: Int?) {
         }
 
         /**
-         * How far [train], one TfL names no destination for ([RouteStops.isUnknownDestination]), goes at least: the
-         * farthest stop every way it can run from [stopId] reaches before they part (a Northern line train at Morden
-         * reaching Kennington by either branch). Its ways are the ones a train is resolved onto
-         * ([RouteStops.candidatePaths]), so its platform's bound wins over its TfL direction, as on a loop (Codex on
-         * #1045). A guess from the route data, never TfL's destination; none where neither its bound nor its [way]
-         * ([RouteChoice.direction]) is known, or its ways part at once.
+         * How far [train], one TfL names no destination for, goes at least ([RouteStops.atLeast]): the farthest stop
+         * every way it can run from [stopId] reaches before they part, its [way] ([RouteChoice.direction]) read where
+         * its platform names no bound. Its route page lists the stops as far as this ([RouteStops.atLeast] too).
          */
         @WorkerThread
-        private fun atLeastOf(routes: LineSequence, stopId: String, train: Departure, way: String, bus: Boolean): String? {
-            if (!RouteStops.isUnknownDestination(train.destination)) return null
-            val bound = RouteStops.boundOf(train.platform)
-            if (bound == null && way.isBlank()) return null
-            val ways = RouteStops.candidatePaths(routes, stopId, train.destination, train.branch, bus, bound, way, train.destinationId, train.via)
-            if (ways.isEmpty()) return null
-            val shared = ways.reduce { a, b -> a.zip(b).takeWhile { (x, y) -> x == y }.map { it.first } }
-            return shared.takeIf { it.size >= 2 }?.last()
-        }
+        private fun atLeastOf(routes: LineSequence, stopId: String, train: Departure, way: String, bus: Boolean): String? =
+            RouteStops.atLeast(
+                routes, stopId, train.destination, train.branch, bus, RouteStops.boundOf(train.platform), way, train.destinationId, train.via,
+            )?.last()
 
         private fun nationalRail(row: DepartureRow): Boolean =
             row.mode.ifBlank { Connections.knownMode(row.lineId).orEmpty() }.equals("national-rail", ignoreCase = true)

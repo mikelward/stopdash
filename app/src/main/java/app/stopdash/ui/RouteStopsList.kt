@@ -75,6 +75,8 @@ import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.eachCallingAt
+import app.stopdash.domain.stopsOf
 import app.stopdash.domain.Workers
 import android.util.LruCache
 import kotlinx.coroutines.CancellationException
@@ -132,13 +134,16 @@ sealed interface RouteStopsUi {
     // bus's way back uses the poles across the road); [endsHere]: the train ends at the boarding
     // stop ([RouteStops.Resolution.EndsHere]), so [stops] is that stop alone and the page says
     // "Terminates here" (maintainer, 2026-10-09); [calls]: [stops] are the train's own calling points
-    // ([RouteStopsRepository.trainStops]), so a station its line runs through between two is one it passes.
+    // ([RouteStopsRepository.trainStops]), so a station its line runs through between two is one it passes;
+    // [onward]: [stops] are only as far as a train TfL names no destination for is sure to go ([RouteStops.atLeast]),
+    // so the last isn't drawn as where it ends (maintainer, 2026-10-23).
     data class Loaded(
         val stops: List<RouteStop>,
         val positions: Map<String, Pair<Double, Double>> = emptyMap(),
         val sequence: LineSequence? = null,
         val endsHere: Boolean = false,
         val calls: Boolean = false,
+        val onward: Boolean = false,
     ) : RouteStopsUi
 }
 
@@ -157,11 +162,14 @@ internal class RouteMapInputs(
     // The path is the train's own calls ([RouteStopsUi.Loaded.calls]): a map drawing a station between two of them
     // on it draws one it passes as one it calls at.
     val calls: Boolean = false,
+    // The train runs on past the path's last station, its way not known ([RouteStopsUi.Loaded.onward]): no terminus.
+    val onward: Boolean = false,
 ) {
+    // Where the train ends, unless it runs on past the path.
+    private val terminus = rides.lastOrNull()?.lastOrNull()?.takeUnless { onward }
+
     /** The path's stations by the ids the map draws them as, where none is drawn as another stop. */
-    val asDrawn = RouteMapStations(
-        after.associateWith { it }, connections, stepFree, rides.flatten().associateWith { it }, rides.lastOrNull()?.lastOrNull(),
-    )
+    val asDrawn = RouteMapStations(after.associateWith { it }, connections, stepFree, rides.flatten().associateWith { it }, terminus)
 
     /**
      * The path's stations by the ids the map draws them as: a way back's pole drawn as the outbound one
@@ -176,7 +184,7 @@ internal class RouteMapInputs(
             connections = connections.mapKeys { shown(it.key) },
             stepFree = stepFree.mapKeys { shown(it.key) },
             path = rides.flatten().associateBy { shown(it) },
-            terminus = rides.lastOrNull()?.lastOrNull()?.let { shown(it) },
+            terminus = terminus?.let { shown(it) },
         )
     }
 
@@ -211,6 +219,7 @@ internal class RouteMapInputs(
                 connections = loaded.stops.filter { it.connections.isNotEmpty() }.associate { it.id to it.connections },
                 stepFree = ids.toSet().let { path -> levels.filterKeys { it in path } },
                 calls = loaded.calls,
+                onward = loaded.onward,
             )
         }
     }
@@ -285,6 +294,21 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
                 resolution.stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
                 sequence,
             )
+            // TfL names no destination ("Check Front of Train"): the stops every way it can run from here calls at,
+            // as far as they share (maintainer, 2026-10-23), read on each route as the page's chips read them, so the
+            // list runs to the chip's guess. Its way on past them isn't known, so none is drawn as where it ends.
+            RouteStops.Resolution.NoDestination -> RouteStops.atLeast(
+                fetched.eachCallingAt(row.stopId), row.stopId, destination, next.branch, bus, RouteStops.boundOf(next.platform),
+                next.direction.ifBlank { row.direction }, next.destinationId, next.via,
+            )?.let { path ->
+                val stops = RouteStops.stopsOf(sequence, path, row.lineId)
+                RouteStopsUi.Loaded(
+                    stops,
+                    stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
+                    sequence,
+                    onward = true,
+                )
+            } ?: RouteStopsUi.Unavailable(resolution)
             // It ends here: the one station, so the page draws it on the line's map with the rest folded,
             // the way on from here among them, rather than "unavailable" (maintainer, 2026-10-09).
             RouteStops.Resolution.EndsHere -> {
@@ -444,7 +468,8 @@ internal fun RouteStopsSection(
                     connections = stop.connections,
                     railColor = railColor,
                     first = index == 0,
-                    last = index == state.stops.lastIndex,
+                    // A train running on past its last stop listed: the rail runs on, and the stop isn't its end.
+                    last = index == state.stops.lastIndex && !state.onward,
                     starred = index > 0 && stop.id in starredStopIds,
                     inAlert = stop.id in alertStopIds,
                     stepFree = stepFree[stop.id],
