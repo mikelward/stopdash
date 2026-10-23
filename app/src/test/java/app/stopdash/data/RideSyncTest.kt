@@ -5,6 +5,9 @@ import app.stopdash.domain.SyncLedger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import androidx.datastore.core.DataStore
 import org.junit.Assert.assertEquals
@@ -134,6 +137,19 @@ class RideSyncTest {
         // Nothing written, nor the mark.
         assertEquals("m1", store.syncMark())
         assertEquals(listOf(oxfordCircusKingsCross), data.data.first()?.journeys)
+    }
+
+    @Test
+    fun `the store says each change a sync may send, and none for an edit sync doesn't carry`() = runTest {
+        val data = FakeDataStore(stored)
+        val store = DataStoreFavoriteJourneysStore(data, compute = UnconfinedTestDispatcher(testScheduler))
+        val seen = mutableListOf<Map<String, Map<String, String>>?>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { store.syncChanges().toList(seen) }
+        // An alert time for a ride not saved isn't synced, so writing one is no change to send.
+        data.set(stored.copy(alerts = stored.alerts + ("940GZZLUCCC|940GZZLUDDD>940GZZLUCCC" to mornings)))
+        data.set(stored.copy(journeys = listOf(eustonWaterloo)))
+        job.cancel()
+        assertEquals(listOf(RideSync.entriesOf(stored), RideSync.entriesOf(stored.copy(journeys = listOf(eustonWaterloo)))), seen)
     }
 
     @Test

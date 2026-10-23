@@ -65,6 +65,11 @@ class TestStopdashApp : StopdashApp() {
         // follow; JourneyAlertsTest covers the decisions.
     }
 
+    override fun installDriveSync() {
+        // Intentionally empty — no WorkManager or Drive in the test suite, and no real journeys DataStore
+        // to follow; SyncRunTest and RideSyncTest cover the sync.
+    }
+
     override fun installChannelRefresh() {
         // Intentionally empty — a test sets up the channels it needs; NotificationChannelRefreshTest
         // covers the refresh.

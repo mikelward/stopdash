@@ -31,6 +31,7 @@ import java.io.OutputStream
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -154,6 +155,22 @@ class DataStoreFavoriteJourneysStore internal constructor(
     suspend fun syncEntries(): Map<String, Map<String, String>>? = withContext(compute) {
         RideSync.entriesOf(dataStore.data.first())
     }
+
+    /**
+     * [syncEntries] as they change, each a change sync may have to send: null for a file this build can't
+     * read. A read failure ends the flow, said with null first, as [journeys] does.
+     */
+    fun syncChanges(): Flow<Map<String, Map<String, String>>?> =
+        dataStore.data
+            .map { stored -> RideSync.entriesOf(stored) }
+            .distinctUntilChanged()
+            .flowOn(compute)
+            .catch { e ->
+                if (e !is IOException) throw e
+                // By its type and first frames alone, never its message (Codex on #1151).
+                warn("favorite journeys read failed: ${e::class.simpleName}${e.stackTrace.take(3).joinToString("") { " at $it" }}")
+                emit(null)
+            }
 
     /**
      * Writes [merged], a sync's merged entries by kind ([RideSync.applied]), with that sync's [mark], in one

@@ -28,6 +28,8 @@ import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.WifiPlacesSetting
 import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.domain.SteadyClock
+import app.stopdash.sync.DriveSync
+import app.stopdash.sync.framesOf
 import app.stopdash.telemetry.CrashlyticsLogSink
 import app.stopdash.telemetry.FileConsentMark
 import app.stopdash.telemetry.FilePendingMarker
@@ -145,6 +147,22 @@ open class StopdashApp : Application() {
         installWidgetPreview()
         installJourneyAlerts()
         installChannelRefresh()
+        installDriveSync()
+    }
+
+    /**
+     * Syncs the rider's favorite rides with their other phones through their Drive, when they turned it on
+     * ([DriveSync]; debug builds only until the Play Data Safety form says so). `open` so the test
+     * [Application] can skip it; guarded, since a sync that can't start is a lost convenience, never a
+     * reason to take the app down.
+     */
+    protected open fun installDriveSync() {
+        try {
+            DriveSync.start(this, applicationScope)
+        } catch (e: Exception) {
+            // By its type and first frames alone (Codex on #1151).
+            StopdashDebugLog.warning("sync: start failed: %s%s", e::class.simpleName, framesOf(e))
+        }
     }
 
     /**

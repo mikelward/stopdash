@@ -1,7 +1,8 @@
 # Syncing a rider's setup through their Google Drive
 
-**Status: planned, favorite rides first (maintainer, 2026-10-22); the sync engine is built
-(`Sync`, `SyncFile` in `:domain`), unused.** A
+**Status: favorite rides sync in debug builds only (`BuildConfig.DRIVE_SYNC`), until the Play
+Data Safety form says so (maintainer, 2026-10-22); a release build offers nothing and sends
+nothing. The Cloud project setup is still to do, so the grant can't yet be given.** A
 developer-facing write-up of how StopDash syncs a rider's saved setup between their phones
 through their own Google Drive. The steps are the *Sync a rider's setup between their phones*
 item in Phase 2 of `TODO.md`; what syncs after rides waits on the open questions at the end.
@@ -148,22 +149,25 @@ StopDash's data from Drive clears it. A phone that finds its own file missing up
 
 ### What the rider sees
 
-- Settings → **Sync with Google Drive**, off by default. Turning it on shows Google's account
-  choice and consent sheet ("See, create and delete its own configuration data in your Google
-  Drive"), then merges this phone's setup with Drive's. The row names the account.
-- Its status: "Synced 2 min ago", "Couldn't sync: offline", "Sign in again" (with a button),
-  "Drive is full", "Update StopDash to sync with your other phone". Never silent (SPEC principle
-  2).
-- Turning it off stops syncing and leaves the phone's setup as it is, with an offer to delete
-  StopDash's data from Drive. Deleting it while another phone still syncs only means that phone
+- Settings → **Sync with Google Drive**, under Favorite rides, off by default. Turning it on
+  shows Google's account choice and consent sheet ("See, create and delete its own configuration
+  data in your Google Drive"), then merges this phone's setup with Drive's. Backing out of the
+  sheet leaves it off. The row doesn't name the account: the grant alone doesn't say which.
+- Its status: "Synced 14:05", "Couldn't reach Google Drive", "Your Google Drive is full", "Update
+  StopDash to sync with your other phones", "Couldn't sync. Trying again later". With the grant
+  gone the switch reads off, saying "Turn on to sign in again". Never silent (SPEC principle 2).
+- Turning it off stops syncing and leaves the phone's setup, and its file in Drive, as they are;
+  turning it back on resumes. An offer to delete StopDash's data from Drive is still open (see
+  the open questions). Deleting it while another phone still syncs only means that phone
   uploads its own file again; nothing is lost.
 
 ### Android backup
 
-The install id and the sync ledger must be excluded from Auto Backup and device-to-device
-transfer (`backup_rules.xml`, `data_extraction_rules.xml`): a phone restored from another's
-backup would otherwise write as that phone, and the two would overwrite each other's file. The
-grant doesn't travel either, so a restored phone with sync on says "Sign in again".
+The install id, the sync ledger and whether sync is on live in the app's no-backup folder
+(`DriveSyncLocal`), which neither Auto Backup nor device-to-device transfer carries: a phone
+restored from another's backup would otherwise write as that phone, and the two would overwrite
+each other's file. A restored phone has its rides back from backup and sync off; turned on, it
+joins as a new phone.
 
 ## Privacy and Play
 

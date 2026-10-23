@@ -84,6 +84,9 @@ import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MAX_FONT_SCALE
 import app.stopdash.domain.MIN_FONT_SCALE
 import app.stopdash.domain.fontScalePercent
+import app.stopdash.sync.DriveSyncStatus
+import app.stopdash.sync.DriveSyncView
+import java.time.ZoneId
 
 /**
  * The Settings screen, hosted at the activity top level (like [LicensesScreen]) so it is
@@ -178,6 +181,12 @@ fun SettingsScreen(
     onOpenFavoritePlaces: () -> Unit = {},
     // Opens the favorite-journeys list (SPEC *Journeys*), hosted as its own overlay by the caller.
     onOpenFavoriteJourneys: () -> Unit = {},
+    // Drive sync (dev-docs/drive-sync.md), offered only in debug builds until the Play Data Safety form says
+    // so (maintainer, 2026-10-22): no row unless [driveSyncOffered]. Its view is null until read, when the
+    // switch is disabled; a tap is reported for the caller to ask Google for the grant, or turn it off.
+    driveSyncOffered: Boolean = false,
+    driveSync: DriveSyncView? = null,
+    onDriveSyncChange: (Boolean) -> Unit = {},
     // Whether the home screen shows its disruptions row (maintainer, 2026-10-05), as [distanceUnits] is
     // handled: held until read, a choice that didn't save said here until dismissed.
     showDisruptionsRow: Boolean = true,
@@ -332,6 +341,18 @@ fun SettingsScreen(
                     onClick = onOpenFavoriteJourneys,
                     testTag = "favoriteJourneysRow",
                 )
+                // Under the rides it keeps the same on each of the rider's phones.
+                if (driveSyncOffered) {
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_drive_sync_title),
+                        summary = driveSyncSummary(driveSync),
+                        // The grant gone, it reads off: turning it on asks for it again.
+                        checked = driveSync?.on == true && driveSync.status != DriveSyncStatus.SignIn,
+                        onCheckedChange = onDriveSyncChange,
+                        enabled = driveSync != null,
+                        switchTestTag = "driveSyncSwitch",
+                    )
+                }
                 // The home screen's disruptions row, third (maintainer, 2026-10-10; was second): like the places, it
                 // decides what the home screen leads with. Its settings are its own page, so none reads as
                 // the app's at large (maintainer, 2026-10-05).
@@ -1108,6 +1129,37 @@ private fun SettingSwitchRow(
             enabled = enabled,
             modifier = if (switchTestTag != null) Modifier.testTag(switchTestTag) else Modifier,
         )
+    }
+}
+
+/**
+ * Drive sync's line in Settings: what it does while off, else how the last sync went. Empty until read,
+ * holding the row's height.
+ */
+@Composable
+private fun driveSyncSummary(view: DriveSyncView?): String {
+    if (view == null) return ""
+    val status = view.status
+    if (!view.on) {
+        return when (status) {
+            DriveSyncStatus.SignInFailed -> stringResource(R.string.settings_drive_sync_sign_in_failed)
+            DriveSyncStatus.TurnOnFailed -> stringResource(R.string.settings_drive_sync_turn_on_failed)
+            DriveSyncStatus.OffNotSaved -> stringResource(R.string.hidden_modes_write_failed)
+            else -> stringResource(R.string.settings_drive_sync_off)
+        }
+    }
+    return when (status) {
+        DriveSyncStatus.Waiting -> stringResource(R.string.settings_drive_sync_waiting)
+        DriveSyncStatus.Syncing -> stringResource(R.string.settings_drive_sync_syncing)
+        is DriveSyncStatus.Synced -> stringResource(R.string.settings_drive_sync_synced, CLOCK.format(status.at.atZone(ZoneId.systemDefault())))
+        DriveSyncStatus.NewerPhone -> stringResource(R.string.settings_drive_sync_newer_phone)
+        DriveSyncStatus.Offline -> stringResource(R.string.settings_drive_sync_offline)
+        DriveSyncStatus.SignIn -> stringResource(R.string.settings_drive_sync_sign_in)
+        DriveSyncStatus.SignInFailed -> stringResource(R.string.settings_drive_sync_sign_in_failed)
+        DriveSyncStatus.TurnOnFailed -> stringResource(R.string.settings_drive_sync_turn_on_failed)
+        DriveSyncStatus.OffNotSaved -> stringResource(R.string.hidden_modes_write_failed)
+        DriveSyncStatus.Full -> stringResource(R.string.settings_drive_sync_full)
+        DriveSyncStatus.Failed -> stringResource(R.string.settings_drive_sync_failed)
     }
 }
 
