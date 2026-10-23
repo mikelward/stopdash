@@ -4,6 +4,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -188,6 +189,30 @@ class TripFixesTest {
         advanceTimeBy(10_000)
         assertSame(taken, refreshFix(seen, fixes, trip, t0, take = take))
         assertEquals(2, takes)
+    }
+
+    @Test
+    fun `a fix too old to act on still reaches a refresh on board, to check the train followed against`() = runTest {
+        // On board the bus followed, seen 36 s ago at a station: underground, nothing newer comes (bug report, 2026-10-23).
+        val riding = trip.copy(legIndex = 1, vehicleId = "7", boarded = true)
+        val fixes = fixes()
+        fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
+        val seen = fixes.latest.value
+        assertEquals(22f, refreshFix(seen, fixes, riding, t0) { null }?.accuracyMeters)
+        // Aged by the take's wait for GPS too: 36 s old when the refresh began, 44 s once the take gave up.
+        fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
+        val waited = refreshFix(fixes.latest.value, fixes, riding, t0) { delay(8_000); null }
+        assertEquals(44_000L, waited?.ageMillis)
+        // A fresher one taken goes first.
+        fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
+        assertEquals(5f, refreshFix(fixes.latest.value, fixes, riding, t0) { fix(accuracy = 5f) }?.accuracyMeters)
+        // Not before boarding, nor a vague one, nor past two minutes.
+        fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
+        assertNull(refreshFix(fixes.latest.value, fixes, trip, t0) { null })
+        fixes.offer(fix(accuracy = 900f, ageMillis = 36_000))
+        assertNull(refreshFix(fixes.latest.value, fixes, riding, t0) { null })
+        fixes.offer(fix(accuracy = 22f, ageMillis = 121_000))
+        assertNull(refreshFix(fixes.latest.value, fixes, riding, t0) { null })
     }
 
     @Test

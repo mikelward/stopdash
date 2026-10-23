@@ -1786,6 +1786,50 @@ object OnTheWay {
     const val STATION_APART_METERS = 400.0
 
     /**
+     * How old a sure fix may be and still place a rider on board, to check the train followed against ([outranFix]):
+     * underground one comes at a station, then none for minutes, and it's still the best word on where they are
+     * (maintainer, 2026-10-23).
+     */
+    const val RIDE_FIX_WITHIN_MILLIS = 120_000L
+
+    /** Whether [fix] is sure enough to place a rider on board, however old ([RIDE_FIX_WITHIN_MILLIS] aside): never a vague one. */
+    fun placesOnRide(fix: LocationFix): Boolean =
+        !fix.isFallback && !fix.isCoarse && fix.accuracyMeters.let { it != null && it <= FIX_WITHIN_METERS }
+
+    /**
+     * [fix] when it's too old for [usableFix] but still places a rider taken to be on board [trip]'s train, within
+     * [RIDE_FIX_WITHIN_MILLIS]: handed to the refresh only to check that train against ([outranFix]), which a fix
+     * older than [FIX_FRESH_WITHIN_MILLIS] is used for alone. Null otherwise.
+     */
+    fun placingFix(fix: LocationFix, trip: ActiveTrip): LocationFix? {
+        val age = fix.ageMillis ?: return null
+        return fix.takeIf { placesOnRide(it) && age <= RIDE_FIX_WITHIN_MILLIS && trip.boarded && trip.vehicleId.isNotBlank() }
+    }
+
+    /** How fast a rider on a ride is taken to travel at most, as the crow flies: faster than any TfL line runs. */
+    const val RIDE_SPEED_METERS_PER_SECOND = 40.0
+
+    /**
+     * Whether the train followed, next due at stop [at] of [on]'s path ([followedAt]), has passed one the rider, seen
+     * [along] [on] by [fix] (aged to now), couldn't have reached since: straight from the fix to the next stop ahead of
+     * them, then stop to stop, further than its uncertainty and [RIDE_SPEED_METERS_PER_SECOND] for its age. That train
+     * isn't theirs, however old the fix, within [RIDE_FIX_WITHIN_MILLIS] (maintainer, 2026-10-23: seen at Camden Town
+     * 36 s before, the train followed was past Tufnell Park). False where a stop on the way isn't placed.
+     */
+    @WorkerThread
+    fun outranFix(on: TripLeg, along: Along, at: Int, fix: LocationFix, positions: Map<String, Coordinates>): Boolean {
+        if (along.atEnd) return false
+        val passed = at - 1
+        val next = ahead(along)
+        if (passed < next || passed > on.path.lastIndex) return false
+        val accuracy = fix.accuracyMeters?.toDouble() ?: return false
+        val age = fix.ageMillis ?: return false
+        val stops = on.path.subList(next, passed + 1).map { positions[it] ?: return false }
+        val meters = distance(fix.coordinates, stops.first()) + stops.zipWithNext { a, b -> distance(a, b) }.sum()
+        return meters > accuracy + RIDE_SPEED_METERS_PER_SECOND * age / 1000.0
+    }
+
+    /**
      * How many of [on]'s stops the train followed, with [calls] ahead of it, is past (as [aheadOnLeg]),
      * or null where that can't be told. A bus's path the Planner names by stop pair ("490G…") is
      * matched by each call's pole's pair, from [areas] ([LineSequence.stopAreas]) (Codex, PR #726);
