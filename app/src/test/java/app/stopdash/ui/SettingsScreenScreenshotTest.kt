@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasText
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -147,8 +149,9 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithText("Group favourite rides").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("rideGrouping-RIDE").performScrollTo().assertIsSelected()
         composeRule.onNodeWithTag("rideGrouping-STOP").assertIsNotSelected()
-        composeRule.onNodeWithText("Group by ride").assertIsDisplayed()
-        composeRule.onNodeWithText("Group by stop").assertIsDisplayed()
+        // Each option by its own row: the nearby grouping says "By stop/platform" too.
+        composeRule.onNodeWithTag("rideGrouping-RIDE").assert(hasText("By ride")).assertIsDisplayed()
+        composeRule.onNodeWithTag("rideGrouping-STOP").assert(hasText("By stop/platform")).assertIsDisplayed()
         captureSnapshot("settings-ride-grouping.png")
         composeRule.onNodeWithTag("rideGrouping-STOP").performClick()
         assertEquals(listOf(RideGrouping.STOP), chosen)
@@ -172,7 +175,8 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithText("Group nearby departures").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("nearbyGrouping-PLATFORM").performScrollTo().assertIsSelected()
         composeRule.onNodeWithTag("nearbyGrouping-STATION").assertIsNotSelected()
-        composeRule.onNodeWithText("By platform").assertIsDisplayed()
+        // By its own row: the favorite rides' grouping says "By stop/platform" too.
+        composeRule.onNodeWithTag("nearbyGrouping-PLATFORM").assert(hasText("By stop/platform")).assertIsDisplayed()
         composeRule.onNodeWithText("By station").assertIsDisplayed()
         captureSnapshot("settings-nearby-grouping.png")
         composeRule.onNodeWithTag("nearbyGrouping-STATION").performClick()

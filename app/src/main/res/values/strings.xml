@@ -1218,19 +1218,21 @@
          own times. -->
     <string name="settings_train_spacing_title">Fix train spacing</string>
     <string name="settings_train_spacing_summary">Adjust times when trains are impossibly close</string>
-    <!-- How the near-me list groups a favorite ride's departures: under each stop the ride leaves
-         from, starred and saying where it goes (the default), or under the ride's own name. -->
-    <!-- How the near-me list groups its departures: a card per platform or bus stand (the default), or
-         one card per station under a heading that folds it. -->
+    <!-- How the near-me list groups its departures: a card per bus stop or platform (the default), or
+         one card per station under a heading that folds it. "Stop/platform" names both, as the two
+         grouping settings share it: a bus boards at a stop, a train at a platform. -->
     <!-- TODO: translate -->
     <string name="settings_nearby_grouping_title" tools:ignore="MissingTranslation">Group nearby departures</string>
     <!-- TODO: translate -->
-    <string name="settings_nearby_grouping_platform" tools:ignore="MissingTranslation">By platform</string>
+    <string name="settings_nearby_grouping_platform" tools:ignore="MissingTranslation">By stop/platform</string>
     <!-- TODO: translate -->
     <string name="settings_nearby_grouping_station" tools:ignore="MissingTranslation">By station</string>
+    <!-- How the near-me list groups a favorite ride's departures: under the ride's own name (the default),
+         or under each bus stop or platform the ride leaves from, starred and saying where it goes. -->
     <string name="settings_ride_grouping_title">Group favorite rides</string>
-    <string name="settings_ride_grouping_ride">Group by ride</string>
-    <string name="settings_ride_grouping_stop">Group by stop</string>
+    <string name="settings_ride_grouping_ride">By ride</string>
+    <!-- TODO: translate (reworded from "Group by stop": its translations said only "by stop", so they went) -->
+    <string name="settings_ride_grouping_stop" tools:ignore="MissingTranslation">By stop/platform</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be

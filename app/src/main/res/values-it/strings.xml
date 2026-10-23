@@ -515,7 +515,6 @@
     <string name="settings_train_spacing_summary">Regola gli orari quando i treni sono troppo ravvicinati</string>
     <string name="settings_ride_grouping_title">Raggruppa i tragitti preferiti</string>
     <string name="settings_ride_grouping_ride">Per tragitto</string>
-    <string name="settings_ride_grouping_stop">Per fermata</string>
     <string name="settings_widget_follows_title">Posizione automatica per orologio e widget</string>
     <string name="settings_widget_follows_summary">Mostra le fermate dove ti trovi, usando la posizione in background.</string>
     <string name="settings_live_widget_refresh_failed">Impossibile impostare l\'aggiornamento automatico</string>

@@ -512,7 +512,6 @@
     <string name="settings_train_spacing_summary">Trenler imkânsız derecede yakınsa saatleri ayarla</string>
     <string name="settings_ride_grouping_title">Favori binişleri grupla</string>
     <string name="settings_ride_grouping_ride">Binişe göre</string>
-    <string name="settings_ride_grouping_stop">Durağa göre</string>
     <string name="settings_widget_follows_title">Saat ve widget için otomatik konum</string>
     <string name="settings_widget_follows_summary">Konumunuzu arka planda kullanarak bulunduğunuz yerdeki durakları gösterir.</string>
     <string name="settings_live_widget_refresh_failed">Canlı yenileme güncellenemedi</string>

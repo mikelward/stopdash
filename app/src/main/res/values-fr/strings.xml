@@ -515,7 +515,6 @@
     <string name="settings_train_spacing_summary">Ajuster les horaires quand les trains sont trop rapprochés</string>
     <string name="settings_ride_grouping_title">Regrouper les trajets favoris</string>
     <string name="settings_ride_grouping_ride">Par trajet</string>
-    <string name="settings_ride_grouping_stop">Par arrêt</string>
     <string name="settings_widget_follows_title">Position automatique pour la montre et le widget</string>
     <string name="settings_widget_follows_summary">Affiche les arrêts où vous êtes, en utilisant votre position en arrière-plan.</string>
     <string name="settings_live_widget_refresh_failed">Impossible de programmer l’actualisation automatique</string>

@@ -515,7 +515,6 @@
     <string name="settings_train_spacing_summary">Ajustați orele când trenurile sunt imposibil de apropiate</string>
     <string name="settings_ride_grouping_title">Grupați cursele preferate</string>
     <string name="settings_ride_grouping_ride">După cursă</string>
-    <string name="settings_ride_grouping_stop">După stație</string>
     <string name="settings_widget_follows_title">Locație automată pentru ceas și widget</string>
     <string name="settings_widget_follows_summary">Afișează stațiile din locul în care vă aflați, folosind locația în fundal.</string>
     <string name="settings_live_widget_refresh_failed">Nu s-a putut configura actualizarea automată</string>

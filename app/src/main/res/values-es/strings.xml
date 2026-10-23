@@ -515,7 +515,6 @@
     <string name="settings_train_spacing_summary">Ajustar las horas cuando los trenes van imposiblemente juntos</string>
     <string name="settings_ride_grouping_title">Agrupar trayectos favoritos</string>
     <string name="settings_ride_grouping_ride">Por trayecto</string>
-    <string name="settings_ride_grouping_stop">Por parada</string>
     <string name="settings_widget_follows_title">Ubicación automática del reloj y el widget</string>
     <string name="settings_widget_follows_summary">Muestra las paradas de donde estés usando tu ubicación en segundo plano.</string>
     <string name="settings_live_widget_refresh_failed">No se pudo programar la actualización automática</string>
