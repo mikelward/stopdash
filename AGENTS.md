@@ -62,6 +62,10 @@ the battery, say why); principles win over rules below:
   (`Worked.kt`, `keep` for what may stand in), or a `produceState` answer kept as `Worked`
   with its key and read only while that key holds. `produceState` keeps its last value across
   new keys, and a reset inside the producer still leaves a frame of the old one (#1036, #1044).
+- **What a list's items are worked out from lives with its scroll position** (`ListWork`, held above
+  the pages), never a `remember` inside the list: it starts empty each time the page comes back, the
+  list measures short for a frame, and the position snaps to whatever is there. `ListReturnScrollTest`
+  holds the worker on a return; a new grouping or setting gets a case there.
 
 When unable to verify locally (no emulator/device), say so in chat ("verified by unit test;
 lock-screen placement needs a device check").
