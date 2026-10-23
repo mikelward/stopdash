@@ -585,6 +585,12 @@ object RouteStops {
         val routeOf = onBranch.associate { (route, path) -> path to route }
         val paths = onBranch.map { it.second }.distinct()
         if (paths.size < 2) return paths
+        // A bus whose destination names two stops one after the other on one route ("X Station", then
+        // "X Bus Station" at its route's end) passes the first on its way to the second, so every way it
+        // may take is the start of the one running on to its route's end: that one. Only for that name
+        // collision: two route variants run to their ends by a fallback stay as ambiguous as they were.
+        val oneRouteByName = !unknown && candidates === matched && onBranch.distinctBy { it.first }.size == 1
+        if (bus && oneRouteByName) runsThrough(paths, routeOf)?.let { return listOf(it) }
         if (bound != null) return paths.filter { leaves(sequence, routeOf.getValue(it), it, bound) != false }.ifEmpty { paths }
         // A platform with no compass ("Platform 1"): the train's own [direction] keeps the ways its
         // routes were fetched for — only then, as on a loop TfL's direction can name the other way
@@ -592,6 +598,16 @@ object RouteStops {
         if (direction !in DIRECTIONS) return paths
         return onBranch.filter { (route, _) -> route.direction == direction || route.direction.isBlank() }
             .map { it.second }.distinct().ifEmpty { paths }
+    }
+
+    /**
+     * The one of [paths] every other starts, where it runs on to its route's end; else null. All share
+     * their boarding stop, so a shorter way that is its start stops at a stop it calls at anyway.
+     */
+    private fun runsThrough(paths: List<List<String>>, routeOf: Map<List<String>, LineRoute>): List<String>? {
+        val longest = paths.maxBy { it.size }
+        if (paths.any { it.size > longest.size || longest.subList(0, it.size) != it }) return null
+        return longest.takeIf { it.last() == routeOf.getValue(it).stopIds.last() }
     }
 
     /**

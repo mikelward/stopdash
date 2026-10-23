@@ -247,6 +247,35 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a bus passing a stop of its destination's name on the way to its route's end runs to the end`() {
+        // A station stop, then the bus station at the route's end: both are "Northtown" to the blind.
+        val twice = LineSequence(
+            routes = listOf(LineRoute("Southgate &harr; Northtown Bus Station", listOf("S", "P", "N", "B"))),
+            stopNames = mapOf("S" to "Southgate", "P" to "Park Road", "N" to "Northtown Station", "B" to "Northtown Bus Station"),
+        )
+        assertEquals(listOf("P", "N", "B"), RouteStops.ahead(twice, "P", "Northtown", null, bus = true)?.map { it.id })
+        // A train keeps the strict rule: two stops of its destination's name is two possible ends.
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(twice, "P", "Northtown", null))
+        // Where the later stop isn't its route's end, which one the bus ends at is still a guess.
+        val beyond = LineSequence(
+            routes = listOf(LineRoute("Southgate &harr; Depot", listOf("S", "P", "N", "B", "D"))),
+            stopNames = twice.stopNames + ("D" to "Depot"),
+        )
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(beyond, "P", "Northtown", null, bus = true))
+        // Two variants, one the start of the other, run to their ends because the blind names neither:
+        // nothing says the bus runs on past the shorter one's end.
+        val nested = LineSequence(
+            routes = listOf(
+                LineRoute("Southgate &harr; Park Road", listOf("S", "P")),
+                LineRoute("Southgate &harr; Corner Stand", listOf("S", "P", "E")),
+            ),
+            stopNames = mapOf("S" to "Southgate", "P" to "Park Road", "E" to "Corner Stand"),
+        )
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(nested, "S", "Northtown", null, bus = true))
+        assertNull(RouteStops.reaches(nested, "S", "Northtown", null, setOf("E"), bus = true))
+    }
+
+    @Test
     fun `a stop off every route, or at a route's end, is reported as such`() {
         assertEquals(RouteStops.Resolution.NotOnRoute, RouteStops.resolve(labeledBus, "Z", "Northtown", null, bus = true))
         assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(labeledBus, "E", "Northtown", null, bus = true))
