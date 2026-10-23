@@ -153,7 +153,7 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
      left on RESUMED pauses under a window: `ReportScreen` would count the page again as the window
      closes, and the near-me trip's Direct lookups and Lines…'s status checks stop while it's open.
      Each is checked against what the window does today, which is pause nothing.
-5. **The station flow stacks.** Search, `Station(id)`, then the station's trip. A station opened from a
+5. **Done: the station flow stacks.** Search, `Station(id)`, then the station's trip. A station opened from a
    route stop's details now goes on top of the station under it instead of replacing it, which is
    `TODO.md`'s "takes the place of the station under it". `KeptPages`, which keeps the flow's pages apart
    inside its one page until then, goes. In four PRs:
@@ -162,7 +162,7 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
      back as it was (*Step 5b: what changed*).
    - **5c. Done:** a change of start leaves its station under the From… search, so Back from the search to it is
      the stack's, the swipe drawing it (*Step 5c: what changed*).
-   - **5d.** A station's trip becomes a page over the station.
+   - **5d. Done:** a station's trip becomes a page over the station (*Step 5d: what changed*).
 6. **In-screen views become entries, a family per PR.** The near-me page's platform, station and
    journey views and its route and ride pages; the trip's open route and later list; Settings'
    Disruptions page; the favorite rides' alerts and picker. Each family gets the real page underneath
@@ -423,8 +423,32 @@ Back finds it so, with nothing looked up again.
   more; the search the station was picked in, if any, never moves.
 
 `PagesTest` checks the change's search over its station and everything under it, a station picked there, Back
-through both, the search going as its station moves, and the flow's end closing it. `NearbyAreaTest` checks the swipe from it draws the station as it
-was left.
+through both, the search going as its station moves, and the flow's end closing it. `NearbyAreaTest` checks the
+swipe from it draws the station as it was left.
+
+## Step 5d: what changed
+
+A station's trip (its To… search, then its routes) is a page of its own, `StationTrip(id)`, right over the
+station's page, where it used to take the station's list's place in one page. The station's page draws its list,
+the trip's page the trip, both from the station's models, so the swipe from the trip draws the list as it was
+left, and Back finds it so.
+
+- **The trip's page is open while the station's To… is** (`ToChoice.open`): each write of a station's To…
+  (`setStationTo`, a station opened at a trip's To…, Plan again) opens or closes it with it
+  (`Pages.openStationTrip`, `closeStationTrip`), so the stack and the saved station never disagree.
+- **It moves and closes with its station:** brought up, the station comes up with its trip right over it; closed
+  or replaced (Plan again), its trip goes too (`Pages.openStation`, `closeStation`, `replaceStation`,
+  `closeStations`). A change of start's search goes over the trip, and Back from it returns there.
+- **The trip's Back at its root is the stack's** (its routes, the wait for where it goes, its To… search with
+  nothing picked yet): it closes the trip onto the list. An open route, a later trip's list and a Via… search
+  keep a Back of their own, as on the trip from here.
+- **A saved place with no stop in range** has no list, so its page under the trip draws nothing; the trip's Back
+  closes the place, as it did. A station still looking up its stops shows its placeholder on both pages, whose
+  Back closes the station.
+
+`PagesTest` checks the trip's page over its station, opened once, moving and closing with it, a station and a
+change of start's search over it, and Plan again's. `NearbyAreaTest` checks the swipe from it draws the station's
+list as it was left.
 
 ## Decided (maintainer, 2026-10-22)
 

@@ -4104,13 +4104,13 @@ Builds on Phase 1's minimal line-status marking.
         - [x] 3. The overlays become a back stack.
         - [x] 3b. The trip from here becomes a page of its own, Lines… under it on the stack.
         - [x] 4. A route stop's windows become window entries.
-        - [ ] 5. The station flow stacks.
+        - [x] 5. The station flow stacks.
           - [x] 5a. The From… search and a station become pages of their own, a station over the search it
                 was picked in.
           - [x] 5b. Stations stack: one opened from a route page stop's details goes over the station
                 under it (the entry above).
           - [x] 5c. A change of start leaves its station under the search, so Back to it is the stack's.
-          - [ ] 5d. A station's trip becomes a page over the station.
+          - [x] 5d. A station's trip becomes a page over the station.
         - [ ] 6. The in-screen views become entries, a family per PR.
         - [ ] 7. Cleanup: the flag rules the stack replaces go.
   - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their

@@ -115,6 +115,45 @@ class PagesTest {
     }
 
     @Test
+    fun `a station's trip is a page right over it, which moves and closes with it`() {
+        stationSearchOpen = true
+        openStationId = KINGS_CROSS
+        // Its To…: the trip over the station's list, and its Back closes it onto the list.
+        pages.openStationTrip(KINGS_CROSS)
+        shown(Page.StationSearch, Page.Station(KINGS_CROSS), Page.StationTrip(KINGS_CROSS))
+        pages.closeStationTrip(KINGS_CROSS)
+        shown(Page.StationSearch, Page.Station(KINGS_CROSS))
+        // Open again, it opens once, however often its To… is set.
+        pages.openStationTrip(KINGS_CROSS)
+        pages.openStationTrip(KINGS_CROSS)
+        shown(Page.StationSearch, Page.Station(KINGS_CROSS), Page.StationTrip(KINGS_CROSS))
+        // A station beside a stop on one of its routes, over the trip; King's Cross brought up again comes with it.
+        routeStopTrail = "stop"
+        openStationId = EUSTON
+        shown(Page.StationSearch, Page.Station(KINGS_CROSS), Page.StationTrip(KINGS_CROSS), Page.RouteStop, Page.Station(EUSTON))
+        openStationId = KINGS_CROSS
+        shown(Page.StationSearch, Page.RouteStop, Page.Station(EUSTON), Page.Station(KINGS_CROSS), Page.StationTrip(KINGS_CROSS))
+        // A change of start's search goes over the trip, so Back from it returns there.
+        pages.openStartSearch(KINGS_CROSS)
+        assertEquals(Page.StartSearch(KINGS_CROSS), pages.topPage)
+        pages.close(Page.StartSearch(KINGS_CROSS))
+        assertEquals(Page.StationTrip(KINGS_CROSS), pages.topPage)
+        // Plan again's station in its place: the replaced one's trip goes, the new one's opens with its To….
+        pages.replaceStation(VICTORIA)
+        shown(Page.StationSearch, Page.RouteStop, Page.Station(EUSTON), Page.Station(VICTORIA))
+        pages.openStationTrip(VICTORIA)
+        // Closed (a trip that is all it has, or the flow's end), its trip goes with it.
+        pages.closeStation()
+        shown(Page.StationSearch, Page.RouteStop, Page.Station(EUSTON))
+        pages.openStationTrip(EUSTON)
+        pages.closeStations()
+        shown(Page.StationSearch, Page.RouteStop)
+        // None for a station that isn't open.
+        pages.openStationTrip(KINGS_CROSS)
+        shown(Page.StationSearch, Page.RouteStop)
+    }
+
+    @Test
     fun `the end of the station flow closes a change of start's search with the stations`() {
         // A station opened over Lines…, with no search under it: its From row's search over it.
         linesOpen = true
@@ -332,14 +371,15 @@ class PagesTest {
 
     @Test
     fun `the stack holds each page once, however often it's opened`() {
-        // Its walks in composition are bounded by the pages the rider opened ([Pages]), each kind once, a station (and
-        // a search changing its trip's start) once for each station, not by how often they were opened.
+        // Its walks in composition are bounded by the pages the rider opened ([Pages]), each kind once, a station (with
+        // its trip and a search changing its trip's start) once for each station, not by how often they were opened.
         repeat(3) {
             settingsOpen = true
             licensesOpen = true
             hereTripOpen = true
             linesOpen = true
             openStationId = KINGS_CROSS
+            pages.openStationTrip(KINGS_CROSS)
             pages.openStartSearch(KINGS_CROSS)
             routeStopTrail = "stop"
             departuresStationId = "940GZZLUKSX"
