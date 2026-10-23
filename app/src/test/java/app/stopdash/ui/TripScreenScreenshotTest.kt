@@ -2392,8 +2392,24 @@ class TripScreenScreenshotTest {
         val arrival = composeRule.onNodeWithTag("tripArrival", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val fare = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertEquals(arrival.center.y, fare.center.y, 1f)
-        assertTrue("fare at $fare starts after arrival at $arrival", fare.left >= arrival.right)
+        // The fare leads, where the rows below start their stop names; the arrival is at the row's end.
+        assertTrue("fare at $fare ends before arrival at $arrival", fare.right <= arrival.left)
+        val stop = composeRule.onAllNodesWithTag("rideStopName", useUnmergedTree = true).onFirst().fetchSemanticsNode().boundsInRoot
+        assertEquals(stop.left, fare.left, 1f)
+        val card = composeRule.onNodeWithTag("rideStops", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(card.right, arrival.right, 1f)
         captureSnapshot("trip-routes-fare-no-walk.png")
+    }
+
+    @Test
+    fun a_card_leads_with_each_ride_s_mode_over_its_pills() {
+        show(planned.copy(routes = listOf(viaCanadaWater)), access = Duration.ZERO)
+        val modes = composeRule.onNodeWithTag("tripModes", useUnmergedTree = true)
+        composeRule.onAllNodesWithTag("tripMode", useUnmergedTree = true).assertCountEquals(viaCanadaWater.rides.size)
+        // In the card's pill column, as wide as it at least, at the row's start.
+        val stop = composeRule.onAllNodesWithTag("rideStopName", useUnmergedTree = true).onFirst().fetchSemanticsNode().boundsInRoot
+        val icons = modes.fetchSemanticsNode().boundsInRoot
+        assertTrue("icons at $icons end before the stop names at $stop", icons.right <= stop.left)
     }
 
     @Test
@@ -2401,7 +2417,7 @@ class TripScreenScreenshotTest {
         show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(310)))), layoutDirection = LayoutDirection.Rtl)
         val arrival = composeRule.onNodeWithTag("tripArrival", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val fare = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("fare at $fare sits left of arrival at $arrival", fare.right <= arrival.left)
+        assertTrue("fare at $fare sits right of arrival at $arrival", fare.left >= arrival.right)
     }
 
     @Test
@@ -2420,14 +2436,19 @@ class TripScreenScreenshotTest {
         assertTrue("arrival cut", !arrival.hasVisualOverflow)
         val fare = layout("tripFare")
         assertTrue("fare cut", !fare.hasVisualOverflow)
+        // Never squeezed into what the mode icons leave: on a line of its own it has the row's whole width (Codex on
+        // #1175; squeezed, it broke into a character a line).
+        val row = composeRule.onNodeWithTag("rideStops", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val fareBox = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(row.width, fareBox.width, 1f)
         // Still at the row's end, wrapped or not.
         for (line in 0 until fare.lineCount) assertEquals(fare.size.width.toFloat(), fare.getLineRight(line), 1f)
     }
 
     @Test
     @Config(qualifiers = "en-rGB-w200dp-h914dp-420dpi")
-    fun on_a_narrow_row_the_fare_drops_below_the_arrival_never_cut() {
-        // Too narrow for "27 min · 08:29" and "£3.10" side by side (Codex on #722): the fare takes a
+    fun on_a_narrow_row_the_arrival_drops_below_the_fare_never_cut() {
+        // Too narrow for "£3.10" and "27 min · 08:29" side by side (Codex on #722): the arrival takes a
         // line of its own, at the row's end, and both are laid out whole.
         show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(310)))))
         fun node(tag: String) = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
@@ -2439,7 +2460,7 @@ class TripScreenScreenshotTest {
         }
         val arrival = node("tripArrival").boundsInRoot
         val fare = node("tripFare").boundsInRoot
-        assertTrue("fare at $fare sits below arrival at $arrival", fare.top >= arrival.bottom)
+        assertTrue("arrival at $arrival sits below fare at $fare", arrival.top >= fare.bottom)
         assertTrue("fare cut", whole("tripFare"))
         assertTrue("arrival cut", whole("tripArrival"))
     }

@@ -12,6 +12,7 @@ import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteTopology
@@ -88,7 +89,8 @@ internal class TripListView(
  * ([rideClosures], by ride, [cardClosures]), its first ride's trains ([times]), the stop the walk
  * starts at and each ride gets off at in the forms each shortens through ([startForms], [stopForms]:
  * [DestinationAbbreviations.forms]), so the card only measures them, and on a step-free trip where each
- * ride has lost its way on or off to a lift out, in its ⚠ too ([rideStepFree], by ride).
+ * ride has lost its way on or off to a lift out, in its ⚠ too ([rideStepFree], by ride), and each ride's mode
+ * icon in turn for its top row ([rideModes]).
  */
 internal class TripCardView(
     val card: List<TripTiming.Estimate>,
@@ -102,6 +104,7 @@ internal class TripCardView(
     val startForms: List<String>?,
     val stopForms: List<List<String>>,
     val rideStepFree: List<String?> = emptyList(),
+    val rideModes: List<ModeIcon> = emptyList(),
 )
 
 /**
@@ -253,6 +256,7 @@ private fun listView(
             stopForms = card.first().route.rides.map { DestinationAbbreviations.forms(it.toName) },
             // Every route's on the card: another line's ride may have lost its way on where this one's hasn't.
             rideStepFree = rideStepFree(card.map { it.route }, notStepFree, notStepFreeText),
+            rideModes = card.first().route.rides.mapNotNull { ModeIcon.of(it.mode) },
         )
     }
     // The list takes every route's warnings.

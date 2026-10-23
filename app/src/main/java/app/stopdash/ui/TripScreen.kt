@@ -125,6 +125,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.plannedAlertFingerprint
 import app.stopdash.domain.Countdown
@@ -2575,7 +2576,6 @@ private fun RouteList(
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                CardHeader(card, rideLines, shown.statuses)
                                 // The card's pill column: its widest pill ([pillSlotWidthPx]), so its rows' stop names
                                 // start in one place, a cut pill's row too. Per card, not across the list (maintainer,
                                 // 2026-10-04): a list-wide width fell back to each card's own, then to a lone pill's,
@@ -2583,6 +2583,7 @@ private fun RouteList(
                                 // shuffled sideways for the first few seconds. Measured by the trip screen before the
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
+                                CardHeader(card, rideLines, shown.statuses, shown.rideModes, columnPx?.let { with(density) { it.toDp() } })
                                 RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.startForms, shown.stopForms, shown.rideStepFree)
                             }
                         }
@@ -3084,13 +3085,29 @@ private fun linesWarning(lines: List<TripLeg>, statuses: Map<String, LineStatus>
  * ride rows below, each with its ⚠. A walk-only route reads as the open route's summary does
  * ([RouteSummary]).
  */
+/**
+ * A card's top row (maintainer, 2026-10-23): each ride's mode icon in turn in the card's pill column, over its
+ * rides' pills; the fare after it, where the rows below start their stop names; and the arrival at the row's
+ * end, set against the first ride's times below it ([cardHeadLayout]).
+ */
 @Composable
-private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: TripRideLines, statuses: Map<String, LineStatus>) {
+private fun CardHeader(
+    card: List<TripTiming.Estimate>,
+    rideLines: TripRideLines,
+    statuses: Map<String, LineStatus>,
+    // Each ride's mode icon in turn, worked out with the card ([TripCardView.rideModes]).
+    modes: List<ModeIcon>,
+    // The card's pill column ([pillSlotWidthPx]), as [RideStops] draws it; null until it's measured.
+    slotWidth: Dp?,
+) {
     val estimate = card.first()
     if (estimate.route.rides.isEmpty()) return RouteSummary(card, rideLines, statuses)
     val fare = estimate.route.fare
-    val fareGap = with(LocalDensity.current) { 12.dp.roundToPx() }
-    val lineGap = with(LocalDensity.current) { 4.dp.roundToPx() }
+    val density = LocalDensity.current
+    val columnWidth = slotWidth ?: with(density) { linePillWidthPx(density, MaterialTheme.typography.labelLarge.fontSize).toDp() }
+    val gap = with(density) { 12.dp.roundToPx() }
+    val fareGap = with(density) { 8.dp.roundToPx() }
+    val lineGap = with(density) { 4.dp.roundToPx() }
     Layout(
         content = {
             // As large as the first ride's times (maintainer, 2026-09-27): when the trip gets there matters
@@ -3099,19 +3116,70 @@ private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: TripRideLines
                 text = arrivalText(estimate),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.End,
                 modifier = Modifier.testTag("tripArrival"),
             )
-            // The fare at the row's far end (maintainer, 2026-10-09: on the timing's row, not a line of its
-            // own). In with the route, so it never moves the row once shown.
+            // Decorative: the pills below name each ride's line, and so its mode.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                modifier = Modifier.widthIn(min = columnWidth).testTag("tripModes"),
+            ) {
+                for (mode in modes) {
+                    Icon(
+                        painterResource(modeIcon(mode)),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp).testTag("tripMode"),
+                    )
+                }
+            }
+            // The fare where the rows below start their stop names (maintainer, 2026-10-09: on the timing's
+            // row, not a line of its own). In with the route, so it never moves the row once shown.
             if (fare != null) CardFare(fare)
         },
     ) { measurables, constraints ->
-        cardHeaderLayout(measurables, constraints, fareGap, lineGap)
+        cardHeadLayout(measurables, constraints, gap, fareGap, lineGap)
     }
 }
 
 /**
- * Lays out a card's top row ([CardHeader]): the arrival, then the fare (when there's a second child),
+ * Lays out a trip-for-now card's top row ([CardHeader]): its mode icons at the start, the fare (when there's a third
+ * child) [fareGap] after them, and the arrival at the row's end, [gap] clear of them. Each keeps the line only while it
+ * fits whole beside what's before it; otherwise (a narrow screen, a large font, a long arrival range) it drops to a
+ * line of its own, [lineGap] below, the fare at the start and the arrival at the end, wrapping only where even a whole
+ * line won't hold it, never cut. Placed relative to the layout direction, so a right-to-left screen mirrors it.
+ */
+internal fun MeasureScope.cardHeadLayout(measurables: List<Measurable>, constraints: Constraints, gap: Int, fareGap: Int, lineGap: Int): MeasureResult {
+    val width = constraints.maxWidth
+    val arrival = measurables[0]
+    val icons = measurables[1].measure(Constraints(maxWidth = width))
+    val fare = measurables.getOrNull(2)
+    val fareBeside = fare != null && icons.width + fareGap + fare.maxIntrinsicWidth(Constraints.Infinity) <= width
+    val farePlaced = fare?.measure(Constraints(maxWidth = if (fareBeside) width - icons.width - fareGap else width))
+    // What the first line holds before the arrival: the icons, and the fare where it fits beside them.
+    val leadWidth = if (fareBeside) icons.width + fareGap + farePlaced!!.width else icons.width
+    val arrivalBeside = (farePlaced == null || fareBeside) &&
+        leadWidth + gap + arrival.maxIntrinsicWidth(Constraints.Infinity) <= width
+    val arrivalPlaced = arrival.measure(Constraints(maxWidth = (if (arrivalBeside) width - gap - leadWidth else width).coerceAtLeast(0)))
+    val firstHeight = maxOf(icons.height, if (fareBeside) farePlaced!!.height else 0, if (arrivalBeside) arrivalPlaced.height else 0)
+    var height = firstHeight
+    val fareY = if (farePlaced != null && !fareBeside) (height + lineGap).also { height = it + farePlaced.height } else 0
+    val arrivalY = if (!arrivalBeside) (height + lineGap).also { height = it + arrivalPlaced.height } else 0
+    return layout(width, height) {
+        icons.placeRelative(0, (firstHeight - icons.height) / 2)
+        if (farePlaced != null) {
+            if (fareBeside) farePlaced.placeRelative(icons.width + fareGap, (firstHeight - farePlaced.height) / 2) else farePlaced.placeRelative(0, fareY)
+        }
+        if (arrivalBeside) {
+            arrivalPlaced.placeRelative(width - arrivalPlaced.width, (firstHeight - arrivalPlaced.height) / 2)
+        } else {
+            arrivalPlaced.placeRelative(width - arrivalPlaced.width, arrivalY)
+        }
+    }
+}
+
+/**
+ * Lays out a later trip's card's top row ([LaterTripScreen]): its times, then the fare (when there's a second child),
  * [fareGap] before it at the row's end. The fare shares the row only where the arrival fits whole on
  * one line beside it; otherwise (a narrow screen, a large font, a long arrival range) it drops to a
  * line of its own, [lineGap] below and at the same end (Codex on #722), and the arrival takes the
@@ -5119,7 +5187,7 @@ private fun LinesHeading(@StringRes text: Int) {
 }
 
 /**
- * A card's fare ([TripFare]), at the end of its top row beside the arrival ([cardHeaderLayout]): the
+ * A card's fare ([TripFare]), on its top row with the arrival ([cardHeadLayout], [cardHeaderLayout]): the
  * price alone, as the route's own page says the rest (SPEC *Trips with a change → Fare*). The row's
  * size, unbolded and muted, so the arrival still reads first.
  */

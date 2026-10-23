@@ -2070,7 +2070,9 @@ maintainer, 2026-10-04), then the first stop, and its minutes in the
 times column, in parentheses ("(3 min)", a duration, set against the first train's) — since it's why a train too soon to reach is grayed, and it reads as the
 route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). Every card has
 it, a first stop under a minute away too (without minutes), so every card's rows read the same: the
-top row only ever duration · arrival and the fare (maintainer, 2026-10-09). Then a
+top row only ever each ride's mode icon in turn (in the pill column, over the pills), the fare (where the
+rows below start their stop names) and duration · arrival at the row's end, set against the times below
+(maintainer, 2026-10-09, 2026-10-23). Then a
 row per ride names **where it gets off** — its line pill (the first ride's lines as the same cut
 pill), the stop, and a ⚠ just before the times when that line is disrupted, where the main
 screen's rows put it (maintainer, 2026-09-28) — so cards riding the same lines but changing at different stations read apart
