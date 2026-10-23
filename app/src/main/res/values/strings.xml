@@ -1316,9 +1316,10 @@
     <string name="station_unfold">Expand</string>
     <string name="station_folded">Collapsed</string>
     <string name="station_unfolded">Expanded</string>
-    <!-- A star after a row's destination on a station drawn as one card: its trains are a favorite ride's,
-         for a screen reader. -->
-    <string name="ride_row_star">Favorite ride</string>
+    <!-- TODO: translate -->
+    <!-- A favorite ride's train to change from, its destination in brackets in the ride's group grouped by station: %1$s
+         is the stop to change at, which only a screen reader hears (maintainer, 2026-10-23). -->
+    <string name="ride_row_change_spoken" tools:ignore="MissingTranslation">Change at %1$s</string>
 
     <!-- Bug report (SPEC Privacy). Overflow item, then the consent screen that spells out what
          leaves the device before anything is shared. The copy is deliberately plain that it

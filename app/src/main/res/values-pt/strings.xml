@@ -762,7 +762,6 @@
     <string name="station_unfold">Expandir</string>
     <string name="station_folded">Recolhido</string>
     <string name="station_unfolded">Expandido</string>
-    <string name="ride_row_star">Trajeto favorito</string>
     <string name="menu_send_bug_report">Enviar relatório de erro</string>
     <string name="bug_report_consent_title">Enviar relatório de erro</string>
     <string name="bug_report_consent_body">Para ajudar a corrigir um problema, este relatório partilha:\n\n• um registo de diagnóstico (paragens, linhas e erros que a app viu)\n• uma captura deste ecrã\n• a sua localização exata nos últimos 15 minutos\n• a que distância está das paragens mais próximas\n\nAo tocar em Continuar, o relatório é copiado para a área de transferência e oferecido a uma app à sua escolha.</string>

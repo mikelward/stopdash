@@ -1435,16 +1435,19 @@ its nearest stop is (where the list measures it: not a searched station's page) 
 of all its departures. The near-me list and a searched
 station's page follow it, each holding its placeholder until the choice is read, so a cold start never shows the list
 by platform first; a platform's or a ride's own view doesn't. The card's rows stay **grouped by platform**,
-never sorted by when trains leave: its **starred rows first**, then a **favorite ride's trains**, then each
+never sorted by when trains leave: its **starred rows first**, then each
 platform in turn by number (a bus stop's poles by letter), a line twice as thick between those blocks so the grouping
-reads without a heading for each. A favorite ride boarding at the station has no heading of its own: its trains
-join the card, each with a **gold star after its destination**, and a tap opens its train as the ride's card
-would; a ride boarding at two places has each train in the card of the station it leaves from (its own station's
-where that one is a loading or farther card, drawn under its own heading). So **Group
+reads without a heading for each. A favorite ride boarding at the station is **a group of its own just before the
+station's**, headed as a station is ("Highgate ➔ Bank": its mode's icon, how far the station is, a chevron folding it
+apart from the station), over a card of its trains; a tap opens its train as the ride's card would (maintainer,
+2026-10-23). With no direct train due, its trains to change from fill that card, each destination in brackets
+at its size ("(Morden/Charing X)"; where to change is only heard, a second line being too small to read), with no
+dash for the direct train it hasn't got. A ride boarding at two places has each train in the group before the station it
+leaves from (its own station's where that one is a loading or farther card, drawn under its own heading). So **Group
 favorite rides** doesn't change the list here (it still groups a faraway ride, the list By stop/platform, and the
 widget). A ride with more to say than its trains keeps a heading, a step smaller, under the station's, its trains
 and what it says under it as By stop/platform draws them: until its check is done (checking, none due), and where it has
-a closure, a far end it couldn't check, a train to change for, trains behind "+N more" or routes it couldn't check.
+a closure, a far end it couldn't check, trains behind "+N more" or routes it couldn't check.
 A ride boarding nowhere on the list, and a faraway one, keep their places atop and at the foot of the list. With
 no platform headings there's one distance per station, so a bus stop says its nearest pole's. Stations go nearest
 first with **no starred band**: a starred row leads its own station rather than lifting it to the top. A station's

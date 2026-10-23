@@ -756,7 +756,6 @@
     <string name="station_unfold">প্রসারিত করুন</string>
     <string name="station_folded">গুটানো</string>
     <string name="station_unfolded">প্রসারিত</string>
-    <string name="ride_row_star">প্রিয় যাত্রা</string>
     <string name="menu_send_bug_report">বাগ রিপোর্ট পাঠান</string>
     <string name="bug_report_consent_title">বাগ রিপোর্ট পাঠান</string>
     <string name="bug_report_consent_body">সমস্যা ঠিক করতে সাহায্যের জন্য এটি শেয়ার করে:\n\n• একটি ডায়াগনস্টিক লগ (অ্যাপ যেসব স্টপ, লাইন ও ত্রুটি দেখেছে)\n• এই স্ক্রিনের একটি স্ক্রিনশট\n• গত ১৫ মিনিটে আপনার সঠিক লোকেশন\n• নিকটতম স্টপগুলো থেকে আপনি কত দূরে\n\n“চালিয়ে যান” ট্যাপ করলে রিপোর্টটি আপনার ক্লিপবোর্ডে কপি হবে এবং আপনার বেছে নেওয়া একটি অ্যাপে পাঠানোর জন্য দেওয়া হবে।</string>
