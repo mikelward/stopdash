@@ -187,6 +187,29 @@ internal fun rememberHereOrigin(
     work: HereOriginWork = viewModel(key = "here-origin"),
 ): List<StopRef>? = rememberWorked(work.slot, Inputs(ready, hidden)) { hereOrigin(ready, hidden) }
 
+/** A trip's origin ([stops]) with the nearby set it was worked out from ([set]): the trip draws from that set alone. */
+internal class SetOrigin(val set: NearbyStopsViewModel.State.Ready, val stops: List<StopRef>)
+
+/**
+ * [rememberHereOrigin] for a trip on screen, with the set it was worked out from ([SetOrigin]). While [standIn],
+ * a re-pick's origin (a walk the list follows, a return to the app, a precise fix) being worked out leaves the
+ * last set's standing, so the trip stays drawn, its list where the rider left it, and moves to the new set
+ * once that's in; null only until a first answer is. Without it the trip left the screen for a frame at each
+ * re-pick and came back behind "Checking trips…" at the top of its list (maintainer's report, 2026-10-23).
+ */
+@Composable
+internal fun rememberSetOrigin(
+    ready: NearbyStopsViewModel.State.Ready,
+    hidden: Set<String>,
+    work: HereOriginWork,
+    standIn: Boolean,
+): SetOrigin? {
+    val stops = rememberWorked(work.slot, Inputs(ready, hidden), keep = { _, _ -> standIn }) { hereOrigin(ready, hidden) } ?: return null
+    // The set the answer drawn was worked out for: this one's, or, standing in, the last one's.
+    val set = work.slot.value?.key?.parts?.firstOrNull() as? NearbyStopsViewModel.State.Ready ?: return null
+    return SetOrigin(set, stops)
+}
+
 /**
  * A station page's [HereOriginWork], shared by its list and the trip it opens: its own, in the station's store
  * ([androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner]), never the activity's, so two stations drawn at
