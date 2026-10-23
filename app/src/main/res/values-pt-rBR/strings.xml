@@ -49,7 +49,6 @@
     <string name="line_map_closure_not_placed">Este fechamento não está no mapa</string>
     <string name="line_map_fold_upcoming">Tem um fechamento previsto</string>
     <string name="trip_lines_dismissed">%1$s · dispensado</string>
-    <string name="trip_lines_stops">Avisos de paradas: %1$s</string>
     <string name="trip_lines_stops_unknown">Paradas não verificadas: %1$s</string>
     <string name="disruptions_checking">Verificando interrupções</string>
     <string name="closure_checking">Verificando fechamentos</string>

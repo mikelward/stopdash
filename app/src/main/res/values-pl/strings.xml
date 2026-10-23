@@ -174,7 +174,6 @@
     <string name="trip_lines_unknown">Nie udało się sprawdzić</string>
     <string name="trip_lines_unknown_note">Nie udało się sprawdzić niektórych linii, więc ich czasy mogą być błędne.</string>
     <string name="trip_lines_dismissed">%1$s · odrzucono</string>
-    <string name="trip_lines_stops">Komunikaty przystanków: %1$s</string>
     <string name="trip_lines_stops_unknown">Niesprawdzone przystanki: %1$s</string>
     <string name="disruptions_checking">Sprawdzam utrudnienia</string>
     <string name="closure_checking">Sprawdzam zamknięcia</string>

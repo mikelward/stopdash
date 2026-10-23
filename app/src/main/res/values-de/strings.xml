@@ -165,7 +165,6 @@
     <string name="trip_lines_unknown">Prüfung fehlgeschlagen</string>
     <string name="trip_lines_unknown_note">Einige Linien konnten nicht geprüft werden, daher können ihre Zeiten falsch sein.</string>
     <string name="trip_lines_dismissed">%1$s · ausgeblendet</string>
-    <string name="trip_lines_stops">Haltestellen-Hinweise: %1$s</string>
     <string name="trip_lines_stops_unknown">Nicht geprüfte Haltestellen: %1$s</string>
     <string name="disruptions_checking">Suche nach Störungen</string>
     <string name="closure_checking">Suche nach Sperrungen</string>

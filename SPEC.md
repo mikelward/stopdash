@@ -2283,7 +2283,9 @@ be checked" banner, which slid in over the routes once the list showed (maintain
 lines page says what an unchecked line means for its times. The row is one line high whatever it says
 (maintainer, 2026-10-04), as the home screen's is: what doesn't fit is counted as "+N" rather than
 wrapped onto a second line that would push the routes down, and it's heard whole, every line and stop
-named; the lines page lists everything. It replaced a note that came and went as the page's loads landed one after another, moving
+named; the lines page lists everything, each stop's notice under the lines in TfL's words, led by its
+stop's name, as the list draws a stop notice: one line until tapped, with its × (maintainer, 2026-10-23:
+the stop's name alone gave the rider nothing to act on). It replaced a note that came and went as the page's loads landed one after another, moving
 every card under it for the first few seconds. A new check says so at once; any other word waits
 until it has held for a moment (1.5 s), so a gap between two loads never reads as "No disruptions" or as
 "couldn't check". While the row's lines are still being worked out for newer cards it shows the last

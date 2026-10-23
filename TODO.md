@@ -4076,6 +4076,10 @@ Builds on Phase 1's minimal line-status marking.
       reason on its own page. A sheet was tried first; the maintainer chose a full-screen dialog.
   - [x] **Open the lines page from the home screen too** (maintainer, 2026-10-04): the page reads only
         the lines it's given and the app's menu, so the home screen supplies its own.
+  - [x] **Say what each stop notice says on a trip's lines page** (maintainer, 2026-10-23): it named the
+        stops alone ("Stop notices: Euston"), which left the rider nothing to act on. Each notice is now the
+        list's one-line notice card in TfL's words, led by its stop's name, opening on a tap and dismissible
+        (`TripRow.notices`).
 - [x] **The home screen has a one-line disruptions row** (maintainer, 2026-10-05): every tube
       line, and every line with a departure from a stop within the walking reach (500 m), under the
       favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).

@@ -169,7 +169,6 @@
     <string name="trip_lines_unknown">Não foi possível verificar</string>
     <string name="trip_lines_unknown_note">Não foi possível verificar algumas linhas, por isso os horários podem estar errados.</string>
     <string name="trip_lines_dismissed">%1$s · ignorado</string>
-    <string name="trip_lines_stops">Avisos de paragens: %1$s</string>
     <string name="trip_lines_stops_unknown">Paragens não verificadas: %1$s</string>
     <string name="disruptions_checking">A verificar perturbações</string>
     <string name="closure_checking">A verificar encerramentos</string>

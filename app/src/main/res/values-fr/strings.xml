@@ -169,7 +169,6 @@
     <string name="trip_lines_unknown">Vérification impossible</string>
     <string name="trip_lines_unknown_note">Certaines lignes n’ont pas pu être vérifiées : leurs horaires peuvent être erronés.</string>
     <string name="trip_lines_dismissed">%1$s · ignorée</string>
-    <string name="trip_lines_stops">Arrêts concernés : %1$s</string>
     <string name="trip_lines_stops_unknown">Arrêts non vérifiés : %1$s</string>
     <string name="disruptions_checking">Vérification des perturbations</string>
     <string name="closure_checking">Vérification des fermetures</string>
