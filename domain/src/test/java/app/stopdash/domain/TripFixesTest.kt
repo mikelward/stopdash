@@ -68,17 +68,42 @@ class TripFixesTest {
     fun `a fix brings the next refresh sooner, but never inside the gap`() = runTest {
         val fixes = fixes()
         val woke = async { awaitRefresh(fixes.latest, Duration.ofSeconds(30), Duration.ofSeconds(10)) }
-        // One during the gap is passed over: it would be that much older by the refresh.
         advanceTimeBy(5_000)
-        fixes.offer(fix(accuracy = 20f))
+        assertFalse(woke.isCompleted)
         advanceTimeBy(7_000)
         runCurrent()
         assertFalse(woke.isCompleted)
-        // The first after it wakes the refresh at once.
+        // The first after the gap wakes the refresh at once.
         fixes.offer(fix(accuracy = 12f))
         runCurrent()
         assertEquals(12f, woke.await()?.fix?.accuracyMeters)
         assertEquals(12_000L, currentTime)
+    }
+
+    @Test
+    fun `a fix that came during the gap wakes the refresh as the gap ends`() = runTest {
+        val fixes = fixes()
+        // Came while the last refresh ran (it cleared the one before), or just after: underground, another may not
+        // come for minutes, so it isn't passed over to go stale (bug report, 2026-10-23).
+        fixes.offer(fix(accuracy = 22f))
+        val woke = async { awaitRefresh(fixes.latest, Duration.ofSeconds(30), Duration.ofSeconds(10)) }
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertFalse(woke.isCompleted)
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(22f, woke.await()?.fix?.accuracyMeters)
+        assertEquals(10_000L, currentTime)
+    }
+
+    @Test
+    fun `the fix the last refresh woke for never wakes another`() = runTest {
+        val fixes = fixes()
+        fixes.offer(fix(accuracy = 22f))
+        val handed = fixes.latest.value
+        // Still held (nothing cleared it): the timer, not that fix, wakes the next refresh.
+        assertNull(awaitRefresh(fixes.latest, Duration.ofSeconds(30), Duration.ofSeconds(10), handled = handed))
+        assertEquals(30_000L, currentTime)
     }
 
     @Test
