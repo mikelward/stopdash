@@ -4014,14 +4014,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         account it syncs with, and its status ("Synced 2 min ago", "Couldn't sync: offline",
         "Sign in again", "Drive is full", "Update StopDash to sync with your other phone"). Not
         offered without Play services. Screenshot test, en-GB strings.
-  - [ ] **Rides through the engine**: favorite rides with their hidden lines, grayed rides and ride
+  - [x] **Rides through the engine**: favorite rides with their hidden lines, grayed rides and ride
         alert times, compared with the ledger and written back through the store's own edits under
-        `FavoriteJourneysWrites`; a ride removed on the other phone drops its widget pins, as
-        Settings' Remove does. A grayed ride's place end shows under its saved name until places
-        sync.
+        `FavoriteJourneysWrites`. A grayed ride's place end shows under its saved name until places
+        sync. *Done: `RideSync`, and the store's `syncEntries` and `applySync`, unused until the
+        runner below.*
   - [ ] **When it syncs**: when the app comes to the front, and a few seconds after a change (a
         one-time WorkManager job waiting for a network). No periodic job; the widget and the watch
-        never sync.
+        never sync. A ride removed on the other phone drops its widget pins, as Settings' Remove
+        does.
   - [ ] **Keep sync per phone in backups**: the install id and the ledger excluded from Auto Backup
         and device-to-device transfer, so a restored phone never writes as the phone it came from.
   - [ ] **Privacy before it ships**: SPEC *Privacy*, `docs/PRIVACY.md`, and the Play Data Safety

@@ -122,7 +122,9 @@ StopDash's data from Drive clears it. A phone that finds its own file missing up
   first); a list the rider orders (place chips, watched stops) syncs its order as one entry.
 - **Mixed app versions:** a phone that can't read another phone's newer file skips it and says
   "Update StopDash to sync with your other phone"; it never removes anything on that file's
-  account. With one file per phone, the newer phone still reads the older one's.
+  account. With one file per phone, the newer phone still reads the older one's. Within a file it
+  can read, an entry in a shape it can't (a newer build's ride) is kept as it is: never written to
+  this phone's store, and never taken for one removed here (`Sync.record`'s `understood`).
 
 ### When it syncs
 

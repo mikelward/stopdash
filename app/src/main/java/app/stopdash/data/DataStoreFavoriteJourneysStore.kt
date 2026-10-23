@@ -31,6 +31,7 @@ import java.io.OutputStream
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -94,7 +95,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
             val alerts = stored?.alertsToDomain().orEmpty().toMutableMap()
             val schedule = change(alerts[directionKey])
             if (schedule == null) alerts.remove(directionKey) else alerts[directionKey] = schedule
-            saved.toPersisted(alerts).copy(pending = stored?.pending.orEmpty())
+            saved.toPersisted(alerts).copy(pending = stored?.pending.orEmpty(), syncMark = stored?.syncMark)
         } }
     }
 
@@ -140,10 +141,44 @@ class DataStoreFavoriteJourneysStore internal constructor(
                 val next = Journeys.add(stored?.toDomain() ?: emptyList(), journey)
                 val pending = PendingJourneys.remove(stored?.pendingToDomain(resolveEnd).orEmpty(), grayed)
                 next.toPersisted(JourneyAlerts.prune(stored?.alertsToDomain().orEmpty(), next))
-                    .copy(pending = pending.map { it.toPersisted() })
+                    .copy(pending = pending.map { it.toPersisted() }, syncMark = stored?.syncMark)
             }
         } }
     }
+
+    /**
+     * The rides, their alert times and the grayed rides as sync entries, as stored now ([RideSync]); null
+     * for a newer build's file, which isn't synced. Worked out on the worker. A disk read failure throws
+     * its IOException to the sync, which says it couldn't sync.
+     */
+    suspend fun syncEntries(): Map<String, Map<String, String>>? = withContext(compute) {
+        RideSync.entriesOf(dataStore.data.first())
+    }
+
+    /**
+     * Writes [merged], a sync's merged entries by kind ([RideSync.applied]), with that sync's [mark], in one
+     * update, only while the store still holds [expected], the entries that sync compared: false, with
+     * nothing written, when a change landed meanwhile, which the next sync records and merges. Under
+     * [writes], as every edit is.
+     */
+    suspend fun applySync(expected: Map<String, Map<String, String>>, merged: Map<String, Map<String, String>>, mark: String): Boolean =
+        withContext(compute) {
+            var applied = false
+            writes.withLock {
+                dataStore.updateData { stored ->
+                    if (RideSync.entriesOf(stored) != expected) {
+                        stored
+                    } else {
+                        applied = true
+                        RideSync.applied(stored, merged).copy(syncMark = mark)
+                    }
+                }
+            }
+            applied
+        }
+
+    /** The mark of the last sync written here ([applySync]); null before any. A read failure throws its IOException. */
+    suspend fun syncMark(): String? = withContext(compute) { dataStore.data.first()?.syncMark }
 
     // Only the grayed list changes; the journeys and their alerts are written back as stored.
     private suspend fun editPending(change: (List<PendingJourney>) -> List<PendingJourney>): Unit = withContext(compute) {
@@ -172,7 +207,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
                 // A journey's alerts go with it, so one saved again later starts with them off.
                 val next = change(stored?.toDomain() ?: emptyList())
                 next.toPersisted(JourneyAlerts.prune(stored?.alertsToDomain().orEmpty(), next))
-                    .copy(pending = stored?.pending.orEmpty())
+                    .copy(pending = stored?.pending.orEmpty(), syncMark = stored?.syncMark)
             }
         } }
     }
@@ -220,6 +255,11 @@ internal data class PersistedFavoriteJourneys(
     // The journeys saved grayed (PendingJourney). Added without a version bump, as alerts were: an
     // older build reads past it and its next write drops them.
     val pending: List<PersistedPendingJourney> = emptyList(),
+    // The last Drive sync that wrote here (applySync), written in the same update, so a sync stopped before
+    // keeping its result is settled exactly (SyncState.Pending). Every edit keeps it. Added without a version
+    // bump: an older build reads past it, and its next write drops it, which only leaves a sync stopped
+    // meanwhile settled as unwritten.
+    val syncMark: String? = null,
 ) {
     companion object {
         /** The current on-disk format. Bump when a field an older build would drop or misread is added. */

@@ -88,6 +88,17 @@ class SyncTest {
     }
 
     @Test
+    fun `an entry this build can't read is kept, though its store can't hold it`() {
+        // A newer build's ride, in a shape this one can't read: never written to this phone's store.
+        val newer = SyncLedger(mapOf(RIDES to mapOf("x" to SyncEntry(SyncStamp(1_000, 0, "b"), "v2:X"))), SyncStamp(1_000, 0, "b"))
+        val understood = { value: String -> !value.startsWith("v2:") }
+        assertSame(newer, Sync.record(newer, RIDES, rides(), 2_000, "a", understood = understood))
+        // One it can read, missing from the store, is a removal.
+        val readable = SyncLedger(mapOf(RIDES to mapOf("x" to SyncEntry(SyncStamp(1_000, 0, "b"), "X"))), SyncStamp(1_000, 0, "b"))
+        assertEquals(rides(), Sync.record(readable, RIDES, rides(), 2_000, "a", understood = understood).heldRides())
+    }
+
+    @Test
     fun `the newest change of each entry wins`() {
         val a = Sync.record(SyncLedger.EMPTY, RIDES, rides("x" to "Xa", "y" to "Ya"), 1_000, "a")
         val b = Sync.record(SyncLedger.EMPTY, RIDES, rides("x" to "Xb"), 2_000, "b")
