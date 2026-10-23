@@ -138,6 +138,11 @@ class ListWork {
     // What the judged journey cards report, and the farther cards shown beside the list's rows.
     internal val cardReports: MutableState<Worked<Inputs, CardReports?>?> = mutableStateOf(null)
     internal val farther: MutableState<Worked<Inputs, List<FartherCard>>?> = mutableStateOf(null)
+
+    // Grouped by station: the stations' layout, and the stations whose closure check is out. Without one the
+    // list draws no station, so a return worked these out again from an empty list, losing its place.
+    internal val stations: MutableState<Worked<Inputs, StationLayout>?> = mutableStateOf(null)
+    internal val checkingStations: MutableState<Worked<Inputs, Set<String>>?> = mutableStateOf(null)
 }
 
 /**

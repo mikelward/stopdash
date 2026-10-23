@@ -1932,6 +1932,7 @@ fun MainScreen(
                             // Not on a platform's own view, which is one place.
                             farther = if (platformRows != null) emptyList() else fartherShown,
                             stationGroups = stationGroups && platformRows == null,
+                            listWork = listWork,
                             // Hiding a mode applies to the loading cards too, as to the loaded rows.
                             // Unfiltered: hiding a mode drops its loading cards from view, but they're still
                             // loading (see [DepartureList]'s held cards).
@@ -2210,6 +2211,8 @@ private fun LoadedContent(
     viewActions: ViewActions? = null,
     // Grouped by station ([StationHeader]).
     stationGroups: Boolean = false,
+    // Where the list's station layout is kept, above the list so a return draws it at once; null keeps it here.
+    listWork: ListWork? = null,
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -2436,6 +2439,7 @@ private fun LoadedContent(
                         disruptionsRow = disruptionsRow.takeIf { !journeyView },
                         viewActions = viewActions.takeIf { !journeyView },
                         stationGroups = stationGroups,
+                        listWork = listWork,
                         nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                             // With modes hidden, say so rather than "no departures": they may be running.
                             if (hiddenModes.isNotEmpty()) {
@@ -3007,6 +3011,8 @@ private fun DepartureList(
     viewActions: ViewActions? = null,
     // Grouped by station ([StationHeader]), on the near-me list and a searched station's page.
     stationGroups: Boolean = false,
+    // Where its station layout is kept ([ListWork.stations]); null keeps it here.
+    listWork: ListWork? = null,
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
@@ -3059,7 +3065,7 @@ private fun DepartureList(
     // Grouped by station, one heading stands for all a station's groups: the stations with such a group, worked
     // out with them. A check come back may keep its station's spinner a frame late, never show one on a list
     // of other groups.
-    val checkingStationSlot = remember { mutableStateOf<Worked<Inputs, Set<String>>?>(null) }
+    val checkingStationSlot = listWork?.checkingStations ?: remember { mutableStateOf<Worked<Inputs, Set<String>>?>(null) }
     val checkingStations = if (byStation && closurePending.isNotEmpty()) {
         rememberWorked(checkingStationSlot, Inputs(groups, closurePending), keep = { held, wanted -> held.parts[0] === wanted.parts[0] }) {
             checkingPlaces(groups, closurePending)
@@ -3126,7 +3132,9 @@ private fun DepartureList(
     // it shows. The last one stands in while the next is worked out only for the same places, as rows whose times
     // moved on do, never for others; null until one is in, which draws no station yet rather than the other
     // grouping for a moment. The held and opened farther places go with it: a ride's train is never put in one.
-    val stationSlot = remember { mutableStateOf<Worked<Inputs, StationLayout>?>(null) }
+    // Kept above the list where it's given one, so a return to the list draws its stations at once: worked out
+    // again from none, the list came back empty for a frame and lost its scroll position (bug report, 2026-10-23).
+    val stationSlot = listWork?.stations ?: remember { mutableStateOf<Worked<Inputs, StationLayout>?>(null) }
     val stationLayout = if (byStation) {
         rememberWorked(
             stationSlot,
