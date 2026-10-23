@@ -5473,11 +5473,12 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
-- [ ] **Drive sync's Settings switch names no Google account and says when it last synced as a clock
-  time** (autopilot, 2026-10-23; debug builds only until the Data Safety form). The `drive.appdata` grant
-  alone doesn't say which account it is; naming it would mean asking for the rider's email too, more data
-  for a line of text. "Synced 14:05" holds still, where "Synced 2 min ago" would need the row redrawn as it
-  ages. Alternatives: ask for the email scope and show the account; a ticking age. Reversible either way.
+- [x] **Drive sync's Settings switch names no Google account and says when it last synced as a clock
+  time** (autopilot, 2026-10-23; debug builds only until the Data Safety form; kept to try first, maintainer,
+  2026-10-23: "Let's try it like this first"). The `drive.appdata` grant alone doesn't say which account it
+  is; naming it would mean asking for the rider's email too, more data for a line of text. "Synced 14:05"
+  holds still, where "Synced 2 min ago" would need the row redrawn as it ages. Alternatives: ask for the
+  email scope and show the account; a ticking age. Reversible either way.
 - [ ] **Drive sync's state on a phone isn't per Google account** (autopilot, 2026-10-23). A rider who turns
   sync on with one account, off, and on again with another resumes with the first account's ledger, so the
   second account's folder gets the first's removals as well as the rides. Alternative: key the kept state by
