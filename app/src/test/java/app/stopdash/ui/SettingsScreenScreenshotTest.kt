@@ -30,6 +30,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
@@ -157,6 +158,47 @@ class SettingsScreenScreenshotTest {
         val distance = composeRule.onNodeWithText("Distance units").getUnclippedBoundsInRoot().top
         org.junit.Assert.assertTrue("grouping under spacing", spacing < grouping)
         org.junit.Assert.assertTrue("grouping above distance units", grouping < distance)
+    }
+
+    @Test
+    fun nearby_departures_group_by_platform_by_default_and_a_tap_groups_them_by_station() {
+        val chosen = mutableListOf<NearbyGrouping>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, onNearbyGroupingChange = { chosen += it })
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Group nearby departures").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("nearbyGrouping-PLATFORM").performScrollTo().assertIsSelected()
+        composeRule.onNodeWithTag("nearbyGrouping-STATION").assertIsNotSelected()
+        composeRule.onNodeWithText("By platform").assertIsDisplayed()
+        composeRule.onNodeWithText("By station").assertIsDisplayed()
+        captureSnapshot("settings-nearby-grouping.png")
+        composeRule.onNodeWithTag("nearbyGrouping-STATION").performClick()
+        assertEquals(listOf(NearbyGrouping.STATION), chosen)
+        // Under the train spacing and above the favorite rides' grouping, with the rows that decide how the boards read.
+        val spacing = composeRule.onNodeWithTag("trainSpacingSwitch").getUnclippedBoundsInRoot().top
+        val nearby = composeRule.onNodeWithTag("nearbyGrouping-PLATFORM").getUnclippedBoundsInRoot().top
+        val rides = composeRule.onNodeWithTag("rideGrouping-RIDE").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("nearby grouping under spacing", spacing < nearby)
+        org.junit.Assert.assertTrue("nearby grouping above ride grouping", nearby < rides)
+    }
+
+    @Test
+    fun nearby_grouping_selects_nothing_until_the_stored_choice_is_read_and_says_when_it_did_not_save() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    nearbyGrouping = NearbyGrouping.PLATFORM, nearbyGroupingLoaded = false, nearbyGroupingWriteFailed = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("nearbyGrouping-PLATFORM").performScrollTo().assertIsNotSelected().assertIsNotEnabled()
+        composeRule.onNodeWithTag("nearbyGrouping-STATION").assertIsNotSelected().assertIsNotEnabled()
+        composeRule.onNodeWithText("Couldn't save that; it resets when StopDash restarts").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -1134,6 +1176,8 @@ class SettingsScreenScreenshotTest {
             }
         }
         composeRule.onNodeWithTag("distanceUnits-METERS").assertIsSelected()
+        // The walking speed below it in view too, so Feet isn't left under the scroll cue at the screen's foot.
+        composeRule.onNodeWithText("Walking speed").performScrollTo()
         composeRule.onNodeWithTag("distanceUnits-FEET").performScrollTo().performClick()
         assertEquals(DistanceUnits.FEET, chosen)
     }
@@ -1269,7 +1313,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.onNodeWithTag("distanceUnits-FEET").assertIsNotEnabled()
         composeRule.onNodeWithTag("distanceUnits-AUTOMATIC").assertIsNotSelected()
-        composeRule.onNodeWithText("Couldn't save that", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't save that", substring = true).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
         assertEquals(true, dismissed)
     }

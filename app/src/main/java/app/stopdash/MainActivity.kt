@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.SaveableStateHolder
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.HeldTrains
 import app.stopdash.domain.NewestArrivals
 import app.stopdash.domain.AppSettings
@@ -203,6 +204,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.work.WorkManager
 import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.data.AndroidWifiPlaces
+import app.stopdash.data.NearbyGroupingSetting
 import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.TrainSpacingSetting
 import app.stopdash.data.WifiPlacesSetting
@@ -1559,6 +1561,9 @@ class MainActivity : ComponentActivity() {
                 val rideGrouping by RideGroupingSetting.changes.collectAsStateWithLifecycle()
                 val rideGroupingLoaded by RideGroupingSetting.isLoaded.collectAsStateWithLifecycle()
                 val rideGroupingWriteFailed by RideGroupingSetting.writeFailed.collectAsStateWithLifecycle()
+                val nearbyGrouping by NearbyGroupingSetting.changes.collectAsStateWithLifecycle()
+                val nearbyGroupingLoaded by NearbyGroupingSetting.isLoaded.collectAsStateWithLifecycle()
+                val nearbyGroupingWriteFailed by NearbyGroupingSetting.writeFailed.collectAsStateWithLifecycle()
                 val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
                 val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
                 val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2957,6 +2962,11 @@ class MainActivity : ComponentActivity() {
                                     rideGroupingLoaded = rideGroupingLoaded,
                                     rideGroupingWriteFailed = rideGroupingWriteFailed,
                                     onDismissRideGroupingError = RideGroupingSetting::writeFailureShown,
+                                    nearbyGrouping = nearbyGrouping,
+                                    onNearbyGroupingChange = NearbyGroupingSetting::set,
+                                    nearbyGroupingLoaded = nearbyGroupingLoaded,
+                                    nearbyGroupingWriteFailed = nearbyGroupingWriteFailed,
+                                    onDismissNearbyGroupingError = NearbyGroupingSetting::writeFailureShown,
                                     widgetFollows = widgetFollows,
                                     onWidgetFollowsChange = { on ->
                                         // Turned on through the disclosure and Android's prompt; off only in Android's
@@ -4344,6 +4354,8 @@ class MainActivity : ComponentActivity() {
                     // (its trains held) in the rare start where they come first.
                     rideGrouping = RideGroupingSetting.changes.collectAsStateWithLifecycle().value
                         .takeIf { RideGroupingSetting.isLoaded.collectAsStateWithLifecycle().value },
+                    // Read at app start too, long before the list has departures to group.
+                    stationGroups = NearbyGroupingSetting.changes.collectAsStateWithLifecycle().value == NearbyGrouping.STATION,
                     tripLines = tripLinesOf(applicationContext).collectByIdentityWithLifecycle().value,
                     farJourneyMeters = farJourneyMeters,
                     nearbyKey = stopsKey,
@@ -6315,6 +6327,8 @@ class MainActivity : ComponentActivity() {
             val now = tickingNow()
             MainScreen(
                 usageScreen = UsageEvent.Screen.STATION,
+                // A searched station's page groups as the near-me list does.
+                stationGroups = NearbyGroupingSetting.changes.collectAsStateWithLifecycle().value == NearbyGrouping.STATION,
                 state = state,
                 now = now,
                 // Each station page has its own model, and so its own list.

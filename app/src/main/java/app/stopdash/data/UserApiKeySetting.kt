@@ -9,6 +9,7 @@ import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.RailKeyDefault
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
@@ -938,6 +939,39 @@ object RideGroupingSetting {
 
     /** The user chose [grouping]: applied at once, persisted in order. */
     fun set(grouping: RideGrouping) = holder.set(grouping)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * How the near-me list and a searched station's page group their departures (Settings → *Group nearby
+ * departures*, maintainer 2026-10-23), held in memory for the list to read on its first frame and persisted in
+ * order as [RideGroupingSetting] is. Starts at [NearbyGrouping.PLATFORM], the stored default.
+ */
+object NearbyGroupingSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = NearbyGrouping.PLATFORM,
+        read = AppSettings::nearbyGrouping,
+        write = { settings, grouping -> settings.setNearbyGrouping(grouping) },
+        label = "nearby grouping",
+    )
+
+    /** [NearbyGrouping] as a flow, for the list and the Settings row. */
+    val changes: StateFlow<NearbyGrouping> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read, so Settings can hold its row until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user chose [grouping]: applied at once, persisted in order. */
+    fun set(grouping: NearbyGrouping) = holder.set(grouping)
 
     /** True while the latest choice failed to save; Settings says so. */
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed

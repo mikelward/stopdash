@@ -1607,6 +1607,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
 
 ## Phase 2 — Watched stops and settings
 
+- [x] **Group nearby departures: By platform or By station** (maintainer, 2026-10-23; SPEC *Grouped by
+      station*). By station heads each station once over one card, its rows by platform behind heavier
+      lines, its starred rows and favorite rides' trains first, and folds it from its heading.
+  - [ ] **The widget doesn't follow it yet**: it keeps its own place headings by platform.
+  - [ ] **A dismissed pole closure says nothing**: By platform keeps a "Closed" chip on the pole's heading
+        while its buses are listed; By station has no pole heading, so once the notice is dismissed nothing
+        says that pole is closed.
+
 - [ ] Add/remove **watched stops** (the source of truth for what's shown) — added from
       search or nearby discovery, removed explicitly; persist the set. Distinct from
       starring; removing a multi-line stop drops all its rows. **[store landed, PR #26]**

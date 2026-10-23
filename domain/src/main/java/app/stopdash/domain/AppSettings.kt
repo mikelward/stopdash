@@ -185,6 +185,12 @@ interface AppSettings {
     /** Set [rideGrouping]. Suspending, off the main thread; best-effort. */
     suspend fun setRideGrouping(grouping: RideGrouping) {}
 
+    /** How the near-me list groups its departures ([NearbyGrouping]); by platform until chosen. */
+    fun nearbyGrouping(): Flow<NearbyGrouping> = flowOf(NearbyGrouping.PLATFORM)
+
+    /** Set [nearbyGrouping]. Suspending, off the main thread; best-effort. */
+    suspend fun setNearbyGrouping(grouping: NearbyGrouping) {}
+
     /**
      * The lines the disruptions row always covers (maintainer, 2026-10-05), on top of the rider's own, by
      * id; null until chosen, read as the default (none).
