@@ -4005,10 +4005,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         and a newer file skipped rather than misread.
         JVM-tested on recorded files. *Done: `Sync` and `SyncFile`, unused until the steps below;
         nothing leaves the phone.*
-  - [ ] **The Drive client** over the existing Ktor client: list, download, create, update and
+  - [x] **The Drive client** over the existing Ktor client: list, download, create, update and
         delete in the app data folder, with typed failures (offline, sign-in needed, Drive full,
         rate limited), and the `Date` on the listing's answer for `DriveClock`. Tested on a mock
-        engine.
+        engine. *Done: `DriveAppData` (`:domain`) and `KtorDriveAppData`, unused until the steps
+        below; nothing is sent to Drive.*
   - [ ] **Settings → Sync with Google Drive**: `AuthorizationClient` (`play-services-auth`), the
         account it syncs with, and its status ("Synced 2 min ago", "Couldn't sync: offline",
         "Sign in again", "Drive is full", "Update StopDash to sync with your other phone"). Not
