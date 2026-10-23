@@ -4966,13 +4966,24 @@ private fun placeOf(clusterId: String, stopId: String): String = clusterId.ifBla
  */
 @Composable
 private fun StopNoticeCard(row: DepartureRow, closed: Boolean, onDismiss: () -> Unit, title: String? = null) {
-    CollapsibleStatus(
-        text = cleanDisruptionBody(
+    StopNoticeCard(
+        cleanDisruptionBody(
             row.stopDisruption.orEmpty(),
             stopName = row.stopName,
             hubName = row.hubName,
             aliases = row.placeAliases,
         ),
+        closed,
+        onDismiss,
+        title,
+    )
+}
+
+/** A stop notice's card ([StopNoticeCard]) for its [text] as shown, under [title] if given; null [onDismiss] offers no ×. */
+@Composable
+internal fun StopNoticeCard(text: String, closed: Boolean, onDismiss: (() -> Unit)?, title: String? = null) {
+    CollapsibleStatus(
+        text = text,
         title = title,
         onDismiss = onDismiss,
         container = if (closed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,

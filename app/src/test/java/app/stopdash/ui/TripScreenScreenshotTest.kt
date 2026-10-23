@@ -4999,22 +4999,22 @@ class TripScreenScreenshotTest {
 
     @Test
     fun a_restored_lines_page_shows_nothing_until_its_order_is_in() {
-        val row = TripRow(checking = false, stops = "Euston", every = emptyList())
+        val row = TripRow(checking = false, stops = "Euston", every = emptyList(), notices = listOf(eustonNotice))
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, lines = null) } } }
         // The notices under the lines wait with them (Codex, #559).
-        composeRule.onNodeWithText("Stop notices: Euston").assertDoesNotExist()
+        composeRule.onNodeWithText(ESCALATOR, substring = true).assertDoesNotExist()
     }
 
     @Test
     fun a_restored_lines_page_shows_its_saved_lines_at_once() {
-        val row = TripRow(checking = false, stops = "Euston", every = emptyList())
+        val row = TripRow(checking = false, stops = "Euston", every = emptyList(), notices = listOf(eustonNotice))
         val pills = listOf("jubilee", "Jubilee", "tube", "victoria", "Victoria", "tube")
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, lines = null, pending = pills) } } }
         // Never a blank page (Codex, #559): each saved line in its saved place, claiming no status.
         composeRule.onAllNodes(hasContentDescription("Jubilee"), useUnmergedTree = true).assertCountEquals(1)
         composeRule.onAllNodes(hasText("Checking…"), useUnmergedTree = true).assertCountEquals(0)
         composeRule.onAllNodes(hasText("Good service"), useUnmergedTree = true).assertCountEquals(0)
-        composeRule.onNodeWithText("Stop notices: Euston").assertDoesNotExist()
+        composeRule.onNodeWithText(ESCALATOR, substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -5410,6 +5410,43 @@ class TripScreenScreenshotTest {
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp)) } } }
         composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()
         captureSnapshot("trip-lines.png")
+    }
+
+    @Test
+    fun trip_lines_stop_notice() {
+        // A stop notice reads in TfL's words on the page, led by its stop, as the list's card draws one: a
+        // line until tapped, with its ×.
+        fun line(id: String, name: String) = leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2)
+        val row = TripRow(
+            checking = false,
+            stops = "Euston",
+            every = listOf(TripLine(line("northern", "Northern"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))),
+            notices = listOf(eustonNotice),
+        )
+        val dismissed = mutableListOf<DepartureRow>()
+        composeRule.setContent {
+            StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp), onDismissNotice = { dismissed += it }) } }
+        }
+        fun clickLabeled(label: String) =
+            SemanticsMatcher("click label $label") { it.config.getOrElseNullable(SemanticsActions.OnClick) { null }?.label == label }
+        composeRule.onNodeWithText("Euston: reduced escalator service", substring = true).assertIsDisplayed()
+        composeRule.onNode(clickLabeled("Show full alert")).assertExists()
+        captureSnapshot("trip-lines-stop-notice.png")
+        // A tap opens it in full, as on the list.
+        composeRule.onNode(clickLabeled("Show full alert")).performClick()
+        composeRule.onNode(clickLabeled("Show less")).assertExists()
+        composeRule.onNodeWithContentDescription("Dismiss alert").performClick()
+        assertEquals(listOf(eustonNotice.row), dismissed)
+    }
+
+    @Test
+    fun a_stop_placed_two_ways_lists_its_notice_under_each_without_a_clash() {
+        // One route's line has placed the stop in its interchange, another's not yet: two notices, each keyed
+        // by its own place, so the page shows both rather than failing on a repeated key (Codex, #1160).
+        val placed = TripNotice.of(TripClosureCard(eustonNotice.row.copy(interchangeId = "HUBEUS"), title = "Euston"))
+        assertNotEquals(eustonNotice.key, placed.key)
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(TripRow(checking = false, notices = listOf(eustonNotice, placed))) } } }
+        composeRule.onAllNodes(hasText("Euston: reduced escalator service", substring = true)).assertCountEquals(2)
     }
 
     @Test
@@ -7073,6 +7110,17 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("Couldn't plan the trip: Its routes need services outside TfL").assertIsDisplayed()
     }
 
+    // TfL's wording of a real notice at a major station (public data), as the lines page lists it.
+    private val eustonNotice = TripNotice.of(
+        TripClosureCard(
+            DepartureRow(
+                stopId = "940GZZLUEUS", stopName = "Euston", lineId = "", lineName = "", direction = "", directionKey = "",
+                destination = "", mode = "tube", upcoming = emptyList(), fetchedAt = Instant.EPOCH, stopDisruption = ESCALATOR,
+            ),
+            title = "Euston",
+        ),
+    )
+
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {
         if (!capturing()) return
         val root = composeRule.activity.window.decorView.rootView
@@ -7094,3 +7142,6 @@ class TripScreenScreenshotTest {
 // How many rounds of running the test worker and letting Compose settle a page takes: each frame the
 // worker hands back can queue the next (a line page's frame waits on the trip's).
 private const val SETTLE_PASSES = 4
+
+private const val ESCALATOR =
+    "Euston: reduced escalator service - there is no down escalator in service to the southbound Victoria and Northern lines due to a fault."

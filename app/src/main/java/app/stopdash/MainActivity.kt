@@ -6021,6 +6021,7 @@ class MainActivity : ComponentActivity() {
             openRoute = trip.openRoute,
             dismissed = trip.dismissed.collectByIdentityWithLifecycle().value,
             onDismissAlert = trip::dismissAlert,
+            onDismissAlerts = trip::dismissAlerts,
             onDismissLineAlert = trip::dismissLineAlert,
             onDismissPlannedAlert = trip::dismissPlannedAlert,
             dismissWriteFailed = trip.dismissWriteFailed.collectAsStateWithLifecycle().value,

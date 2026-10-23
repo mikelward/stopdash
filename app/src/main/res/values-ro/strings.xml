@@ -169,7 +169,6 @@
     <string name="trip_lines_unknown">Nu s-a putut verifica</string>
     <string name="trip_lines_unknown_note">Unele linii nu au putut fi verificate, deci orele lor pot fi greșite.</string>
     <string name="trip_lines_dismissed">%1$s · alertă închisă</string>
-    <string name="trip_lines_stops">Anunțuri pentru stații: %1$s</string>
     <string name="trip_lines_stops_unknown">Stații neverificate: %1$s</string>
     <string name="disruptions_checking">Se verifică perturbările</string>
     <string name="closure_checking">Se verifică închiderile</string>

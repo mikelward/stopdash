@@ -165,7 +165,6 @@
     <string name="trip_lines_unknown">যাচাই করা যায়নি</string>
     <string name="trip_lines_unknown_note">কিছু লাইন যাচাই করা যায়নি, তাই সেগুলোর সময় ভুল হতে পারে।</string>
     <string name="trip_lines_dismissed">%1$s · খারিজ</string>
-    <string name="trip_lines_stops">স্টপের নোটিশ: %1$s</string>
     <string name="trip_lines_stops_unknown">যাচাই হয়নি এমন স্টপ: %1$s</string>
     <string name="disruptions_checking">বিঘ্ন যাচাই হচ্ছে</string>
     <string name="closure_checking">বন্ধ আছে কিনা যাচাই হচ্ছে</string>

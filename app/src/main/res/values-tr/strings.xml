@@ -165,7 +165,6 @@
     <string name="trip_lines_unknown">Kontrol edilemedi</string>
     <string name="trip_lines_unknown_note">Bazı hatlar kontrol edilemedi, bu nedenle saatleri yanlış olabilir.</string>
     <string name="trip_lines_dismissed">%1$s · yok sayıldı</string>
-    <string name="trip_lines_stops">Durak duyuruları: %1$s</string>
     <string name="trip_lines_stops_unknown">Kontrol edilmeyen duraklar: %1$s</string>
     <string name="disruptions_checking">Aksaklıklar kontrol ediliyor</string>
     <string name="closure_checking">Kapatmalar kontrol ediliyor</string>

@@ -321,8 +321,9 @@
     <string name="trip_lines_unknown_note">Some lines couldn\'t be checked, so their times may be wrong.</string>
     <!-- A disruption chip on the trip's lines page for an alert the rider dismissed; %1$s is TfL's status. -->
     <string name="trip_lines_dismissed">%1$s · dismissed</string>
-    <!-- Under the trip's lines: the stops with a closure notice in force, joined. -->
-    <string name="trip_lines_stops">Stop notices: %1$s</string>
+    <!-- TODO: translate -->
+    <!-- Under the trip's lines: a stop's notice, led by the stop's name (1) as nothing else on the page names it; (2) is TfL's notice. -->
+    <string name="trip_lines_stop_notice" tools:ignore="MissingTranslation">%1$s: %2$s</string>
     <!-- Under the trip's lines: the stops whose closures couldn't be checked, joined. -->
     <string name="trip_lines_stops_unknown">Stops not checked: %1$s</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->

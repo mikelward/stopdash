@@ -169,7 +169,6 @@
     <string name="trip_lines_unknown">Impossibile verificare</string>
     <string name="trip_lines_unknown_note">Impossibile verificare alcune linee, quindi i loro orari potrebbero essere errati.</string>
     <string name="trip_lines_dismissed">%1$s · ignorato</string>
-    <string name="trip_lines_stops">Avvisi alle fermate: %1$s</string>
     <string name="trip_lines_stops_unknown">Fermate non verificate: %1$s</string>
     <string name="disruptions_checking">Verifica dei disservizi</string>
     <string name="closure_checking">Verifica delle chiusure</string>

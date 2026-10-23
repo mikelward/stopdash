@@ -66,6 +66,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -540,6 +541,40 @@ class TripViewModelTest {
         assertTrue(failures.dismiss.value)
         trip.dismissWriteFailureShown()
         assertFalse(trip.dismissWriteFailed.value)
+    }
+
+    @Test
+    fun `dismissing every copy of a notice walks them off the caller's thread`() {
+        val recorder = app.stopdash.ThreadRecorder()
+        val written = java.util.concurrent.CountDownLatch(2)
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = MutableStateFlow(emptySet<DismissedAlert>())
+            override suspend fun dismiss(alert: DismissedAlert) = written.countDown()
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {}
+        }
+        val io = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "trip-io") }
+        try {
+            val trip = TripViewModel(
+                FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+                io = io.asCoroutineDispatcher(), dismissedStore = store,
+            )
+            val copies = listOf("A", "A2").map { id ->
+                DepartureRow(
+                    stopId = id, stopName = id, lineId = "", lineName = "", direction = "", directionKey = "", destination = "",
+                    mode = "tube", upcoming = emptyList(), fetchedAt = now, stopDisruption = "Lift out of service",
+                )
+            }
+            // Each copy read is noted where it's read (AGENTS.md *Main thread*; Codex, #1160).
+            val walked = object : AbstractList<DepartureRow>() {
+                override val size get() = copies.size
+                override fun get(index: Int): DepartureRow = copies[index].also { recorder.note() }
+            }
+            trip.dismissAlerts(walked)
+            assertTrue(written.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(listOf("trip-io", "trip-io"), recorder.threads())
+        } finally {
+            io.shutdown()
+        }
     }
 
     // A store holding [initial], pruned as the stored one is ([Dismissed.reconcile]).
@@ -7253,6 +7288,105 @@ class TripViewModelTest {
         val both = routeClosures(route, state.copy(closures = mapOf("B" to moved + stationClosed)), now, emptySet()).getValue("B")
         assertTrue(both.stopDisruption.orEmpty().contains("Stop moved"))
         assertTrue(both.stopDisruption.orEmpty().contains("Station closed"))
+    }
+
+    @Test
+    fun `the trip's row carries each stop's notice once, in TfL's words, for its lines page`() {
+        val lift = listOf(StopDisruption("Lift out of service to the westbound platform"))
+        val other = TripRoute(listOf(leg("green", "A", "D", 5, 20), leg("blue", "D", "C", 22, 35)))
+        val state = TripViewModel.State(
+            routes = listOf(route, other),
+            closures = mapOf("A" to lift, "B" to stationClosed, "C" to emptyList(), "D" to emptyList()),
+        )
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        val row = tripRow(estimates.map { listOf(it) }, TripRideLines.NONE, state, now, emptyMap(), emptySet())
+        // Both cards start at A: its notice is listed once, beside B's, each as its card would title it.
+        assertEquals(setOf("A", "B"), row.notices.map { it.row.stopId }.toSet())
+        assertEquals(2, row.notices.size)
+        val a = row.notices.single { it.row.stopId == "A" }
+        assertEquals(lift.single().description, a.text)
+        // Only a notice that says the stop is closed takes the closed tone, as on the list.
+        assertFalse(a.closed)
+        assertTrue(row.notices.single { it.row.stopId == "B" }.closed)
+        assertEquals("B", row.notices.single { it.row.stopId == "B" }.title)
+        // One dismissed is gone from the page as from the row.
+        val read = setOf(DismissedAlert.ofStopClosure(row.notices.single { it.row.stopId == "B" }.row))
+        val dismissed = tripRow(estimates.map { listOf(it) }, TripRideLines.NONE, state, now, emptyMap(), read)
+        assertEquals(listOf("A"), dismissed.notices.map { it.row.stopId })
+        assertEquals("A", dismissed.stops)
+        // Worked out again unchanged, the row draws the same.
+        assertTrue(row.sameAs(tripRow(estimates.map { listOf(it) }, TripRideLines.NONE, state, now, emptyMap(), emptySet())))
+        assertFalse(row.sameAs(dismissed))
+        // The same words with a window TfL moved are a new notice, dismissed by its own window (Codex, #1160).
+        val moved = state.copy(closures = state.closures + ("A" to listOf(lift.single().copy(validTo = now.plus(Duration.ofHours(2))))))
+        val again = tripRow(checkNotNull(tripEstimates(moved, now, Duration.ZERO, emptyMap())).map { listOf(it) }, TripRideLines.NONE, moved, now, emptyMap(), emptySet())
+        assertFalse(row.sameAs(again))
+    }
+
+    @Test
+    fun `one notice two routes reach in different windows is one card dismissing both`() {
+        // Two stops of one place, each route boarding at its own, carrying the same words in other windows.
+        val words = "Lift out of service to the westbound platform"
+        val one = TripRoute(listOf(leg("red", "A", "B", 5, 15).copy(fromArea = "940GA"), leg("blue", "B", "C", 20, 30)))
+        val two = TripRoute(listOf(leg("green", "A2", "C", 6, 25).copy(fromArea = "940GA")))
+        val state = TripViewModel.State(
+            routes = listOf(one, two),
+            closures = mapOf(
+                "A" to listOf(StopDisruption(words, validTo = now.plus(Duration.ofHours(2)))),
+                "A2" to listOf(StopDisruption(words, validTo = now.plus(Duration.ofHours(5)))),
+                "B" to emptyList(), "C" to emptyList(),
+            ),
+        )
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val row = tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), emptySet())
+        val card = row.notices.single()
+        assertEquals(setOf("A", "A2"), card.rows.mapTo(HashSet()) { it.stopId })
+        // Its × dismisses every copy: none comes back (Codex, #1160).
+        val dismissed = card.rows.mapTo(HashSet()) { DismissedAlert.ofStopClosure(it) }
+        assertEquals(emptyList<TripNotice>(), tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), dismissed).notices)
+        // One copy dismissed elsewhere leaves the other's card.
+        val oneOnly = setOf(DismissedAlert.ofStopClosure(card.rows.first()))
+        assertEquals(1, tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), oneOnly).notices.size)
+    }
+
+    @Test
+    fun `a notice two routes reach at different poles of a stop is headed by both`() {
+        // Each route boards its bus at its own pole of one stop area, both closed with the same words.
+        val one = TripRoute(listOf(leg("25", "490000001A", "C", 5, 15).copy(mode = "bus", fromName = "Oxford Circus", fromArea = "490G00001")))
+        val two = TripRoute(listOf(leg("73", "490000001B", "C", 6, 16).copy(mode = "bus", fromName = "Oxford Circus", fromArea = "490G00001")))
+        val closed = listOf(StopDisruption("Bus Stop Closed"))
+        val state = TripViewModel.State(
+            routes = listOf(one, two),
+            closures = mapOf("490000001A" to closed, "490000001B" to closed, "C" to emptyList()),
+        )
+        val poles = mapOf(
+            "490000001A" to app.stopdash.domain.StopLocation("490000001A", "Oxford Circus", 0.0, 0.0, stopLetter = "K"),
+            "490000001B" to app.stopdash.domain.StopLocation("490000001B", "Oxford Circus", 0.0, 0.0, stopLetter = "L"),
+        )
+        val poleOf = { id: String, area: String -> poles[id]?.takeIf { area == "490G00001" } }
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        assertEquals(2, estimates.size)
+        val notice = tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), emptySet(), poleOf = poleOf).notices.single()
+        // Not "Stop K" alone: the notice covers both poles the trip uses (Codex, #1160).
+        val both = routeClosureRows(one, state, now, poleOf = poleOf) + routeClosureRows(two, state, now, poleOf = poleOf)
+        assertEquals(closureTitleOf(both), notice.title)
+        val alone = closureTitleOf(routeClosureRows(one, state, now, poleOf = poleOf))
+        assertNotEquals(alone, notice.title)
+    }
+
+    @Test
+    fun `the lines page titles a notice on one bus pole by that pole`() {
+        val bus = TripRoute(listOf(leg("25", "490000001A", "490000002B", 5, 15).copy(mode = "bus", fromArea = "490G00001", toArea = "490G00002")))
+        val state = TripViewModel.State(routes = listOf(bus), closures = mapOf("490000001A" to stationClosed, "490000002B" to emptyList()))
+        val pole = app.stopdash.domain.StopLocation("490000001A", "Oxford Circus", 0.0, 0.0, stopLetter = "K", towards = "Euston")
+        val poleOf = { id: String, area: String -> pole.takeIf { id == "490000001A" && area == "490G00001" } }
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val unknown = tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), emptySet())
+        val known = tripRow(estimates, TripRideLines.NONE, state, now, emptyMap(), emptySet(), poleOf = poleOf)
+        // With its pole's cues cached, the notice names the pole, as the open route's card does (Codex, #1160).
+        assertEquals(closureTitleOf(routeClosureRows(bus, state, now, poleOf = poleOf)), known.notices.single().title)
+        assertNotEquals(unknown.notices.single().title, known.notices.single().title)
+        assertFalse(known.sameAs(unknown))
     }
 
     @Test

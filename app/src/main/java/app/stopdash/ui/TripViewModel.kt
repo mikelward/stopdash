@@ -991,6 +991,15 @@ class TripViewModel(
         viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn, _dismissed) }
     }
 
+    /**
+     * Dismisses each of [rows]' notices, as one × does for every copy of a notice its lines page card stands
+     * for ([TripNotice.rows]): hopped to [io] first, so the copies are walked off the caller's (the main)
+     * thread (AGENTS.md *Main thread*; Codex, #1160).
+     */
+    fun dismissAlerts(rows: List<DepartureRow>) {
+        viewModelScope.launch(io) { rows.forEach { dismissAlert(dismissedStore, it, io, _dismissWriteFailed, warn, _dismissed) } }
+    }
+
     /** Dismisses a line's [status] as its lines page shows it, as a row's × does its line alert. */
     fun dismissLineAlert(status: LineStatus) {
         viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
