@@ -2642,7 +2642,8 @@ joins the plan: the Planner can't leave out one line, only a mode, so the routes
 already planned stay, other lines of that mode with them (maintainer, 2026-10-08). The soonest route's
 lines are judged by the statuses the trip holds, the rest asked for (once, on a trip's first plan); a
 plan made before the delays began (one reused, or the delays started since) is planned again once when
-a refresh finds them, so the request is made then. A
+a refresh finds them, so the request is made then; a plan reused that already asked around them keeps
+that answer rather than plan the whole trip again (maintainer's report, 2026-10-23). A
 route riding a line with severe delays then ranks as if it got there **ten minutes** later: its trains'
 predictions stand for little, so a route clear of the delays arriving about as soon goes first, while
 one much sooner still leads. Minor delays change nothing. Failing, it leaves the plan as it was and says

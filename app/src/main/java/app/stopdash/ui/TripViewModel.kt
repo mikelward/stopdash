@@ -323,7 +323,9 @@ class TripViewModel(
         // on the plan kept for the rider's own options, not the defaults'.
         val here = origin() is TripOrigin.Here
         val kept = plans.get(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes, via)
-        plannedFrom = plans.origin(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes, via)
+        val keptFrom = plans.kept(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes, via)
+        plannedFrom = keptFrom?.from
+        keptPlan = keptFrom
         plannedContext = plannedFrom?.let { PlanContext(it, walkingSpeed, maxWalk, stepFree, tripModes) }
         // A Direct route open is asked for again under the new choices ([plan]): a plan kept for them is
         // planned again, not just shown, and reads as planning meanwhile, so the route isn't closed as gone.
@@ -955,7 +957,10 @@ class TripViewModel(
     private var planCounted = false
 
     // Where the plan shown was planned from; null until one is (a reused plan carries its own).
-    private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes, via)
+    // The plan kept for this trip as it opens: where it was planned from, and the modes it asked around delays without.
+    private val keptAtStart = plans.kept(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes, via)
+
+    private var plannedFrom: TripOrigin? = keptAtStart?.from
 
     // What the plan shown was planned under, where from included ([findDirect] reuses its routes only then).
     private var plannedContext: PlanContext? = plannedFrom?.let { PlanContext(it, walkingSpeed, maxWalk, stepFree, tripModes) }
@@ -1340,6 +1345,13 @@ class TripViewModel(
     // plan asks around its own by itself.
     private var plannedAround: Set<Set<String>> = emptySet()
 
+    // The plan kept from before ([TripPlans]) that the trip took up, with the modes it asked around, so a trip
+    // reopened on it isn't planned again for delays it already went around (maintainer's report, 2026-10-23:
+    // every request asked again, and the routes changed under the rider soon after they showed). They count only
+    // while its routes are the ones shown, so a plan made since, which asked around its own, never answers for
+    // them (Codex, #1161). Replaced, never merged, as the options take up another: no work on the main thread.
+    private var keptPlan: TripPlans.KeptPlan? = keptAtStart
+
     /**
      * After a refresh, a plan whose soonest route rides a line it found newly severely delayed (a plan reused
      * from before the delays, or one they began after) is planned again at once, so the request around them
@@ -1362,7 +1374,8 @@ class TripViewModel(
             state.shownRoutes(hidden)?.let(AroundDelays::soonest)?.let { AroundDelays.modesToLeaveOut(it, delayed, modes) }.orEmpty()
         }
         // The same modes asked around before: a mode recovered since makes another set, asked again (Codex, #703).
-        if (leaveOut.isEmpty() || leaveOut in plannedAround) return
+        val keptAround = keptPlan?.takeIf { it.routes === state.routes }?.around.orEmpty()
+        if (leaveOut.isEmpty() || leaveOut in plannedAround || leaveOut in keptAround) return
         // Marked before it runs, so a refresh landing meanwhile doesn't ask again.
         plannedAround = plannedAround + setOf(leaveOut)
         warn("trip re-planned around delays without ${leaveOut.sorted().joinToString("+")}")
@@ -1393,6 +1406,8 @@ class TripViewModel(
         // An extra request (to a place via its fastest route's last stop, or around delays) failed: the
         // plan stands, in part.
         var viaFailed = false
+        // The modes this plan's request around delays left out, once answered: kept with the plan ([TripPlans]).
+        var around = emptySet<Set<String>>()
         // The rider's own options, not the defaults, once read: "Planning…" meanwhile.
         if (!optionsLoaded) {
             awaitingOptions = true
@@ -1553,7 +1568,8 @@ class TripViewModel(
             }
             if (soonest != null) {
                 val (answer, route) = soonest
-                if (!planAroundDelays(route, from, answer.destination, speed, limit, access, modes, gathered, answer.via) { showGathered() }) viaFailed = true
+                val asked = planAroundDelays(route, from, answer.destination, speed, limit, access, modes, gathered, answer.via) { showGathered() }
+                if (asked == null) viaFailed = true else if (asked.isNotEmpty()) around = setOf(asked)
             }
         } catch (e: CancellationException) {
             _state.update { it.copy(planning = false) }
@@ -1563,7 +1579,7 @@ class TripViewModel(
         if (optionsChangedSince()) {
             // The rider changed the walk while this ran: its routes are for the old one. A whole plan
             // is still kept for that walk; the new one is planned next ([start]'s loop).
-            if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed, limit, access, modes, via)
+            if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed, limit, access, modes, via, around)
             _state.update { it.copy(planning = false) }
             // Counted all the same, by the routes it would have shown: the Planner answered it, and the
             // plan for the new options is one again.
@@ -1608,7 +1624,7 @@ class TripViewModel(
         // The rider changed a choice while it was asked: this plan is for the old ones, so it isn't shown
         // (kept for reuse under them, as above); the new one is planned next.
         if (optionsChangedSince()) {
-            if (failed == null) plans.put(fromId, destinations, routes, clock(), from, speed, limit, access, modes, via)
+            if (failed == null) plans.put(fromId, destinations, routes, clock(), from, speed, limit, access, modes, via, around)
             _state.update { it.copy(planning = false) }
             countPlan(failed, answered, shownCount(routes), viaFailed || directFailedNow, from, planAgain)
             return
@@ -1630,7 +1646,7 @@ class TripViewModel(
         countPlan(failed, answered, visible.size, viaFailed || directFailedNow, from, planAgain)
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
-        if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit, access, modes, via)
+        if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit, access, modes, via, around)
         // A new plan's lines are unchecked until their status arrives: none passes as running
         // normally meanwhile (its last known status, if held, stands).
         val offered = direct?.takeUnless { it.planned }
@@ -1708,8 +1724,9 @@ class TripViewModel(
      * When [soonest], the plan's route arriving soonest, rides a line with severe delays, the Planner is
      * asked once more to [destination] with that line's mode left out, and what it adds joins [gathered] ([AroundDelays];
      * maintainer, 2026-10-08): TfL plans as if trains ran to the timetable. The statuses held for the trip
-     * are used where there are any, the rest asked for. False when a request failed: the plan stands
-     * without it. Neither end nor any stop is logged, only the modes and how many routes.
+     * are used where there are any, the rest asked for. The modes it left out once answered (none when nothing
+     * was asked); null when a request failed: the plan stands without it. Neither end nor any stop is logged,
+     * only the modes and how many routes.
      */
     private suspend fun planAroundDelays(
         soonest: TripRoute,
@@ -1723,19 +1740,19 @@ class TripViewModel(
         // The stop the rider picked that [soonest] was planned via, asked via again; null for none.
         through: String?,
         show: suspend () -> Unit,
-    ): Boolean {
+    ): Set<String>? {
         val held = _state.value.statuses
         val (lines, missing) = withContext(compute) {
             val lines = AroundDelays.linesOf(soonest)
             lines to lines.filterNot { it in held }
         }
-        if (lines.isEmpty()) return true
+        if (lines.isEmpty()) return emptySet()
         val check = if (missing.isEmpty()) {
             null
         } else {
             fetchStatuses(missing) ?: run {
                 warn("trip plan around delays: line status not answered")
-                return false
+                return null
             }
         }
         val fetched = check?.statuses.orEmpty()
@@ -1770,20 +1787,20 @@ class TripViewModel(
                 }
             }
         }
-        if (leaveOut.isEmpty()) return true
+        if (leaveOut.isEmpty()) return emptySet()
         plannedAround = plannedAround + setOf(leaveOut)
         val answer = try {
             withContext(io) { planner.quickestWithout(from, destination, leaveOut, speed, limit, access, modes, via = through) }
         } catch (e: TflException) {
             warn("trip plan around delays failed: ${e::class.simpleName}")
-            return false
+            return null
         }
         warn("trip plan around delays: ${answer.size} routes without ${leaveOut.sorted().joinToString("+")}")
         // A route already planned (the same legs at the same times) stays once.
         val added = withContext(compute) { mergedRoutes(gathered.toList(), answer).drop(gathered.size) }
         gathered += added
         show()
-        return true
+        return leaveOut
     }
 
     // One answer to a plan's request ([plan]): where it was planned to, the stop the rider picked it was asked via
@@ -2575,7 +2592,8 @@ class TripViewModel(
  * if the same trip reopens within 15 minutes). Never written to storage; bounded to [MAX] trips.
  */
 class TripPlans {
-    private class Held(val routes: List<TripRoute>, val at: Instant, val from: TripOrigin?)
+    // [around]: the modes the plan's request around delays left out ([AroundDelays]), each set once answered.
+    private class Held(val routes: List<TripRoute>, val at: Instant, val from: TripOrigin?, val around: Set<Set<String>>)
 
     private val plans = LinkedHashMap<String, Held>()
 
@@ -2598,9 +2616,12 @@ class TripPlans {
         via: ViaStops? = null,
     ): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes, via)]?.let { it.routes to it.at }
 
-    /** Where the plan [get] returns was planned from: from here, the rider's position then. */
+    /**
+     * Where the plan [get] returns was planned from (from here, the rider's position then) and the modes it asked
+     * around delays without ([KeptPlan]), from one lookup.
+     */
     @Synchronized
-    fun origin(
+    fun kept(
         fromId: String,
         destinations: List<TripDestination>,
         here: Boolean = false,
@@ -2609,7 +2630,14 @@ class TripPlans {
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
         via: ViaStops? = null,
-    ): TripOrigin? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes, via)]?.from
+    ): KeptPlan? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes, via)]?.let { KeptPlan(it.from, it.around, it.routes) }
+
+    /**
+     * A kept plan's [from] ([kept]) and the modes it asked around delays without ([around]), so a trip taking it up
+     * doesn't ask again, with its [routes], the very list [get] hands out, so a trip tells by identity whether it
+     * still shows them.
+     */
+    class KeptPlan(val from: TripOrigin?, val around: Set<Set<String>>, val routes: List<TripRoute>)
 
     @Synchronized
     fun put(
@@ -2623,10 +2651,11 @@ class TripPlans {
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
         via: ViaStops? = null,
+        around: Set<Set<String>> = emptySet(),
     ) {
         val key = key(fromId, destinations, from is TripOrigin.Here, speed, maxWalk, stepFree, modes, via)
         plans.remove(key)
-        plans[key] = Held(routes, at, from)
+        plans[key] = Held(routes, at, from, around)
         while (plans.size > MAX) plans.remove(plans.keys.first())
     }
 
