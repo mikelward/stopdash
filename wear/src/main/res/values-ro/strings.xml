@@ -22,7 +22,10 @@
     <string name="complication_unknown">\?</string>
     <string name="complication_uncertain_time">~^1</string>
     <string name="watch_no_rail_key">Fără cheie</string>
+    <string name="watch_rail_key_rejected">Cheie respinsă</string>
     <string name="watch_no_data">Fără date</string>
+    <string name="watch_disrupted_spoken">Perturbări: %1$s</string>
+    <string name="watch_disrupted_spoken_detail">Perturbări: %1$s. %2$s</string>
     <string name="planned_alert_description">Planificat: %1$s, din %2$s</string>
     <string name="watch_disruptions_unknown">Nu s-au putut verifica perturbările</string>
     <string name="complication_line_disrupted">%1$s (%2$s)</string>
@@ -40,6 +43,8 @@
     <string name="watch_trip_channel_description">Pasul la care vă aflați, cât timp telefonul urmărește o călătorie</string>
     <string name="watch_trip_previous">Pasul anterior</string>
     <string name="watch_trip_next">Pasul următor</string>
+    <string name="countdown_minutes">%1$s min</string>
+    <string name="countdown_between">" · "</string>
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">Încă %d stație pe telefon</item>
         <item quantity="few">Încă %d stații pe telefon</item>

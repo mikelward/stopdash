@@ -5134,9 +5134,13 @@ and these carry the rest as their own PRs:
       (offline, or after a failed fetch), so the animation never stands for work that isn't happening.
 - [ ] **Translations pass** (standing): once the maintainer has confirmed them on a device,
       translate the strings marked `TODO: translate` into every language (terms from
-      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*). With `line_label`,
-      recheck the strings it fills, some of which say "line" themselves in a translation
-      (`on_the_way_line_closed`'s "%1$s : ligne fermée").
+      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*). Last run 2026-10-23
+      (every string then marked, the shared module's first locale files included). Open choices
+      from it, for a native read: `line_label` is lowercase in Polish and Romanian, so a line
+      named alone in Settings' lists starts lowercase, and capitalized in French, Spanish,
+      Italian and Portuguese, so "Masquer Ligne Victoria" carries a capital after the verb;
+      Polish compass letters are the Polish ones (Pn, PnW, W, PdW, Pd, PdZ, Z, PnZ), where "W"
+      is east.
 - [x] **Move the English the app builds in code into string resources**, English-only and marked
       for the translations pass. Found by a sweep: ~~the widget's own text~~ (done: its stamp's
       "Updated", weekday in the app's language, notes, empty states, titles and "Disrupted:"

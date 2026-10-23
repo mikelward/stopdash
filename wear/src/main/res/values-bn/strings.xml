@@ -22,7 +22,10 @@
     <string name="complication_unknown">\?</string>
     <string name="complication_uncertain_time">~^1</string>
     <string name="watch_no_rail_key">কী নেই</string>
+    <string name="watch_rail_key_rejected">কী প্রত্যাখ্যাত</string>
     <string name="watch_no_data">ডেটা নেই</string>
+    <string name="watch_disrupted_spoken">বিঘ্ন: %1$s</string>
+    <string name="watch_disrupted_spoken_detail">বিঘ্ন: %1$s। %2$s</string>
     <string name="planned_alert_description">পরিকল্পিত %1$s, %2$s থেকে</string>
     <string name="watch_disruptions_unknown">বিঘ্ন আছে কিনা যাচাই করা যায়নি</string>
     <string name="complication_line_disrupted">%1$s (%2$s)</string>
@@ -40,6 +43,8 @@
     <string name="watch_trip_channel_description">ফোন কোনো ট্রিপ অনুসরণ করার সময় আপনি যে ধাপে আছেন</string>
     <string name="watch_trip_previous">আগের ধাপ</string>
     <string name="watch_trip_next">পরের ধাপ</string>
+    <string name="countdown_minutes">%1$s মি.</string>
+    <string name="countdown_between">" · "</string>
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">ফোনে আরও %dটি স্টপ</item>
         <item quantity="other">ফোনে আরও %dটি স্টপ</item>

@@ -6,6 +6,8 @@
     <string name="tile_all_stops">Todas as paradas</string>
     <string name="watch_refreshing">Atualizando…</string>
     <string name="watch_phone_out_of_reach">Celular fora de alcance</string>
+    <string name="watch_disrupted_spoken">Com interrupções: %1$s</string>
+    <string name="watch_disrupted_spoken_detail">Com interrupções: %1$s. %2$s</string>
     <string name="planned_alert_description">Alerta planejado: %1$s, a partir de %2$s</string>
     <string name="watch_disruptions_unknown">Não foi possível verificar interrupções</string>
     <string name="watch_trip_channel_description">A etapa em que você está, enquanto o celular acompanha uma viagem</string>

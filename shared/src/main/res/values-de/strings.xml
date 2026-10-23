@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Gleis %1$s</string>
+    <string name="header_platform_short">Gl. %1$s</string>
+    <string name="header_stop">Haltestelle %1$s</string>
+    <string name="header_towards">Richtung %1$s</string>
+    <string name="header_bearing_n">Richtung Norden</string>
+    <string name="header_bearing_e">Richtung Osten</string>
+    <string name="header_bearing_s">Richtung Süden</string>
+    <string name="header_bearing_w">Richtung Westen</string>
+    <string name="header_bearing_ne">Richtung Nordosten</string>
+    <string name="header_bearing_nw">Richtung Nordwesten</string>
+    <string name="header_bearing_se">Richtung Südosten</string>
+    <string name="header_bearing_sw">Richtung Südwesten</string>
+</resources>

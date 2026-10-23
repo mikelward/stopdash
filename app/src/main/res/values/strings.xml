@@ -12,14 +12,11 @@
          banner that would move the list (SPEC Freshness → Cold load). -->
     <string name="checking_stamp">Checking…</string>
     <!-- The top bar's age stamp: how long ago the departures shown were fetched. -->
-    <!-- TODO: translate -->
-    <string name="age_just_now" tools:ignore="MissingTranslation">Just now</string>
-    <!-- TODO: translate -->
+    <string name="age_just_now">Just now</string>
     <!-- %1$d is whole minutes: "2 min ago". -->
-    <string name="age_minutes_ago" tools:ignore="MissingTranslation">%1$d min ago</string>
-    <!-- TODO: translate -->
+    <string name="age_minutes_ago">%1$d min ago</string>
     <!-- %1$d is whole hours: "3 h ago". -->
-    <string name="age_hours_ago" tools:ignore="MissingTranslation">%1$d h ago</string>
+    <string name="age_hours_ago">%1$d h ago</string>
 
     <!-- Departures list -->
     <string name="departures_loading">Loading departures…</string>
@@ -52,124 +49,87 @@
     <!-- Boarding-stop line in the route detail body. %1$s is the stop/interchange name; the app
          bar already shows where the service is going, so this names where it departs from. -->
     <string name="route_detail_from">From %1$s</string>
-    <!-- TODO: translate -->
     <!-- A favorite ride's route page with nothing live yet (its line not open for the morning): when its
          timetable runs the next train. %1$s is the clock time, e.g. "05:41". -->
-    <string name="route_detail_next_timetabled" tools:ignore="MissingTranslation">Next train %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_timetabled">Next train %1$s (timetable)</string>
     <!-- The same for a bus ride. -->
-    <string name="route_detail_next_bus_timetabled" tools:ignore="MissingTranslation">Next bus %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_bus_timetabled">Next bus %1$s (timetable)</string>
     <!-- As route_detail_next_timetabled, for the next few: %1$s is their clock times, e.g. "05:41 · 05:49 · 05:57". -->
-    <string name="route_detail_next_trains_timetabled" tools:ignore="MissingTranslation">Next trains %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_trains_timetabled">Next trains %1$s (timetable)</string>
     <!-- The same for a bus ride. -->
-    <string name="route_detail_next_buses_timetabled" tools:ignore="MissingTranslation">Next buses %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_buses_timetabled">Next buses %1$s (timetable)</string>
     <!-- A route chip atop a route page, for one of two ways to one place that only a stop tells apart:
          %1$s is where it goes, %2$s the first stop it calls at that the other doesn't. -->
-    <string name="route_choice_via" tools:ignore="MissingTranslation">%1$s via %2$s</string>
+    <string name="route_choice_via">%1$s via %2$s</string>
     <!-- The last of a route page's route chips: the map of the whole line, every route, rather than the train's alone. -->
-    <!-- TODO: translate -->
-    <string name="route_choice_all" tools:ignore="MissingTranslation">All</string>
-    <!-- TODO: translate -->
+    <string name="route_choice_all">All</string>
     <!-- A route chip for a train TfL names no destination for ("Check Front of Train"): the farthest stop all its way's
          routes reach, a guess that it goes at least that far ("Aldgate+"). -->
-    <string name="route_choice_at_least" tools:ignore="MissingTranslation">%1$s+</string>
-    <!-- TODO: translate -->
+    <string name="route_choice_at_least">%1$s+</string>
     <!-- In a route page's chips' place, where the line's routes they come from couldn't be loaded; a Retry
          button follows. -->
-    <string name="route_choices_failed" tools:ignore="MissingTranslation">Couldn\'t load other routes</string>
-    <!-- TODO: translate -->
+    <string name="route_choices_failed">Couldn\'t load other routes</string>
     <!-- A route chip on a favorite ride's page, where more than one way joins its two ends: %1$s is what
          tells it apart, its branch ("Bank") or the first station it calls at that the other doesn't. -->
-    <string name="route_choice_by" tools:ignore="MissingTranslation">via %1$s</string>
-    <!-- TODO: translate -->
+    <string name="route_choice_by">via %1$s</string>
     <!-- What a screen reader hears for a branching line's destination when its branch shows
          shortened ("Newbury Pk"): the branch in full, "via Newbury Park". -->
-    <string name="branch_spoken" tools:ignore="MissingTranslation">via %1$s</string>
-    <!-- TODO: translate -->
+    <string name="branch_spoken">via %1$s</string>
     <!-- The same when the branch shows alone, or on the widget: %1$s is the terminus, %2$s the branch,
          both in full ("Hainault via Newbury Park"). -->
-    <string name="branch_spoken_with_terminus" tools:ignore="MissingTranslation">%1$s via %2$s</string>
-    <!-- TODO: translate -->
+    <string name="branch_spoken_with_terminus">%1$s via %2$s</string>
     <!-- In a route page's countdown's place, on a route chosen from its chips with no train at the stop. -->
-    <string name="route_detail_no_live_times" tools:ignore="MissingTranslation">No live times</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_no_live_times">No live times</string>
     <!-- Under "No live times" on a "?" row's route page: why its times are missing. -->
-    <string name="route_detail_quiet_why" tools:ignore="MissingTranslation">TfL has no live times here, though its timetable has trains due.</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_quiet_why">TfL has no live times here, though its timetable has trains due.</string>
     <!-- Under "No live times" on a dash row's route page: its timetable has nothing due in the next half hour. -->
-    <string name="route_detail_none_due_why" tools:ignore="MissingTranslation">No trains due here in the next 30 minutes, by the timetable.</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_none_due_why">No trains due here in the next 30 minutes, by the timetable.</string>
     <!-- Under "No live times" on the route page of a line TfL gave no times for, its timetable unsure. -->
-    <string name="route_detail_no_times_why" tools:ignore="MissingTranslation">TfL has no live times here.</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_no_times_why">TfL has no live times here.</string>
     <!-- Heading over each way's next trains by the timetable, on a "?" row's route page. -->
-    <string name="route_detail_timetable_heading" tools:ignore="MissingTranslation">Timetable</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_timetable_heading">Timetable</string>
     <!-- On a route page's timetable, over the day's trains: they're the timetable's, not live. -->
-    <string name="timetable_scheduled" tools:ignore="MissingTranslation">Scheduled</string>
-    <!-- TODO: translate -->
+    <string name="timetable_scheduled">Scheduled</string>
     <!-- A route page's timetable: a stretch of the day, from its first train to its last, e.g. "06:00–10:00". -->
-    <string name="timetable_stretch" tools:ignore="MissingTranslation">%1$s–%2$s</string>
-    <!-- TODO: translate -->
+    <string name="timetable_stretch">%1$s–%2$s</string>
     <!-- A route page's timetable: how often trains run over a stretch, e.g. "every 4 min". -->
-    <string name="timetable_every" tools:ignore="MissingTranslation">every %1$d min</string>
-    <!-- TODO: translate -->
+    <string name="timetable_every">every %1$d min</string>
     <!-- A route page's timetable: how often trains run over a stretch whose gap varies, e.g. "every 3–5 min". -->
-    <string name="timetable_every_range" tools:ignore="MissingTranslation">every %1$d–%2$d min</string>
-    <!-- TODO: translate -->
+    <string name="timetable_every_range">every %1$d–%2$d min</string>
     <!-- Spoken for a stretch whose gap varies: "06:00 to 10:00, every 3 to 5 minutes". -->
-    <string name="timetable_every_range_spoken" tools:ignore="MissingTranslation">%1$s to %2$s, every %3$d to %4$d minutes</string>
-    <!-- TODO: translate -->
+    <string name="timetable_every_range_spoken">%1$s to %2$s, every %3$d to %4$d minutes</string>
     <!-- A route page's timetable, while it's fetched. -->
-    <string name="timetable_loading" tools:ignore="MissingTranslation">Loading timetable…</string>
-    <!-- TODO: translate -->
+    <string name="timetable_loading">Loading timetable…</string>
     <!-- A route page's timetable that couldn't be fetched; it's asked for again shortly. -->
-    <string name="timetable_failed" tools:ignore="MissingTranslation">Couldn\'t load the timetable</string>
-    <!-- TODO: translate -->
+    <string name="timetable_failed">Couldn\'t load the timetable</string>
     <!-- A route page's timetable for a day the line runs nothing from here. -->
-    <string name="timetable_none" tools:ignore="MissingTranslation">None scheduled</string>
-    <!-- TODO: translate -->
+    <string name="timetable_none">None scheduled</string>
     <!-- A route page's timetable where TfL has none for the line at the stop. -->
-    <string name="timetable_unavailable" tools:ignore="MissingTranslation">TfL has no timetable here</string>
-    <!-- TODO: translate -->
+    <string name="timetable_unavailable">TfL has no timetable here</string>
     <!-- A route page's timetable with a train it couldn't read. -->
-    <string name="timetable_partial" tools:ignore="MissingTranslation">Some times may be missing</string>
-    <!-- TODO: translate -->
+    <string name="timetable_partial">Some times may be missing</string>
     <!-- A route page's timetable on a public holiday, when TfL may run another day's timetable. -->
-    <string name="timetable_holiday" tools:ignore="MissingTranslation">May differ on a public holiday</string>
-    <!-- TODO: translate -->
+    <string name="timetable_holiday">May differ on a public holiday</string>
     <!-- A route page's timetable where its line runs several ways from the stop and none is chosen: the chips above choose one. -->
-    <string name="timetable_choose_route" tools:ignore="MissingTranslation">Choose a route</string>
-    <!-- TODO: translate -->
+    <string name="timetable_choose_route">Choose a route</string>
     <!-- A route page's timetable for a way only a live train names, which the timetable can't tell apart. -->
-    <string name="timetable_route_unknown" tools:ignore="MissingTranslation">No timetable for this route</string>
-    <!-- TODO: translate -->
+    <string name="timetable_route_unknown">No timetable for this route</string>
     <!-- A route page's timetable where its ways couldn't be told apart: every route's trains from the stop. -->
-    <string name="timetable_all_routes" tools:ignore="MissingTranslation">All routes from here</string>
-    <!-- TODO: translate -->
+    <string name="timetable_all_routes">All routes from here</string>
     <!-- A National Rail timetable's train running late: its scheduled time, then its estimate, e.g. "10:15 (10:22)". -->
-    <string name="timetable_expected" tools:ignore="MissingTranslation">%1$s (%2$s)</string>
-    <!-- TODO: translate -->
+    <string name="timetable_expected">%1$s (%2$s)</string>
     <!-- Spoken for a National Rail timetable's train running late: "10:15, expected 10:22". -->
-    <string name="timetable_expected_spoken" tools:ignore="MissingTranslation">%1$s, expected %2$s</string>
-    <!-- TODO: translate -->
+    <string name="timetable_expected_spoken">%1$s, expected %2$s</string>
     <!-- A National Rail timetable's canceled train, after its scheduled time, e.g. "10:15 (canceled)". -->
-    <string name="timetable_canceled" tools:ignore="MissingTranslation">%1$s (canceled)</string>
-    <!-- TODO: translate -->
+    <string name="timetable_canceled">%1$s (canceled)</string>
     <!-- Spoken for a National Rail timetable's canceled train: "10:15, canceled". -->
-    <string name="timetable_canceled_spoken" tools:ignore="MissingTranslation">%1$s, canceled</string>
-    <!-- TODO: translate -->
+    <string name="timetable_canceled_spoken">%1$s, canceled</string>
     <!-- A National Rail timetable's train National Rail calls delayed with no estimate, e.g. "10:15 (delayed)". -->
-    <string name="timetable_delayed" tools:ignore="MissingTranslation">%1$s (delayed)</string>
-    <!-- TODO: translate -->
+    <string name="timetable_delayed">%1$s (delayed)</string>
     <!-- Spoken for a National Rail timetable's train delayed with no estimate: "10:15, delayed, no estimate". -->
-    <string name="timetable_delayed_spoken" tools:ignore="MissingTranslation">%1$s, delayed, no estimate</string>
-    <!-- TODO: translate -->
+    <string name="timetable_delayed_spoken">%1$s, delayed, no estimate</string>
     <!-- A National Rail timetable whose live times couldn't be asked for again: its trains' schedules alone. -->
-    <string name="timetable_live_stale" tools:ignore="MissingTranslation">Live times couldn\'t be updated</string>
+    <string name="timetable_live_stale">Live times couldn\'t be updated</string>
     <!-- The service's full name atop the route detail, for a tube or Overground line TfL names
          bare. %1$s is the line's name, e.g. "Victoria" → "Victoria line". -->
     <string name="route_detail_line_name">%1$s line</string>
@@ -183,10 +143,9 @@
     <string name="route_detail_alert_behind">%1$s before this stop</string>
     <!-- As route_detail_alert_behind, %2$s being where it is ("Bank to Moorgate"). -->
     <string name="route_detail_alert_behind_at">%1$s before this stop: %2$s</string>
-    <!-- TODO: translate -->
     <!-- Where a line alert is, beside its chip on a route's page: a stretch of stops it touches, by
          its two ends ("Moorgate to Bank"). -->
-    <string name="alert_stretch" tools:ignore="MissingTranslation">%1$s to %2$s</string>
+    <string name="alert_stretch">%1$s to %2$s</string>
     <!-- Beside a planned alert's chip on a route's page: the day the work starts ("From 13 Oct"). -->
     <string name="planned_alert_from">From %1$s</string>
     <!-- Read out for the calendar icon on a route row: the planned alert and the day it starts. -->
@@ -230,34 +189,25 @@
     <string name="widget_refresh_key_rejected">Couldn\'t refresh: API key rejected</string>
     <!-- The compact widget's short form of any of the three above. -->
     <string name="widget_refresh_failed_short">Couldn\'t refresh</string>
-    <!-- TODO: translate -->
     <!-- The widget's header stamp: %1$s is the clock time its departures are from, "13:00", with the
          weekday when that isn't today, "Sun 23:50". A narrow widget shows the time alone. -->
-    <string name="widget_updated" tools:ignore="MissingTranslation">Updated %1$s</string>
-    <!-- TODO: translate -->
+    <string name="widget_updated">Updated %1$s</string>
     <!-- The widget's note under its header when some of its stops weren't refreshed with the rest. -->
-    <string name="widget_some_stops_out_of_date" tools:ignore="MissingTranslation">Some stops out of date</string>
-    <!-- TODO: translate -->
+    <string name="widget_some_stops_out_of_date">Some stops out of date</string>
     <!-- The compact widget's short form of widget_some_stops_out_of_date. -->
-    <string name="widget_partly_stale" tools:ignore="MissingTranslation">Partly stale</string>
-    <!-- TODO: translate -->
+    <string name="widget_partly_stale">Partly stale</string>
     <!-- The widget with nothing to show and no location grant: the app finds no stops without one. -->
-    <string name="widget_allow_location" tools:ignore="MissingTranslation">Allow location in StopDash</string>
-    <!-- TODO: translate -->
+    <string name="widget_allow_location">Allow location in StopDash</string>
     <!-- The widget with nothing to show yet: the app fills it once opened. -->
-    <string name="widget_open_app" tools:ignore="MissingTranslation">Open StopDash to load departures</string>
-    <!-- TODO: translate -->
+    <string name="widget_open_app">Open StopDash to load departures</string>
     <!-- The widget when not even one departure fits at its size and font. -->
-    <string name="widget_too_small" tools:ignore="MissingTranslation">Too small</string>
-    <!-- TODO: translate -->
+    <string name="widget_too_small">Too small</string>
     <!-- The widget's trip on the way when the phone's last update of it is old. -->
-    <string name="widget_trip_stale" tools:ignore="MissingTranslation">May be out of date</string>
-    <!-- TODO: translate -->
+    <string name="widget_trip_stale">May be out of date</string>
     <!-- Heard (not drawn) for a widget row's disrupted line: %1$s is TfL's status, "Severe Delays". -->
-    <string name="widget_disrupted_spoken" tools:ignore="MissingTranslation">Disrupted: %1$s</string>
-    <!-- TODO: translate -->
+    <string name="widget_disrupted_spoken">Disrupted: %1$s</string>
     <!-- The same with why the row has no times: %2$s is "No key" or "No data". -->
-    <string name="widget_disrupted_spoken_detail" tools:ignore="MissingTranslation">Disrupted: %1$s. %2$s</string>
+    <string name="widget_disrupted_spoken_detail">Disrupted: %1$s. %2$s</string>
     <!-- Heard (not drawn) before a disruptions card's line pills and stops, on a trip and the home screen. -->
     <string name="trip_disruptions_label">Disruptions:</string>
     <!-- A trip's disruptions card once every line and stop shown is checked and none is disrupted. -->
@@ -322,8 +272,7 @@
     <string name="line_map_beside_closure">Next to a closure</string>
     <!-- A screen reader's words for a station on a route page's map where another route's track meets the
          train's, drawn dashed with no stations of its own. -->
-    <!-- TODO: translate -->
-    <string name="line_map_other_routes" tools:ignore="MissingTranslation">Other routes meet here</string>
+    <string name="line_map_other_routes">Other routes meet here</string>
     <!-- Under the map's heading when a closure TfL places can't be put on the map. -->
     <string name="line_map_closure_not_placed">This closure isn\'t on the map</string>
     <!-- Under a station on a line's map that a closure still to come will shut, by the day it starts ("No service from 10 Oct"). -->
@@ -343,15 +292,13 @@
     <!-- The same, with how far the rider is from it: "Nearest · 300 m". -->
     <string name="line_map_nearest_at">Nearest · %1$s</string>
     <!-- Under a fold on the map: how many stations it holds. -->
-    <!-- TODO: translate -->
     <!-- Spoken for a stretch of a route page's timetable: "06:00 to 10:00, every 4 minutes". -->
-    <plurals name="timetable_every_spoken" tools:ignore="MissingTranslation">
+    <plurals name="timetable_every_spoken">
         <item quantity="one">%1$s to %2$s, every minute</item>
         <item quantity="other">%1$s to %2$s, every %3$d minutes</item>
     </plurals>
-    <!-- TODO: translate -->
     <!-- Under a National Rail timetable's "Scheduled": how far on it reaches, e.g. "Next 4 hours". -->
-    <plurals name="timetable_next_hours" tools:ignore="MissingTranslation">
+    <plurals name="timetable_next_hours">
         <item quantity="one">Next hour</item>
         <item quantity="other">Next %d hours</item>
     </plurals>
@@ -404,69 +351,47 @@
     <!-- Instead of the dash on a National Rail line when no National Rail key is set, so a key
          would give its times; tapping it opens Settings. -->
     <string name="status_no_rail_key">No key</string>
-    <!-- TODO: translate -->
     <!-- Instead of the dash on a National Rail line when National Rail refused the key set for it, so
          that key is why it has no times; tapping it opens Settings at the key. -->
-    <string name="status_rail_key_rejected" tools:ignore="MissingTranslation">Key rejected</string>
+    <string name="status_rail_key_rejected">Key rejected</string>
     <!-- Long-press menu of a near-me row or header: hides every stop and route of that mode from the
          near-me list (SPEC *Finding stops → Hiding a mode*). The argument is the group's name as it
          reads mid-sentence ("bus", "Underground"); "all … services" says the whole group goes, not
          just this row (maintainer, 2026-09-25). -->
     <string name="hide_mode">Hide all %1$s services</string>
-    <!-- TODO: translate -->
     <!-- A TfL mode's own name, where a station's modes are said ("Tube · Elizabeth · National Rail", what a
          screen reader hears on a search result) or one line's mode is shown under its name ("Victoria" over
          "Tube"). The Elizabeth line goes by "Elizabeth", as the Tube's lines go by their names alone. -->
-    <string name="mode_name_tube" tools:ignore="MissingTranslation">Tube</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_bus" tools:ignore="MissingTranslation">Bus</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_dlr" tools:ignore="MissingTranslation">DLR</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_overground" tools:ignore="MissingTranslation">Overground</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_elizabeth_line" tools:ignore="MissingTranslation">Elizabeth</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_national_rail" tools:ignore="MissingTranslation">National Rail</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_tram" tools:ignore="MissingTranslation">Tram</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_river_bus" tools:ignore="MissingTranslation">River Bus</string>
-    <!-- TODO: translate -->
-    <string name="mode_name_cable_car" tools:ignore="MissingTranslation">Cable car</string>
-    <!-- TODO: translate -->
+    <string name="mode_name_tube">Tube</string>
+    <string name="mode_name_bus">Bus</string>
+    <string name="mode_name_dlr">DLR</string>
+    <string name="mode_name_overground">Overground</string>
+    <string name="mode_name_elizabeth_line">Elizabeth</string>
+    <string name="mode_name_national_rail">National Rail</string>
+    <string name="mode_name_tram">Tram</string>
+    <string name="mode_name_river_bus">River Bus</string>
+    <string name="mode_name_cable_car">Cable car</string>
     <!-- A tube or named Overground line as it's named alone or mid-sentence: "Hide Northern line",
          "Northern line closed", the hidden lines' banner and Settings' lists. %1$s is TfL's name for
          the line, kept as TfL spells it and never translated: only "line" is, e.g. "Northern" →
          "Northern line". The route page's title is route_detail_line_name. -->
-    <string name="line_label" tools:ignore="MissingTranslation">%1$s line</string>
-    <!-- TODO: translate -->
+    <string name="line_label">%1$s line</string>
     <!-- The mode groups' names, in the near-me list's overflow menu, Settings and the trip's mode
          chips: "Underground" holds the Tube, the DLR and the Elizabeth line. -->
-    <string name="mode_group_tube" tools:ignore="MissingTranslation">Underground</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_overground" tools:ignore="MissingTranslation">Overground</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_rail" tools:ignore="MissingTranslation">National Rail</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_bus" tools:ignore="MissingTranslation">Bus</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_tram" tools:ignore="MissingTranslation">Tram</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_boat" tools:ignore="MissingTranslation">Boat</string>
-    <!-- TODO: translate -->
+    <string name="mode_group_tube">Underground</string>
+    <string name="mode_group_overground">Overground</string>
+    <string name="mode_group_rail">National Rail</string>
+    <string name="mode_group_bus">Bus</string>
+    <string name="mode_group_tram">Tram</string>
+    <string name="mode_group_boat">Boat</string>
     <!-- The common-noun groups as they read mid-sentence, as hide_mode's argument ("Hide all bus
          services"). The Underground, the Overground and National Rail, being names, use their names. -->
-    <string name="mode_group_bus_in_sentence" tools:ignore="MissingTranslation">bus</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_tram_in_sentence" tools:ignore="MissingTranslation">tram</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_boat_in_sentence" tools:ignore="MissingTranslation">boat</string>
-    <!-- TODO: translate -->
+    <string name="mode_group_bus_in_sentence">bus</string>
+    <string name="mode_group_tram_in_sentence">tram</string>
+    <string name="mode_group_boat_in_sentence">boat</string>
     <!-- Under a group's name in the overflow menu: what it holds that its name doesn't say. -->
-    <string name="mode_group_tube_subtitle" tools:ignore="MissingTranslation">Tube, DLR, Elizabeth</string>
-    <!-- TODO: translate -->
-    <string name="mode_group_rail_subtitle" tools:ignore="MissingTranslation">Thameslink, Southern, …</string>
+    <string name="mode_group_tube_subtitle">Tube, DLR, Elizabeth</string>
+    <string name="mode_group_rail_subtitle">Thameslink, Southern, …</string>
     <!-- The same menu's item hiding just this line everywhere, beside hiding its whole mode
          (maintainer, 2026-09-27). The argument names the line as it reads alone ("Northern line",
          "134"). -->
@@ -488,9 +413,8 @@
     <!-- One-line banner over the near-me list while modes are hidden; the argument lists them
          ("Bus, Tram"). Its action shows them all again. -->
     <string name="modes_hidden">%1$s hidden</string>
-    <!-- TODO: translate -->
     <!-- In that list, more than one hidden line by their count ("Bus, 2 lines"); one is named. -->
-    <plurals name="hidden_lines_count" tools:ignore="MissingTranslation">
+    <plurals name="hidden_lines_count">
         <item quantity="one">%d line</item>
         <item quantity="other">%d lines</item>
     </plurals>
@@ -504,9 +428,8 @@
          hidden modes may be running. The argument lists them ("Bus, Tram"). -->
     <string name="modes_hidden_empty">Nothing else to show with %1$s hidden</string>
     <string name="status_no_rail_key_action">Add a National Rail key</string>
-    <!-- TODO: translate -->
     <!-- What tapping a National Rail line's "Key rejected" does, said to a screen reader. -->
-    <string name="status_rail_key_rejected_action" tools:ignore="MissingTranslation">Change the National Rail key</string>
+    <string name="status_rail_key_rejected_action">Change the National Rail key</string>
     <!-- A timed row's destination line when TfL gives neither destination nor towards but
          did give a direction; used only when even the direction is missing. -->
     <string name="destination_unknown">Unknown destination</string>
@@ -522,11 +445,9 @@
     <string name="error_rate_limited">TfL is rate-limiting requests</string>
     <string name="error_unreachable">Can\'t reach TfL</string>
     <!-- After "Couldn't plan the trip:" when TfL's every route rides a bus or train TfL gives no line or stops for (outside London). -->
-    <!-- TODO: translate -->
-    <string name="error_unfollowable" tools:ignore="MissingTranslation">Its routes need services outside TfL</string>
+    <string name="error_unfollowable">Its routes need services outside TfL</string>
     <!-- The stop list built into the app couldn't be read, so the stops near the rider weren't looked up (their position is never sent to TfL instead). -->
-    <!-- TODO: translate -->
-    <string name="error_stops_unreadable" tools:ignore="MissingTranslation">Couldn\'t load the stop list</string>
+    <string name="error_stops_unreadable">Couldn\'t load the stop list</string>
     <!-- TfL refused the user's own key (SPEC D7): the action clears it and the app goes on keyless. -->
     <string name="error_key_rejected">TfL rejected your API key</string>
     <string name="clear_api_key">Clear key</string>
@@ -770,27 +691,22 @@
     <string name="trip_train_checking_description">%1$s to %2$s, checking route</string>
     <!-- The same for a train predicted too soon behind another to both be there, shown grayed. -->
     <string name="trip_train_doubtful_description">%1$s to %2$s, may not be running</string>
-    <!-- TODO: translate -->
     <!-- The same for a train standing still while its predicted time slides later, shown grayed. -->
-    <string name="trip_train_held_description" tools:ignore="MissingTranslation">%1$s to %2$s, held</string>
+    <string name="trip_train_held_description">%1$s to %2$s, held</string>
     <!-- One time in a countdown read aloud when some of its times leave before the rider can get
          there: minutes to the train, then whether it can be caught. Joined with ", ". -->
     <string name="countdown_time_description">%1$s min</string>
     <string name="countdown_time_unusable_description">%1$s min, can\'t catch</string>
     <string name="countdown_time_doubtful_description">%1$s min, may not be running</string>
-    <!-- TODO: translate -->
     <!-- A train standing still while its predicted time slides later, shown grayed. -->
-    <string name="countdown_time_held_description" tools:ignore="MissingTranslation">%1$s min, held</string>
-    <!-- TODO: translate -->
+    <string name="countdown_time_held_description">%1$s min, held</string>
     <!-- A Tube train whose time has just passed, kept on the board a moment, shown grayed at "0". -->
-    <string name="countdown_time_due_description" tools:ignore="MissingTranslation">%1$s min, due</string>
-    <!-- TODO: translate -->
+    <string name="countdown_time_due_description">%1$s min, due</string>
     <!-- A countdown's minutes: %1$s is one or more numbers already joined ("3 · 7"), the unit written
          once after them ("3 · 7 min"). On every board, trip and route page, and the widget. -->
-    <string name="countdown_minutes" tools:ignore="MissingTranslation">%1$s min</string>
-    <!-- TODO: translate -->
+    <string name="countdown_minutes">%1$s min</string>
     <!-- What goes between a countdown's times ("3 · 7 min"), spaces included. -->
-    <string name="countdown_between" tools:ignore="MissingTranslation">" · "</string>
+    <string name="countdown_between">" · "</string>
     <!-- A National Rail train its board lists as canceled, in a countdown in place of its minutes. -->
     <string name="countdown_canceled">Canceled</string>
     <!-- A National Rail train its board lists as delayed with no estimate, in a countdown in place of
@@ -839,9 +755,8 @@
     <string name="trip_later_timetable">Timetable, not live</string>
     <!-- A later trip's card: when it leaves and gets there, and how long that takes. -->
     <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
-    <!-- TODO: translate -->
     <!-- A later trip's card for a route whose arrival the timetable doesn't give (it gets off where the Planner gave no time): when it leaves (%1$s). -->
-    <string name="trip_later_leaves" tools:ignore="MissingTranslation">Leaves %1$s</string>
+    <string name="trip_later_leaves">Leaves %1$s</string>
     <!-- A later trip's route opened: it shows live times for now, not the time picked (%1$s). -->
     <string name="trip_later_live_notice">Times for now, not %1$s</string>
     <!-- A later trip's route tapped that the trip for now doesn't offer, so it can't open live. -->
@@ -859,8 +774,7 @@
     <string name="station_search_outside_none">Nothing found outside London</string>
     <string name="station_search_outside_failed">Couldn\'t search outside London</string>
     <!-- Under "Outside London" when TfL doesn't place the postcode typed, or answers with a different one. -->
-    <!-- TODO: translate -->
-    <string name="station_search_postcode_none" tools:ignore="MissingTranslation">Postcode not found</string>
+    <string name="station_search_postcode_none">Postcode not found</string>
     <!-- Headings over the user's own stops, listed before anything is typed. -->
     <string name="station_search_starred">Starred</string>
     <string name="station_search_recent">Recent</string>
@@ -879,11 +793,9 @@
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
     <!-- Atop the station search's starting list and the location-free home when a store behind the rider's starred and recent stations couldn't be read, with a Retry. -->
-    <!-- TODO: translate -->
-    <string name="station_search_yours_error" tools:ignore="MissingTranslation">Couldn\'t load your stations</string>
+    <string name="station_search_yours_error">Couldn\'t load your stations</string>
     <!-- On a stop's page, where its lines' pills go, when the station list built into the app couldn't be read. -->
-    <!-- TODO: translate -->
-    <string name="line_stop_lines_error" tools:ignore="MissingTranslation">Couldn\'t load the lines here</string>
+    <string name="line_stop_lines_error">Couldn\'t load the lines here</string>
     <!-- Right-column tag on a To… place result, telling a place/street/postcode apart from a stop. -->
     <string name="station_search_kind_place">Place</string>
     <string name="station_search_kind_street">Street</string>
@@ -945,38 +857,25 @@
     <string name="settings_favorite_places_summary">Save places to go to, like Home and Work</string>
     <!-- Settings row that opens the favorite-journeys list, to see, add and remove them. -->
     <string name="settings_favorite_journeys_title">Favorite rides</string>
-    <!-- TODO: translate -->
-    <string name="settings_favorite_journeys_summary" tools:ignore="MissingTranslation">Save rides between two stations</string>
-    <!-- TODO: translate -->
+    <string name="settings_favorite_journeys_summary">Save rides between two stations</string>
     <!-- Settings switch for Drive sync (dev-docs/drive-sync.md): keeps the rider's setup alike on each of their
          phones through their own Google Drive. Its summary says what it does while off, else how the last sync went. -->
-    <string name="settings_drive_sync_title" tools:ignore="MissingTranslation">Sync with Google Drive</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_off" tools:ignore="MissingTranslation">Keep your favorite rides the same on each phone</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_waiting" tools:ignore="MissingTranslation">On</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_syncing" tools:ignore="MissingTranslation">Syncing…</string>
-    <!-- TODO: translate -->
+    <string name="settings_drive_sync_title">Sync with Google Drive</string>
+    <string name="settings_drive_sync_off">Keep your favorite rides the same on each phone</string>
+    <string name="settings_drive_sync_waiting">On</string>
+    <string name="settings_drive_sync_syncing">Syncing…</string>
     <!-- %1$s is the clock time it last synced, e.g. "14:05". -->
-    <string name="settings_drive_sync_synced" tools:ignore="MissingTranslation">Synced %1$s</string>
-    <!-- TODO: translate -->
+    <string name="settings_drive_sync_synced">Synced %1$s</string>
     <!-- Another of the rider's phones runs a newer StopDash, whose rides this one can't read yet. -->
-    <string name="settings_drive_sync_newer_phone" tools:ignore="MissingTranslation">Update StopDash to sync with your other phones</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_offline" tools:ignore="MissingTranslation">Couldn\'t reach Google Drive</string>
-    <!-- TODO: translate -->
+    <string name="settings_drive_sync_newer_phone">Update StopDash to sync with your other phones</string>
+    <string name="settings_drive_sync_offline">Couldn\'t reach Google Drive</string>
     <!-- The rider's grant is gone (taken away in their Google account): the switch reads off. -->
-    <string name="settings_drive_sync_sign_in" tools:ignore="MissingTranslation">Turn on to sign in again</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_sign_in_failed" tools:ignore="MissingTranslation">Couldn\'t sign in to Google</string>
-    <!-- TODO: translate -->
+    <string name="settings_drive_sync_sign_in">Turn on to sign in again</string>
+    <string name="settings_drive_sync_sign_in_failed">Couldn\'t sign in to Google</string>
     <!-- Granted, but the phone couldn't save that sync is on: it stays off. -->
-    <string name="settings_drive_sync_turn_on_failed" tools:ignore="MissingTranslation">Couldn\'t turn on sync</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_full" tools:ignore="MissingTranslation">Your Google Drive is full</string>
-    <!-- TODO: translate -->
-    <string name="settings_drive_sync_failed" tools:ignore="MissingTranslation">Couldn\'t sync. Trying again later</string>
+    <string name="settings_drive_sync_turn_on_failed">Couldn\'t turn on sync</string>
+    <string name="settings_drive_sync_full">Your Google Drive is full</string>
+    <string name="settings_drive_sync_failed">Couldn\'t sync. Trying again later</string>
     <string name="favorite_journeys_title">Favorite rides</string>
     <string name="favorite_journeys_loading">Loading…</string>
     <string name="favorite_journeys_empty">None yet. Tap Add and pick two stations or places.</string>
@@ -1086,19 +985,15 @@
     <string name="settings_disruptions_row_off">Off</string>
     <!-- Under "Disruptions summary" in Settings while the row shows: what it does. -->
     <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
-    <!-- TODO: translate -->
     <!-- Under the Disruptions summary's Show switch: whether it watches every line the home screen shows
          (on by default), or only the rider's own lines and the lines they choose below. -->
-    <string name="settings_summary_nearby_title" tools:ignore="MissingTranslation">Lines near you</string>
-    <!-- TODO: translate -->
-    <string name="settings_summary_nearby_summary" tools:ignore="MissingTranslation">Watch the lines your home screen shows</string>
-    <!-- TODO: translate -->
+    <string name="settings_summary_nearby_title">Lines near you</string>
+    <string name="settings_summary_nearby_summary">Watch the lines your home screen shows</string>
     <!-- Under the Disruptions summary's "Lines near you": whether it watches the favorite rides' lines wherever
          they run (on by default). Its title is settings_favorite_journeys_title, "Favorite rides". -->
-    <string name="settings_summary_rides_summary" tools:ignore="MissingTranslation">Watch your favorite rides\' lines</string>
-    <!-- TODO: translate -->
+    <string name="settings_summary_rides_summary">Watch your favorite rides\' lines</string>
     <!-- The button under that switch that opens the favorite rides. -->
-    <string name="settings_summary_rides_edit" tools:ignore="MissingTranslation">Edit favorite rides</string>
+    <string name="settings_summary_rides_edit">Edit favorite rides</string>
     <!-- The heading over the line chips: lines the summary watches by choice, wherever the rider is. -->
     <string name="settings_summary_lines_title">Also watch</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->
@@ -1221,18 +1116,14 @@
     <!-- How the near-me list groups its departures: a card per bus stop or platform (the default), or
          one card per station under a heading that folds it. "Stop/platform" names both, as the two
          grouping settings share it: a bus boards at a stop, a train at a platform. -->
-    <!-- TODO: translate -->
-    <string name="settings_nearby_grouping_title" tools:ignore="MissingTranslation">Group nearby departures</string>
-    <!-- TODO: translate -->
-    <string name="settings_nearby_grouping_platform" tools:ignore="MissingTranslation">By stop/platform</string>
-    <!-- TODO: translate -->
-    <string name="settings_nearby_grouping_station" tools:ignore="MissingTranslation">By station</string>
+    <string name="settings_nearby_grouping_title">Group nearby departures</string>
+    <string name="settings_nearby_grouping_platform">By stop/platform</string>
+    <string name="settings_nearby_grouping_station">By station</string>
     <!-- How the near-me list groups a favorite ride's departures: under the ride's own name (the default),
          or under each bus stop or platform the ride leaves from, starred and saying where it goes. -->
     <string name="settings_ride_grouping_title">Group favorite rides</string>
     <string name="settings_ride_grouping_ride">By ride</string>
-    <!-- TODO: translate (reworded from "Group by stop": its translations said only "by stop", so they went) -->
-    <string name="settings_ride_grouping_stop" tools:ignore="MissingTranslation">By stop/platform</string>
+    <string name="settings_ride_grouping_stop">By stop/platform</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
@@ -1271,22 +1162,17 @@
     <string name="settings_watch_install_summary">Open StopDash\'s Play Store page on your watch</string>
     <string name="settings_pinch_title">Pinch to resize text</string>
     <string name="settings_pinch_summary">Spread or pinch two fingers anywhere in the app to change the text size.</string>
-    <!-- TODO: translate -->
     <!-- How far a stop or a walk's end is, after its name or beside a walk: %1$d a whole number of meters,
          rounded to the nearest 10 ("120 m"). -->
-    <string name="distance_meters" tools:ignore="MissingTranslation">%1$d m</string>
-    <!-- TODO: translate -->
+    <string name="distance_meters">%1$d m</string>
     <!-- The same from about 500 m: %1$.1f kilometers to one decimal ("0.6 km"). -->
-    <string name="distance_kilometers" tools:ignore="MissingTranslation">%1$.1f km</string>
-    <!-- TODO: translate -->
+    <string name="distance_kilometers">%1$.1f km</string>
     <!-- The same in yards, the UK's units: %1$d, rounded to the nearest 10 ("130 yd"). -->
-    <string name="distance_yards" tools:ignore="MissingTranslation">%1$d yd</string>
-    <!-- TODO: translate -->
+    <string name="distance_yards">%1$d yd</string>
     <!-- The same in feet, the US's units: %1$d, rounded to the nearest 10 ("390 ft"). -->
-    <string name="distance_feet" tools:ignore="MissingTranslation">%1$d ft</string>
-    <!-- TODO: translate -->
+    <string name="distance_feet">%1$d ft</string>
     <!-- The same farther out in yards or feet: %1$.1f miles to one decimal ("0.4 mi"). -->
-    <string name="distance_miles" tools:ignore="MissingTranslation">%1$.1f mi</string>
+    <string name="distance_miles">%1$.1f mi</string>
     <!-- Settings: the units near-me distances are written in. "Auto" follows the phone's language. -->
     <string name="settings_distance_units_title">Distance units</string>
     <string name="settings_distance_units_auto">Auto</string>
@@ -1425,18 +1311,13 @@
     <string name="farther_closed">Closed</string>
     <!-- A station's heading on the list grouped by station, which folds everything under it: what a tap
          does, then whether it's folded, for a screen reader. -->
-    <!-- TODO: translate -->
-    <string name="station_fold" tools:ignore="MissingTranslation">Collapse</string>
-    <!-- TODO: translate -->
-    <string name="station_unfold" tools:ignore="MissingTranslation">Expand</string>
-    <!-- TODO: translate -->
-    <string name="station_folded" tools:ignore="MissingTranslation">Collapsed</string>
-    <!-- TODO: translate -->
-    <string name="station_unfolded" tools:ignore="MissingTranslation">Expanded</string>
+    <string name="station_fold">Collapse</string>
+    <string name="station_unfold">Expand</string>
+    <string name="station_folded">Collapsed</string>
+    <string name="station_unfolded">Expanded</string>
     <!-- A star after a row's destination on a station drawn as one card: its trains are a favorite ride's,
          for a screen reader. -->
-    <!-- TODO: translate -->
-    <string name="ride_row_star" tools:ignore="MissingTranslation">Favorite ride</string>
+    <string name="ride_row_star">Favorite ride</string>
 
     <!-- Bug report (SPEC Privacy). Overflow item, then the consent screen that spells out what
          leaves the device before anything is shared. The copy is deliberately plain that it
@@ -1578,24 +1459,16 @@
     <string name="compass_sw">southwest</string>
     <string name="compass_w">west</string>
     <string name="compass_nw">northwest</string>
-    <!-- TODO: translate -->
     <!-- The compass points in letters, as a walk's row and its Live Update chip write the way its end
          lies ("450 m NE", "NE 450m"); the chip holds about seven characters in all. -->
-    <string name="compass_n_letters" tools:ignore="MissingTranslation">N</string>
-    <!-- TODO: translate -->
-    <string name="compass_ne_letters" tools:ignore="MissingTranslation">NE</string>
-    <!-- TODO: translate -->
-    <string name="compass_e_letters" tools:ignore="MissingTranslation">E</string>
-    <!-- TODO: translate -->
-    <string name="compass_se_letters" tools:ignore="MissingTranslation">SE</string>
-    <!-- TODO: translate -->
-    <string name="compass_s_letters" tools:ignore="MissingTranslation">S</string>
-    <!-- TODO: translate -->
-    <string name="compass_sw_letters" tools:ignore="MissingTranslation">SW</string>
-    <!-- TODO: translate -->
-    <string name="compass_w_letters" tools:ignore="MissingTranslation">W</string>
-    <!-- TODO: translate -->
-    <string name="compass_nw_letters" tools:ignore="MissingTranslation">NW</string>
+    <string name="compass_n_letters">N</string>
+    <string name="compass_ne_letters">NE</string>
+    <string name="compass_e_letters">E</string>
+    <string name="compass_se_letters">SE</string>
+    <string name="compass_s_letters">S</string>
+    <string name="compass_sw_letters">SW</string>
+    <string name="compass_w_letters">W</string>
+    <string name="compass_nw_letters">NW</string>
     <string name="on_the_way_next_stop_timed">Next stop (~%1$d min)</string>
     <!-- A change between two rides with no walk of its own: to the line, at the stop. -->
     <string name="on_the_way_change">Change to %1$s at %2$s</string>
@@ -1642,10 +1515,9 @@
     <!-- A line the rest of a trip changes onto, %1$s its name, with no train of it predicted at %2$s, the stop the rider changes at, a few minutes off: "Jubilee: none soon at Bond Street". -->
     <string name="route_disruption_unpredicted">%1$s: none soon at %2$s</string>
     <string name="route_disruption_missed">Missed %1$s</string>
-    <!-- TODO: translate -->
     <!-- A step-free trip's ride that a lift out today leaves with no step-free way off: %1$s the station it was to get
          off at, "Not step-free at Bank: a lift is out". -->
-    <string name="route_disruption_not_step_free" tools:ignore="MissingTranslation">Not step-free at %1$s: a lift is out</string>
+    <string name="route_disruption_not_step_free">Not step-free at %1$s: a lift is out</string>
     <string name="route_disruption_none_direct">None direct to %1$s · Change at %2$s</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>

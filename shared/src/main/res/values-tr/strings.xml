@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Peron %1$s</string>
+    <string name="header_platform_short">Peron %1$s</string>
+    <string name="header_stop">Durak %1$s</string>
+    <string name="header_towards">%1$s yönüne</string>
+    <string name="header_bearing_n">Kuzey yönü</string>
+    <string name="header_bearing_e">Doğu yönü</string>
+    <string name="header_bearing_s">Güney yönü</string>
+    <string name="header_bearing_w">Batı yönü</string>
+    <string name="header_bearing_ne">Kuzeydoğu yönü</string>
+    <string name="header_bearing_nw">Kuzeybatı yönü</string>
+    <string name="header_bearing_se">Güneydoğu yönü</string>
+    <string name="header_bearing_sw">Güneybatı yönü</string>
+</resources>

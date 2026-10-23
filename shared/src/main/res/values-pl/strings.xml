@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Peron %1$s</string>
+    <string name="header_platform_short">Per. %1$s</string>
+    <string name="header_stop">Przystanek %1$s</string>
+    <string name="header_towards">kierunek %1$s</string>
+    <string name="header_bearing_n">Na północ</string>
+    <string name="header_bearing_e">Na wschód</string>
+    <string name="header_bearing_s">Na południe</string>
+    <string name="header_bearing_w">Na zachód</string>
+    <string name="header_bearing_ne">Na północny wschód</string>
+    <string name="header_bearing_nw">Na północny zachód</string>
+    <string name="header_bearing_se">Na południowy wschód</string>
+    <string name="header_bearing_sw">Na południowy zachód</string>
+</resources>

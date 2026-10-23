@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_platform">Quai %1$s</string>
+    <string name="header_platform_short">Quai %1$s</string>
+    <string name="header_stop">Arrêt %1$s</string>
+    <string name="header_towards">direction %1$s</string>
+    <string name="header_bearing_n">Vers le nord</string>
+    <string name="header_bearing_e">Vers l’est</string>
+    <string name="header_bearing_s">Vers le sud</string>
+    <string name="header_bearing_w">Vers l’ouest</string>
+    <string name="header_bearing_ne">Vers le nord-est</string>
+    <string name="header_bearing_nw">Vers le nord-ouest</string>
+    <string name="header_bearing_se">Vers le sud-est</string>
+    <string name="header_bearing_sw">Vers le sud-ouest</string>
+</resources>
