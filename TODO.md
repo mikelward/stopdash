@@ -1612,8 +1612,25 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
 
 - [x] **Group nearby departures: By stop/platform or By station** (maintainer, 2026-10-23; SPEC *Grouped by
       station*). By station heads each station once over one card, its rows by platform behind heavier
-      lines, its starred rows and favorite rides' trains first, and folds it from its heading.
+      lines, its starred rows first, each favorite ride a group of its own just before it, and folds it from
+      its heading.
   - [ ] **The widget doesn't follow it yet**: it keeps its own place headings by platform.
+  - [ ] **Group favorite rides: a By station option** (maintainer, 2026-10-23; mocks in chat). Beside By ride
+        and By stop, By station keeps a ride's trains in their own station's or platform's group, starred,
+        with no ride heading, the group holding them sorted first: By station, they lead the station's card;
+        By stop/platform, their platform's group goes first.
+  - [ ] **By station, Group favorite rides By stop splits a ride by stop** (maintainer, 2026-10-23): one group per
+        stop the ride boards from ("Stop E ➔ X", "Stop F ➔ X"), each just before its station's, as By stop
+        heads them By stop/platform; today By station ignores the setting, so By stop draws as By ride does.
+  - [ ] **By station, opening a faraway place holds still** (maintainer, 2026-10-23): a tap on a faraway place's
+        heading or card keeps the list where it is, the place's rows and cards growing below what was tapped,
+        every frame from the tap until its departures are in, as By stop/platform does.
+  - [ ] **By station, a faraway station's heading opens its station** (maintainer, 2026-10-23): once opened, a tap
+        on its name opens the station's page, as a nearby station's heading does; its chevron folds it.
+  - [ ] **A test that every tap reshaping the list holds still** (maintainer, 2026-10-23: "a systematic way to
+        avoid this happening again"): `TapHoldsStillTest` taps each kind (open a faraway place, fold a station, a
+        platform, a ride) in each grouping, stepping the list's worker one answer at a time, and checks the tapped
+        heading never moves; AGENTS.md asks for a case with each new grouping or tap.
   - [ ] **A dismissed pole closure says nothing**: By stop/platform keeps a "Closed" chip on the pole's heading
         while its buses are listed; By station has no pole heading, so once the notice is dismissed nothing
         says that pole is closed.
