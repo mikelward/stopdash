@@ -172,7 +172,9 @@ class TripViewModelTest {
         val journeyVias = mutableListOf<Pair<String, String?>>()
         var byJourneyVia: Map<String, List<TripRoute>> = emptyMap()
         var notFoundVia: Set<String> = emptySet()
-        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?): List<TripRoute> {
+        // By destination, the routes the first of its requests to answer offers, told at once, before its [delays].
+        var landing: Map<String, List<TripRoute>> = emptyMap()
+        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?, landed: (suspend (List<TripRoute>) -> Unit)?): List<TripRoute> {
             calls++
             origins += from
             speeds += speed
@@ -185,6 +187,7 @@ class TripViewModelTest {
                 is TripDestination.Place -> to.name
             }
             synchronized(journeyVias) { journeyVias += key to via }
+            landing[key]?.let { landed?.invoke(it) }
             delays[key]?.let { delay(it) }
             failWith?.let { throw it }
             if (stepFree == failStepFree) throw TflException.Offline(null)
@@ -3899,6 +3902,63 @@ class TripViewModelTest {
         assertFalse(trip.state.value.planning)
     }
 
+    // A bug report: the first of a plan's requests answered in under 3 s, and nothing showed until its slowest, sent
+    // last with the request budget spent, answered 18 s later.
+    @Test
+    fun `a first plan shows a stop's routes as its first request answers, not once its slowest has`() = runTest(dispatcher) {
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("C" to listOf(route, toD))
+            landing = mapOf("C" to listOf(route))
+            delays = mapOf("C" to 10_000)
+        }
+        val trip = model(planner, FakeClient(mutableMapOf()), toIds = listOf("C"))
+        trip.refresh()
+        advanceTimeBy(500)
+        runCurrent()
+        assertTrue(trip.state.value.planning)
+        assertEquals(listOf(route), trip.state.value.routes)
+        advanceUntilIdle()
+        assertFalse(trip.state.value.planning)
+        assertEquals(listOf(route, toD), trip.state.value.routes)
+    }
+
+    // Codex, #1164: a first answer with no routes is no answer to show, so the list can't say there's no trip while
+    // the rest are still out.
+    @Test
+    fun `a first plan keeps planning while a stop's first answer has no routes`() = runTest(dispatcher) {
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("C" to listOf(route))
+            landing = mapOf("C" to emptyList())
+            delays = mapOf("C" to 10_000)
+        }
+        val trip = model(planner, FakeClient(mutableMapOf()), toIds = listOf("C"))
+        trip.refresh()
+        advanceTimeBy(500)
+        runCurrent()
+        assertTrue(trip.state.value.planning)
+        assertNull(trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(listOf(route), trip.state.value.routes)
+    }
+
+    @Test
+    fun `a re-plan keeps the last plan while a stop's slowest request is still out`() = runTest(dispatcher) {
+        val planner = FakePlanner(emptyList()).apply { byDestination = mapOf("C" to listOf(toD)) }
+        val trip = model(planner, FakeClient(mutableMapOf()), toIds = listOf("C"))
+        trip.refresh()
+        advanceUntilIdle()
+        planner.byDestination = mapOf("C" to listOf(route, toD))
+        planner.landing = mapOf("C" to listOf(route))
+        planner.delays = mapOf("C" to 1_000)
+        trip.retry()
+        advanceTimeBy(500)
+        runCurrent()
+        assertTrue(trip.state.value.planning)
+        assertEquals(listOf(toD), trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(listOf(route, toD), trip.state.value.routes)
+    }
+
     @Test
     fun `a retry's first routes clear the failed plan's error`() = runTest(dispatcher) {
         val planner = FakePlanner(emptyList()).apply { failFor = setOf("C", "D") }
@@ -4330,7 +4390,7 @@ class TripViewModelTest {
         val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
         var calls = 0
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?, landed: (suspend (List<TripRoute>) -> Unit)?): List<TripRoute> =
                 if (calls++ == 0) listOf(route) else listOf(fromD)
         }
         val cache = ArrivalsCache()
@@ -4440,7 +4500,7 @@ class TripViewModelTest {
         // The re-plan from that fix answers when the test says, so its indicator can be seen.
         val replanned = CompletableDeferred<Unit>()
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?, landed: (suspend (List<TripRoute>) -> Unit)?): List<TripRoute> =
                 if (calls++ < 2) listOf(route) else listOf(fromD).also { replanned.await() }
         }
         val cache = ArrivalsCache()
@@ -7461,7 +7521,7 @@ class TripViewModelTest {
         try {
             val threads = ThreadRecorder()
             val planner = object : JourneyPlanner {
-                override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?) =
+                override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?, landed: (suspend (List<TripRoute>) -> Unit)?) =
                     listOf(longWalk)
                 override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, sent: () -> Unit): List<TripRoute> {
                     threads.note()
@@ -7632,6 +7692,44 @@ class TripViewModelTest {
             trip.refresh()
             trip.state.first { state -> !state.planning && state.routes.orEmpty().any { it.towardStop } && !state.refreshing }
             assertFalse(threads.threads().toString(), "Test worker" in threads.threads())
+        } finally {
+            store.clear()
+            worker.close(this)
+        }
+    }
+
+    // Codex, #1164: a first plan's answers so far are put together for the page on the worker, never the caller's thread.
+    @Test
+    fun `a first plan's answers so far are put together off the caller's thread`() = runTest(dispatcher) {
+        val worker = TestWorker("worker")
+        val store = ViewModelStore()
+        try {
+            val threads = ThreadRecorder()
+            // The first answer's routes, noted wherever one is read (whether there are any is a constant-time check).
+            val first = object : AbstractList<TripRoute>() {
+                override val size get() = 1
+                override fun get(index: Int): TripRoute = route.also { threads.note() }
+            }
+            val planner = FakePlanner(emptyList()).apply {
+                byDestination = mapOf("C" to listOf(route, toD))
+                landing = mapOf("C" to first)
+            }
+            val trip = ViewModelProvider.create(
+                store,
+                viewModelFactory {
+                    initializer {
+                        TripViewModel(
+                            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+                            clock = { now }, plans = TripPlans(), io = worker, compute = worker,
+                        )
+                    }
+                },
+            )[TripViewModel::class]
+            trip.refresh()
+            trip.state.first { !it.planning && it.routes != null && !it.refreshing }
+            // Read, so shown: on the worker alone.
+            assertTrue(threads.threads().isNotEmpty())
+            assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
             store.clear()
             worker.close(this)

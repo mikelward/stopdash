@@ -237,6 +237,8 @@ interface JourneyPlanner {
      * ([StepFree], theirs too), and none rides a kind of transport [modes] turns off ([TripModes]).
      * Planned for now, or for [at] when a later trip names one ([TripTime]). Every route passes the stop
      * [via] where the rider picked one to go through ([TripVia]): changing there, or riding through it.
+     * A planner that asks more than once tells [landed], where given, the routes in so far as each answer
+     * lands, each time all of the last and more, short of the whole that it returns.
      */
     suspend fun journeys(
         from: TripOrigin,
@@ -247,6 +249,7 @@ interface JourneyPlanner {
         modes: TripModes = TripModes.DEFAULT,
         at: TripTime? = null,
         via: String? = null,
+        landed: (suspend (List<TripRoute>) -> Unit)? = null,
     ): List<TripRoute>
 
     /**

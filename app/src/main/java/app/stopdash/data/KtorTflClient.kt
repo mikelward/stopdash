@@ -89,6 +89,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -193,6 +195,7 @@ class KtorTflClient(
         modes: TripModes,
         at: TripTime?,
         via: String?,
+        landed: (suspend (List<TripRoute>) -> Unit)?,
     ): List<TripRoute> {
         val fromParam = from.plannerParam()
         val toParam = to.plannerParam()
@@ -205,10 +208,25 @@ class KtorTflClient(
         // the trip; only all failing fails it. A stop the rider picked to go via goes on every one, so
         // every route passes it (SPEC *Going via a stop*).
         val asks = PlanAsk.ALL.filter { !it.busOnly || modes.busOnlyModes != null }
+        // The answers in so far, each in its ask's place, and how many have answered or failed: each but the last
+        // to land tells [landed], where given, the routes so far, merged in the asks' order, so a slow one (sent
+        // last, its wait for the request budget the longest) holds none of the others back. Under a lock, so each
+        // told is all of the last and more.
+        val sofar = arrayOfNulls<List<TripRoute>>(asks.size)
+        var settled = 0
+        val telling = Mutex()
         val answers = coroutineScope {
-            asks.map { ask ->
+            asks.mapIndexed { index, ask ->
                 async {
                     attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = ask.preference, via = via, busOnly = ask.busOnly, at = at) }
+                        .also { answer ->
+                            if (landed != null) telling.withLock {
+                                settled++
+                                val routes = answer.getOrNull() ?: return@withLock
+                                sofar[index] = routes
+                                if (settled < asks.size) landed(finished(sofar.filterNotNull(), from, to))
+                            }
+                        }
                 }
             }.awaitAll()
         }

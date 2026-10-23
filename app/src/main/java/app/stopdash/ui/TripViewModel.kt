@@ -60,6 +60,8 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +70,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -1378,6 +1381,10 @@ class TripViewModel(
         // For the usage stats: a plan after one already counted, or over a plan kept from before.
         val planAgain = planCounted || !progressive
         val gathered = mutableListOf<TripRoute>()
+        // Each request's routes in so far while its slowest answer is still out ([JourneyPlanner.journeys]'s
+        // landed), by the request: shown on a first plan after [gathered], until its whole answer joins that.
+        // Persistent, so the page's worker takes it as it stands without a copy on the main thread (Codex, #1164).
+        var landing: PersistentMap<Any, List<TripRoute>> = persistentMapOf()
         // Each destination's own answer, and the stop the rider picked it was asked via (null for none), for the
         // one request around delays the plan makes ([planAroundDelays]), which asks via the same stop.
         val answers = mutableListOf<Answer>()
@@ -1411,16 +1418,18 @@ class TripViewModel(
             // Nothing yet from any stop keeps "Planning…" (or the last plan) rather than
             // say there's no route while others are still answering.
             // A plan for a walk the rider has since changed from isn't shown.
-            if (!progressive || gathered.isEmpty() || optionsChangedSince()) return
+            if (!progressive || (gathered.isEmpty() && landing.isEmpty()) || optionsChangedSince()) return
             // Every route stays in the plan; a detour another stop's answer beats is
             // left out where it's shown ([State.shownRoutes]).
-            val shown = gathered.toList()
+            val whole = gathered.toList()
+            val sofar = landing
             // A first answer after a failed plan clears its error: the routes it brings stand,
             // timed at once from any boarding stop's arrivals another screen just fetched. A Direct route
             // opened meanwhile ([openDirect]) is carried, as a whole plan carries it: worked out on the worker
             // ([commitState]), since it walks every route.
             committing.withLock {
                 commitState({ !optionsChangedSince() }) { s ->
+                    val shown = if (sofar.isEmpty()) whole else whole + sofar.values.flatten()
                     val carried = if (s.directKeys.isEmpty()) emptyList() else s.routes.orEmpty().filter { routeKey(it) in s.directKeys }
                     val all = if (carried.isEmpty()) shown else mergedRoutes(shown.filterNot { routeKey(it) in s.directKeys }, carried)
                     withLive(s.copy(routes = all, planError = null, statusUnknown = unknownLines(all, s), closuresUnknown = unknownClosures(all, s)), cached(all, s.live))
@@ -1441,8 +1450,25 @@ class TripViewModel(
                 val targets = modelTargets.await()?.takeIf { it.isNotEmpty() }?.map { TripDestination.Stop(it) } ?: destinations
                 for (destination in targets) for (through in throughs) {
                     launch {
+                        // This request's routes in so far, on a first plan: each shown as it lands, so the quickest of
+                        // its answers (often sent first, the request budget short) holds none back for the slowest.
+                        // Brought back here from the Planner's side, the latest only, since each is all of the last and more.
+                        val sofar = if (progressive) Channel<List<TripRoute>>(Channel.CONFLATED) else null
+                        val mine = Any()
+                        val showing = sofar?.let { channel ->
+                            launch {
+                                for (routes in channel) {
+                                    // None yet keeps "Planning…", as an answer with none does ([showGathered]).
+                                    if (routes.isEmpty()) continue
+                                    landing = landing.put(mine, routes)
+                                    showGathered()
+                                }
+                            }
+                        }
                         val routes = try {
-                            withContext(io) { planner.journeys(from, destination, speed, limit, access, modes, via = through) }
+                            withContext(io) {
+                                planner.journeys(from, destination, speed, limit, access, modes, via = through, landed = sofar?.let { channel -> { channel.send(it) } })
+                            }
                         } catch (e: TflException.NotFound) {
                             // No route through the stop asked via (the Planner's 404): an answer with no routes, so a
                             // trip with none through any of its stations says it found none, not that it failed.
@@ -1459,6 +1485,11 @@ class TripViewModel(
                             warn("trip plan failed: ${e::class.simpleName}")
                             failure = failure ?: e
                             return@launch
+                        } finally {
+                            // Every answer so far shown, then let go: the whole answer, or none, stands in their place.
+                            sofar?.close()
+                            showing?.join()
+                            landing = landing.remove(mine)
                         }
                         answered++
                         gathered += routes
