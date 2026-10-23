@@ -512,7 +512,6 @@
     <string name="settings_train_spacing_summary">Zeiten anpassen, wenn Züge unmöglich dicht folgen</string>
     <string name="settings_ride_grouping_title">Lieblingsstrecken gruppieren</string>
     <string name="settings_ride_grouping_ride">Nach Strecke</string>
-    <string name="settings_ride_grouping_stop">Nach Haltestelle</string>
     <string name="settings_widget_follows_title">Automatischer Standort für Smartwatch und Widget</string>
     <string name="settings_widget_follows_summary">Zeigt die Haltestellen dort, wo du bist – mit deinem Standort im Hintergrund.</string>
     <string name="settings_live_widget_refresh_failed">Live-Aktualisierung konnte nicht eingerichtet werden</string>

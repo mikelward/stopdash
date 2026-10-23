@@ -526,7 +526,6 @@
     <string name="settings_train_spacing_summary">Popraw godziny, gdy pociągi są nierealnie blisko</string>
     <string name="settings_ride_grouping_title">Grupuj ulubione przejazdy</string>
     <string name="settings_ride_grouping_ride">Według przejazdu</string>
-    <string name="settings_ride_grouping_stop">Według przystanku</string>
     <string name="settings_widget_follows_title">Automatyczna lokalizacja na zegarku i widżecie</string>
     <string name="settings_widget_follows_summary">Pokazuje przystanki tam, gdzie jesteś, korzystając z lokalizacji w tle.</string>
     <string name="settings_live_widget_refresh_failed">Nie udało się zmienić odświeżania na żywo</string>

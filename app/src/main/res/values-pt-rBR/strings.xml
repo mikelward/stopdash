@@ -146,7 +146,6 @@
     <string name="settings_wifi_places_write_failed">Não foi possível salvar; será revertido quando o StopDash reiniciar</string>
     <string name="settings_train_spacing_title">Corrigir o espaçamento dos trens</string>
     <string name="settings_train_spacing_summary">Ajustar os horários quando os trens estão próximos demais</string>
-    <string name="settings_ride_grouping_stop">Por parada</string>
     <string name="settings_widget_follows_summary">Mostra as paradas onde você está, usando sua localização em segundo plano.</string>
     <string name="action_dismiss">Dispensar</string>
     <string name="settings_text_size_reset">Redefinir</string>

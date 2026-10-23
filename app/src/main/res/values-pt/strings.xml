@@ -515,7 +515,6 @@
     <string name="settings_train_spacing_summary">Ajustar os horários quando os comboios estão demasiado próximos</string>
     <string name="settings_ride_grouping_title">Agrupar trajetos favoritos</string>
     <string name="settings_ride_grouping_ride">Por trajeto</string>
-    <string name="settings_ride_grouping_stop">Por paragem</string>
     <string name="settings_widget_follows_title">Localização automática do relógio e do widget</string>
     <string name="settings_widget_follows_summary">Mostra as paragens onde está, usando a sua localização em segundo plano.</string>
     <string name="settings_live_widget_refresh_failed">Não foi possível alterar a atualização automática</string>

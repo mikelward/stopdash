@@ -512,7 +512,6 @@
     <string name="settings_train_spacing_summary">ট্রেন অসম্ভব কাছাকাছি দেখালে সময় ঠিক করুন</string>
     <string name="settings_ride_grouping_title">প্রিয় যাত্রা গোষ্ঠীভুক্ত করুন</string>
     <string name="settings_ride_grouping_ride">যাত্রা অনুযায়ী</string>
-    <string name="settings_ride_grouping_stop">স্টপ অনুযায়ী</string>
     <string name="settings_widget_follows_title">ঘড়ি ও উইজেটের অটোমেটিক লোকেশন</string>
     <string name="settings_widget_follows_summary">ব্যাকগ্রাউন্ডে আপনার লোকেশন ব্যবহার করে আপনি যেখানে আছেন সেখানকার স্টপ দেখায়।</string>
     <string name="settings_live_widget_refresh_failed">লাইভ রিফ্রেশ আপডেট করা যায়নি</string>
