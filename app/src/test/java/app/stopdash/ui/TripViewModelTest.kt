@@ -204,10 +204,13 @@ class TripViewModelTest {
         var withoutRoutes: List<TripRoute> = emptyList()
         // The stop each request around delays was asked via, in order (null for none).
         val withoutVias = mutableListOf<String?>()
+        // Requests around delays fail while set.
+        var withoutFails = false
         override suspend fun quickestWithout(from: TripOrigin, to: TripDestination, leaveOut: Set<String>, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, via: String?): List<TripRoute> {
             withoutAsked += leaveOut
             withoutTo += to
             withoutVias += via
+            if (withoutFails) throw TflException.Offline(null)
             return withoutRoutes
         }
         // Each fewest-changes-via request: where it planned to and the stop it passed, in order.
@@ -4256,6 +4259,95 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertEquals(2, planner.calls)
         assertEquals(1, planner.withoutAsked.size)
+    }
+
+    @Test
+    fun `a trip reopened on a plan kept from around the delays isn't planned again for them`() = runTest(dispatcher) {
+        // Maintainer's report (2026-10-23): reopened within the reuse, the trip took up its kept plan, which had asked
+        // around the delays, but not that it had, so its first refresh planned the whole trip again around them.
+        val plans = TripPlans()
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        model(planner, client, plans = plans).apply { refresh() }
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        now = now.plusSeconds(120)
+        val reopened = model(planner, client, plans = plans)
+        assertEquals(listOf(route), reopened.state.value.routes)
+        reopened.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertEquals(1, planner.withoutAsked.size)
+    }
+
+    @Test
+    fun `a plan kept for options changed back to isn't planned again around delays it already went around`() = runTest(dispatcher) {
+        // Codex on #1161: the kept plan's sets are taken up as the options change, not only as the trip opens.
+        val plans = TripPlans()
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        model(planner, client, plans = plans).apply { refresh() }
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        // At another pace, before the delays: its own plan, asked around nothing.
+        client.disruptedLines = emptySet()
+        val trip = TripViewModel(
+            planner, client, "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = plans, io = dispatcher, walkingSpeed = WalkingSpeed.FAST,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        // Back to the first pace with the delays on: its kept plan, already around them, stands.
+        client.disruptedLines = setOf("red")
+        now = now.plusSeconds(120)
+        trip.walkingSpeed = WalkingSpeed.AVERAGE
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(1, planner.withoutAsked.size)
+    }
+
+    @Test
+    fun `a kept plan's delays gone around stop counting once a plan made since is shown`() = runTest(dispatcher) {
+        // Codex on #1161: reopened past the reuse, the trip plans afresh, clear of delays; the kept plan's sets would
+        // otherwise answer for the new routes once the delays begin.
+        val plans = TripPlans()
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        model(planner, client, plans = plans).apply { refresh() }
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        client.disruptedLines = emptySet()
+        now = now.plus(TripViewModel.PLAN_REUSE)
+        val reopened = model(planner, client, plans = plans)
+        reopened.refresh()
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        // The delays begin: the routes shown never asked around them, so they're planned around once.
+        client.disruptedLines = setOf("red")
+        now = now.plusSeconds(120)
+        reopened.refresh()
+        advanceUntilIdle()
+        assertEquals(3, planner.calls)
+        assertEquals(listOf(setOf("tube"), setOf("tube")), planner.withoutAsked)
+    }
+
+    @Test
+    fun `a trip reopened on a plan whose request around the delays failed asks around them again`() = runTest(dispatcher) {
+        val plans = TripPlans()
+        val planner = FakePlanner(listOf(route)).apply { withoutFails = true }
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        model(planner, client, plans = plans).apply { refresh() }
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        planner.withoutFails = false
+        now = now.plusSeconds(120)
+        model(planner, client, plans = plans).refresh()
+        advanceUntilIdle()
+        // The plan kept went without its routes around the delays: the reopened trip asks for them, once.
+        assertEquals(2, planner.calls)
+        assertEquals(listOf(setOf("tube"), setOf("tube")), planner.withoutAsked)
     }
 
     @Test
