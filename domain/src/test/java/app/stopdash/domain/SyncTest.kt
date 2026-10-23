@@ -88,11 +88,13 @@ class SyncTest {
     }
 
     @Test
-    fun `an entry this build can't read is kept, though its store can't hold it`() {
+    fun `an entry this build can't read is kept, whatever copy its store holds`() {
         // A newer build's ride, in a shape this one can't read: never written to this phone's store.
         val newer = SyncLedger(mapOf(RIDES to mapOf("x" to SyncEntry(SyncStamp(1_000, 0, "b"), "v2:X"))), SyncStamp(1_000, 0, "b"))
         val understood = { value: String -> !value.startsWith("v2:") }
         assertSame(newer, Sync.record(newer, RIDES, rides(), 2_000, "a", understood = understood))
+        // Nor is the readable copy the store still holds, from before that build changed it, a change here.
+        assertSame(newer, Sync.record(newer, RIDES, rides("x" to "X1"), 2_000, "a", understood = understood))
         // One it can read, missing from the store, is a removal.
         val readable = SyncLedger(mapOf(RIDES to mapOf("x" to SyncEntry(SyncStamp(1_000, 0, "b"), "X"))), SyncStamp(1_000, 0, "b"))
         assertEquals(rides(), Sync.record(readable, RIDES, rides(), 2_000, "a", understood = understood).heldRides())

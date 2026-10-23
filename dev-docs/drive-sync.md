@@ -120,11 +120,19 @@ StopDash's data from Drive clears it. A phone that finds its own file missing up
 - **Edits within an entry** (a ride's hidden lines, a place renamed or moved) replace the whole
   entry; per-field merging can wait until it matters. Rides have no order to sync (nearest
   first); a list the rider orders (place chips, watched stops) syncs its order as one entry.
+- **A sync stopped partway:** a sync keeps its merge on the phone, with a mark, before it writes the
+  store, and writes the store with the same mark in one update; the rider's own edits keep the
+  store's mark. One stopped before keeping its result (the process gone, the phone's storage full)
+  is settled by the next by that mark: written, the merge is what the store was last synced to;
+  not, the ledger as it was. So a change taken in is never mistaken for one here, nor an edit here
+  (a removal included) for one taken in.
 - **Mixed app versions:** a phone that can't read another phone's newer file skips it and says
   "Update StopDash to sync with your other phone"; it never removes anything on that file's
   account. With one file per phone, the newer phone still reads the older one's. Within a file it
-  can read, an entry in a shape it can't (a newer build's ride) is kept as it is: never written to
-  this phone's store, and never taken for one removed here (`Sync.record`'s `understood`).
+  can read, an entry in a shape it can't (a newer build's ride) is kept as it is, that build's to
+  change: never written to this phone's store, which keeps the readable copy it had, if any, and
+  neither that copy nor its absence is taken for a change here (`Sync.record`'s `understood`).
+  Until this phone updates, its own edits to such a ride stay on it.
 
 ### When it syncs
 
