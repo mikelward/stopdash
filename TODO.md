@@ -98,6 +98,9 @@ exercises the whole spine the widget later renders from.
         what comes back (`sharedClosures` among it; the verdict checks that move `failures` are on `io`
         already), and the callbacks the page's effects make into it as routes and estimates
         change (`boardAt`, `noteWithheld`, `checkShownStops`).
+        And `TripPlans`' lookups as the model is made and as an option changes (`get`, `kept`): each
+        builds its key by walking the trip's destinations, and the kept plan's state is built by
+        walking its routes (`linesOf`, `unknownClosures`), all on the main thread (Codex, #1161).
 - [x] The near-me list's refresh off the main thread, before its requests: `refresh`'s own setup
       (`RefreshSetup`: the prior stops by id, `recentlyFetched`, both id sets, the stops asked),
       `fetchBatch`'s per-stop plan (`BatchPlan`: the National Rail board each stop asks for, which may be
