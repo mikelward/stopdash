@@ -4,6 +4,7 @@ import android.content.res.Resources
 import androidx.annotation.WorkerThread
 import app.stopdash.R
 import app.stopdash.domain.AroundDelays
+import app.stopdash.domain.ClosedNotice
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DismissedAlert
@@ -20,6 +21,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.stopPlaceKey
 import java.time.Duration
 import java.time.Instant
@@ -194,10 +196,7 @@ internal fun tripFrame(
     val state = state.copy(legStatuses = legStatuses(state.statuses, rides, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
     val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, shown?.of ?: poled, stepFree, sequences, excluded, rideLines::endsOf), previousOrder, notStepFree, resources) }
-    // A pole's letter, sign and bearing, from its stop area's poles where they're cached (no IO).
-    val poleOf: (String, String) -> StopLocation? = { id, area ->
-        area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
-    }
+    val poleOf = cachedPoleOf(routeStops)
     val openView = open?.let {
         openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology, poleOf, notStepFree[routeKey(it.route)].orEmpty(), resources)
     }
@@ -305,8 +304,7 @@ private fun openView(
     // What those are said with.
     resources: Resources,
 ): TripOpenView {
-    val rows = routeClosureRows(estimate.route, state, now, sequences, rideLines, hubOf, poleOf)
-    val closures = foldedClosures(rows, dismissed)
+    val cards = routeNoticeCards(estimate.route, state, now, sequences, rideLines, dismissed, hubOf, poleOf, headerWords(resources))
     return TripOpenView(
         // Said as the list's cards say it, the stop by name.
         stepFree = lost.associate {
@@ -314,18 +312,100 @@ private fun openView(
         },
         // With a route open, only its own legs' warnings frame it.
         framing = framing(listOf(estimate), state, now, sequences, rideLines),
-        closures = closures,
-        closureCards = tripClosureCards(closures, rows, headerWords(resources)),
+        closures = cards.mapValues { it.value.row },
+        closureCards = cards,
         statuses = shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed),
         rides = openRides(estimate.route, state, now, sequences, rideLines, dismissed, topology),
     )
 }
 
 /**
- * One closure card on the open route: the [row] it's drawn and dismissed by, and its title
- * ([closureTitleOf]).
+ * One stop notice of a trip's, as the open route draws it in place and a trip's lines page lists it
+ * ([routeNoticeCards]): the [row] it's drawn by, and its [title] ([closureTitleOf]); worked out with it,
+ * on the worker, its [text] with the place's name taken off the front and whether it says the stop is
+ * [closed] (its tone, as on the list).
  */
-internal class TripClosureCard(val row: DepartureRow, val title: String)
+internal class TripClosureCard(
+    val row: DepartureRow,
+    val title: String,
+    // Every copy it stands for, [row] first, each dismissed by its own identity: a lines page's card can stand
+    // for the same words another route reaches at another stop of the place in other windows, so its × dismisses
+    // them all, as the list's card does for a notice on two poles (Codex, #1160).
+    val rows: List<DepartureRow> = listOf(row),
+    // Every pole carrying it that its [title] covers, before folding: across routes, once a lines page's card
+    // stands for more than one ([with]), the page heads it by them all ([tripRow], Codex, #1160).
+    val poles: List<DepartureRow> = listOf(row),
+) {
+    // Which notice it is ([keyOf]): a lines page lists each once by it and keys its card by it.
+    val key = keyOf(row)
+    val text = cleanDisruptionBody(row.stopDisruption.orEmpty(), stopName = row.stopName, hubName = row.hubName, aliases = row.placeAliases)
+    val closed = ClosedNotice.saysClosed(row.stopDisruption.orEmpty())
+
+    // What a dismiss of it saves ([DismissedAlert.ofStopClosure]), copy by copy: its place and windows as well
+    // as its words.
+    private val dismissals = rows.mapTo(LinkedHashSet()) { DismissedAlert.ofStopClosure(it) }
+
+    /**
+     * This card also standing for [other]'s copies, kept once each by what dismisses them, and covering its
+     * poles: two poles of one place share a dismissal but not a title.
+     */
+    fun with(other: TripClosureCard): TripClosureCard {
+        val more = other.rows.filter { DismissedAlert.ofStopClosure(it) !in dismissals }
+        val morePoles = other.poles.filter { pole -> poles.none { it.stopId == pole.stopId } }
+        return if (more.isEmpty() && morePoles.isEmpty()) this else TripClosureCard(row, title, rows + more, poles + morePoles)
+    }
+
+    /** This card headed by [title] instead, as when the poles it covers across routes are known ([tripRow]). */
+    fun titled(title: String): TripClosureCard = if (title == this.title) this else TripClosureCard(row, title, rows, poles)
+
+    /**
+     * Whether [other] draws the same and is dismissed the same: its row's times and stamps aside, which a
+     * notice never shows. A notice TfL moved the window of, or whose place was resolved since, is a new one,
+     * so a dismiss from a kept row never saves what the trip no longer hides (Codex, #1160).
+     */
+    fun sameAs(other: TripClosureCard): Boolean =
+        key == other.key && title == other.title && text == other.text && closed == other.closed &&
+            row.stopId == other.row.stopId && dismissals == other.dismissals
+
+    companion object {
+        /**
+         * A notice's identity: its place, as a dismissal knows it ([stopPlaceKey]), and its words. Two stops
+         * of one place carrying the same notice are one notice; the same stop placed two ways (an interchange
+         * one route's line has loaded, a stop area another's falls back to) is two, each keyed apart (Codex,
+         * #1160).
+         */
+        fun keyOf(row: DepartureRow): String = "${stopPlaceKey(row)}|${row.stopDisruption.orEmpty()}"
+    }
+}
+
+/**
+ * [route]'s stop notices, by the stop each is drawn at: one card per notice at a place, where the route
+ * first reaches it ([foldedClosures]), less what was [dismissed], each titled by every pole carrying it
+ * ([tripClosureCards]), the poles' cues from [poleOf] ([cachedPoleOf]). The open route draws these, and a
+ * trip's lines page lists them ([TripRow.notices]): one source, so the two never title, key or dismiss a
+ * notice differently (Codex, #1160).
+ */
+@WorkerThread
+internal fun routeNoticeCards(
+    route: TripRoute,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    rideLines: TripRideLines,
+    dismissed: Set<DismissedAlert>,
+    hubOf: (String) -> String?,
+    poleOf: (stopId: String, areaId: String) -> StopLocation?,
+    // What a pole is named by ("Stop K"), in the app's language.
+    words: HeaderWords,
+): Map<String, TripClosureCard> {
+    val rows = routeClosureRows(route, state, now, sequences, rideLines, hubOf, poleOf)
+    return tripClosureCards(foldedClosures(rows, dismissed), rows, words)
+}
+
+/** A pole's letter, sign and bearing, from its stop area's poles where [routeStops] has them cached (no I/O). */
+internal fun cachedPoleOf(routeStops: RouteStopsRepository?): (stopId: String, areaId: String) -> StopLocation? = { id, area ->
+    area.ifBlank { null }?.let { routeStops?.cachedPoles(it) }?.firstOrNull { it.id == id }
+}
 
 /**
  * The open route's closure cards, by the stop each is drawn at ([closures], already one per notice
@@ -341,7 +421,8 @@ internal fun tripClosureCards(
 ): Map<String, TripClosureCard> {
     val byNotice = rows.groupBy { stopPlaceKey(it) to it.stopDisruption }
     return closures.mapValues { (_, row) ->
-        TripClosureCard(row, closureTitleOf(byNotice[stopPlaceKey(row) to row.stopDisruption] ?: listOf(row), words))
+        val poles = byNotice[stopPlaceKey(row) to row.stopDisruption] ?: listOf(row)
+        TripClosureCard(row, closureTitleOf(poles, words), poles = poles)
     }
 }
 
