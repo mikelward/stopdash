@@ -5006,6 +5006,9 @@ internal fun StopGroupHeader(
     checkingClosure: Boolean = false,
 ) {
     val style = groupHeaderStyle()
+    // The name and platform as heavy as a station's heading ([StationHeader]; maintainer, 2026-10-23); the distance
+    // stays regular, as there.
+    val nameStyle = style.copy(fontWeight = FontWeight.Bold)
     val closedLabel = stringResource(R.string.farther_closed)
     val openLabel = clickLabel ?: stringResource(R.string.action_show_platform)
     val words = rememberHeaderWords()
@@ -5074,7 +5077,7 @@ internal fun StopGroupHeader(
                 // A journey's change heading carries the "heading to" arrow ("King's Cross ➔ Camden Town").
                 text = withArrowIcons(name),
                 inlineContent = arrowInlineContent(MaterialTheme.colorScheme.onSurface),
-                style = style,
+                style = nameStyle,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = nameMaxLines,
                 overflow = TextOverflow.Ellipsis,
@@ -5083,7 +5086,7 @@ internal fun StopGroupHeader(
                 Text(
                     text = withArrowIcons("${groupHeaderJoin(label)}$label"),
                     inlineContent = arrowInlineContent(MaterialTheme.colorScheme.onSurface),
-                    style = style,
+                    style = nameStyle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     softWrap = false,
