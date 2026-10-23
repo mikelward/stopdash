@@ -1096,8 +1096,8 @@ class RouteChipsTest {
         }
         settle(scheduler)
         // Its own chip, chosen, says the guess, marked as one; TfL's words aren't its destination.
-        composeRule.onNodeWithText("At least to Camden Town?").assertIsDisplayed()
-        composeRule.onNodeWithText("At least to Camden Town?").assertIsSelected()
+        composeRule.onNodeWithText("Camden Town+").assertIsDisplayed()
+        composeRule.onNodeWithText("Camden Town+").assertIsSelected()
         // The ways it could take are chips too.
         composeRule.onNodeWithText("Morden/Bank").assertIsDisplayed()
         composeRule.onNodeWithText("Morden/Charing X").assertIsDisplayed()

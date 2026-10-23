@@ -73,8 +73,9 @@
     <!-- TODO: translate -->
     <string name="route_choice_all" tools:ignore="MissingTranslation">All</string>
     <!-- TODO: translate -->
-    <!-- A route chip for a train TfL names no destination for ("Check Front of Train"): the farthest stop all its way's routes reach, a guess. -->
-    <string name="route_choice_at_least" tools:ignore="MissingTranslation">At least to %1$s?</string>
+    <!-- A route chip for a train TfL names no destination for ("Check Front of Train"): the farthest stop all its way's
+         routes reach, a guess that it goes at least that far ("Aldgate+"). -->
+    <string name="route_choice_at_least" tools:ignore="MissingTranslation">%1$s+</string>
     <!-- TODO: translate -->
     <!-- In a route page's chips' place, where the line's routes they come from couldn't be loaded; a Retry
          button follows. -->
