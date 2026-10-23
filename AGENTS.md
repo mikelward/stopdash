@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-22
+last_modified: 2026-10-23
 ---
 
 # AGENTS.md
@@ -180,9 +180,15 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 
 ## Commit messages
 
-- Sentence case, plain English, no internal symbols, ≤ ~70 chars; engineering detail in
-  the body. Rebase-merges land every commit subject on `main` and in release notes (Play
-  "What's new", GitHub prerelease `v<versionCode>`), so title **every** commit for end users.
+- **Title like a changelog line** (maintainer, 2026-10-23): an imperative verb, then the
+  feature in the rider's plain words (no identifiers), sentence case, ≤ ~70 chars: `Fix …`
+  for what was broken (`Fix bus stop lists missing train stations`), `Improve …` (`Improve
+  "Get off soon" notification timing`), `Show …`/`Add …` for what's new; an optional
+  parenthetical says how (`Fix National Rail stop lists (using National Rail instead of
+  TfL data)`). Never the scenario or mechanism (that's the body). PR titles and
+  release-note bullets match. Rebase-merges land every subject on `main` and in release
+  notes (Play "What's new", GitHub prerelease `v<versionCode>`), so title **every** commit
+  for end users.
 - **Prefix a subject with no user-visible effect**: `ci:`, `docs:` (docs/`*.md`, including
   `docs/PRIVACY.md`), `todo:` (`TODO.md` alone), `internal:` (build/plumbing; a shipped
   dependency is bare), `refactor:`, `test:`/`tests:`. A bare subject means a user could
@@ -270,11 +276,15 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 - **Link every open PR in the stack, one URL per line.**
 - **After every merge to `main`, report versionCode** (`git rev-list --count origin/main`
   after refspec fetch): `Need versionCode 72 (b81c23d) or higher to test PR #52's fix`.
-- **"Release notes since N"**: up to five `• ` end-user bullets (one feature per bullet;
-  read bodies where a subject is unclear) in one code block for commits N+1..`origin/main`
-  (freshly fetched) ranked by impact (skip prefixed/docs/CI commits, dependency bumps
-  unless nothing else changed — then one bullet says libraries were updated — and anything
-  the range itself added then undid); range above, one line below naming what was omitted.
+- **"Release notes since N"**: up to five `• ` end-user bullets worded as titles are
+  (*Commit messages*), one per feature however many commits built it (read bodies where a
+  subject is unclear), in one code block for commits N+1..`origin/main` (freshly fetched).
+  **Rank by what the rider risks without it** (maintainer, 2026-10-23): wrong information
+  that could send them the wrong way first (`Fix National Rail stop lists`), polish last
+  (`Improve UI transitions when swiping back`), however many commits each took. Skip
+  prefixed/docs/CI commits, dependency bumps unless nothing else changed (then one bullet
+  says libraries were updated), and anything the range itself added then undid; range
+  above, one line below naming what was omitted.
 - **On CI failure**, read the failed step log first (artifacts only hold `:app`); reproduce
   the PR merge with `main` (what CI builds) in a throwaway `git worktree`, and check
   whether `main` is already red.
