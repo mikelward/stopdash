@@ -117,6 +117,7 @@ import app.stopdash.domain.stopPlace
 import app.stopdash.domain.widgetQuestionsSettled
 import app.stopdash.domain.widgetUpdateCardGone
 import app.stopdash.domain.widgetUpdateCardShown
+import app.stopdash.sync.rememberDriveSyncSwitch
 import app.stopdash.ui.LineStopWindow
 import app.stopdash.ui.LocalWorker
 import app.stopdash.ui.RouteStopMode
@@ -2909,7 +2910,12 @@ class MainActivity : ComponentActivity() {
                                     onPauseOrDispose { }
                                 }
                                 val askFollows = rememberLocationAllTimeAsk(onAnswered = readFollows)
+                                // Drive sync's switch, null in a release build (BuildConfig.DRIVE_SYNC).
+                                val driveSync = rememberDriveSyncSwitch()
                                 SettingsScreen(
+                                    driveSyncOffered = driveSync != null,
+                                    driveSync = driveSync?.view,
+                                    onDriveSyncChange = { on -> driveSync?.onChange?.invoke(on) },
                                     locationAccess = locationAccessNow,
                                     onLocationClick = {
                                         // Precise already: Android's settings for StopDash, where it can be changed. Otherwise

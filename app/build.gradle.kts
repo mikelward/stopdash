@@ -205,6 +205,9 @@ android {
             // Only the release build is a real Play app, so only it checks Play for an
             // available update (drives the overflow "update available" dot).
             buildConfigField("boolean", "PLAY_UPDATE_CHECKS_ENABLED", "true")
+            // Drive sync (dev-docs/drive-sync.md) isn't offered, and sends nothing to Drive, until the Play
+            // Data Safety form says so (maintainer, 2026-10-22): debug builds only until then.
+            buildConfigField("boolean", "DRIVE_SYNC", "false")
             manifestPlaceholders["launcherIcon"] = releaseLauncherIcon
             manifestPlaceholders["appLabel"] = releaseAppLabel
         }
@@ -215,6 +218,7 @@ android {
             // The `.debug` applicationId isn't a Play app, so an update check there only
             // ever fails — never run it (PlayUpdateChecker gates on this).
             buildConfigField("boolean", "PLAY_UPDATE_CHECKS_ENABLED", "false")
+            buildConfigField("boolean", "DRIVE_SYNC", "true")
             manifestPlaceholders["launcherIcon"] = debugLauncherIcon
             manifestPlaceholders["appLabel"] = debugAppLabel
         }
@@ -450,6 +454,9 @@ dependencies {
     // The Wear OS sync (dev-docs/wear-os.md): the Data Layer, and awaiting its Tasks.
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.play.services)
+    // Drive sync's grant (dev-docs/drive-sync.md): AuthorizationClient asks for the drive.appdata scope, no
+    // sign-in of its own. Called in debug builds only until the Data Safety form says so (DRIVE_SYNC).
+    implementation(libs.play.services.auth)
     // Opens StopDash's Play Store page on a watch that doesn't have it yet (WatchInstall).
     implementation(libs.androidx.wear.remote.interactions)
 

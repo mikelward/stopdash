@@ -947,6 +947,36 @@
     <string name="settings_favorite_journeys_title">Favorite rides</string>
     <!-- TODO: translate -->
     <string name="settings_favorite_journeys_summary" tools:ignore="MissingTranslation">Save rides between two stations</string>
+    <!-- TODO: translate -->
+    <!-- Settings switch for Drive sync (dev-docs/drive-sync.md): keeps the rider's setup alike on each of their
+         phones through their own Google Drive. Its summary says what it does while off, else how the last sync went. -->
+    <string name="settings_drive_sync_title" tools:ignore="MissingTranslation">Sync with Google Drive</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_off" tools:ignore="MissingTranslation">Keep your favorite rides the same on each phone</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_waiting" tools:ignore="MissingTranslation">On</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_syncing" tools:ignore="MissingTranslation">Syncing…</string>
+    <!-- TODO: translate -->
+    <!-- %1$s is the clock time it last synced, e.g. "14:05". -->
+    <string name="settings_drive_sync_synced" tools:ignore="MissingTranslation">Synced %1$s</string>
+    <!-- TODO: translate -->
+    <!-- Another of the rider's phones runs a newer StopDash, whose rides this one can't read yet. -->
+    <string name="settings_drive_sync_newer_phone" tools:ignore="MissingTranslation">Update StopDash to sync with your other phones</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_offline" tools:ignore="MissingTranslation">Couldn\'t reach Google Drive</string>
+    <!-- TODO: translate -->
+    <!-- The rider's grant is gone (taken away in their Google account): the switch reads off. -->
+    <string name="settings_drive_sync_sign_in" tools:ignore="MissingTranslation">Turn on to sign in again</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_sign_in_failed" tools:ignore="MissingTranslation">Couldn\'t sign in to Google</string>
+    <!-- TODO: translate -->
+    <!-- Granted, but the phone couldn't save that sync is on: it stays off. -->
+    <string name="settings_drive_sync_turn_on_failed" tools:ignore="MissingTranslation">Couldn\'t turn on sync</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_full" tools:ignore="MissingTranslation">Your Google Drive is full</string>
+    <!-- TODO: translate -->
+    <string name="settings_drive_sync_failed" tools:ignore="MissingTranslation">Couldn\'t sync. Trying again later</string>
     <string name="favorite_journeys_title">Favorite rides</string>
     <string name="favorite_journeys_loading">Loading…</string>
     <string name="favorite_journeys_empty">None yet. Tap Add and pick two stations or places.</string>

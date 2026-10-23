@@ -33,6 +33,8 @@ import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
+import app.stopdash.sync.DriveSyncStatus
+import app.stopdash.sync.DriveSyncView
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.material3.MaterialTheme
@@ -625,6 +627,63 @@ class SettingsScreenScreenshotTest {
             }
         }
         composeRule.onNodeWithTag("watchInstallRow").assertDoesNotExist()
+    }
+
+    /**
+     * Drive sync (dev-docs/drive-sync.md), offered in debug builds only until the Play Data Safety form says
+     * so: under the favorite rides it keeps the same on each phone, off saying what it does, disabled until
+     * read, a tap reported. The grant gone, it reads off and says to turn it on again.
+     */
+    @Test
+    fun settings_driveSync() {
+        var view by mutableStateOf<DriveSyncView?>(null)
+        var latest: Boolean? = null
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    driveSyncOffered = true,
+                    driveSync = view,
+                    onDriveSyncChange = { latest = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("driveSyncSwitch").assertIsNotEnabled()
+        view = DriveSyncView(false, DriveSyncStatus.Waiting)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("driveSyncSwitch").assertIsOff()
+        composeRule.onNodeWithText("Keep your favourite rides the same on each phone").assertIsDisplayed()
+        captureSnapshot("settings-drive-sync.png")
+        composeRule.onNodeWithText("Sync with Google Drive").performClick()
+        composeRule.runOnIdle { assertEquals(true, latest) }
+        view = DriveSyncView(true, DriveSyncStatus.SignIn)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("driveSyncSwitch").assertIsOff()
+        composeRule.onNodeWithText("Turn on to sign in again").assertIsDisplayed()
+        view = DriveSyncView(true, DriveSyncStatus.Offline)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("driveSyncSwitch").assertIsOn()
+        composeRule.onNodeWithText("Couldn't reach Google Drive").assertIsDisplayed()
+        // Granted, but this phone couldn't keep the switch: it stays off, and says so.
+        view = DriveSyncView(false, DriveSyncStatus.TurnOnFailed)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("driveSyncSwitch").assertIsOff()
+        composeRule.onNodeWithText("Couldn't turn on sync").assertIsDisplayed()
+        view = DriveSyncView(false, DriveSyncStatus.OffNotSaved)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't save that; it resets when StopDash restarts").assertIsDisplayed()
+    }
+
+    @Test
+    fun settings_noDriveSyncWhereNotOffered() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {})
+            }
+        }
+        composeRule.onNodeWithTag("driveSyncSwitch").assertDoesNotExist()
     }
 
     @Test

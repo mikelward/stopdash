@@ -4433,7 +4433,11 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the second the favorite journeys (*Journeys*);
-four location and widget rows follow below them, in order. "Fix train spacing" sits with the
+four location and widget rows follow below them, in order. In debug builds only, until the Play Data Safety
+form says so (maintainer, 2026-10-22), **Sync with Google Drive** sits under the favorite journeys: off by
+default, it keeps the favorite rides the same on each of the rider's phones through their own Drive's app
+data folder, syncing when the app comes on screen and a few seconds after a ride changes, and says how the
+last sync went (`dev-docs/drive-sync.md`). A release build offers no row and sends nothing to Drive. "Fix train spacing" sits with the
 rows that decide what the boards show (*Bunched tube trains are spaced out*), with **Group favorite
 rides** under it: Group by ride, the default, or Group by stop (*Journeys*). **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for

@@ -1100,10 +1100,10 @@
         },
         {
             "uniqueId": "androidx.fragment:fragment",
-            "artifactVersion": "1.1.0",
+            "artifactVersion": "1.5.7",
             "name": "Support fragment",
             "description": "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 14 or later.",
-            "website": "https://developer.android.com/jetpack/androidx",
+            "website": "https://developer.android.com/jetpack/androidx/releases/fragment#1.5.7",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -1111,7 +1111,7 @@
             ],
             "scm": {
                 "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
-                "url": "http://source.android.com"
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
             },
             "licenses": [
                 "Apache-2.0"
@@ -1641,7 +1641,7 @@
         },
         {
             "uniqueId": "androidx.loader:loader",
-            "artifactVersion": "1.0.0",
+            "artifactVersion": "1.1.0",
             "name": "Support loader",
             "description": "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 14 or later.",
             "website": "http://developer.android.com/tools/extras/support-library.html",
@@ -2414,6 +2414,51 @@
             ]
         },
         {
+            "uniqueId": "com.google.android.gms:play-services-auth",
+            "artifactVersion": "22.0.0",
+            "name": "play-services-auth",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "ASDKL"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.android.gms:play-services-auth-api-phone",
+            "artifactVersion": "18.0.2",
+            "name": "play-services-auth-api-phone",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "ASDKL"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.android.gms:play-services-auth-base",
+            "artifactVersion": "18.0.10",
+            "name": "play-services-auth-base",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "ASDKL"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "com.google.android.gms:play-services-base",
             "artifactVersion": "18.5.0",
             "name": "play-services-base",
@@ -2432,6 +2477,21 @@
             "uniqueId": "com.google.android.gms:play-services-basement",
             "artifactVersion": "18.10.0",
             "name": "play-services-basement",
+            "description": "",
+            "developers": [
+                
+            ],
+            "licenses": [
+                "ASDKL"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.google.android.gms:play-services-fido",
+            "artifactVersion": "20.0.1",
+            "name": "play-services-fido",
             "description": "",
             "developers": [
                 

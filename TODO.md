@@ -4010,24 +4010,29 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         rate limited), and the `Date` on the listing's answer for `DriveClock`. Tested on a mock
         engine. *Done: `DriveAppData` (`:domain`) and `KtorDriveAppData`, unused until the steps
         below; nothing is sent to Drive.*
-  - [ ] **Settings → Sync with Google Drive**: `AuthorizationClient` (`play-services-auth`), the
-        account it syncs with, and its status ("Synced 2 min ago", "Couldn't sync: offline",
-        "Sign in again", "Drive is full", "Update StopDash to sync with your other phone"). Not
-        offered without Play services. Screenshot test, en-GB strings.
+  - [x] **Settings → Sync with Google Drive**: `AuthorizationClient` (`play-services-auth`) and its
+        status ("Synced 14:05", "Couldn't reach Google Drive", "Turn on to sign in again", "Your
+        Google Drive is full", "Update StopDash to sync with your other phones"). Screenshot test,
+        en-GB strings. *Done in debug builds only (`BuildConfig.DRIVE_SYNC`), under Favorite rides:
+        `DriveSyncSwitch`, `DriveAuthorization`. It names no account and says a clock time, not an
+        age (see *Decisions needing review*).*
   - [x] **Rides through the engine**: favorite rides with their hidden lines, grayed rides and ride
         alert times, compared with the ledger and written back through the store's own edits under
         `FavoriteJourneysWrites`. A grayed ride's place end shows under its saved name until places
         sync. *Done: `RideSync`, and the store's `syncEntries` and `applySync`, unused until the
         runner below.*
-  - [ ] **When it syncs**: when the app comes to the front, and a few seconds after a change (a
+  - [x] **When it syncs**: when the app comes to the front, and a few seconds after a change (a
         one-time WorkManager job waiting for a network). No periodic job; the widget and the watch
         never sync. A ride removed on the other phone drops its widget pins, as Settings' Remove
-        does. *One sync is built: `SyncRun` (`:domain`) lists the folder, reads the other phones'
-        files that changed, stamps this phone's changes by Drive's clock, merges, applies only
-        while the store is unchanged, and uploads this phone's file only when it changed; what it
-        keeps between syncs (`SyncState`) is the phone's alone. Nothing runs it yet.*
-  - [ ] **Keep sync per phone in backups**: the install id and the ledger excluded from Auto Backup
+        does, and a line hidden there drops its pins too. *Done in debug builds only: `SyncRun` (`:domain`) lists the folder, reads the other
+        phones' files that changed, stamps this phone's changes by Drive's clock, merges, applies
+        only while the store is unchanged, and uploads this phone's file only when it changed.
+        `DriveSync` runs it, one at a time, from `DriveSyncWorker` (unique, latest ask replacing a
+        waiting one; three tries where Drive couldn't be reached or a change landed meanwhile).*
+  - [x] **Keep sync per phone in backups**: the install id and the ledger excluded from Auto Backup
         and device-to-device transfer, so a restored phone never writes as the phone it came from.
+        *Done: `DriveSyncLocal` keeps them, and whether sync is on, in the no-backup folder, which
+        neither carries.*
   - [ ] **Privacy before it ships**: SPEC *Privacy*, `docs/PRIVACY.md`, and the Play Data Safety
         form for rides (app activity, optional, not shared, encrypted in transit, deletable),
         confirmed with Play policy support.
@@ -5467,6 +5472,32 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **Drive sync's Settings switch names no Google account and says when it last synced as a clock
+  time** (autopilot, 2026-10-23; debug builds only until the Data Safety form). The `drive.appdata` grant
+  alone doesn't say which account it is; naming it would mean asking for the rider's email too, more data
+  for a line of text. "Synced 14:05" holds still, where "Synced 2 min ago" would need the row redrawn as it
+  ages. Alternatives: ask for the email scope and show the account; a ticking age. Reversible either way.
+- [ ] **Drive sync's state on a phone isn't per Google account** (autopilot, 2026-10-23). A rider who turns
+  sync on with one account, off, and on again with another resumes with the first account's ledger, so the
+  second account's folder gets the first's removals as well as the rides. Alternative: key the kept state by
+  account, which needs the account named (above). Rare, and nothing is lost: removals are of rides this phone
+  saw removed.
+- [ ] **A Drive sync keeps its merge on the phone before it writes the rides, and marks the rides file with
+  it** (autopilot, 2026-10-23; Codex's third and fourth findings on #1151 in the gap between writing the rides
+  and keeping the sync's ledger). The rides file gains an optional `syncMark`, written in the same update as a
+  sync's rides and kept by every edit; the next sync settles a stopped one by it, exactly. Settling entry by
+  entry instead (tried first) couldn't tell a ride removed here from one never written. Alternative: keep the
+  whole ledger inside the rides file. Reversible: drop `SyncState.pending` and the mark.
+- [ ] **A Drive sync, once begun, runs to its end even when a newer ask replaces its job** (autopilot,
+  2026-10-23; Codex's second finding on #1151 in how a replaced sync stops). The newer ask waits its turn, so
+  no sync stops between writing the rides, keeping the ledger and unpinning the widget. Alternative, which also
+  deletes the class: newer asks queue behind a running sync rather than replace it (WorkManager's
+  APPEND_OR_REPLACE), at the cost of a sync for each ask in a run of edits. Reversible either way.
+- [ ] **Turning Drive sync off keeps this phone's file in Drive** (autopilot, 2026-10-23). The other phones
+  keep its rides and removals, and turning sync back on resumes. Alternative: offer to delete it, as the
+  open question in `dev-docs/drive-sync.md` asks; the rider can delete StopDash's data from Drive's own
+  settings meanwhile.
 
 - [x] **A route page's map lays out another route's way between two of its train's stations as a stand-in
   stop** (autopilot, 2026-10-22; Codex's third finding on #1102, the second in how other routes are collapsed
