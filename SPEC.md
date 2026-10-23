@@ -3631,7 +3631,10 @@ train ride's last stops (the screen's updates while it's open), a rider seen alo
 more of its stops short of where that train has got to isn't on it; nor, on two fixes in a row each at a station
 of the ride 400 m or more from the next (too far for a fix there to be one at the next, or a train pulling away),
 is a rider one stop short of it (maintainer, 2026-10-19: a train a stop ahead was followed to where they got off,
-the trip walking them on while they were still at Camden Town). The trip lets it go, its "get off soon" taken back, and they're on
+the trip walking them on while they were still at Camden Town). A sure fix (within 50 m) too old for that, up to two
+minutes, still places them, as underground it may be the only one for minutes: that train isn't theirs once it's two or
+more stops past them and past a stop they couldn't have reached since, at a speed no TfL line runs (maintainer,
+2026-10-23: seen at Camden Town 36 s before, the train followed was past Tufnell Park). The trip lets it go, its "get off soon" taken back, and they're on
 board by where they were seen (below) until their own is found, so another vehicle's calls neither
 count their stops nor end their ride. It also **sees a
 rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a

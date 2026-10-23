@@ -519,7 +519,8 @@ internal suspend fun onTheWayFix(location: AndroidLocationProvider, trip: Active
     // sure it must be depends on what it's for ([OnTheWay.sureEnoughFor]); one surer still is waited
     // for where it could tell more ([OnTheWay.preferredFor]), the vaguer one kept if none comes.
     val fix = location.preciseFix(sureEnough = OnTheWay.preferredFor(trip, now)) ?: return null
-    return OnTheWay.usableFix(fix, trip, now)
+    // Too old for that, one may still place a rider on board, against the train followed (maintainer, 2026-10-23).
+    return OnTheWay.usableFix(fix, trip, now) ?: OnTheWay.placingFix(fix, trip)
 }
 
 /** Hears the trip's ongoing notification swiped away (its delete intent), so it isn't posted again for that trip. */

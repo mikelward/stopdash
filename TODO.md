@@ -2205,6 +2205,24 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **On the way** (maintainer, 2026-09-26; SPEC *On the way*; autopilot): Start on an open
             route follows the rider there, assuming the next train they can catch and switching
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
+        - [ ] **Place the rider first, then the train** (maintainer, 2026-10-23, from a bug report: told "Next stop"
+              for where they got off while three stops short, between Camden Town and Kentish Town; the trip followed
+              a train ahead of theirs). The main idea is the rider's location: each sure fix places them on the ride
+              and drives the stops left, "get off soon" and Show stops' dot; TfL's live predictions count on between
+              fixes, but only for a train that agrees with where the rider was last placed. Done so far: a fix in the
+              10 s gap after a refresh brings the next one rather than being passed over, and a sure fix up to two
+              minutes old lets go of a train past a stop the rider couldn't have reached since. Still to do:
+          - [ ] **Every sure fix places them**, not only one that disagrees with the train: on board seen, the dot
+                at that stop (or between two), whatever the train followed, so the screen never shows them where
+                they boarded once a fix says otherwise.
+          - [ ] **Match among the trains that left their platform** against the last placing, with the same allowance
+                for its age (today only a fix under 10 s finds their train, [boardedAlong]): the one where they could
+                be now is followed, the rest passed over.
+          - [ ] **Filter jumps instead of two fixes in a row**: a placing behind the last, or further on than any
+                line runs in the time between, is set aside; that replaces the two-in-a-row waits (station clear,
+                seen past the calls), which underground rarely get a second fix.
+          - [ ] **Between fixes with no train that agrees**: counted on by the Planner's time from the last placing,
+                as a rider on board by where they were seen is today.
         - [x] **Follow a National Rail train** (maintainer, 2026-10-15; SPEC *On the way*): with the
               rider's key, Start on a route with a National Rail train and Go on a National Rail line's
               route page. The train is known by where it was picked, when it was due to leave there and

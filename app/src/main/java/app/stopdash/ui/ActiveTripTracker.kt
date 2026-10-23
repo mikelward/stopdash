@@ -1167,6 +1167,9 @@ class ActiveTripTracker(
             lastFix = null
         }
         val fresh = rider?.takeIf { allowed }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+        // Too old for that, a sure fix still places a rider on board, to check the train followed against
+        // ([behindFollowed]): underground it may be the only one for minutes (maintainer, 2026-10-23).
+        val placing = rider?.takeIf { allowed && fresh == null && OnTheWay.placesOnRide(it) }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked), OnTheWay.RIDE_FIX_WITHIN_MILLIS) }
         // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
         // once: one due before the next refresh is still the rider's to catch.
         // Each boarding stop's board is asked for at most once a refresh, answer or failure,
@@ -1178,7 +1181,7 @@ class ActiveTripTracker(
             // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
             expireFix()
             try {
-                if (step(fresh, boards)) step(null, boards)
+                if (step(fresh, boards, placing)) step(null, boards)
             } finally {
                 expireFix()
             }
@@ -1195,11 +1198,13 @@ class ActiveTripTracker(
                     }
                 }
             }
+            // A fix given too old to place anyone but on a ride ([placing]) settles nothing else.
+            val given = rider?.takeIf { (it.ageMillis ?: 0) <= OnTheWay.FIX_FRESH_WITHIN_MILLIS }
             // Seen past where they got off a ride, or back from it (maintainer, 2026-10-06): kept with the trip.
-            notePast(rider?.takeIf { allowed }, asked)
+            notePast(given?.takeIf { allowed }, asked)
             // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
             // Only a fix precise location still allows picks where to plan again from (Codex, #542).
-            checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
+            checkDisruptions(boards, given?.takeIf { allowed && preciseAllowed() }, asked)
         } finally {
             routesRead = null
         }
@@ -1436,11 +1441,11 @@ class ActiveTripTracker(
     // isn't known is taken as it came.
     // Null too once precise location is no longer allowed: every use of a fix ages it first, after
     // whatever it waited behind, so none is used once that's taken away (Codex, #542).
-    private fun aged(fix: LocationFix, waited: Duration): LocationFix? {
+    private fun aged(fix: LocationFix, waited: Duration, within: Long = OnTheWay.FIX_FRESH_WITHIN_MILLIS): LocationFix? {
         if (!preciseAllowed()) return null
         val age = fix.ageMillis ?: return fix
         val now = age + waited.toMillis().coerceAtLeast(0)
-        return if (now > OnTheWay.FIX_FRESH_WITHIN_MILLIS) null else fix.copy(ageMillis = now)
+        return if (now > within) null else fix.copy(ageMillis = now)
     }
 
     /**
@@ -1618,7 +1623,8 @@ class ActiveTripTracker(
 
     // One step of [refresh]: at most one leg change. True when it left a ride with no train yet,
     // reached by that change or its train dropped, so another step picks one.
-    private suspend fun step(rider: LocationFix?, boards: MutableMap<TripLeg, Result<NextBoard>>): Boolean {
+    // [placing] is a sure fix too old to be [rider], which only checks the train followed ([behindFollowed]).
+    private suspend fun step(rider: LocationFix?, boards: MutableMap<TripLeg, Result<NextBoard>>, placing: LocationFix? = null): Boolean {
         if (_trip.value == null) return false
         if (_progress.value == TripProgress.Arrived) {
             // Arrived, but not yet forgotten on the device: only that's tried again, not the ride,
@@ -1647,6 +1653,8 @@ class ActiveTripTracker(
         // When [seenRider]'s age holds: a use after further reads ages it again ([boardedAlong]).
         val seenAt = elapsed()
         val seenRider = if (station == null) rider?.takeIf { preciseAllowed() } else rider?.let { aged(it, Duration.ofMillis(seenAt - reading)) }
+        // Where the rider was last placed, to check the train followed against: this fix, or an older one ([placing]).
+        val placedRider = seenRider ?: placing?.let { aged(it, Duration.ofMillis(seenAt - reading), OnTheWay.RIDE_FIX_WITHIN_MILLIS) }
         val now = clock()
         // The train followed coming in, before a fix may have dropped it ([OnTheWay.seen]).
         val followed = _trip.value?.vehicleId.orEmpty()
@@ -1766,8 +1774,8 @@ class ActiveTripTracker(
         // one they took), so its calls neither count their stops nor end their ride. Let go, on board by where
         // they were seen, until their own is found ([boardedAlong]) (maintainer, 2026-10-09).
         val followedCalls = calls
-        if (followedCalls != null && seenRider != null && trip.boarded && trip.vehicleId.isNotBlank()) {
-            behindFollowed(trip, seenRider, seenAt, followedCalls, now)?.let {
+        if (followedCalls != null && placedRider != null && trip.boarded && trip.vehicleId.isNotBlank()) {
+            behindFollowed(trip, placedRider, seenAt, followedCalls, now)?.let {
                 trip = it
                 calls = null
             }
@@ -2021,10 +2029,25 @@ class ActiveTripTracker(
             null
         } ?: return null
         // Aged by the route's read: a fix fresh before it may be where the rider was.
-        val seen = aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
+        val seen = aged(rider, Duration.ofMillis(elapsed() - seenAt), OnTheWay.RIDE_FIX_WITHIN_MILLIS) ?: return null
+        // When it was taken, by the clock as its age now holds: [now] was read before the reads that aged it (Codex, #1173).
+        val takenAt = clock().minusMillis(seen.ageMillis ?: 0)
         val positions = withContext(compute) { OnTheWay.ridePositions(on, sequence) }
         val along = withContext(compute) { OnTheWay.placeAlong(on, seen, positions) }
         if (along == null) return null
+        if ((seen.ageMillis ?: 0) > OnTheWay.FIX_FRESH_WITHIN_MILLIS) {
+            // Too old to say where they are now, only how far they can have got since: let go only of a train past a stop
+            // they couldn't have reached, and two or more stops past them (maintainer, 2026-10-23).
+            val trainAt = withContext(compute) { OnTheWay.followedAt(trip, on, calls, now, sequence.stopAreas) } ?: return null
+            val outran = withContext(compute) {
+                OnTheWay.followedAhead(trip, on, along, calls, now, sequence) && OnTheWay.outranFix(on, along, trainAt, seen, positions)
+            }
+            if (!outran) return null
+            warn("on the way: seen ${(seen.ageMillis ?: 0) / 1000} s ago ${trainAt - OnTheWay.ahead(along)} stops behind the train followed on line ${on.lineId}, further than they could have gone since, let go")
+            // Seen there when the fix was taken, not now: the stops left are counted on from then (Codex, #1173).
+            val let = OnTheWay.onBoardAlong(trip, along, takenAt, on = on)
+            return if (let.warnedLeg == let.legIndex) let.copy(warnedLeg = -1, alertLeft = true) else let
+        }
         if (!withContext(compute) { OnTheWay.followedAhead(trip, on, along, calls, now, sequence) }) {
             // One stop past them while they're seen at a station: let go only on two fixes in a row, each its own
             // refresh, as a fix can jump wide for a moment (maintainer, 2026-10-19).

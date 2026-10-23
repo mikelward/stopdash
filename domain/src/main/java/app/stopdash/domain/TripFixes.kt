@@ -173,5 +173,10 @@ suspend fun refreshFix(
     if (pushed != null && trip != null && OnTheWay.wantsFix(trip, now)) {
         OnTheWay.usableFix(pushed, trip, now)?.let { return it }
     }
-    return if (mayTake) take(trip) else null
+    val taken = if (mayTake) take(trip) else null
+    // Too old for that, it may still place a rider on board, against the train followed ([OnTheWay.placingFix]):
+    // underground the only one for minutes (maintainer, 2026-10-23). The younger of it and one taken. Aged again
+    // after the take, which can wait on GPS for seconds: older by then, it lets fewer trains go (Codex, #1173).
+    val placing = seen?.let(fixes::aged)?.let { fix -> trip?.let { OnTheWay.placingFix(fix, it) } }
+    return listOfNotNull(taken, placing).minByOrNull { it.ageMillis ?: 0 }
 }

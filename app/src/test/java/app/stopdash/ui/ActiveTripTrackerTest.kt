@@ -6613,6 +6613,46 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a fix too old to say where the rider is still lets go of a bus further on than they could have got`() = runTest {
+        // Seen at B 36 s before this refresh, the only fix in minutes (underground, say), while the bus followed is
+        // past F, 2.2 km on: 36 s takes no one that far (maintainer, 2026-10-23: told to get off three stops early).
+        sequences["red"] = longBusLine
+        trains["7"] = listOf(call("C", 18))
+        // The route's read takes 10 s, on both clocks: the fix is 46 s old after it, but was taken 36 s before the refresh.
+        sequenceTakesFor["red"] = 10_000L
+        sequenceClock = { now = now.plusSeconds(10) }
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { onFollowedBus(false) })
+        now = at(17)
+        tracker.restore()
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f, ageMillis = 36_000L))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        val riding = tracker.progress.value as TripProgress.Riding
+        // Counted from where they were seen: D, F and C to go, and seen on board, so the stop list marks B.
+        assertEquals(3, riding.stopsLeft)
+        assertTrue(riding.byPosition)
+        assertTrue(riding.seen)
+        assertTrue(logged.any { " s ago" in it && "let go" in it })
+        // Seen there 36 s before the refresh, not now, nor the route's read earlier still: the stops are counted on
+        // from when they were (Codex, #1173).
+        assertEquals(at(17).minusSeconds(36), tracker.trip.value?.seenAlongAt)
+    }
+
+    @Test
+    fun `a fix old enough that the rider could have caught up keeps the bus followed`() = runTest {
+        sequences["red"] = longBusLine
+        trains["7"] = listOf(call("C", 18))
+        // Two minutes old: they could be past F by now.
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { onFollowedBus(false) })
+        now = at(17)
+        tracker.restore()
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f, ageMillis = 110_000L))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+        // Nor does a vague fix place them, however fresh it was once.
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 900f, ageMillis = 30_000L))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
     fun `a rider left behind isn't told to get off when the next train can't be found yet`() = runTest {
         val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
         val tracker = tracker(StandardTestDispatcher(testScheduler))
