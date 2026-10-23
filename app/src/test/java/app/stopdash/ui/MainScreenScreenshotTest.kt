@@ -48,6 +48,7 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -6449,6 +6450,44 @@ class MainScreenScreenshotTest {
         composeRule.onNode(stationChevron("Farther Road, Bus")).assertExists()
         composeRule.onNodeWithText("Oxford Circus").assertExists()
         composeRule.onNodeWithText("Tap to see").assertExists()
+        composeRule.onNode(stationChevron("Further Lane, Bus", "Collapsed")).performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(unopened), opened)
+    }
+
+    @Test
+    fun `grouped by station, a faraway place's heading opens its station, its chevron opens it in place`() {
+        // A faraway place's name did nothing while a nearby station's opens its page (maintainer, 2026-10-23). Synthetic
+        // ids and stand-in names.
+        val nearStop = StopArrivals(
+            "490000001A", "Example Road",
+            listOf(dep("73", "73", "outbound", "Stoke Newington", 120, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val unopened = busPlace("490G00000010", "Further Lane", 800.0, "38")
+        val opened = mutableListOf<CollapsedPlaces.Place>()
+        val stations = mutableListOf<CollapsedPlaces.Place>()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(nearStop), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001A" to 40.0),
+                        farther = listOf(FartherCard(unopened)),
+                        onOpenFarther = { opened += it },
+                        onOpenFartherStation = { stations += it },
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText("Further Lane") and hasClickAction(), useUnmergedTree = false).performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(unopened), stations)
+        assertEquals(emptyList<CollapsedPlaces.Place>(), opened)
         composeRule.onNode(stationChevron("Further Lane, Bus", "Collapsed")).performClick()
         composeRule.waitForIdle()
         assertEquals(listOf(unopened), opened)

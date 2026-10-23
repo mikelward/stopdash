@@ -1625,7 +1625,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [ ] **By station, opening a faraway place holds still** (maintainer, 2026-10-23): a tap on a faraway place's
         heading or card keeps the list where it is, the place's rows and cards growing below what was tapped,
         every frame from the tap until its departures are in, as By stop/platform does.
-  - [ ] **By station, a faraway station's heading opens its station** (maintainer, 2026-10-23): once opened, a tap
+  - [x] **By station, a faraway station's heading opens its station** (maintainer, 2026-10-23): once opened, a tap
         on its name opens the station's page, as a nearby station's heading does; its chevron folds it.
   - [ ] **A test that every tap reshaping the list holds still** (maintainer, 2026-10-23: "a systematic way to
         avoid this happening again"): `TapHoldsStillTest` taps each kind (open a faraway place, fold a station, a
