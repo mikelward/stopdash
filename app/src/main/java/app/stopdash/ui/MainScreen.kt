@@ -235,6 +235,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.withContext
 
 /** Test tag on the red "update available" dot overlaying the overflow menu icon. */
@@ -369,10 +370,17 @@ fun MainScreen(
     starred: Set<StarredRow> = emptySet(),
     // Whether [starred] is the stored set yet (read, or found unreadable): the disruptions row ranks by it.
     starredKnown: Boolean = true,
+    // Takes a pinned row's pin off. Pins are going (maintainer, 2026-10-23): nothing new is pinned, a row's long press
+    // opening "Add favorite…" instead ([onAddRide]), so this is only ever asked of a pinned row.
     onToggleStar: (DepartureRow) -> Unit = {},
-    // False only when the stored star set is a newer-schema file this build can't read: the
-    // star control is then hidden rather than shown unfilled (which would falsely read as
-    // "nothing starred"). Defaults true, the normal case.
+    // Saves the favorite ride on a row's line from its stop to a stop its train calls at after it ([RouteStopsUi.Loaded],
+    // the route page's stops), picked on its route page ("Add favorite…": a row's long press, or the page's menu; SPEC
+    // *Journeys*). Null offers no "Add favorite…". Its outcome comes back as [rideAdded], said once the list shows.
+    onAddRide: ((DepartureRow, RouteStopsUi.Loaded, RouteStop) -> Unit)? = null,
+    rideAdded: RideAdded? = null,
+    onRideAddedShown: () -> Unit = {},
+    // Whether the rows may act on a long press ("Add favorite…", or a pinned row's Unpin); false on a board that
+    // offers neither. Defaults true, the normal case.
     starringAvailable: Boolean = true,
     // True while a star write has failed and not yet been surfaced (SPEC principle 2): the
     // screen shows a transient snackbar so a tap that didn't take isn't swallowed silently,
@@ -1303,6 +1311,10 @@ fun MainScreen(
     var detailWay by rememberSaveable { mutableStateOf("") }
     // Counts the pages opened, so state kept with one (its line page) survives its moving to another row.
     var detailOpened by rememberSaveable { mutableIntStateOf(0) }
+    // Whether the open page is picking where a favorite ride goes ("Add favorite…", SPEC *Journeys*): [PICK_FROM_ROW]
+    // from a row's long press, whose Back closes the page, or [PICK_FROM_PAGE] from its own menu, whose Back only
+    // stops picking; [PICK_NONE] otherwise.
+    var detailPicking by rememberSaveable { mutableIntStateOf(PICK_NONE) }
     // Whether the open page was opened from a journey card: it then reads the cards' rows for as long as it's
     // open, the trains a card counts on, never gaining the list's just-due one ([ListRows.forCards]), even
     // once its journey is unstarred from the page (maintainer, 2026-10-20; SPEC *hold still*).
@@ -1340,6 +1352,18 @@ fun MainScreen(
         detailTrainWay = focus?.way
         detailWay = row.direction
         detailOpened++
+        detailPicking = PICK_NONE
+    }
+    // A row's long press: its page, opened as its tap opens it, picking where a favorite ride from it goes.
+    val pickRide: ((() -> Unit) -> Unit)? = remember(onAddRide != null) {
+        if (onAddRide == null) {
+            null
+        } else {
+            { open ->
+                open()
+                detailPicking = PICK_FROM_ROW
+            }
+        }
     }
     // A journey card's row, with the card's far end ([detailReaching]).
     val openCardDetail: (DepartureRow, RouteFocus?, Set<String>) -> Unit = { row, focus, reaching ->
@@ -1475,6 +1499,17 @@ fun MainScreen(
             snackbarHostState.showSnackbar(starWriteFailedMessage)
         }
     }
+    // A favorite ride picked on a route page ("Add favorite…"): added, already one, or not saved, said on the list the
+    // page closed to (SPEC principle 2), as Settings' Add says it on its list.
+    // Shown on a scope of its own: clearing the outcome re-keys the effect, which would take the snackbar down with it.
+    val rideAddedMessage = rideAdded?.let { rideAddedText(it) }
+    val rideAddedScope = rememberCoroutineScope()
+    OnTopEffect(rideAddedMessage, detailRow == null) {
+        if (rideAddedMessage != null && detailRow == null) {
+            onRideAddedShown()
+            rideAddedScope.launch { snackbarHostState.showSnackbar(rideAddedMessage) }
+        }
+    }
     // A ride's line hidden or shown and not saved: it comes back, or stays hidden, so say so.
     val rideLineWriteFailedMessage = stringResource(R.string.journey_alerts_write_failed)
     OnTopEffect(rideLineWriteFailed, detailRow == null) {
@@ -1579,7 +1614,25 @@ fun MainScreen(
             stale = detailHeld || Staleness.isStale(detailRow.fetchedAt, detailNow),
             now = detailNow,
             onToggleStar = { onToggleStar(detailRow) },
-            onBack = { detailKey = null },
+            onBack = {
+                // Picking from the page's own menu, Back only stops picking; from a row's long press it returns there.
+                if (detailPicking == PICK_FROM_PAGE) {
+                    detailPicking = PICK_NONE
+                } else {
+                    detailKey = null
+                    detailPicking = PICK_NONE
+                }
+            },
+            picking = detailPicking != PICK_NONE,
+            // The ride saved off the page ([onAddRide]), which closes to the list, where its outcome is said.
+            onPickTo = onAddRide?.let { add ->
+                { loaded, stop ->
+                    add(detailRow, loaded, stop)
+                    detailKey = null
+                    detailPicking = PICK_NONE
+                }
+            },
+            onStartPicking = { detailPicking = PICK_FROM_PAGE },
             focus = detailDestination?.let { RouteFocus(it, detailBranch, detailTrainWay) },
             onDismissAlert = if (detailRow.status != null) {
                 { onDismissAlert(detailRow) }
@@ -1794,6 +1847,9 @@ fun MainScreen(
             )
         },
     ) { innerPadding ->
+    // A row's long press opens its route page picking where a favorite ride goes ("Add favorite…"), by the row's own
+    // way of opening its page (a journey card's keeps to the card's trains), then picking.
+    CompositionLocalProvider(LocalAddFavoriteRide provides pickRide) {
         // The trip on the way, pinned above the near-me list (SPEC *On the way*): from the tracker's
         // state, no request of its own. Not on a station's page, nor a drill-down from the list (a
         // station, a platform or a favorite journey), each its own view.
@@ -2045,6 +2101,7 @@ fun MainScreen(
                 }
             }
         }
+    }
     }
     if (railKeyAsked) {
         RailKeyDialog(
@@ -2733,6 +2790,11 @@ internal open class AnswerMemo<T> {
     }
 }
 
+/** [row]'s mode, from any of its departures when TfL left it off the soonest one. Scans them: off the main thread. */
+@WorkerThread
+internal fun rowModeOf(row: DepartureRow): String =
+    row.mode.ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
+
 /** Saved-journeys answers for route pages reopened ([rememberJourneysHere]). */
 internal object JourneysMemo : AnswerMemo<JourneysHere>()
 
@@ -2742,6 +2804,21 @@ internal object StepFreeMemo : AnswerMemo<Map<String, StepFreeLevel>>()
 /** Whether two route-page keys are for the same stop and line, so one answer may stand in for the other. */
 internal fun sameRowAndLine(held: Inputs, wanted: Inputs): Boolean =
     held.parts[0] == wanted.parts[0] && held.parts[1] == wanted.parts[1]
+
+/**
+ * The favorite journey on [row]'s line from its boarding stop to [stop], as the route page's stop list ([loaded]) has
+ * them: a long press on a stop there, a stop's page's Favorite, and a route row's "Add favorite…" all save this one.
+ * Map lookups only. The name as the list shows it: a stop TfL gave no name keeps its id, so a saved journey's heading
+ * never has a blank end. Its stop area rides along, so "Find a station" can open the end as the whole place. [mode] is
+ * the row's, worked out by the caller ([rowModeOf]) so a tap handler calling this scans nothing (AGENTS.md *Main thread*).
+ */
+internal fun routeJourneyTo(row: DepartureRow, loaded: RouteStopsUi.Loaded?, stop: RouteStop, mode: String): FavoriteJourney {
+    val positions = loaded?.positions.orEmpty()
+    val areas = loaded?.sequence?.stopAreas.orEmpty()
+    fun end(id: String, name: String) =
+        JourneyEnd(id, name.ifBlank { id }, positions[id]?.first, positions[id]?.second, areas[id].orEmpty())
+    return FavoriteJourney(end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, mode)
+}
 
 /**
  * Each of [journeys] that boards at [stopId] on [lineId]'s route page, with the stops on [page] it ends
@@ -6461,15 +6538,16 @@ private fun RouteDivider(heavy: Boolean = false) {
 
 /**
  * One interior route row of a group card: a [Row] whose [content] is the pill, destination, optional
- * ⚠, and countdown. A TAP opens the detail view; a LONG-PRESS pins the route when [starrable]
- * (starring available, not a stop closure, and it has upcoming departures). A [isStarred] route wears
- * a 3dp gold leading-edge bar — all destination rows of one starred [DepartureRow] show it, since
- * starring is keyed per line+direction ([StarredRow.of]).
+ * ⚠, and countdown. A TAP opens the detail view; a LONG-PRESS ("Add favorite…", [LocalAddFavoriteRide]) opens it
+ * asking "To…", a tap on a stop saving the favorite ride there, when [starrable] (the list lets its rows act, not a
+ * stop closure, and it has upcoming departures) and the row has a line a ride can follow ([rideAddable]). A route pinned before pins went ([isStarred]) wears a 3dp gold leading-edge bar —
+ * all destination rows of one starred [DepartureRow] show it, since starring is keyed per line+direction
+ * ([StarredRow.of]) — and its menu, where it has one, offers to unpin it.
  *
  * A `pointerInput` gesture plus a **non-merging** `semantics` block (NOT `combinedClickable`, which
  * flattens the descendant traversal so the ⚠ could no longer precede its countdown): the block adds
  * the labeled tap/long-press and marks the row its own traversal sub-group. Callbacks are read via
- * `rememberUpdatedState` and the gesture is keyed on the stable [starrable] so the 10s clock's
+ * `rememberUpdatedState` and the gesture is keyed on whether it can add a ride, stable, so the 10s clock's
  * recomposition never drops an in-progress long-press (Codex).
  */
 @Composable
@@ -6483,11 +6561,12 @@ internal fun RouteRow(
     onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
     // The route this row shows (null for a status row), handed to the detail so it opens on it.
     focus: RouteFocus? = null,
-    // Makes a long press open a menu — the pin/unpin, then "Hide ‹mode›" for this row's mode (SPEC
-    // *Finding stops → Hiding a mode*) — instead of pinning at once. Null keeps the direct pin.
+    // Makes a long press open a menu — "Add favorite…" (and Unpin, for a row pinned before), then "Hide ‹mode›" for
+    // this row's mode (SPEC *Finding stops → Hiding a mode*) — instead of opening "Add favorite…" at once. Null keeps
+    // the direct one.
     onHideMode: ((String) -> Unit)? = null,
-    // A favorite ride's row: a long press opens a menu — the pin/unpin, then "Hide ‹line› on this ride"
-    // (SPEC *Hiding a line from a ride*). Null keeps the direct pin.
+    // A favorite ride's row: a long press opens a menu — "Add favorite…" (and Unpin), then "Hide ‹line› on this
+    // ride" (SPEC *Hiding a line from a ride*). Null keeps the direct "Add favorite…".
     onHideFromRide: ((LineRef) -> Unit)? = null,
     // A tap that does this instead of opening the line's page, unlabeled like the card's own tap —
     // a trip's card, where the row is one of the trip's choices, not a line to look up.
@@ -6496,7 +6575,8 @@ internal fun RouteRow(
     onLongPressInstead: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val starActionLabel = stringResource(if (isStarred) R.string.unstar else R.string.star)
+    val unstarLabel = stringResource(R.string.unstar)
+    val addLabel = stringResource(R.string.add_favorite_ride)
     val detailActionLabel = stringResource(R.string.departure_details)
     val moreLabel = stringResource(R.string.more_actions)
     val currentRow by rememberUpdatedState(row)
@@ -6505,6 +6585,15 @@ internal fun RouteRow(
     val currentFocus by rememberUpdatedState(focus)
     val currentOpenInstead by rememberUpdatedState(onOpenInstead)
     val currentLongPressInstead by rememberUpdatedState(onLongPressInstead)
+    // "Add favorite…" (maintainer, 2026-10-23): where the row may act on a long press, opens its own route page and
+    // has a line and a train to ride, that page, asking "To…": a tap on a stop saves the ride there. Pins are going:
+    // nothing new is pinned, and one already pinned is only taken off, from a menu or its page.
+    val addFavorite = LocalAddFavoriteRide.current
+    val addable = starrable && addFavorite != null && onOpenDetail != null && onOpenInstead == null && rideAddable(row)
+    val currentAddFavorite by rememberUpdatedState(addFavorite)
+    fun addRide() {
+        currentAddFavorite?.invoke { currentOpenDetail?.invoke(currentRow, currentFocus) }
+    }
     val opensInstead = onOpenInstead != null
     val opens = opensInstead || onOpenDetail != null
     val longPressesInstead = onLongPressInstead != null
@@ -6517,7 +6606,7 @@ internal fun RouteRow(
     val onLongPress: ((Offset) -> Unit)? = when {
         longPressesInstead -> { _ -> currentLongPressInstead?.invoke() }
         menu -> { _ -> menuOpen = true }
-        starrable -> { _ -> currentToggleStar(currentRow) }
+        addable -> { _ -> addRide() }
         else -> null
     }
     val starColor = LocalStarredBorderColor.current
@@ -6530,7 +6619,7 @@ internal fun RouteRow(
                 // A row with no tap and no long press takes no gesture at all: a detector with
                 // nothing to do still consumes the touch.
                 if (opens || onLongPress != null) {
-                    Modifier.indication(presses, LocalIndication.current).pointerInput(starrable, menu, longPressesInstead, opens) {
+                    Modifier.indication(presses, LocalIndication.current).pointerInput(addable, menu, longPressesInstead, opens) {
                         detectTapGestures(
                             // Only a row a tap does something on shows a press, as a clickable one would.
                             onPress = { if (opens) showPress(it, presses) },
@@ -6548,7 +6637,7 @@ internal fun RouteRow(
                 when {
                     longPressesInstead -> onLongClick(label = moreLabel) { currentLongPressInstead?.invoke(); true }
                     menu -> onLongClick(label = moreLabel) { menuOpen = true; true }
-                    starrable -> onLongClick(label = starActionLabel) { currentToggleStar(currentRow); true }
+                    addable -> onLongClick(label = addLabel) { addRide(); true }
                 }
             }
             .then(
@@ -6564,15 +6653,27 @@ internal fun RouteRow(
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
-    val starItem: (@Composable () -> Unit)? = if (starrable) {
+    // The menu's first items: "Add favorite…", then "Unpin from top" for a row pinned before pins went.
+    val starItem: (@Composable () -> Unit)? = if (addable || (starrable && isStarred)) {
         {
-            DropdownMenuItem(
-                text = { Text(starActionLabel) },
-                onClick = {
-                    menuOpen = false
-                    currentToggleStar(currentRow)
-                },
-            )
+            if (addable) {
+                DropdownMenuItem(
+                    text = { Text(addLabel) },
+                    onClick = {
+                        menuOpen = false
+                        addRide()
+                    },
+                )
+            }
+            if (starrable && isStarred) {
+                DropdownMenuItem(
+                    text = { Text(unstarLabel) },
+                    onClick = {
+                        menuOpen = false
+                        currentToggleStar(currentRow)
+                    },
+                )
+            }
         }
     } else {
         null
@@ -7099,6 +7200,12 @@ internal fun RouteDetailScreen(
     onToggleJourney: ((FavoriteJourney) -> Unit)? = null,
     // Dismisses the tip on starring a journey from the stop list; null shows none.
     onDismissJourneyTip: (() -> Unit)? = null,
+    // "Add favorite…" (maintainer, 2026-10-23): [picking] titles the page "To…", and a tap on a stop the train calls
+    // at after the boarding stop picks where the ride goes ([onPickTo], with the stops it's from) rather than opening
+    // its details. [onStartPicking] puts the page into it from its menu; null offers no "Add favorite…" there.
+    picking: Boolean = false,
+    onPickTo: ((RouteStopsUi.Loaded, RouteStop) -> Unit)? = null,
+    onStartPicking: (() -> Unit)? = null,
     // The trip's ride this page is for: its line's page ("View line") keeps where it boards and gets off,
     // and shows an alert on its stretch in full. Null keeps the row's own stop alone.
     ride: TripLeg? = null,
@@ -7476,7 +7583,11 @@ internal fun RouteDetailScreen(
                 // reflects the page's subject (maintainer, 2026-09-22). A status row with no
                 // predictions shows just the pill.
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Picking where a favorite ride goes: titled for what it does, the stops below asking "To…"
+                    // (maintainer, 2026-10-23).
+                    if (picking) {
+                        Text(stringResource(R.string.route_pick_title), modifier = Modifier.testTag("routePickTitle"))
+                    } else Row(verticalAlignment = Alignment.CenterVertically) {
                         LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode)
                         // The only destination's forms, worked out with the page's work ([RouteDetailWork.titleForms]).
                         val titleForms = routeWork?.second?.titleForms
@@ -7499,25 +7610,18 @@ internal fun RouteDetailScreen(
                     }
                 },
                 actions = {
-                    // The star (pin-to-top) as the bar's action — the discoverable control, shown
-                    // only where the row is pinnable (same rule the list card uses). Filled and gold
-                    // when starred, matching the list card's gold pin border; the vendored outline
-                    // star when not (material-icons-core ships the filled Star but not its outline).
-                    // No visible label — the contentDescription flips with state so a screen reader
-                    // still hears what the tap does (SPEC principle 2).
-                    // Not on a route chosen with no train: the star pins the row, which isn't this route's.
-                    if (starrable && trainless == null) {
+                    // A row pinned before pins went (maintainer, 2026-10-23) keeps its filled gold star, matching
+                    // the list's gold bar, and a tap takes the pin off; nothing new is pinned, so an unpinned row
+                    // shows none: "Add favorite…" in the menu saves a ride instead.
+                    // Not on a route chosen with no train: the star is the row's, which isn't this route's.
+                    // Picking shows the ride's ends and stops alone (maintainer, 2026-10-23): no actions.
+                    if (picking) return@TopAppBar
+                    if (starrable && isStarred && trainless == null) {
                         IconButton(onClick = onToggleStar) {
                             Icon(
-                                imageVector = if (isStarred) Icons.Filled.Star else StarBorderIcon,
-                                contentDescription = stringResource(
-                                    if (isStarred) R.string.unstar else R.string.star,
-                                ),
-                                tint = if (isStarred) {
-                                    LocalStarredBorderColor.current
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = stringResource(R.string.unstar),
+                                tint = LocalStarredBorderColor.current,
                             )
                         }
                     }
@@ -7526,7 +7630,20 @@ internal fun RouteDetailScreen(
                             Icon(ScheduleIcon, contentDescription = stringResource(R.string.route_detail_timetable_heading))
                         }
                     }
+                    // "Add favorite…": this page asks where the ride from here goes, its stops a tap away, as a long
+                    // press on its row opens it (SPEC *Journeys*). Not on a route chosen with no train to save it on.
+                    val startPicking = onStartPicking?.takeIf { !picking && starrable && trainless == null && onPickTo != null && rideAddable(row) }
                     AppMenuOverflow { close ->
+                        if (startPicking != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.add_favorite_ride)) },
+                                onClick = {
+                                    close()
+                                    startPicking()
+                                },
+                                modifier = Modifier.testTag("routeAddFavorite"),
+                            )
+                        }
                         // A status row about a stop has no line to show.
                         if (row.lineId.isNotBlank()) {
                             DropdownMenuItem(
@@ -7559,7 +7676,8 @@ internal fun RouteDetailScreen(
             // and all (a terminus), or empty where none runs from here (Codex on #1038). Elsewhere (a bus pole, one
             // way's) only where there are ways to choose between.
             // One slot, the chips' height, whichever of them, a failure or nothing is in it ([RouteChipsSlot]).
-            if (chipsShown || chipsFailed || holdsChips) {
+            // Not while picking a ride's end: the train's way is the row's, and the page shows its stops alone.
+            if (!picking && (chipsShown || chipsFailed || holdsChips)) {
                 RouteChipsSlot(Modifier.padding(bottom = 8.dp)) {
                     if (chipsShown && routeChoices != null) {
                         RouteChips(
@@ -7589,7 +7707,8 @@ internal fun RouteDetailScreen(
             val headingMode = row.mode
                 .ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
                 .ifBlank { Connections.knownMode(row.lineId).orEmpty() }
-            val service = serviceName(row.lineName, headingMode, row.lineId)
+            // Picking a ride's end shows only where it's from, then its stops (maintainer, 2026-10-23).
+            val service = serviceName(row.lineName, headingMode, row.lineId)?.takeUnless { picking }
             if (service != null) {
                 Text(
                     text = if (takesLineSuffix(row.lineName, headingMode)) {
@@ -7626,6 +7745,16 @@ internal fun RouteDetailScreen(
                         .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
                 )
             }
+            if (picking) {
+                // "To…" over the stops a tap picks from, as Add favorite ride's To asks.
+                Text(
+                    text = stringResource(R.string.menu_to),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 16.dp).semantics { heading() },
+                )
+            }
+            // The rest is the departure's, not the ride's: left off while picking.
+            if (!picking) {
             // The followed route's countdowns, leading the page — the card's one-line format, times
             // only, but across the page's full width so more fit; the ones that don't ellipsize off
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
@@ -7759,6 +7888,7 @@ internal fun RouteDetailScreen(
                 row, shown, alertPlaces, dismissAlert, dismissPlanned, closures, uncheckedEnd,
                 checking = disruptionChecking || wayPending, disruptionUnknown = disruptionUnknown, stale = stale,
             )
+            }
             // Each saved journey that boards here on this page, with the stops on this page it ends at:
             // by id, or placed on this page's route the way the journey card places it (a bus's way
             // back boards across the road).
@@ -7794,25 +7924,21 @@ internal fun RouteDetailScreen(
                 (Connections.isRail(rowMode, row.lineId) || rowMode.equals("bus", ignoreCase = true))
             // The favorite journey from the boarding stop to [stop], as a long press saves it or the
             // stop's page offers it.
-            fun journeyTo(stop: RouteStop): FavoriteJourney {
-                val positions = (stops as? RouteStopsUi.Loaded)?.positions.orEmpty()
-                val areas = (stops as? RouteStopsUi.Loaded)?.sequence?.stopAreas.orEmpty()
-                // The name as the list shows it: a stop TfL gave no name keeps its id,
-                // so a saved journey's heading never has a blank end. Its stop area rides
-                // along, so "Find a station" can open the end as the whole place.
-                fun end(id: String, name: String) =
-                    JourneyEnd(id, name.ifBlank { id }, positions[id]?.first, positions[id]?.second, areas[id].orEmpty())
-                // A saved journey this stop already ends on this page is toggled (off) as
-                // itself, rather than saved again under this direction's pole ids.
-                // Looked up, not scanned: worked out with the page's journeys on the worker.
-                val existing = journeysHere.here.byStop[stop.id]
-                return existing ?: FavoriteJourney(
-                    end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, rowMode,
-                )
-            }
+            // A saved journey this stop already ends on this page is toggled (off) as
+            // itself, rather than saved again under this direction's pole ids.
+            // Looked up, not scanned: worked out with the page's journeys on the worker.
+            fun journeyTo(stop: RouteStop): FavoriteJourney =
+                journeysHere.here.byStop[stop.id] ?: routeJourneyTo(row, stops as? RouteStopsUi.Loaded, stop, rowMode)
             // The line's map, open from here to where the soonest train terminates and folded beyond (SPEC *Route
             // detail*), once the train's stops are in; until then, and where no route data is wired, the list's notes.
             val railLoaded = railState as? RouteStopsUi.Loaded
+            // Picking where a favorite ride goes ([picking]): a stop after the boarding stop picks it, from the train's
+            // stops in hand, which a tap can only reach once they're listed.
+            // What a tap is said to do while picking: it saves the ride there, not opens the stop.
+            val pickLabel = stringResource(R.string.route_pick_title)
+            val pickTo: ((RouteStop) -> Unit)? = onPickTo?.takeIf { picking && journeysHereFavorable }?.let { picked ->
+                { stop -> ((stops as? RouteStopsUi.Loaded) ?: railLoaded)?.let { picked(it, stop) } }
+            }
             // A tapped stop's details as this page opens them: by the stop the train calls at, its stop area and
             // interchange where TfL gave them, headed by the departure followed, with what Go rides there (the stop
             // list as loaded, read on the worker when the details open).
@@ -7946,8 +8072,9 @@ internal fun RouteDetailScreen(
                 )
             }
             if (mapHeld || !mapPending && mapDrawable && mapSection != null && (routeMap != null || lineOnly)) {
-                // No tip where nothing past the boarding stop can be starred (a train ending here), nor on the line alone.
-                if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && routeMap != null && railLoaded?.endsHere != true) {
+                // No tip where nothing past the boarding stop can be starred (a train ending here), nor on the line alone,
+                // nor while picking a ride's end, where a tap or a long press picks.
+                if (!picking && onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && routeMap != null && railLoaded?.endsHere != true) {
                     JourneyTip(onDismissJourneyTip, Modifier.padding(top = 16.dp))
                 }
                 // A train ending here heads nowhere: said above its map. Any other's way is on the "From" line, beside its
@@ -7959,7 +8086,8 @@ internal fun RouteDetailScreen(
                 if (!mapHeld && mapSection != null && routeMap != null) {
                     val inputs = routeMap
                     val stations = mapStations ?: if (drawnAs.isNullOrEmpty()) inputs.asDrawn else RouteMapStations.NONE
-                    val toggle = onToggleJourney?.takeIf { journeysHereFavorable }
+                    // Not while picking a ride's end: a long press then picks as a tap does, never toggling a ride behind the pick.
+                    val toggle = onToggleJourney?.takeIf { journeysHereFavorable && !picking }
                     val extras = LineMapExtras(
                         connections = stations.connections,
                         stepFree = stepFreeDrawn,
@@ -7968,11 +8096,17 @@ internal fun RouteDetailScreen(
                         longPressReady = (journeysHere.current || noJourneysHere) && mapSection.current,
                         longPressStops = stations.after.keys,
                         terminus = stations.terminus,
+                        // Picking, a tap saves the ride there, and is said so (Codex on #1179).
+                        openLabel = pickLabel.takeIf { picking },
                     )
                     // No tap until the stations are mapped to the stops the train calls at: before, a pole drawn as another
                     // would open the wrong one.
                     val mapped = mapStations != null || drawnAs.isNullOrEmpty()
-                    val openMapStop: ((String, String, Pair<Double, Double>?) -> Unit)? = onOpenStop?.takeIf { mapped }?.let { open ->
+                    val openMapStop: ((String, String, Pair<Double, Double>?) -> Unit)? = if (pickTo != null) {
+                        // Picking: a station after the boarding stop is where the ride goes, by the stop the train calls at;
+                        // never the boarding stop itself, where a loop calls again (Codex on #1179), as the list's guard has it.
+                        if (mapped) ({ id, name, _ -> stations.after[id]?.takeIf { it != row.stopId }?.let { pickTo(RouteStop(it, name)) } }) else null
+                    } else onOpenStop?.takeIf { mapped }?.let { open ->
                         { id, name, _ ->
                             // The stop the train calls at, not the one the map draws it as (a bus's pole across the road).
                             val stop = stations.path[id] ?: id
@@ -8010,13 +8144,17 @@ internal fun RouteDetailScreen(
                 starredStopIds = journeysHere.here.starredStopIds,
                 alertStopIds = alertStretchIds,
                 stepFree = stepFree.levels.orEmpty(),
-                onDismissJourneyTip = onDismissJourneyTip,
+                // The list's long-press tip neither, while picking.
+                onDismissJourneyTip = onDismissJourneyTip.takeUnless { picking },
                 // Not until the page's journeys are worked out for what it shows: a tap goes by them.
                 // With none here, a tap can only star: the first lands at once. A star still shown after the
                 // last was taken off waits, or a second tap would put it back.
                 journeyTapsReady = journeysHere.current || noJourneysHere,
-                onToggleJourneyTo = onToggleJourney?.takeIf { journeysHereFavorable }?.let { toggle -> { stop -> toggle(journeyTo(stop)) } },
-                onOpenStop = onOpenStop?.let { open ->
+                onToggleJourneyTo = onToggleJourney?.takeIf { journeysHereFavorable && !picking }?.let { toggle -> { stop -> toggle(journeyTo(stop)) } },
+                onOpenStop = if (pickTo != null) {
+                    // Picking: any stop but the boarding stop is where the ride goes.
+                    ({ stop, _ -> if ((stops as? RouteStopsUi.Loaded)?.stops?.firstOrNull()?.id != stop.id) pickTo(stop) })
+                } else onOpenStop?.let { open ->
                     { stop, at ->
                         // The boarding stop is no journey's far end, wherever the list calls at it; nor is one past a
                         // journey this page can't favorite (no line, or a mode without a route to place it on). Offered
@@ -8026,6 +8164,7 @@ internal fun RouteDetailScreen(
                         open(stopOpen(stop.id, stop.name, if (!first && journeysHereFavorable) journeyTo(stop) else null, at, true))
                     }
                 },
+                openLabel = pickLabel.takeIf { picking },
             )
         }
     }

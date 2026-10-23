@@ -725,6 +725,9 @@ internal class LineMapExtras(
     val longPressStops: Set<String> = emptySet(),
     // Where the page's train ends, as its stop list bolds it: one short of the line's end too.
     val terminus: String? = null,
+    // What a tap on a station is said to do, where it isn't opening the station (picking a ride's end saves it); null
+    // says it opens the station.
+    val openLabel: String? = null,
 )
 
 private const val STEP_FREE_INLINE = "stepFree"
@@ -746,7 +749,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
     val longPress = extras?.onLongPress?.takeIf { extras.longPressReady && !row.riding && row.stopId in extras.longPressStops }
     val longPressLabel = stringResource(if (row.starred) R.string.action_unstar_journey else R.string.action_star_journey)
     val haptics = LocalHapticFeedback.current
-    val openLabel = stringResource(R.string.line_stop_open)
+    val openLabel = extras?.openLabel ?: stringResource(R.string.line_stop_open)
     val surface = MaterialTheme.colorScheme.surface
     val closedColor = MaterialTheme.colorScheme.error
     val arrowColor = MaterialTheme.colorScheme.inverseSurface

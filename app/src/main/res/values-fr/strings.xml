@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">Départs peut-être pas à jour</string>
     <string name="refresh">Actualiser</string>
     <string name="locate_here">Utiliser ma position</string>
-    <string name="star">Épingler en haut</string>
     <string name="unstar">Désépingler</string>
     <string name="star_write_failed">Impossible d’enregistrer l’épinglage</string>
     <string name="dismiss_write_failed">Impossible d’ignorer l’alerte</string>

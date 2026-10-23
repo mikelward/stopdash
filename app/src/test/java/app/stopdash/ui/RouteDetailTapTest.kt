@@ -25,8 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * A TAP on a departure/route card opens the full-screen route detail (SPEC D8 / `TODO.md`) — a
- * deliberate no-op before this. A long-press still pins ([StarLongPressTest]); this pins the tap
- * wiring and that the page closes on back. Because the page REPLACES the departures screen, its
+ * deliberate no-op before this. A long-press opens "Add favorite…" ([StarLongPressTest]); this pins the
+ * tap wiring and that the page closes on back. Its back arrow (the list has none) says it's open. Because the page REPLACES the departures screen, its
  * banner isn't composed while the page is open, so these assertions read the page's own text
  * directly. The page's contents are covered by [RouteDetailScreenScreenshotTest].
  */
@@ -51,19 +51,17 @@ class RouteDetailTapTest {
     private fun loaded() = DeparturesUiState.Loaded(stops = listOf(stop), fetchedAt = now)
 
     @Test
-    fun `tapping a card opens the route detail with its star`() {
+    fun `tapping a card opens the route detail`() {
         composeRule.setContent {
             StopDashTheme {
                 MainScreen(state = loaded(), now = now, onRefresh = {})
             }
         }
 
-        // The list card marks a pin with a border only (no star control), so the page's star —
-        // found by its "Pin to top" contentDescription in the app bar — appearing means the page
-        // opened.
-        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+        // The near-me list has no back arrow, so the page's appearing means the page opened.
+        composeRule.onNodeWithContentDescription("Back").assertDoesNotExist()
         composeRule.onNodeWithText("Brixton").performTouchInput { click() }
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
     }
 
     @Test
@@ -88,8 +86,8 @@ class RouteDetailTapTest {
         }
 
         composeRule.onNodeWithText("High Barnet").performTouchInput { click() }
-        // The page is open (its star is showing) and names only the tapped route.
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        // The page is open and names only the tapped route.
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
         composeRule.onNodeWithText("High Barnet").assertIsDisplayed()
         composeRule.onNodeWithText("Edgware", substring = true).assertDoesNotExist()
     }
@@ -178,20 +176,18 @@ class RouteDetailTapTest {
         }
 
         composeRule.onNodeWithText("Brixton").performTouchInput { click() }
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
 
-        // The row leaves the list: the page stays, on its route with no train (no star: it pins a row that isn't
-        // there), not the list.
+        // The row leaves the list: the page stays, on its route with no train, not the list.
         composeRule.runOnUiThread { current = gone }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria line").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
         composeRule.onNodeWithText("2 min").assertDoesNotExist()
 
         // A train comes again on a later refresh: the page shows it, as from a tap on its row.
         composeRule.runOnUiThread { current = present }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
     }
 
     @Test
@@ -205,11 +201,11 @@ class RouteDetailTapTest {
             }
         }
         composeRule.onNodeWithText("Brixton").performTouchInput { click() }
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
 
         composeRule.runOnUiThread { current = DeparturesUiState.Loading }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
 
         // The new set's stops come in one by one: the page's own isn't judged gone while it's still loading.
         composeRule.runOnUiThread {
@@ -220,12 +216,12 @@ class RouteDetailTapTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
         composeRule.onNodeWithText("Status may be out of date").assertDoesNotExist()
 
         composeRule.runOnUiThread { current = loaded() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
     }
 
     @Test
@@ -245,7 +241,7 @@ class RouteDetailTapTest {
             }
         }
         composeRule.onNodeWithText("Brixton").performTouchInput { click() }
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
 
         composeRule.runOnUiThread { current = DeparturesUiState.Loaded(stops = listOf(elsewhere), fetchedAt = now) }
         composeRule.waitForIdle()
@@ -256,7 +252,7 @@ class RouteDetailTapTest {
         composeRule.runOnUiThread { current = loaded() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Status may be out of date").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
     }
 
     @Test
@@ -268,9 +264,9 @@ class RouteDetailTapTest {
         }
 
         composeRule.onNodeWithText("Brixton").performTouchInput { click() }
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
         // The app bar's back arrow returns to the list.
         composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Back").assertDoesNotExist()
     }
 }

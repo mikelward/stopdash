@@ -4015,6 +4015,7 @@ class MainScreenScreenshotTest {
                             journeysKnown = true,
                             onToggleJourney = {},
                             onToggleStar = { toggled = it },
+                            onAddRide = { _, _, _ -> },
                             onSetRideLineHidden = { journey, entry, hidden ->
                                 writes += entry to hidden
                                 saved = Journeys.withLineHidden(saved, journey, entry, hidden)
@@ -4027,15 +4028,19 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Warren Street").assertExists()
 
-        // The line it was saved on pins at once, as a ride's row always did: there's nothing else to offer.
+        // The line it was saved on opens "Add favorite…" at once, its route page asking "To…": there's nothing else to
+        // offer, and nothing is pinned.
         composeRule.onNodeWithText("Walthamstow Central").performTouchInput { longClick() }
-        assertEquals("victoria", toggled?.lineId)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertExists()
+        assertEquals(null, toggled)
         composeRule.onAllNodesWithText("on this ride", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitForIdle()
 
-        // Another line's row opens a menu: pin it, or hide it from this ride.
-        toggled = null
+        // Another line's row opens a menu: add a favorite ride on it, or hide it from this ride.
         composeRule.onNodeWithText("Warren Street").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Pin to top").assertExists()
+        composeRule.onNodeWithText("Add favourite…").assertExists()
         composeRule.onNodeWithText("Hide X1 on this ride").performClick()
         composeRule.waitForIdle()
         val x1 = HiddenModes.lineKey("bus-x", "X1")
@@ -4380,6 +4385,7 @@ class MainScreenScreenshotTest {
                             journeys = listOf(kingToNorthEnd),
                             journeysKnown = true,
                             onToggleJourney = {},
+                            onAddRide = { _, _, _ -> },
                             onSetRideLineHidden = { _, entry, hidden -> writes += entry to hidden },
                         )
                     }
@@ -4389,7 +4395,7 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
         composeRule.onNodeWithText("West End").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Pin to top").assertExists()
+        composeRule.onNodeWithText("Add favourite…").assertExists()
         composeRule.onNodeWithText("on this ride", substring = true).performClick()
         composeRule.waitForIdle()
         assertEquals(1, writes.size)
@@ -5040,11 +5046,12 @@ class MainScreenScreenshotTest {
         journeyScreen(origin, object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
         })
-        // The origin isn't a near-me stop, so the page must resolve from the journey card's rows.
-        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+        // The origin isn't a near-me stop, so the page must resolve from the journey card's rows. Its back arrow
+        // (the list has none) says it's open.
+        composeRule.onNodeWithContentDescription("Back").assertDoesNotExist()
         composeRule.onNodeWithText("Walthamstow Central", substring = true).performTouchInput { click() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
     }
 
     @Test
@@ -5080,11 +5087,11 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Walthamstow Central", substring = true).performTouchInput { click() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
 
         journeys = emptyList()
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
     }
 
     @Test
@@ -5124,14 +5131,14 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Walthamstow Central", substring = true).performTouchInput { click() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
         composeRule.onAllNodesWithText("0 · 3 min").assertCountEquals(0)
         composeRule.onAllNodesWithText("3 min").assertCountEquals(1)
 
         // Unstarred from the page: it stays open, still reading the card's trains, so nothing joins under the rider.
         journeys = emptyList()
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Pin to top").assertExists()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
         composeRule.onAllNodesWithText("0 · 3 min").assertCountEquals(0)
         composeRule.onAllNodesWithText("3 min").assertCountEquals(1)
     }
@@ -6328,6 +6335,7 @@ class MainScreenScreenshotTest {
                             onHideMode = {},
                             onSetRideLineHidden = { _, _, _ -> },
                             stationGroups = true,
+                            onAddRide = { _, _, _ -> },
                         )
                     }
                 }
@@ -6346,10 +6354,14 @@ class MainScreenScreenshotTest {
         assertTrue(top("(High Barnet", substring = true) < top("King's Cross St. Pancras"))
         assertTrue(top("King's Cross St. Pancras") < top("Morden"))
         captureSnapshot("main-station-groups-ride-change.png", heightPx = 2400)
-        // A long press on the ride's train offers what its own card does, never hiding the mode everywhere.
+        // A long press on the ride's train does what its own card does, never hiding the mode everywhere: on the line
+        // it was saved on, "Add favorite…" at once, its route page asking "To…".
         composeRule.onNodeWithText("(High Barnet", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithTag("routePickTitle").assertExists()
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitForIdle()
         // The station's own Northern line row still offers it.
         composeRule.onNodeWithText("Morden").performTouchInput { longClick() }
         composeRule.waitForIdle()

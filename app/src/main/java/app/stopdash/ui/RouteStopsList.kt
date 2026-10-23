@@ -439,6 +439,8 @@ internal fun RouteStopsSection(
     // Opens a tapped station's details, given its place in the list (a loop can call at a stop twice);
     // null leaves a tap inert.
     onOpenStop: ((RouteStop, Int) -> Unit)? = null,
+    // What a tap is said to do, where it isn't opening the stop (picking a ride's end saves it); null says it opens it.
+    openLabel: String? = null,
 ) {
     val note = when (state) {
         RouteStopsUi.Hidden -> return
@@ -475,6 +477,7 @@ internal fun RouteStopsSection(
                     stepFree = stepFree[stop.id],
                     onClick = if (index > 0 && journeyTapsReady) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
                     onOpen = onOpenStop?.let { open -> { open(stop, index) } },
+                    openLabel = openLabel,
                 )
             }
         } else if (note != null) {
@@ -555,6 +558,8 @@ private fun StopOnRail(
     onClick: (() -> Unit)? = null,
     // Opens this station's page, by a tap; null offers none.
     onOpen: (() -> Unit)? = null,
+    // What the tap is said to do; null says it opens the station.
+    openLabel: String? = null,
     // Where the rider is: the blue dot, read as "Your stop". The boarding stop on a route's page; on a trip's
     // ride, the stop they're at or last passed.
     here: Boolean = first,
@@ -565,7 +570,7 @@ private fun StopOnRail(
     val starredLabel = stringResource(R.string.route_stop_journey_starred)
     val haptics = LocalHapticFeedback.current
     val toggleLabel = stringResource(if (starred) R.string.action_unstar_journey else R.string.action_star_journey)
-    val openLabel = stringResource(R.string.action_show_stop)
+    val openSaid = openLabel ?: stringResource(R.string.action_show_stop)
     // The latest actions, read by a detector keyed only on which there are: the list builds them
     // afresh on every recomposition, and keying the detector on them would restart it and drop a tap
     // or long press in progress, as [RouteRow] avoids.
@@ -670,7 +675,7 @@ private fun StopOnRail(
                         }
                         .semantics {
                             // `this.`: the row's own `onClick` parameter would shadow the semantics action.
-                            if (onOpen != null) this.onClick(label = openLabel) { onOpen(); true }
+                            if (onOpen != null) this.onClick(label = openSaid) { onOpen(); true }
                             if (onClick != null) onLongClick(label = toggleLabel) { onClick(); true }
                         }
                 } else {

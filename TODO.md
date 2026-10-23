@@ -1610,6 +1610,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
 
 ## Phase 2 — Watched stops and settings
 
+- [x] **Favorite rides from a long press** (maintainer, 2026-10-23; SPEC *Journeys*). A route row's long
+      press, and its route page's menu, open "Add favorite…": the row's route page titled "To…", where a tap on
+      a stop saves the ride there, the list saying how it went. Nothing new is pinned.
+  - [ ] **Remove pinned routes**: delete the stored pins (maintainer: drop them, 2026-10-23); the widget,
+        watch, search and Lines stop using them; the gold bar, the route page's unpin star and the rows' Unpin
+        go with them. Meanwhile a pinned row whose long press opens "Add favorite…" at once (no menu: a
+        station page's rows, a ride's own line) is unpinned only from its route page's star.
+
 - [x] **Group nearby departures: By stop/platform or By station** (maintainer, 2026-10-23; SPEC *Grouped by
       station*). By station heads each station once over one card, its rows by platform behind heavier
       lines, its starred rows first, each favorite ride a group of its own just before it, and folds it from

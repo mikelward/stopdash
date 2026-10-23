@@ -44,6 +44,7 @@ import java.time.DayOfWeek
 import java.time.format.TextStyle
 import app.stopdash.domain.Hubs
 import app.stopdash.domain.SnapshotStore
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
@@ -54,6 +55,7 @@ import app.stopdash.domain.JourneyPair
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
+import app.stopdash.domain.RouteStop
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopFinder
@@ -261,25 +263,69 @@ internal suspend fun addFavoriteJourneyPair(
             }
             if (joins) JourneyAddNote.AlreadySaved(from.name, to.name) else savePending(grayed, journeys, warn)
         }
-        is JourneyPair.Result.Found -> {
-            val journey = result.journey
-            try {
-                // Unreadable (a newer StopDash's file): the store keeps that file rather than write over
-                // it, so the journey wouldn't be saved; said, never passed off as added.
-                val saved = journeys.journeys().first() ?: return@withContext JourneyAddNote.NotSaved(from.name, to.name)
-                // Followed now, so a grayed copy from an earlier Add goes, in the same write as the save.
-                if (saved.any { it.key == journey.key }) {
-                    journeys.removePending(grayed)
-                    JourneyAddNote.AlreadySaved(from.name, to.name)
-                } else {
-                    journeys.addReplacingPending(journey, grayed)
-                    null
-                }
-            } catch (e: IOException) {
-                warn("favorite journey add not saved: ${e::class.simpleName}")
-                JourneyAddNote.NotSaved(from.name, to.name)
-            }
+        is JourneyPair.Result.Found -> saveFoundJourney(from.name, to.name, journeys, grayed, warn) { saved ->
+            result.journey.takeUnless { journey -> saved.any { it.key == journey.key } }
         }
+    }
+}
+
+/**
+ * Saves the journey [found] picks from the [saved] ones (null when one is saved already), with the grayed copy of
+ * the same pair from an earlier Add ([grayed]) dropped in the same write: Settings' Add once it finds a line, and a
+ * route row's "Add favorite…". Null once saved; else why it wasn't, by the ends' names [from] and [to].
+ */
+internal suspend fun saveFoundJourney(
+    from: String,
+    to: String,
+    journeys: FavoriteJourneysStore,
+    grayed: PendingJourney,
+    warn: (String) -> Unit,
+    found: (saved: List<FavoriteJourney>) -> FavoriteJourney?,
+): JourneyAddNote? = try {
+    // Unreadable (a newer StopDash's file): the store keeps that file rather than write over
+    // it, so the journey wouldn't be saved; said, never passed off as added.
+    val saved = journeys.journeys().first()
+    val journey = saved?.let(found)
+    when {
+        saved == null -> JourneyAddNote.NotSaved(from, to)
+        // Followed now, so a grayed copy from an earlier Add goes, in the same write as the save.
+        journey == null -> {
+            journeys.removePending(grayed)
+            JourneyAddNote.AlreadySaved(from, to)
+        }
+        else -> {
+            journeys.addReplacingPending(journey, grayed)
+            null
+        }
+    }
+} catch (e: IOException) {
+    warn("favorite journey add not saved: ${e::class.simpleName}")
+    JourneyAddNote.NotSaved(from, to)
+}
+
+/**
+ * A route row's "Add favorite…" (SPEC *Journeys*): the ride on [row]'s line from its stop to [stop], picked on its route
+ * page from the stops its train calls at after it ([loaded], the page's list), built as a long press on that stop
+ * there builds it ([routeJourneyTo]) and saved as Settings' Add saves one ([saveFoundJourney]). One saved already from here to there on this line, under these ids or as the page
+ * places it (a bus's way back boards across the road), is said rather than saved again. Null once saved; else why it
+ * wasn't. Off the main thread, the hop first (AGENTS.md *Main thread*).
+ */
+internal suspend fun addRouteJourney(
+    row: DepartureRow,
+    loaded: RouteStopsUi.Loaded,
+    stop: RouteStop,
+    journeys: FavoriteJourneysStore,
+    warn: (String) -> Unit = {},
+    worker: CoroutineDispatcher = Dispatchers.Default,
+): JourneyAddNote? = withContext(worker) {
+    val journey = routeJourneyTo(row, loaded, stop, rowModeOf(row))
+    // The pair as Settings' Add would have saved it grayed, by each end's stop area: one list holds it at a time.
+    val grayed = PendingJourney(
+        PendingEnd.Station(journey.from.areaId.ifBlank { journey.from.stopId }, journey.from.name),
+        PendingEnd.Station(journey.to.areaId.ifBlank { journey.to.stopId }, journey.to.name),
+    )
+    saveFoundJourney(journey.from.name, journey.to.name, journeys, grayed, warn) { saved ->
+        journey.takeIf { journeysHere(saved, loaded, row.stopId, row.lineId).byStop[stop.id] == null && saved.none { it.key == journey.key } }
     }
 }
 

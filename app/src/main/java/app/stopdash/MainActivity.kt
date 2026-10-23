@@ -38,6 +38,7 @@ import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.RouteStop
 import app.stopdash.domain.DestinationViaChoice
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoritePlace
@@ -332,6 +333,7 @@ import app.stopdash.ui.LocalLocationAllowed
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
+import app.stopdash.ui.RouteStopsUi
 import app.stopdash.ui.LocalJourneyWalkMeters
 import app.stopdash.ui.LocalJourneyEndStops
 import app.stopdash.ui.LocalJourneyHubs
@@ -367,6 +369,8 @@ import app.stopdash.ui.journeyAlertSummaries
 import app.stopdash.ui.JourneyAlertsUi
 import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
+import app.stopdash.ui.addRouteJourney
+import app.stopdash.ui.RideAdds
 import app.stopdash.ui.addPendingJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
 import app.stopdash.ui.setRideLineHidden
@@ -4109,8 +4113,8 @@ class MainActivity : ComponentActivity() {
             // (SPEC *Privacy*): false until the stored choice is read, so it never flashes at someone
             // who already did, and false again the moment either button is tapped.
             val telemetryUnanswered by TelemetryConsent.unanswered.collectAsStateWithLifecycle()
-            val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
             val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
+            val rideAdded by RideAdds.added.collectAsStateWithLifecycle()
             val dismissed by viewModel.dismissed.collectByIdentityWithLifecycle()
             val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
             // The lines pages open over the near-me list, which say a failed dismiss themselves.
@@ -4492,7 +4496,12 @@ class MainActivity : ComponentActivity() {
                     starred = starred,
                     starredKnown = viewModel.starredKnown.collectAsStateWithLifecycle().value,
                     onToggleStar = viewModel::toggleStar,
-                    starringAvailable = starringAvailable,
+                    onAddRide = ::addRide,
+                    rideAdded = rideAdded,
+                    onRideAddedShown = RideAdds::shown,
+                    // A row's long press is "Add favorite…" now, which needs no pins read: only a pinned row's unpin
+                    // does, and its pin shows only once they are.
+                    starringAvailable = true,
                     starWriteFailed = starWriteFailed,
                     dismissed = dismissed,
                     onDismissAlert = viewModel::dismissAlert,
@@ -6326,7 +6335,6 @@ class MainActivity : ComponentActivity() {
         val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
         val fetchingStops by viewModel.fetchingStops.collectByIdentityWithLifecycle()
         val starred by viewModel.starred.collectByIdentityWithLifecycle()
-        val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
         val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
         val dismissed by viewModel.dismissed.collectByIdentityWithLifecycle()
         val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
@@ -6377,11 +6385,15 @@ class MainActivity : ComponentActivity() {
                 fetchingStops = fetchingStops.ids,
                 starred = starred,
                 onToggleStar = viewModel::toggleStar,
+                onAddRide = ::addRide,
+                rideAdded = RideAdds.added.collectAsStateWithLifecycle().value,
+                onRideAddedShown = RideAdds::shown,
                 onShowAllModes = HiddenModesSetting::showAll,
                 // A "Show all" that couldn't be saved says so here too, as on the list.
                 hiddenModesWriteFailed = hiddenModesWriteFailed,
                 onHiddenModesWriteFailureShown = HiddenModesSetting::writeFailureShown,
-                starringAvailable = starringAvailable,
+                // As on the near-me list: "Add favorite…" needs no pins read.
+                starringAvailable = true,
                 starWriteFailed = starWriteFailed,
                 onStarWriteFailureShown = viewModel::starWriteFailureShown,
                 dismissed = dismissed,
@@ -6394,6 +6406,18 @@ class MainActivity : ComponentActivity() {
                 stationBrowse = browse,
                 stationLead = stationLead,
             )
+        }
+    }
+
+    /**
+     * A favorite ride picked on a route page ("Add favorite…", SPEC *Journeys*): saved on the process's scope, so the
+     * page closing at once, or a rotation, doesn't cancel it, its outcome said on the list ([RideAdds]).
+     */
+    private fun addRide(row: DepartureRow, loaded: RouteStopsUi.Loaded, stop: RouteStop) {
+        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STAR))
+        val store = DataStoreFavoriteJourneysStore.from(applicationContext, warn = ::logStarWarning)
+        RideAdds.attempt((application as? StopdashApp)?.applicationScope ?: lifecycleScope, row.stopName, stop.name) {
+            addRouteJourney(row, loaded, stop, store, warn = ::logStarWarning)
         }
     }
 

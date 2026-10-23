@@ -12,7 +12,6 @@
     <string name="departures_stale_empty">Las salidas pueden estar desactualizadas</string>
     <string name="refresh">Actualizar</string>
     <string name="locate_here">Usar mi ubicación</string>
-    <string name="star">Fijar arriba</string>
     <string name="unstar">Dejar de fijar</string>
     <string name="star_write_failed">No se pudo guardar el cambio</string>
     <string name="dismiss_write_failed">No se pudo descartar la alerta</string>

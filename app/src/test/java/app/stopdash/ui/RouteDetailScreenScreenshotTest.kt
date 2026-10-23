@@ -513,8 +513,9 @@ class RouteDetailScreenScreenshotTest {
 
         composeRule.onNodeWithText("Severe Delays").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Dismiss alert").assertIsDisplayed()
-        // The discoverable star — an app-bar icon whose contentDescription labels the action.
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
+        // No pin star: nothing new is pinned (maintainer, 2026-10-23); the menu's "Add favourite…" saves a ride.
+        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Unpin from top").assertDoesNotExist()
         // The app bar names where the service is going; with no stop list shown, the body names the
         // boarding stop.
         composeRule.onNodeWithText("Walthamstow Central", substring = true).assertIsDisplayed()
@@ -765,13 +766,14 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
-    fun tappingTheStar_togglesTheRow() {
+    fun tappingAPinnedRoutesStar_unpinsIt() {
+        // A row pinned before pins went keeps its filled star, and a tap takes the pin off.
         var toggled = false
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
-                    isStarred = false,
+                    isStarred = true,
                     starrable = true,
                     disruptionUnknown = false,
                     stale = false,
@@ -783,7 +785,7 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithContentDescription("Pin to top").performClick()
+        composeRule.onNodeWithContentDescription("Unpin from top").performClick()
         composeRule.runOnIdle { assertEquals(true, toggled) }
     }
 
@@ -919,7 +921,6 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("No disruptions reported").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Pin to top").assertIsDisplayed()
     }
 
     @Test
@@ -1095,6 +1096,61 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertIsDisplayed()
 
         captureSnapshot("route-detail-terminates-here.png")
+    }
+
+    @Test
+    fun theRouteMap_whilePicking_aLoopBackThroughTheBoardingStopPicksNothingThere() {
+        // A route calling at the boarding stop again (a loop): its map draws the station once, and a tap there while
+        // picking a ride's end saves no ride from a stop to itself (Codex on #1179). Public stations, a made-up loop.
+        val line = listOf(
+            "940GZZLUVIC" to "Victoria", "940GZZLUGPK" to "Green Park", "940GZZLUOXC" to "Oxford Circus",
+            "940GZZLUVIC" to "Victoria", "940GZZLUWWL" to "Walthamstow Central",
+        )
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Victoria - Walthamstow Central", line.map { it.first }, "outbound")),
+            stopNames = line.toMap(),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = sequence
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val picked = mutableListOf<RouteStop>()
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalStepFree provides stepFreeTable) {
+                    RouteDetailScreen(
+                        row = healthyRow(platform = "Northbound - Platform 5"),
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        routeStops = RouteStopsUi.Loaded(line.map { RouteStop(it.first, it.second) }, sequence = sequence),
+                        onToggleJourney = {},
+                        picking = true,
+                        onPickTo = { _, stop -> picked += stop },
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+
+        // The boarding station, "Your stop" wherever the map draws it (here twice, the loop calling again): neither picks.
+        val yours = composeRule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
+        val drawn = yours.fetchSemanticsNodes().size
+        assertTrue(drawn > 0)
+        repeat(drawn) { yours[it].performClick() }
+        composeRule.waitForIdle()
+        assertTrue(picked.isEmpty())
+        // A station after it still picks.
+        composeRule.onNodeWithText("Green Park", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(RouteStop("940GZZLUGPK", "Green Park")), picked)
     }
 
     @Test
@@ -1813,6 +1869,34 @@ class RouteDetailScreenScreenshotTest {
         captureSnapshot("route-detail-journey-tip.png")
         composeRule.onNodeWithText("Got it").performClick()
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun theJourneyTip_isHiddenWhilePickingARidesEnd() {
+        // Picking, a tap picks the ride's end and a long press does nothing, so the tip would mislead (Codex on #1179).
+        val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", "Green Park"))
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = healthyRow(platform = "Northbound - Platform 5"),
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(stops),
+                    onToggleJourney = {},
+                    onDismissJourneyTip = {},
+                    picking = true,
+                    onPickTo = { _, _ -> },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("To…").assertIsDisplayed()
+        composeRule.onNodeWithText("Long-press a stop to favourite the ride there").assertDoesNotExist()
     }
 
     @Test
