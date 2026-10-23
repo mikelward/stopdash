@@ -3607,13 +3607,17 @@ private fun DepartureList(
         val hiddenGroupKeys = heldCards
             .filter { (place, _) -> place.placeKey !in pendingTracker.opened }
             .flatMapTo(HashSet()) { (place, _) -> groupsByPlace[place.placeKey].orEmpty().map { it.key } }
+        // Grouped by station, the opened farther cards' groups are planned with the listed ones, after them, and drawn
+        // through the same path below ([stationGroupItems]), so their notices head their own stations.
+        // Read through, never copied, so building the list copies no groups (Codex, #1177).
+        val planned = if (byStation && stationLayout != null && stationLayout.fartherGroups.isNotEmpty()) Joined(listed, stationLayout.fartherGroups) else listed
         val plan = if (noticesInPlace) {
-            planNotices(closureRows, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys, stationOf = if (byStation) ::groupStation else null)
+            planNotices(closureRows, groups, planned, stopInterchangeIds, sharedNotices, hiddenGroupKeys, stationOf = if (byStation) ::groupStation else null)
         } else {
             NoticePlan()
         }
         val dismissedPlan = if (noticesInPlace) {
-            planNotices(dismissedClosures, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys, stationOf = if (byStation) ::groupStation else null)
+            planNotices(dismissedClosures, groups, planned, stopInterchangeIds, sharedNotices, hiddenGroupKeys, stationOf = if (byStation) ::groupStation else null)
         } else {
             NoticePlan()
         }
@@ -3768,22 +3772,39 @@ private fun DepartureList(
             }
             noticesUpTo(Double.POSITIVE_INFINITY)
         }
+        // Whether a station's notices close it: a closure of one pole alone leaves its other poles running.
+        fun closesStation(notices: List<Pair<DepartureRow, Boolean>>) =
+            notices.any { (notice, _) -> !poleOnly(notice) && ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()) }
+        // A station's notices under its heading, which names the place: a place-wide one alone, one pole's naming its pole,
+        // there being no pole heading to (as its pole's notice above the card does).
+        fun stationNoticeItems(notices: List<Pair<DepartureRow, Boolean>>) {
+            notices.filterNot { (_, dismissed) -> dismissed }.forEach { (notice, _) ->
+                item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
+                    StopNoticeCard(
+                        notice,
+                        ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()),
+                        onDismiss = { onDismissAlert(notice) },
+                        title = if (poleOnly(notice)) closureTitleOf(listOf(notice), rememberHeaderWords()) else null,
+                    )
+                }
+            }
+        }
         // A station's heading, saying how far its nearest stop is, then, unless it's folded, the rides that board
         // there with no trains yet to join its card ([rideStations], [joinsStationCard]).
         fun stationItems(station: String, closed: Boolean) {
-            val members = stationMembers[station].orEmpty()
+            val first = stationMembers[station]?.first() ?: stationLayout?.firstGroups?.get(station) ?: return
             headingLeads = false
             val distanceLabel = distanceSystem?.let { system -> stationLayout?.meters?.get(station)?.let { distanceText(it, system, resources) } }
             val folded = station in foldedStations
             item(key = "station|$station") {
                 StationHeader(
-                    members.first().stopName,
+                    first.stopName,
                     distanceLabel,
                     modes = stationLayout?.modes?.get(station).orEmpty(),
                     modeIds = stationLayout?.modeIds?.get(station).orEmpty(),
                     folded = folded,
                     onToggle = { foldedStations = if (station in foldedStations) foldedStations - station else foldedStations + station },
-                    onOpen = onOpenStation?.takeIf { stationHeadingOpens }?.let { open -> { open(members.first()) } },
+                    onOpen = onOpenStation?.takeIf { stationHeadingOpens }?.let { open -> { open(first) } },
                     closed = closed,
                     checkingClosure = station in checkingStations,
                 )
@@ -3791,65 +3812,74 @@ private fun DepartureList(
             if (folded) return
             journeyItems(rideStations[station].orEmpty().filterNot(::joinsStationCard), inStation = true)
         }
-        listed.forEachIndexed { index, group ->
-            slotItems(index)
-            if (byStation && stationLayout == null) return@forEachIndexed
-            // A place-wide notice: its own group, directly above the place's first section; grouped by station,
-            // above its own station's first ([planNotices] `stationOf`), so its heading says "Closed".
-            // A dismissed pole's closure keeps its heading while its buses are listed (a place-wide
-            // one doesn't, the place having its sections to show).
-            val above = plan.aboveGroup[index].orEmpty().map { it to false } +
-                dismissedPlan.aboveGroup[index].orEmpty().filter { poleOnly(it) }.map { it to true }
-            val station = groupStation(group)
-            if (byStation) {
-                val first = index == 0 || groupStation(listed[index - 1]) != station
-                if (!first) return@forEachIndexed
-                stationItems(station, closed = above.any { (notice, _) -> ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()) })
-                if (station in foldedStations) return@forEachIndexed
-                // Under the station's heading, which names the place and says "Closed": the notice alone.
-                above.filterNot { (_, dismissed) -> dismissed }.forEach { (notice, _) ->
+        // A station's one card, its rides', starred rows' and platforms' rows together ([StationLayout.cards]), its
+        // poles' own notices above it.
+        fun stationCardItems(station: String, members: List<StopGroup>) {
+            members.forEach { member ->
+                val notice = poleNotices[member.key]
+                if (notice != null) {
                     item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
-                        StopNoticeCard(notice, ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()), onDismiss = { onDismissAlert(notice) })
-                    }
-                }
-                // One card for the whole station, drawn with its first group, its poles' own notices above it.
-                run {
-                    val members = stationMembers[station].orEmpty()
-                    members.forEach { member ->
-                        poleNotices[member.key]?.let { notice ->
-                            item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
-                                // No pole heading here to say which pole a "Bus Stop Closed" is about: the notice names it.
-                                StopNoticeCard(
-                                    notice,
-                                    closed = member.key in closedPoles,
-                                    onDismiss = { onDismissAlert(notice) },
-                                    title = closureTitleOf(listOf(notice), rememberHeaderWords()),
-                                )
-                            }
-                        }
-                    }
-                    // Missing only while a layout worked out before this station was listed stands in.
-                    val card = stationLayout?.cards?.get(station)
-                    if (card != null) item(key = "station-card|$station") {
-                        StopGroupCard(
-                            card,
-                            now,
-                            starred = starred,
-                            onToggleStar = onToggleStar,
-                            starringAvailable = starringAvailable,
-                            onOpenDetail = { row, focus ->
-                                val ends = rideEnds[row]
-                                if (ends != null) onOpenCardDetail(row, focus, ends) else onOpenDetail(row, focus)
-                            },
-                            rideRows = rideEnds.keys,
-                            onAddRailKey = onAddRailKey,
-                            onHideMode = onHideMode,
-                            checkingStale = if (fetchingStops.isEmpty()) null else RowsChecking(stringResource(R.string.checking_stamp), stopIds = fetchingStops),
+                        // No pole heading here to say which pole a "Bus Stop Closed" is about: the notice names it.
+                        StopNoticeCard(
+                            notice,
+                            closed = member.key in closedPoles,
+                            onDismiss = { onDismissAlert(notice) },
+                            title = closureTitleOf(listOf(notice), rememberHeaderWords()),
                         )
                     }
+                } else if (member.key in closedPoles) {
+                    // Its closure dismissed, a closed pole still listing buses keeps its own heading and "Closed" chip,
+                    // as its pole heading does By stop/platform (SPEC *Disruptions*), never the station's.
+                    item(key = "closed-pole|${member.key}") {
+                        StopGroupHeader(member.stopName, member.qualifier, distanceLabel = null, firstOnScreen = false, closed = true)
+                    }
                 }
+            }
+            // Missing only while a layout worked out before this station was listed stands in.
+            val card = stationLayout?.cards?.get(station)
+            if (card != null) item(key = "station-card|$station") {
+                StopGroupCard(
+                    card,
+                    now,
+                    starred = starred,
+                    onToggleStar = onToggleStar,
+                    starringAvailable = starringAvailable,
+                    onOpenDetail = { row, focus ->
+                        val ends = rideEnds[row]
+                        if (ends != null) onOpenCardDetail(row, focus, ends) else onOpenDetail(row, focus)
+                    },
+                    rideRows = rideEnds.keys,
+                    onAddRailKey = onAddRailKey,
+                    onHideMode = onHideMode,
+                    checkingStale = if (fetchingStops.isEmpty()) null else RowsChecking(stringResource(R.string.checking_stamp), stopIds = fetchingStops),
+                )
+            }
+        }
+        // A place-wide notice: its own group, directly above the place's first section; grouped by station,
+        // above its own station's first ([planNotices] `stationOf`), so its heading says "Closed".
+        // A dismissed pole's closure keeps its heading while its buses are listed (a place-wide
+        // one doesn't, the place having its sections to show).
+        fun aboveAt(index: Int) = plan.aboveGroup[index].orEmpty().map { it to false } +
+            dismissedPlan.aboveGroup[index].orEmpty().filter { poleOnly(it) }.map { it to true }
+        // Grouped by station, the planned group at [index], listed or an opened farther card's: its station's heading,
+        // notices and one card, drawn with the station's first group.
+        fun stationGroupItems(index: Int) {
+            val station = groupStation(planned[index])
+            if (index > 0 && groupStation(planned[index - 1]) == station) return
+            val above = aboveAt(index)
+            stationItems(station, closed = closesStation(above))
+            if (station in foldedStations) return
+            stationNoticeItems(above)
+            // One card for the whole station, its poles' own notices above it.
+            stationCardItems(station, stationLayout?.members?.get(station).orEmpty())
+        }
+        listed.forEachIndexed { index, group ->
+            slotItems(index)
+            if (byStation) {
+                if (stationLayout != null) stationGroupItems(index)
                 return@forEachIndexed
             }
+            val above = aboveAt(index)
             above.forEach { (notice, dismissed) ->
                 // The place's distance is its nearest member's, so the tap opens that member —
                 // across every section of the place, not just the first one listed.
@@ -3879,21 +3909,47 @@ private fun DepartureList(
             val opened = fartherGroups[card.place.key]
             // A dismissed closure keeps its heading only where the place has nothing else to show —
             // or where it's a pole's, whose chip stays on while its buses are listed.
+            // Grouped by station, an opened card's groups as planned with the listed ones ([StationLayout.fartherStart]).
+            val asStations = if (byStation) stationLayout?.fartherStart?.get(card.place.key) else null
             val cardNotices = placeless["farther|${card.place.key}"].orEmpty()
-                .filterNot { (notice, dismissed) -> dismissed && opened != null && !poleOnly(notice) }
+                .filterNot { (notice, dismissed) -> dismissed && (opened != null || asStations != null) && !poleOnly(notice) }
             // The card's distance, so its tap opens the card's nearest stop: an opened card's measured
             // stops, else a bus place's own (the notice's when it is one of them); a station not yet
             // opened has none to resolve, so its distance stays plain.
             val nearest = (card.load as? FartherLoad.Open)?.distanceMeters?.minByOrNull { it.value }?.key
                 ?: card.place.stops.map { it.id }.let { ids -> cardNotices.firstNotNullOfOrNull { (n, _) -> n.stopId.takeIf { it in ids } } ?: ids.firstOrNull() }
+            // Grouped by station, an opened card's stations are drawn as the loaded places' are, through the same path
+            // (maintainer, 2026-10-23): its notices are planned with its groups, so each heads its own station; one that
+            // found no group (a closed pole with nothing listed) heads the card itself, as a loose notice does nearby.
+            // None until the layout is worked out.
+            if (byStation && (asStations != null || opened != null)) {
+                cardNotices.forEach { (notice, dismissed) -> noticeGroupItems(notice, dismissed, card.place.meters, nearest) }
+                asStations?.forEach { index -> stationGroupItems(listed.size + index) }
+                continue
+            }
             cardNotices.forEach { (notice, dismissed) ->
                 noticeGroupItems(notice, dismissed, card.place.meters, nearest, station = opened?.firstOrNull())
             }
             if (opened != null) {
                 opened.forEach { group -> groupItems(1, group) }
             } else if (cardNotices.isEmpty()) {
+                val cue = fartherCue(card, fetchedStopIds, unavailableStopIds, closedStops.stopIds)
+                if (byStation) {
+                    // Headed as a station, folded until tapped: its chevron (or its card) opens it in place.
+                    item(key = "farther-heading|${card.place.key}") {
+                        StationHeader(
+                            card.place.name,
+                            distanceSystem?.let { distanceText(card.place.meters, it, resources) },
+                            modes = stationLayout?.fartherModes?.get(card.place.key).orEmpty(),
+                            modeIds = stationLayout?.fartherModeIds?.get(card.place.key).orEmpty(),
+                            folded = true,
+                            onToggle = { if (cue.tappable) onOpenFarther(card.place) },
+                            onOpen = null,
+                        )
+                    }
+                }
                 item(key = "farther|${card.place.key}") {
-                    FartherCardView(card, fartherCue(card, fetchedStopIds, unavailableStopIds, closedStops.stopIds), onOpen = onOpenFarther)
+                    FartherCardView(card, cue, onOpen = onOpenFarther, showHeading = !byStation)
                 }
             }
         }
@@ -4340,6 +4396,18 @@ internal class StationLayout(
     val modes: Map<String, List<ModeIcon>> = emptyMap(),
     // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
     val modeIds: Map<String, List<String>> = emptyMap(),
+    // Each station's first group, which names it and opens it.
+    val firstGroups: Map<String, StopGroup> = emptyMap(),
+    // Each station's groups, in order, for their poles' own notices (or a dismissed one's "Closed") above its card.
+    val members: Map<String, List<StopGroup>> = emptyMap(),
+    // The opened farther cards' groups, in card order and then station order: planned and drawn after the listed ones,
+    // through the same path, so each notice heads its own station (maintainer, 2026-10-23); and where each card's
+    // start, by its place key.
+    val fartherGroups: List<StopGroup> = emptyList(),
+    val fartherStart: Map<String, IntRange> = emptyMap(),
+    // A farther card's modes, by its place key, an icon each before its name while it's yet to be opened.
+    val fartherModes: Map<String, List<ModeIcon>> = emptyMap(),
+    val fartherModeIds: Map<String, List<String>> = emptyMap(),
 ) {
     companion object {
         @WorkerThread
@@ -4396,9 +4464,32 @@ internal class StationLayout(
             }.toMap()
             val modeIds = members.mapValues { (_, stationGroups) -> stationGroups.flatMap { group -> group.rows.map { it.mode } }.distinct() }
             val modes = modeIds.mapValues { (_, ids) -> ModeIcon.of(ids) }
-            return StationLayout(ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, modes, modeIds)
+            val fartherGroups = ArrayList<StopGroup>()
+            val fartherStart = HashMap<String, IntRange>()
+            farther.forEach { card ->
+                val ids = (card.load as? FartherLoad.Open)?.distanceMeters?.keys?.takeIf { it.isNotEmpty() } ?: return@forEach
+                val start = fartherGroups.size
+                fartherGroups += ordered.filter { group -> group.rows.all { it.stopId in ids } }
+                if (fartherGroups.size > start) fartherStart[card.place.key] = start until fartherGroups.size
+            }
+            val fartherModeIds = farther.associate { card -> card.place.key to card.place.lines.map { it.mode }.distinct() }
+            return StationLayout(
+                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, modes, modeIds,
+                firstGroups = members.mapValues { (_, stationGroups) -> stationGroups.first() },
+                members = members,
+                fartherGroups = fartherGroups,
+                fartherStart = fartherStart,
+                fartherModes = fartherModeIds.mapValues { (_, ids) -> ModeIcon.of(ids) },
+                fartherModeIds = fartherModeIds,
+            )
         }
     }
+}
+
+/** [first] then [second], read through as one list rather than copied into one. */
+internal class Joined<T>(private val first: List<T>, private val second: List<T>) : AbstractList<T>() {
+    override val size: Int get() = first.size + second.size
+    override fun get(index: Int): T = if (index < first.size) first[index] else second[index - first.size]
 }
 
 /**

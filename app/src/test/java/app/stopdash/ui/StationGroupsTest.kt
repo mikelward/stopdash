@@ -109,6 +109,18 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `two lists read through as one, in order, without copying either`() {
+        val first = mutableListOf("a", "b")
+        val joined = Joined(first, listOf("c"))
+        assertEquals(listOf("a", "b", "c"), joined.toList())
+        assertEquals(3, joined.size)
+        assertEquals("c", joined[2])
+        // Read through: a change to either shows.
+        first += "b2"
+        assertEquals(listOf("a", "b", "b2", "c"), joined.toList())
+    }
+
+    @Test
     fun `the layout worked out on the worker orders the stations, places the rides and builds each card`() {
         val nearPlatform2 = StopGroup(
             stopName = "Near", key = "n2", showHeader = true, rows = listOf(row("N2", "N")), placeKey = "N",

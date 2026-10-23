@@ -6308,6 +6308,46 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1200dp-420dpi")
+    fun `grouped by station, farther places are headed as stations, an unopened one folded until tapped`() {
+        // A farther place below the loaded ones read as a platform's heading over its card, unlike the stations
+        // above it (maintainer, 2026-10-23). Opened, it is a station like those; not yet, it is one folded, its
+        // chevron opening it in place. Synthetic ids and stand-in names.
+        val nearStop = StopArrivals(
+            "490000001A", "Example Road",
+            listOf(dep("73", "73", "outbound", "Stoke Newington", 120, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val openedStop = StopArrivals(
+            "490000009A", "Farther Road",
+            listOf(dep("55", "55", "outbound", "Oxford Circus", 240, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val unopened = busPlace("490G00000010", "Further Lane", 800.0, "38")
+        val opened = mutableListOf<CollapsedPlaces.Place>()
+        capture("main-station-groups-farther.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(listOf(nearStop, openedStop), now.minusSeconds(60)),
+                now,
+                {},
+                stopDistanceMeters = mapOf("490000001A" to 40.0, "490000009A" to 650.0),
+                farther = listOf(
+                    FartherCard(busPlace("490G00000009", "Farther Road", 650.0, "55"), FartherLoad.Open(emptyList(), mapOf("490000009A" to 650.0))),
+                    FartherCard(unopened),
+                ),
+                onOpenFarther = { opened += it },
+                stationGroups = true,
+            )
+        }
+        composeRule.onNode(stationChevron("Farther Road, Bus")).assertExists()
+        composeRule.onNodeWithText("Oxford Circus").assertExists()
+        composeRule.onNodeWithText("Tap to see").assertExists()
+        composeRule.onNode(stationChevron("Further Lane, Bus", "Collapsed")).performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(unopened), opened)
+    }
+
+    @Test
     fun `grouped by station, a searched station's notice sits under its heading and folds with it`() {
         // A searched station's page has no distances, which left its notices leading above the station's heading,
         // unfolded and with no "Closed" on it.
@@ -6398,6 +6438,153 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Euston Road – Stop E").assertExists()
         composeRule.onNodeWithText("Stop F", substring = true).assertDoesNotExist()
         // The station's own heading doesn't say the whole stop is closed.
+        composeRule.onNodeWithContentDescription("Euston Road, Bus, 60 m").assertExists()
+    }
+
+    @Test
+    fun `grouped by station, an opened farther place keeps one pole's notice above its card`() {
+        // Drawn as a station, an opened farther place skipped its poles' groups, and with them the notice a closed
+        // pole carries there, while still listing that pole's buses (Codex, #1177).
+        val nearStop = StopArrivals(
+            "490000001A", "Example Road",
+            listOf(dep("73", "73", "outbound", "Stoke Newington", 120, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val closedPole = eustonRoadPole("490000001E", "E", dep("18", "18", "outbound", "Sudbury", 240, "", mode = "bus"))
+            .copy(disruptions = listOf(StopDisruption("Bus Stop Closed")))
+        val openPole = eustonRoadPole("490000001F", "F", dep("205", "205", "outbound", "Paddington", 420, "", mode = "bus"))
+        val opened = FartherLoad.Open(emptyList(), mapOf("490000001E" to 650.0, "490000001F" to 700.0))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(nearStop, closedPole, openPole), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001A" to 40.0, "490000001E" to 650.0, "490000001F" to 700.0),
+                        farther = listOf(FartherCard(busPlace("490G000EXAMPLE", "Euston Road", 650.0, "18", "205"), opened)),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(stationChevron("Euston Road, Bus")).assertExists()
+        composeRule.onNodeWithText("Euston Road – Stop E").assertExists()
+        composeRule.onNodeWithText("Sudbury").assertExists()
+    }
+
+    @Test
+    fun `grouped by station, an opened farther place's closed pole with nothing listed names its pole and doesn't close the station`() {
+        // A closed pole with no departures has no group to carry its notice, so it heads the place: drawn as a station,
+        // it read as the whole stop's, unnamed, and marked the heading Closed over the running pole (Codex, #1177).
+        val nearStop = StopArrivals(
+            "490000001A", "Example Road",
+            listOf(dep("73", "73", "outbound", "Stoke Newington", 120, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val closedPole = eustonRoadPole("490000001E", "E").copy(disruptions = listOf(StopDisruption("Bus Stop Closed")))
+        val openPole = eustonRoadPole("490000001F", "F", dep("205", "205", "outbound", "Paddington", 420, "", mode = "bus"))
+        val opened = FartherLoad.Open(emptyList(), mapOf("490000001E" to 650.0, "490000001F" to 700.0))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(nearStop, closedPole, openPole), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001A" to 40.0, "490000001E" to 650.0, "490000001F" to 700.0),
+                        farther = listOf(FartherCard(busPlace("490G000EXAMPLE", "Euston Road", 650.0, "18", "205"), opened)),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Under its own pole's heading, as a nearby pole's notice with nothing listed is.
+        composeRule.onNodeWithContentDescription("Euston Road, Stop E, towards Marble Arch, 0.7 km, Closed").assertExists()
+        composeRule.onNodeWithText("Paddington").assertExists()
+        composeRule.onAllNodes(hasContentDescription("Euston Road, Bus", substring = true) and hasContentDescription("Closed", substring = true))
+            .assertCountEquals(0)
+    }
+
+    @Test
+    fun `grouped by station, an opened farther interchange's closure heads its own mode's station`() {
+        // An opened farther interchange's notices all went under its first station: a rail closure marked the
+        // Underground heading Closed, and folding the Underground hid it (Codex, #1177). Planned with its groups, as a
+        // nearby one's are, each heads its own station.
+        val nearStop = StopArrivals(
+            "490000001A", "Example Road",
+            listOf(dep("73", "73", "outbound", "Stoke Newington", 120, "", mode = "bus")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val tube = kingsCrossStPancras().copy(clusterId = "HUBKGX", interchangeId = "HUBKGX")
+        val rail = StopArrivals(
+            "910GKNGX", "King's Cross St. Pancras",
+            listOf(dep("lner", "LNER", "outbound", "Edinburgh", 900, "Platform 4", mode = "national-rail")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "HUBKGX",
+            interchangeId = "HUBKGX",
+            disruptions = listOf(StopDisruption("London King's Cross station is closed.")),
+        )
+        val opened = FartherLoad.Open(emptyList(), mapOf("940GZZLUKSX" to 1_200.0, "910GKNGX" to 1_300.0))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(nearStop, tube, rail), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001A" to 40.0, "940GZZLUKSX" to 1_200.0, "910GKNGX" to 1_300.0),
+                        farther = listOf(
+                            FartherCard(
+                                fartherPlace("HUBKGX", "King's Cross St. Pancras", 1_200.0, Triple("lner", "LNER", "national-rail")),
+                                opened,
+                            ),
+                        ),
+                        stationGroups = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, National Rail, 1.3 km, Closed").assertExists()
+        composeRule.onNodeWithContentDescription("King's Cross St. Pancras, Tube, 1.2 km").assertExists()
+        // Folding the Underground leaves the rail closure showing.
+        composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube")).performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasText("station is closed", substring = true)).assertCountEquals(1)
+    }
+
+    @Test
+    fun `grouped by station, a closed pole whose notice is dismissed still says Closed, the station doesn't`() {
+        // By stop/platform a dismissed pole closure keeps its heading's "Closed" chip; grouped by station there was no
+        // pole heading, so dismissing it left no sign the pole was closed while its buses were listed (Codex, #1177).
+        val closedPole = eustonRoadPole("490000001E", "E", dep("18", "18", "outbound", "Sudbury", 240, "", mode = "bus"))
+            .copy(disruptions = listOf(StopDisruption("Bus Stop Closed")))
+        val openPole = eustonRoadPole("490000001F", "F", dep("205", "205", "outbound", "Paddington", 420, "", mode = "bus"))
+        val dismissed = mutableStateOf(emptySet<DismissedAlert>())
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(closedPole, openPole), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("490000001E" to 60.0, "490000001F" to 150.0),
+                        stationGroups = true,
+                        dismissed = dismissed.value,
+                        onDismissAlert = { row -> dismissed.value = dismissed.value + DismissedAlert.ofStopClosure(row) },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Dismiss alert").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasText("Bus Stop Closed")).assertCountEquals(0)
+        composeRule.onAllNodes(hasContentDescription("Stop E", substring = true) and hasContentDescription("Closed", substring = true))
+            .assertCountEquals(1)
         composeRule.onNodeWithContentDescription("Euston Road, Bus, 60 m").assertExists()
     }
 
