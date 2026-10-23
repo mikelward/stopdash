@@ -91,4 +91,24 @@ class LinkedTextOffMainTest {
         assertEquals(second, shown.text)
         assertTrue("no links before the worker runs", shown.getLinkAnnotations(0, second.length).isEmpty())
     }
+
+    @Test
+    fun a_collapsed_notice_has_no_links_until_it_is_expanded() {
+        // Collapsed, the link sits past the ellipsis; live, it took taps meant for the chevron.
+        val reason = "Minor delays: see https://www.nationalrail.co.uk/service-disruptions/example/"
+        val scheduler = TestCoroutineScheduler()
+        val worker = StandardTestDispatcher(scheduler)
+        val expanded = mutableStateOf(false)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides worker) { LinkedText(reason, linksEnabled = expanded.value) }
+        }
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        fun shown() = composeRule.onNodeWithText(reason).fetchSemanticsNode().config[SemanticsProperties.Text].single()
+        assertTrue("no links while collapsed", shown().getLinkAnnotations(0, reason.length).isEmpty())
+
+        expanded.value = true
+        composeRule.waitForIdle()
+        assertEquals(1, shown().getLinkAnnotations(0, reason.length).size)
+    }
 }

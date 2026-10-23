@@ -2638,6 +2638,12 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
+        // Collapsed, the text carries no links (a cut-off link took taps meant for the chevron); expand it.
+        val collapsed = composeRule.onNodeWithText("tfl.gov.uk/status-updates", substring = true).fetchSemanticsNode()
+            .config[SemanticsProperties.Text].first { "tfl.gov.uk/status-updates" in it }
+        assertTrue(collapsed.getLinkAnnotations(0, collapsed.length).isEmpty())
+        composeRule.onNodeWithText("tfl.gov.uk/status-updates", substring = true).performClick()
+        composeRule.waitForIdle()
         val text = composeRule.onNodeWithText("tfl.gov.uk/status-updates", substring = true).fetchSemanticsNode()
             // The card merges its title and body into one node; take the body's text.
             .config[SemanticsProperties.Text].first { "tfl.gov.uk/status-updates" in it }
