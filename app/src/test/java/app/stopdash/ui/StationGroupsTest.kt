@@ -121,6 +121,27 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a ride with only trains to change from is drawn under its station, each saying where to change`() {
+        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far"), "line")
+        val change = app.stopdash.domain.JourneyChange("FORK", "Fork", row("A1", "A"))
+        val card = JourneyCard(journey, JourneyCardState.Trains(emptyList(), changes = listOf(change)), boardingIds = listOf("A1"), destinationIds = setOf("Z"))
+        assertTrue(joinsStationCard(card))
+        val rows = stationRideRows(mapOf("A" to listOf(card))) { mapOf("A1" to "A")[it.stopId] }
+        val joined = rows.byStation.getValue("A").single().first
+        assertEquals("A1", joined.stopId)
+        assertEquals(setOf("Z"), rows.ends[joined])
+        assertEquals("Fork", rows.changeAt[joined])
+        assertEquals(listOf(journey.key), rows.rides.getValue("A").map { it.journey.key })
+        // A direct train says nothing of changing.
+        val direct = card.copy(state = JourneyCardState.Trains(listOf(row("A1", "A"))))
+        val directRows = stationRideRows(mapOf("A" to listOf(direct))) { mapOf("A1" to "A")[it.stopId] }
+        assertTrue(directRows.changeAt.isEmpty())
+        assertEquals(listOf("A1"), directRows.rides.getValue("A").single().rows.map { it.first.stopId })
+        // Its trains to change from all shown above by a nearer ride: it keeps its own card, which says so.
+        assertFalse(joinsStationCard(card.copy(state = JourneyCardState.Trains(emptyList(), changes = listOf(change), repeatedChanges = setOf(0)))))
+    }
+
+    @Test
     fun `the layout worked out on the worker orders the stations, places the rides and builds each card`() {
         val nearPlatform2 = StopGroup(
             stopName = "Near", key = "n2", showHeader = true, rows = listOf(row("N2", "N")), placeKey = "N",
@@ -144,12 +165,16 @@ class StationGroupsTest {
         assertEquals(listOf("n2", "n1", "f"), layout.rank.entries.sortedBy { it.value }.map { it.key })
         assertEquals(mapOf(journey.key to "N|TUBE"), layout.rideStations)
         assertEquals(mapOf("N|TUBE" to 100.0, "F|TUBE" to 300.0), layout.meters)
-        // The ride's train first, then the platforms by number.
-        assertEquals(listOf("N1", "N1", "N2"), layout.cards.getValue("N|TUBE").group.rows.map { it.stopId })
-        assertEquals(setOf(1, 2), layout.cards.getValue("N|TUBE").breaks)
+        // The ride's train in its own group before the station's, the station's card its platforms by number.
+        val rideGroup = layout.rideGroups.getValue("N|TUBE").single()
+        assertEquals(journey.key, rideGroup.journey.key)
+        assertEquals(listOf("N1"), rideGroup.card.group.rows.map { it.stopId })
+        assertEquals(listOf(ModeIcon.TUBE), rideGroup.modes)
+        assertEquals(listOf("N1", "N2"), layout.cards.getValue("N|TUBE").group.rows.map { it.stopId })
+        assertEquals(setOf(1), layout.cards.getValue("N|TUBE").breaks)
         assertEquals(setOf("Z"), layout.rideEnds.values.single())
-        assertTrue(layout.cards.getValue("N|TUBE").group.rows.first() in layout.rideEnds.keys)
-        assertFalse(layout.cards.getValue("N|TUBE").group.rows[1] in layout.rideEnds.keys)
+        assertTrue(rideGroup.card.group.rows.single() in layout.rideEnds.keys)
+        assertFalse(layout.cards.getValue("N|TUBE").group.rows.first() in layout.rideEnds.keys)
     }
 
     @Test
@@ -228,8 +253,9 @@ class StationGroupsTest {
             farther = listOf(farther),
             held = listOf(held),
         )
-        // All three of its trains in its own station's card; the others' cards have only their own rows.
-        assertEquals(listOf("A1", "H1", "F1", "A1"), layout.cards.getValue("A|TUBE").group.rows.map { it.stopId })
+        // All three of its trains in its group before its own station; the others' cards have only their own rows.
+        assertEquals(listOf("A1", "H1", "F1"), layout.rideGroups.getValue("A|TUBE").single().card.group.rows.map { it.stopId })
+        assertEquals(listOf("A1"), layout.cards.getValue("A|TUBE").group.rows.map { it.stopId })
         assertEquals(listOf("H1"), layout.cards.getValue("H|TUBE").group.rows.map { it.stopId })
         assertEquals(3, layout.rideEnds.size)
         // A ride boarding at a held place itself joins no card: it leads the list with its own heading.

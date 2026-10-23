@@ -3812,6 +3812,44 @@ private fun DepartureList(
             if (folded) return
             journeyItems(rideStations[station].orEmpty().filterNot(::joinsStationCard), inStation = true)
         }
+        // Its favorite rides boarding there, each a group of its own just before the station's, headed as a station is
+        // ("Highgate ➔ Bank"), how far the station is, and folding apart from it (maintainer, 2026-10-23).
+        fun rideGroupItems(station: String) {
+            val rideGroups = stationLayout?.rideGroups?.get(station) ?: return
+            val distanceLabel = distanceSystem?.let { system -> stationLayout.meters[station]?.let { distanceText(it, system, resources) } }
+            rideGroups.forEach { ride ->
+                val foldKey = "ride|${ride.journey.key}"
+                val folded = foldKey in foldedStations
+                item(key = "ride-group|${ride.journey.key}|$station") {
+                    StationHeader(
+                        stringResource(R.string.journey_title, ride.journey.from.name, ride.journey.to.name),
+                        distanceLabel,
+                        modes = ride.modes,
+                        modeIds = ride.modeIds,
+                        folded = folded,
+                        onToggle = { foldedStations = if (foldKey in foldedStations) foldedStations - foldKey else foldedStations + foldKey },
+                        onOpen = onOpenJourney?.let { open -> { open(ride.journey) } },
+                    )
+                }
+                if (folded) return@forEach
+                item(key = "ride-group-card|${ride.journey.key}|$station") {
+                    StopGroupCard(
+                        ride.card,
+                        now,
+                        starred = starred,
+                        onToggleStar = onToggleStar,
+                        starringAvailable = starringAvailable,
+                        onOpenDetail = { row, focus -> onOpenCardDetail(row, focus, rideEnds[row].orEmpty()) },
+                        rideChangeAt = stationLayout.rideChangeAt,
+                        onAddRailKey = onAddRailKey,
+                        // A long press hides the line from this ride alone, as its own card offers (SPEC *Hiding a line
+                        // from a ride*), never the mode everywhere.
+                        rideLineHide = rememberRideLineHide(ride.journey, onHideRideLine),
+                        checkingStale = if (fetchingStops.isEmpty()) null else RowsChecking(stringResource(R.string.checking_stamp), stopIds = fetchingStops),
+                    )
+                }
+            }
+        }
         // A station's one card, its rides', starred rows' and platforms' rows together ([StationLayout.cards]), its
         // poles' own notices above it.
         fun stationCardItems(station: String, members: List<StopGroup>) {
@@ -3844,11 +3882,7 @@ private fun DepartureList(
                     starred = starred,
                     onToggleStar = onToggleStar,
                     starringAvailable = starringAvailable,
-                    onOpenDetail = { row, focus ->
-                        val ends = rideEnds[row]
-                        if (ends != null) onOpenCardDetail(row, focus, ends) else onOpenDetail(row, focus)
-                    },
-                    rideRows = rideEnds.keys,
+                    onOpenDetail = onOpenDetail,
                     onAddRailKey = onAddRailKey,
                     onHideMode = onHideMode,
                     checkingStale = if (fetchingStops.isEmpty()) null else RowsChecking(stringResource(R.string.checking_stamp), stopIds = fetchingStops),
@@ -3867,6 +3901,7 @@ private fun DepartureList(
             val station = groupStation(planned[index])
             if (index > 0 && groupStation(planned[index - 1]) == station) return
             val above = aboveAt(index)
+            rideGroupItems(station)
             stationItems(station, closed = closesStation(above))
             if (station in foldedStations) return
             stationNoticeItems(above)
@@ -4340,8 +4375,10 @@ internal fun rideStation(
  */
 internal fun joinsStationCard(card: JourneyCard): Boolean {
     val trains = card.state as? JourneyCardState.Trains ?: return false
-    return trains.drawnRows.isNotEmpty() && card.closures.isEmpty() && !card.destinationUnchecked &&
-        trains.visibleChanges.isEmpty() && trains.hiddenRows == 0 && !trains.capped && !trains.incomplete
+    // Its trains to change from join too, each saying where to change ([StationRideRows.changeAt]), so a ride with no
+    // direct train due draws no dash of its own above its station (maintainer, 2026-10-23).
+    return (trains.drawnRows.isNotEmpty() || trains.visibleChanges.isNotEmpty()) && card.closures.isEmpty() &&
+        !card.destinationUnchecked && trains.hiddenRows == 0 && !trains.capped && !trains.incomplete
 }
 
 /**
@@ -4351,9 +4388,18 @@ internal fun joinsStationCard(card: JourneyCard): Boolean {
  * identity ([detailKey]) as the station's own row of the rest, which must open, and wear no star, as any other.
  */
 internal class StationRideRows(
-    val byStation: Map<String, List<Pair<DepartureRow, List<DestinationGroup>>>>,
+    // Each station's rides, in order, each with its trains leaving from there.
+    val rides: Map<String, List<StationRide>>,
     val ends: Map<DepartureRow, Set<String>>,
-)
+    // By the row itself, by identity: for a train to change from, where to change, said under its destination.
+    val changeAt: Map<DepartureRow, String> = emptyMap(),
+) {
+    /** Each station's rides' trains, together. */
+    val byStation: Map<String, List<Pair<DepartureRow, List<DestinationGroup>>>> get() = rides.mapValues { (_, r) -> r.flatMap { it.rows } }
+}
+
+/** A ride's trains leaving from one station ([StationRideRows.rides]). */
+internal class StationRide(val journey: FavoriteJourney, val rows: List<Pair<DepartureRow, List<DestinationGroup>>>)
 
 /**
  * The trains of the rides that join a station's card ([joinsStationCard]), from [rides] by the station each
@@ -4364,19 +4410,26 @@ internal class StationRideRows(
  */
 @WorkerThread
 internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: (DepartureRow) -> String?): StationRideRows {
-    val byStation = LinkedHashMap<String, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>()
+    val byStation = LinkedHashMap<String, LinkedHashMap<String, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>>()
+    val journeys = HashMap<String, FavoriteJourney>()
     val ends = IdentityHashMap<DepartureRow, Set<String>>()
+    val changeAt = IdentityHashMap<DepartureRow, String>()
     rides.forEach { (station, cards) ->
         if (station == null) return@forEach
         cards.filter(::joinsStationCard).forEach { ride ->
-            val card = ride.state.drawn?.rideCard ?: return@forEach
-            card.group.rows.zip(card.lines).forEach { pair ->
-                byStation.getOrPut(stationOf(pair.first) ?: station) { mutableListOf() }.add(pair)
+            val trains = ride.state.drawn ?: return@forEach
+            journeys[ride.journey.key] = ride.journey
+            fun add(card: StopCard, at: String?) = card.group.rows.zip(card.lines).forEach { pair ->
+                byStation.getOrPut(stationOf(pair.first) ?: station) { LinkedHashMap() }.getOrPut(ride.journey.key) { mutableListOf() }.add(pair)
                 ends[pair.first] = ride.destinationIds
+                if (at != null) changeAt[pair.first] = at
             }
+            if (trains.drawnRows.isNotEmpty()) add(trains.rideCard, null)
+            trains.changeStops.forEach { change -> change.cards.forEach { add(it, change.stopName) } }
         }
     }
-    return StationRideRows(byStation, ends)
+    val byRide = byStation.mapValues { (_, rides) -> rides.map { (key, rows) -> StationRide(journeys.getValue(key), rows) } }
+    return StationRideRows(byRide, ends, changeAt)
 }
 
 /**
@@ -4392,6 +4445,10 @@ internal class StationLayout(
     val cards: Map<String, StopCard>,
     // By the row itself, by identity ([StationRideRows.ends]).
     val rideEnds: Map<DepartureRow, Set<String>>,
+    // Where each ride's train to change from changes, by the row itself ([StationRideRows.changeAt]).
+    val rideChangeAt: Map<DepartureRow, String> = emptyMap(),
+    // Each station's favorite rides, each a group of its own just before the station's (maintainer, 2026-10-23).
+    val rideGroups: Map<String, List<RideGroup>> = emptyMap(),
     // Each station's modes, an icon each before its name, as a search result shows a stop's (maintainer, 2026-10-23).
     val modes: Map<String, List<ModeIcon>> = emptyMap(),
     // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
@@ -4450,14 +4507,20 @@ internal class StationLayout(
             val rides = stationRideRows(journeyCards.groupBy { rideStations[it.journey.key] }) { row ->
                 placeOfStop[row.stopId]?.let { stationKey(it, row.mode) }?.takeIf { it in drawn }
             }
-            val cards = members.mapValues { (station, stationGroups) ->
-                val rideCard = rides.byStation[station]?.let { pairs ->
-                    StopCard(
-                        StopGroup(stopName = stationGroups.first().stopName, key = "ride|$station", showHeader = false, rows = pairs.map { it.first }, placeKey = station),
-                        pairs.map { it.second },
+            val cards = members.mapValues { (_, stationGroups) -> stationCard(emptyList(), stationGroups.map(cardOf), starred) }
+            val rideGroups = rides.rides.mapValues { (station, stationRides) ->
+                stationRides.map { ride ->
+                    val ids = ride.rows.map { it.first.mode }.distinct()
+                    RideGroup(
+                        ride.journey,
+                        StopCard(
+                            StopGroup(stopName = ride.journey.from.name, key = "ride|${ride.journey.key}|$station", showHeader = false, rows = ride.rows.map { it.first }, placeKey = station),
+                            ride.rows.map { it.second },
+                        ),
+                        ModeIcon.of(ids),
+                        ids,
                     )
                 }
-                stationCard(listOfNotNull(rideCard), stationGroups.map(cardOf), starred)
             }
             val meters = members.mapNotNull { (station, stationGroups) ->
                 stationGroups.mapNotNull(::metersOf).minOrNull()?.let { station to it }
@@ -4474,7 +4537,7 @@ internal class StationLayout(
             }
             val fartherModeIds = farther.associate { card -> card.place.key to card.place.lines.map { it.mode }.distinct() }
             return StationLayout(
-                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, modes, modeIds,
+                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rides.changeAt, rideGroups, modes, modeIds,
                 firstGroups = members.mapValues { (_, stationGroups) -> stationGroups.first() },
                 members = members,
                 fartherGroups = fartherGroups,
@@ -4491,6 +4554,9 @@ internal class Joined<T>(private val first: List<T>, private val second: List<T>
     override val size: Int get() = first.size + second.size
     override fun get(index: Int): T = if (index < first.size) first[index] else second[index - first.size]
 }
+
+/** A favorite ride's group before its station's: headed as a station is ("Highgate ➔ Bank"), over its own [card]. */
+internal class RideGroup(val journey: FavoriteJourney, val card: StopCard, val modes: List<ModeIcon>, val modeIds: List<String>)
 
 /**
  * The places of [groups] a list grouped by station draws with their own headings, not as a station's card: an
@@ -5972,13 +6038,11 @@ internal fun StopGroupCard(
     // That row's next train by the ride's timetable, where its page would give it ([rememberRideCardTime]): its
     // clock time, gray, in the dash's place. None keeps the dash.
     noTrainsTimetabled: TimetabledTimes = TimetabledTimes.NONE,
-    // The rows that are a favorite ride's trains, by identity (the rows themselves, never [detailKey], which a
-    // ride's row can share with the station's own row of the rest of its line's trains): a station's card marks
-    // each with a star after its destination, in place of the ride's heading ([stationCard]).
-    rideRows: Set<DepartureRow> = emptySet(),
+    // A favorite ride's trains to change from, by the row itself: where to change, under its destination ("➔ Camden
+    // Town") (maintainer, 2026-10-23).
+    rideChangeAt: Map<DepartureRow, String> = emptyMap(),
 ) {
     val group = card.group
-    val rideStar = stringResource(R.string.ride_row_star)
     // Rows stand a moment as they are ([settled]) before they say they're being checked, so a quick check
     // changes nothing on screen; a row with no answer of its own says so at once.
     val checkingShown = settled(checking != null, at = checking == null || checking.atOnce)
@@ -6000,9 +6064,7 @@ internal fun StopGroupCard(
                     // re-sorts the card moves each row to its new place (SlidesInPlace) rather than drawing
                     // another row where it was. No early return in here: one would give each pass of the loop
                     // its own group, which a row can't leave.
-                    // A ride's row sharing its identity with the station's own is keyed apart from it ([rideRows]).
-                    val rideRow = rideRows.isNotEmpty() && row in rideRows
-                    key(row.stopId, row.lineId, row.directionKey, row.platform, rideRow) {
+                    key(row.stopId, row.lineId, row.directionKey, row.platform) {
                         val stale = Staleness.isStale(row.fetchedAt, now)
                         // What this row's time says while it's checked: the card's own check, or a refresh
                         // fetching a stale row's stop, whose guesses ("21:14?") it fades (SPEC D4).
@@ -6171,16 +6233,19 @@ internal fun StopGroupCard(
                                             onHideMode = onHideMode,
                                             onHideFromRide = rideLineHide?.takeIf { it.offers(row.lineId) }?.onHide,
                                             destination = { modifier ->
-                                                if (rideRow) {
-                                                    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-                                                        DestinationLabelContent(forms = forms, branch = group2.branch, shortBranch = label.shortBranch, modifier = Modifier.weight(1f, fill = false))
-                                                        Icon(
-                                                            Icons.Filled.Star,
-                                                            contentDescription = rideStar,
-                                                            tint = LocalStarredBorderColor.current,
-                                                            modifier = Modifier.padding(start = 4.dp).size(16.dp),
-                                                        )
-                                                    }
+                                                val changeAt = rideChangeAt[row]
+                                                if (changeAt != null) {
+                                                    // Not a direct train: its destination in brackets, at its size, where to change only
+                                                    // heard; a second line would be too small to read (maintainer, 2026-10-23).
+                                                    val spoken = stringResource(R.string.ride_row_change_spoken, changeAt)
+                                                    // The brackets in the label's own forms, so it shortens inside them (three forms, fixed).
+                                                    val branch = group2.branch
+                                                    DestinationLabelContent(
+                                                        forms = forms.map { if (branch == null) "($it)" else "($it" },
+                                                        branch = branch?.let { "$it)" },
+                                                        shortBranch = label.shortBranch?.let { "$it)" },
+                                                        modifier = modifier.semantics { stateDescription = spoken },
+                                                    )
                                                 } else {
                                                     DestinationLabelContent(forms = forms, branch = group2.branch, shortBranch = label.shortBranch, modifier = modifier)
                                                 }

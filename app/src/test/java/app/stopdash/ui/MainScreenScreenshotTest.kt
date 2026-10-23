@@ -6262,25 +6262,97 @@ class MainScreenScreenshotTest {
 
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
-    fun `grouped by station, each station is one card by platform, saying how far it is, no platform, pole or ride headed`() {
+    fun `grouped by station, each station is one card by platform, saying how far it is, a ride its own group before it`() {
         groupedByStationOn()
         composeRule.onNodeWithText("Platform 1", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Stop E", substring = true).assertDoesNotExist()
         // The bus stop by its nearer pole, King's Cross by its own.
         composeRule.onNodeWithText("60 m").assertExists()
         composeRule.onNodeWithText("150 m").assertDoesNotExist()
-        composeRule.onNodeWithText("120 m").assertExists()
-        // The ride has no heading: its train joins King's Cross's card, a star after where it goes.
-        composeRule.onNodeWithText("King's Cross St. Pancras ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Brixton").assertExists()
-        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
-        // Its starred row first, the ride's train next, then its platforms by number, not by when trains leave:
+        // King's Cross's distance on its heading and on its ride's.
+        composeRule.onAllNodesWithText("120 m").assertCountEquals(2)
+        // The ride is a group of its own, headed as a station is, just before King's Cross's.
+        fun top(text: String) = composeRule.onNodeWithText(text).getUnclippedBoundsInRoot().top
+        composeRule.onNodeWithText("King's Cross St. Pancras ➔ Warren Street").assertExists()
+        assertTrue(top("King's Cross St. Pancras ➔ Warren Street") < top("King's Cross St. Pancras"))
+        // Its train, then the station's starred row first, then its platforms by number, not by when trains leave:
         // Platform 1's train (1 min) before Platform 3's (2 min) before Platform 4's (5 min), though Platform 7's
         // (2 min) and 6's (4 min) leave sooner than 4's.
-        fun top(text: String) = composeRule.onNodeWithText(text).getUnclippedBoundsInRoot().top
-        val order = listOf("High Barnet", "Brixton", "Walthamstow Central", "Cockfosters", "Heathrow Terminal 5", "Morden", "Barking", "Uxbridge")
+        val order = listOf("Brixton", "High Barnet", "Walthamstow Central", "Cockfosters", "Heathrow Terminal 5", "Morden", "Barking", "Uxbridge")
         assertEquals(order, order.sortedBy { top(it) })
         captureSnapshot("main-station-groups.png", heightPx = 4200)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station, a ride with only trains to change from is its own group, saying where to change`() {
+        // King's Cross to Edgware on the Northern line: its only northbound train goes to High Barnet, so the ride has
+        // no direct train, only one to change from at Camden Town, where the branches part. Public names only.
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    fun idOf(name: String) = if (name == "King's Cross St. Pancras") "940GZZLUKSX" else "940G$name"
+                    // The Victoria line's own ends, so its trains are judged too and the ride says nothing couldn't be checked.
+                    val (south, branches) = if (lineId == "northern") {
+                        "Morden" to listOf("High Barnet", "Edgware")
+                    } else {
+                        "Brixton" to listOf("Walthamstow Central")
+                    }
+                    val via = if (lineId == "northern") listOf("Camden Town") else emptyList()
+                    val routes = branches.flatMap { end ->
+                        val names = listOf(south, "King's Cross St. Pancras") + via + end
+                        listOf(LineRoute("$south ↔ $end", names.map(::idOf)), LineRoute("$end ↔ $south", names.reversed().map(::idOf)))
+                    }
+                    val names = listOf(south, "King's Cross St. Pancras") + via + branches
+                    return LineSequence(routes = routes, stopNames = names.associateBy(::idOf))
+                }
+            },
+        )
+        val kingsCross = kingsCrossStPancras().let { stop ->
+            stop.copy(departures = stop.departures.filter { it.lineId == "northern" || it.lineId == "victoria" })
+        }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(kingsCross), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0),
+                            journeys = listOf(
+                                FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GEdgware", "Edgware"), "northern"),
+                            ),
+                            onToggleJourney = {},
+                            onHideMode = {},
+                            onSetRideLineHidden = { _, _, _ -> },
+                            stationGroups = true,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Its own group before the station's, with no dash for the direct train it hasn't got: its train to change from,
+        // its destination in brackets, where to change only heard.
+        fun top(text: String, substring: Boolean = false) =
+            composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().minOf { it.boundsInRoot.top }
+        composeRule.onNodeWithText("King's Cross St. Pancras ➔ Edgware").assertExists()
+        composeRule.onNodeWithText("(High Barnet", substring = true).assertExists()
+        composeRule.onNodeWithText("Bank)", substring = true).assertExists()
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Change at Camden Town")).assertExists()
+        assertTrue(top("King's Cross St. Pancras ➔ Edgware") < top("(High Barnet", substring = true))
+        assertTrue(top("(High Barnet", substring = true) < top("King's Cross St. Pancras"))
+        assertTrue(top("King's Cross St. Pancras") < top("Morden"))
+        captureSnapshot("main-station-groups-ride-change.png", heightPx = 2400)
+        // A long press on the ride's train offers what its own card does, never hiding the mode everywhere.
+        composeRule.onNodeWithText("(High Barnet", substring = true).performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
+        // The station's own Northern line row still offers it.
+        composeRule.onNodeWithText("Morden").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Hide all", substring = true).assertExists()
     }
 
     @Test
@@ -6614,9 +6686,13 @@ class MainScreenScreenshotTest {
 
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
-    fun `grouped by station, a tap on a station's chevron folds all of it, rides and starred rows too`() {
+    fun `grouped by station, a tap on a station's chevron folds all of it, starred rows too, and a ride's its own`() {
         groupedByStationOn()
         composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube")).performClick()
+        composeRule.waitForIdle()
+        // The ride's group folds apart from its station's.
+        composeRule.onNodeWithText("Brixton").assertExists()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Warren Street, Tube")).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertDoesNotExist()
         composeRule.onNodeWithText("High Barnet").assertDoesNotExist()
@@ -6626,6 +6702,7 @@ class MainScreenScreenshotTest {
 
         // Unfolded, all of it comes back.
         composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube", "Collapsed")).performClick()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Warren Street, Tube", "Collapsed")).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertExists()
         composeRule.onNodeWithText("High Barnet").assertExists()

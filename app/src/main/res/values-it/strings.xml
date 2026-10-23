@@ -762,7 +762,6 @@
     <string name="station_unfold">Espandi</string>
     <string name="station_folded">Compresso</string>
     <string name="station_unfolded">Espanso</string>
-    <string name="ride_row_star">Tragitto preferito</string>
     <string name="menu_send_bug_report">Invia segnalazione di bug</string>
     <string name="bug_report_consent_title">Invia segnalazione di bug</string>
     <string name="bug_report_consent_body">Per aiutare a risolvere un problema, verranno condivisi:\n\n• un log diagnostico (fermate, linee ed errori rilevati dall\'app)\n• uno screenshot di questa schermata\n• la tua posizione esatta degli ultimi 15 minuti\n• la tua distanza dalle fermate più vicine\n\nToccando Continua, la segnalazione viene copiata negli appunti e proposta a un\'app a tua scelta.</string>
