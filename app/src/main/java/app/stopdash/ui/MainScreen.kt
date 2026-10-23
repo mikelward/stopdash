@@ -6488,17 +6488,21 @@ private fun CollapsibleStatus(
                     maxLines = if (expanded) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = if (title != null) Modifier.padding(top = 4.dp) else Modifier,
+                    linksEnabled = expanded,
                 )
             }
             // A quiet chevron marks the row as expandable; the click label carries the action
             // for a screen reader, so the icon itself needs no separate description.
             val chevron = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown
+            // The chevron takes its own taps, so a link ending beside it (whose touch area Compose
+            // widens to 48dp) can't open instead; the card's click label already describes it.
+            val toggle = Modifier.pointerInput(Unit) { detectTapGestures { expanded = !expanded } }
             if (onDismiss != null) {
                 // On a dismissible closure card the chevron and the × are BOTH centered in a 48dp
                 // band, so their glyphs line up on one axis, with a clear gap between them — they read
                 // as two separate controls instead of a cramped, misaligned cluster.
                 Box(
-                    modifier = Modifier.padding(start = 8.dp).height(48.dp),
+                    modifier = Modifier.padding(start = 8.dp).height(48.dp).then(toggle),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(chevron, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -6519,7 +6523,7 @@ private fun CollapsibleStatus(
             } else {
                 // A status card without its own × (the route detail's line prose) keeps the top-aligned
                 // chevron beside its text — no × to align with.
-                Icon(chevron, contentDescription = null, modifier = Modifier.padding(start = 8.dp).size(20.dp))
+                Icon(chevron, contentDescription = null, modifier = Modifier.padding(start = 8.dp).then(toggle).size(20.dp))
             }
         }
     }

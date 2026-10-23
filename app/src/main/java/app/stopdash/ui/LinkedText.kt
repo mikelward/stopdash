@@ -48,6 +48,7 @@ internal fun LinkedText(
     color: Color = Color.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    linksEnabled: Boolean = true,
 ) {
     val onOpen = rememberLinkOpener()
     val worker = LocalWorker.current
@@ -57,7 +58,10 @@ internal fun LinkedText(
     LaunchedEffect(text, onOpen, worker) {
         linked = withContext(worker) { linkified(text, onOpen) }
     }
-    Text(text = linked, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow)
+    // A collapsed notice shows its text plain: a link cut off by the ellipsis would still take taps
+    // (Compose widens a short link's touch area to 48dp, over the chevron beside it).
+    val shown = if (linksEnabled) linked else AnnotatedString(text)
+    Text(text = shown, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow)
 }
 
 /**

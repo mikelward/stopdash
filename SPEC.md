@@ -1207,7 +1207,7 @@ passed off as the train's. Then the line's **full disruption text**, which the r
 in for: shown collapsed to its first line, tapped to expand (the same widget the stop-closure card
 uses). A **web link** in an alert — with or without `https://`, as TfL writes them ("visit
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links
-are made, an email address isn't treated as one, and with no browser the tap says so. The same holds
+are made, an email address isn't treated as one, and with no browser the tap says so. A link is live only while its text is expanded: collapsed, a tap anywhere on the card, the chevron included, expands it. The same holds
 for every disruption text the app shows in full (maintainer, 2026-10-07: National Rail's reason is often
 its page alone): a line's page off the disruptions row or a trip, and the On the way screen's disruption
 and station notices. Below that it lists **every station from the boarding stop to where the soonest train
