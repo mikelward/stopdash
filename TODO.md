@@ -4100,7 +4100,7 @@ Builds on Phase 1's minimal line-status marking.
                 was picked in.
           - [x] 5b. Stations stack: one opened from a route page stop's details goes over the station
                 under it (the entry above).
-          - [ ] 5c. A change of start leaves its station under the search, so Back to it is the stack's.
+          - [x] 5c. A change of start leaves its station under the search, so Back to it is the stack's.
           - [ ] 5d. A station's trip becomes a page over the station.
         - [ ] 6. The in-screen views become entries, a family per PR.
         - [ ] 7. Cleanup: the flag rules the stack replaces go.

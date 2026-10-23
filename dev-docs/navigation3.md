@@ -160,8 +160,8 @@ Each step is one PR that leaves the app working, and the Back tests (`NearbyArea
    - **5a. Done:** the From… search and a station become pages of their own (*Step 5a: what changed*).
    - **5b. Done:** stations stack, each with its own id, name, To… and models, so the one under the top comes
      back as it was (*Step 5b: what changed*).
-   - **5c.** A change of start leaves its station under the From… search, so Back from the search to it is
-     the stack's, the swipe drawing it.
+   - **5c. Done:** a change of start leaves its station under the From… search, so Back from the search to it is
+     the stack's, the swipe drawing it (*Step 5c: what changed*).
    - **5d.** A station's trip becomes a page over the station.
 6. **In-screen views become entries, a family per PR.** The near-me page's platform, station and
    journey views and its route and ride pages; the trip's open route and later list; Settings'
@@ -348,10 +348,10 @@ Lines…'s From, a favorite ride's Whole station, the trip on the way's Plan aga
 - **The swipe from a station draws the search under it,** as it was left: the station's Back at its root is the
   stack's (`rootBack` on its list, its placeholder, its departures with nowhere to stand, and its trip where the
   trip is all it has). Its trip's routes and To… search otherwise keep a Back of their own, back to the
-  station's list, until step 5c.
+  station's list, until step 5d.
 - **The search's Back is the stack's** too, but where a station's From row opened it: Back from it then
   reopens that station, which was closed for the change and isn't under it, so the search follows the gesture
-  over a scrim as before and the station opens over it once let go. Step 5b leaves the station under the
+  over a scrim as before and the station opens over it once let go. Step 5c leaves the station under the
   search instead.
 - **The two pages' flags open in place** (`Pages.kept`, now without `others`): set, a page opens over the top,
   or stays where it is if it's open, so the search a change of start goes back to stays under the station.
@@ -398,6 +398,33 @@ details and take the station's place: Back returns to the details, and theirs to
 station brought up, the flow's end closing every station, and Plan again's in place. `NearbyAreaTest` checks a
 station opened over another starts afresh and its Back finds the one under it as it was; `SavedTripTest` checks the
 stations open round-trip.
+
+## Step 5c: what changed
+
+A station's From row opens the From… search over the station (`StartSearch(id)`), where it used to close the
+station and bring up the search it was picked in. The station stays under it as it was, its models with it
+(*Step 5b*), so Back from the search is the stack's: the swipe draws the station's trip as it was left, and
+Back finds it so, with nothing looked up again.
+
+- **The change of start's search is a page of its own,** not the search the station was picked in: that one
+  stays under the station, for the station's Back to it. One search page, brought up over the station, would
+  have taken it from there.
+- **A station picked there opens over it,** at the trip's To… as before; its Back returns to the search, and
+  the search's to the station the row was tapped in. "Here", or the flow ending any other way, closes the
+  change's search with the stations (`Pages.closeStations`).
+- **The change's search goes as its station moves:** brought up (picked again there, or a ride's Whole station
+  over it), replaced (Plan again) or closed. Picked again, the station comes back from under the search as it
+  was, rather than going over it and leaving its Back to skip what it was opened over (Codex on #1152); no search
+  is ever left over a page it doesn't change.
+- **The change stays under way until a trip is on top again:** the new station's, or on Back the original's.
+  A trip says it has appeared only on top (`OnTopEffect`): drawn under the swipe from the change's search, the
+  original's would have ended the change while the search was still up.
+- **`searchForChange` and `searchAfterChange` went:** no search is opened, or closed again, for the change any
+  more; the search the station was picked in, if any, never moves.
+
+`PagesTest` checks the change's search over its station and everything under it, a station picked there, Back
+through both, the search going as its station moves, and the flow's end closing it. `NearbyAreaTest` checks the swipe from it draws the station as it
+was left.
 
 ## Decided (maintainer, 2026-10-22)
 

@@ -460,14 +460,15 @@ The app finds stops two ways:
   Retry, shows meanwhile: nothing can be planned until the new start is known. "Here" (or the
   crosshair on a station's page, which means the same) goes on as the near-me trip, again as it was,
   and Back returns to the trip the row was tapped in. The change is done only once the new start's
-  trip appears (the new station's, or on Back the original one's, reloaded): backing out of a station
+  trip appears (the new station's, or on Back the original one's, as it was left): backing out of a station
   still loading, one that failed, or one with nothing to start from (every mode there hidden) returns
   to the *From…* search with the change still under way, so another station opens at the trip's *To…*
   and Back or "Here" still lands where the row was tapped. A station with nothing to start from
   shows its own page, which says why and offers "Show all": showing its modes opens its trip at the
   same *To…*, as if it had had somewhere to start all along. So changing the start, or thinking
-  better of it, never loses the destination, picked or being typed. Leaving a station to change
-  the start closes its page, which stops its refreshes. This replaces a From **chip** built and
+  better of it, never loses the destination, picked or being typed. A station's From row opens the
+  *From…* search over its page, which stays under it as it was and, covered, doesn't refresh: Back
+  from the search, or from a station picked there and then the search, finds it as it was left. This replaces a From **chip** built and
   removed earlier the same day; the near-me list's place chips still have no "Here", since a chip for
   where the rider already is adds nothing. A **place as the start** (maintainer, 2026-10-11): a saved
   place's chip, or a place, street or postcode typed in *From…* — whose field reads "Station, stop,
@@ -4546,9 +4547,8 @@ returning to the app, no report, no window. Under the trip from here, the near-m
 spinner: its departures are dropped while the trip is up, so that they neither refresh nor fall behind the
 trip's re-locates, and are fetched again when the trip closes, not for a look. Back from the location gate
 standing in for the trip closes the trip, onto the page under it. A page
-inside a screen (a line's page in Lines…, Settings' Disruptions page, a saved place's editor), a station's trip,
-the From… search a station's From row opened (Back from it reopens that station) and the near-me view's own
-pages still follow the swipe as before (maintainer, 2026-10-22,
+inside a screen (a line's page in Lines…, Settings' Disruptions page, a saved place's editor), a station's trip
+and the near-me view's own pages still follow the swipe as before (maintainer, 2026-10-22,
 "shrink only"): shrinking toward the edge swiped from over a deepening scrim, springing back if let go,
 without drawing the page under them. A page that is a window over another (a stop's details, Departures, a
 line's page from a trip, a route's timetable) shows the page under it as it shrinks. Back from the near-me

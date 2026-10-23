@@ -1235,6 +1235,13 @@ class MainActivity : ComponentActivity() {
                 // A To… search's From row opened the station search (maintainer, 2026-09-28): where it
                 // was tapped, so leaving the search goes back there rather than dropping the trip.
                 var originChange by rememberSaveable(stateSaver = ORIGIN_CHANGE_SAVER) { mutableStateOf<OriginChange?>(null) }
+                // Back from a change of start's search ([Page.StartSearch]): to the station it was opened over, under
+                // it as it was. The change stays under way until that station's trip is on top again
+                // ([OriginChange.afterLeaving], the trip's onShown).
+                val leaveStartSearch: (Page.StartSearch) -> Unit = { search ->
+                    originChange = OriginChange.afterLeaving(originChange, OriginChange.back(originChange))
+                    pages.close(search)
+                }
                 // The station Lines…'s From opened, by id: the station flow over Lines… started there, recorded
                 // when it starts, never inferred from what's open (Codex, #658). Kept through every station that
                 // flow reaches (a route's stops, a different start picked in its From… search) and forgotten
@@ -1246,11 +1253,6 @@ class MainActivity : ComponentActivity() {
                 // The From… search cleared the next time it shows, when an arrived trip's Done closed it with no
                 // model at hand, so none is made just to be cleared (Codex, #658).
                 var stationSearchReset by rememberSaveable { mutableStateOf(false) }
-                // The From… search was opened by a station trip's From row with no search under that station (one
-                // opened from a route page, Lines…, Plan again): going back to the station closes it again, so the
-                // station's Back doesn't find a search the rider never opened ([searchAfterChange]).
-                var searchForChange by rememberSaveable { mutableStateOf(false) }
-                LaunchedEffect(stationSearchOpen) { if (!stationSearchOpen) searchForChange = false }
                 // The station showing closed by its Back, the one it was opened over (if any) showing again: back from a
                 // ride's station to the ride it was opened from. What it showed goes with it, so nothing about a station
                 // looked at is kept in the saved state once it's closed.
@@ -2026,6 +2028,7 @@ class MainActivity : ComponentActivity() {
                                     stationSearchOpen = false
                                     originChange = null
                                 }
+                                is Page.StartSearch -> leaveStartSearch(page)
                                 is Page.Station -> closeStation()
                                 // Its origin still being worked out, or the location gate in its place: ended as its
                                 // own Back would, its models with it.
@@ -2756,7 +2759,7 @@ class MainActivity : ComponentActivity() {
                                         onDepartures = openDepartures,
                                     )
                                 }
-                            } else if (page == Page.StationSearch || page is Page.Station) {
+                            } else if (page == Page.StationSearch || page is Page.StartSearch || page is Page.Station) {
                                 // Closed last by an arrived trip's Done: the search opens empty, not on that query.
                                 if (stationSearchReset) {
                                     val search = fromSearchModel()
@@ -2774,6 +2777,8 @@ class MainActivity : ComponentActivity() {
                                 // The search, or a station on its page, with what it shows.
                                 val station = page as? Page.Station
                                 val shown = station?.let { stations[it.id] }
+                                // A change of start's search's query, cleared as it closes on its own station picked again.
+                                val fromSearch = if (page is Page.StartSearch) fromSearchModel() else null
                                 CompositionLocalProvider(LocalOnTheWay provides replanActions) {
                                     StationSearchArea(
                                         onEditPlaces = {
@@ -2787,6 +2792,10 @@ class MainActivity : ComponentActivity() {
                                         // done only once the station's To… search appears (below).
                                         onOpenStation = { match ->
                                             // One of an interchange's station names opens it with that name's stations first.
+                                            // The station a change of start's search is over, picked again there, comes back
+                                            // from under it ([Pages.openStation], Codex on #1152): the search goes, cleared as
+                                            // Back from it clears it.
+                                            if ((page as? Page.StartSearch)?.station == match.id) fromSearch?.clear()
                                             openStation(match.id, OpenStation(match.name, StationLead.of(match), match.level?.code, OriginChange.pickedTo(originChange)), originChange != null)
                                         },
                                         // The new start's To… search is up, so the change of start is done;
@@ -2814,71 +2823,63 @@ class MainActivity : ComponentActivity() {
                                         // Leaving the From… search — Back, or "Here" — lands where a To…
                                         // search's From row opened it ([OriginChange]), else on the list.
                                         onLeaveSearch = { here ->
-                                            val change = originChange
-                                            val landing = if (here) OriginChange.here(change) else OriginChange.back(change)
-                                            // Back to the station it began at keeps the change until that
-                                            // station's To… search appears ([onStartReached]); else it ends.
-                                            originChange = OriginChange.afterLeaving(change, landing)
-                                            // Back to a near-me trip left open underneath keeps Lines… under it too.
-                                            val tripKept = change is OriginChange.NearMe && landing is OriginChange.Landing.NearMe
-                                            if (OriginChange.closesLines(landing) && !(pages.isUnder(Page.Lines, pages.hereTrip) && tripKept)) leaveLines()
-                                            when (landing) {
-                                                null -> {
-                                                    stationSearchOpen = false
-                                                    closeStations()
-                                                }
-                                                is OriginChange.Landing.NearMe -> {
-                                                    // From a station, the near-me trip opens with its To…; from
-                                                    // near me, it was left open underneath, just as it was.
-                                                    // A replan moving here goes on replacing the trip there.
-                                                    if (replanning) replanningHere = true
-                                                    if (change is OriginChange.Station) {
-                                                        openHereTrip()
-                                                        herePicking = landing.to.picking
-                                                        hereToId = landing.to.stopId
-                                                        hereToLevel = landing.to.level?.code
-                                                        hereToName = landing.to.name
-                                                        hereFavorite = landing.to.place
+                                            val startSearch = page as? Page.StartSearch
+                                            // Back from a change of start's search is the stack's: to the station under it.
+                                            if (startSearch != null && !here) {
+                                                leaveStartSearch(startSearch)
+                                            } else {
+                                                val change = originChange
+                                                val landing = if (here) OriginChange.here(change) else OriginChange.back(change)
+                                                // Back to the station it began at keeps the change until that
+                                                // station's To… search appears ([onStartReached]); else it ends.
+                                                originChange = OriginChange.afterLeaving(change, landing)
+                                                // Back to a near-me trip left open underneath keeps Lines… under it too.
+                                                val tripKept = change is OriginChange.NearMe && landing is OriginChange.Landing.NearMe
+                                                if (OriginChange.closesLines(landing) && !(pages.isUnder(Page.Lines, pages.hereTrip) && tripKept)) leaveLines()
+                                                when (landing) {
+                                                    null -> {
+                                                        stationSearchOpen = false
+                                                        closeStations()
                                                     }
-                                                    stationSearchOpen = false
-                                                    closeStations()
-                                                }
-                                                is OriginChange.Landing.Station -> {
-                                                    val lead = landing.lead.takeIf { it.isNotEmpty() }?.let { StationLead(landing.name, it) }
-                                                    openStation(landing.id, OpenStation(landing.name, lead, landing.level?.code, landing.to), true)
-                                                    stationSearchOpen = searchAfterChange(stationSearchOpen, searchForChange)
-                                                    searchForChange = false
+                                                    is OriginChange.Landing.NearMe -> {
+                                                        // From a station, the near-me trip opens with its To…; from
+                                                        // near me, it was left open underneath, just as it was.
+                                                        // A replan moving here goes on replacing the trip there.
+                                                        if (replanning) replanningHere = true
+                                                        if (change is OriginChange.Station) {
+                                                            openHereTrip()
+                                                            herePicking = landing.to.picking
+                                                            hereToId = landing.to.stopId
+                                                            hereToLevel = landing.to.level?.code
+                                                            hereToName = landing.to.name
+                                                            hereFavorite = landing.to.place
+                                                        }
+                                                        stationSearchOpen = false
+                                                        closeStations()
+                                                    }
+                                                    is OriginChange.Landing.Station -> {
+                                                        val lead = landing.lead.takeIf { it.isNotEmpty() }?.let { StationLead(landing.name, it) }
+                                                        openStation(landing.id, OpenStation(landing.name, lead, landing.level?.code, landing.to), true)
+                                                    }
                                                 }
                                             }
                                         },
-                                        // A station trip's From row, over its To… search or its routes: back
-                                        // to the search to start elsewhere, the next station opening at the
-                                        // trip's To… — its search, or its routes to the same destination.
+                                        // A station trip's From row, over its To… search or its routes: a search to
+                                        // start elsewhere, over the station, which stays under it as it was for Back
+                                        // to it ([Page.StartSearch]). The next station picked there opens at the
+                                        // trip's To… ([OriginChange.pickedTo]): its search, or its routes to the same
+                                        // destination.
                                         onChangeFrom = {
-                                            originChange = station?.let { (id) ->
-                                                stations[id]?.let { OriginChange.Station(id, it.name, OriginChange.kept(it.to), it.lead?.modes.orEmpty(), Pick.Level.ofCode(it.level)) }
-                                            }
-                                            // A station opened straight from the trip on the way (Plan again) had no search
-                                            // under it: it's the search that changes the start (Codex on #479), closed again
-                                            // if the rider goes back to the station ([searchForChange]).
-                                            searchForChange = !stationSearchOpen
-                                            // The search the station was picked in shows as it closes; one further down (the
-                                            // station this one was opened over was picked there) comes up over it, or the
-                                            // pages kept between them would show instead (Codex on #1147).
-                                            if (stationSearchOpen && station != null && !pages.isUnder(Page.StationSearch, station, directly = true)) {
-                                                pages.show(Page.StationSearch)
-                                            }
-                                            stationSearchOpen = true
-                                            // Closed for the change, its search showing: the next station picked there
-                                            // opens at the trip's To… ([OriginChange.pickedTo]).
-                                            station?.let {
-                                                pages.close(it)
-                                                stations.remove(it.id)
+                                            station?.let { (id) ->
+                                                originChange = stations[id]?.let {
+                                                    OriginChange.Station(id, it.name, OriginChange.kept(it.to), it.lead?.modes.orEmpty(), Pick.Level.ofCode(it.level))
+                                                }
+                                                pages.openStartSearch(id)
                                             }
                                         },
-                                        // The station's Back is its page's, and the search's but where a station's From row
-                                        // opened it: Back from it reopens that station, which isn't under it.
-                                        rootBack = station != null || originChange !is OriginChange.Station,
+                                        // The station's Back is its page's, and each search's too, a change of start's
+                                        // with the station under it: the back swipe draws the page Back returns to.
+                                        rootBack = true,
                                         // Each station open keeps its models, the one under another included, so it's
                                         // drawn as it was under the swipe from that one and comes back so on its Back.
                                         openStations = stations.keys,
@@ -5433,7 +5434,8 @@ class MainActivity : ComponentActivity() {
         val start = if (noneNearby) TripStart(nearestId, null) else keptTripStart(anchorHolder.start, nearestId, here)
         SideEffect { anchorHolder.start = start }
         val fromId = start.stopId
-        LaunchedEffect(Unit) { onShown() }
+        // On top, not for a look under the swipe from a change of start's search over it, which would end that change.
+        OnTopEffect(Unit) { onShown() }
         // A stop the rider sends the trip through (SPEC *Going via a stop*), picked with the overflow's Via… or a
         // view's Via: kept with the trip while it's open, by where it goes, so a new nearest stop to start from keeps
         // it and another destination starts without one. Never saved elsewhere. Held above the To… picker that shows
@@ -7214,13 +7216,6 @@ internal fun supersedesNearMeTrip(replacing: Boolean, from: String?, openStation
  */
 internal fun tripOptionsLeft(from: String, openStationId: String?, hereTripOpen: Boolean, changingFrom: String? = null): Boolean =
     if (from.isEmpty()) !hereTripOpen else openStationId != from && changingFrom != from
-
-/**
- * Whether the From… search stays open under the station a change of start goes back to: it does if it was
- * [open] under that station before, not if the trip's From row opened it ([openedForChange]), when that
- * station's Back would otherwise land on a search the rider never opened.
- */
-internal fun searchAfterChange(open: Boolean, openedForChange: Boolean): Boolean = open && !openedForChange
 
 /**
  * The near-me area: the back stack's pages ([Pages]), the near-me view ([body]) at the bottom and each screen
