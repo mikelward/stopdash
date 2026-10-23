@@ -1165,8 +1165,8 @@ stop** (maintainer, 2026-10-21), both ways: each of its routes from the stop thr
 the same stops from here one chip, and a way its trains take that no route ends at (a short working) its own.
 A chip is named by where it goes, with its via where two go to one place ("Morden/Bank", "Morden/Charing X"),
 else by the first stop that tells them apart. A train TfL names no destination for ("Check Front of Train") has its
-own chip, named by how far it goes at least, a guess and marked as one: "At least to Camden Town?", the farthest
-stop every way it can run from here reaches before they part (maintainer, 2026-10-21). Its ways are found as any
+own chip, named by how far it goes at least, a guess and marked as one: "Camden Town+", the farthest
+stop every way it can run from here reaches before they part (maintainer, 2026-10-21; its words 2026-10-23). Its ways are found as any
 train's are: its platform's bound first, else its TfL direction, which on a loop can name the other way round (Codex
 on #1045). Such trains guessed to go different distances have a chip each, so a chip's guess holds for every train
 on it, whichever platform's the page follows. TfL's own words stay on

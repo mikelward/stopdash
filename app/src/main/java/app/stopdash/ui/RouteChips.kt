@@ -109,7 +109,7 @@ internal class RouteChoicesUi private constructor(
          * [row]'s line's choices at its stop from [sequence] (both ways), with the trains among [rows], [first]'s
          * way first and, within it, those calling at a stop of [reaching] ([RouteChoices.of]); [via] formats a choice
          * told apart by where it parts ("%1$s via %2$s"), and [atLeast] a train TfL names no destination for by how far
-         * it goes at least, a guess ("At least to %1$s?", [RouteChoice.atLeast]).
+         * it goes at least, a guess ("%1$s+", [RouteChoice.atLeast]).
          */
         @WorkerThread
         fun of(
@@ -120,7 +120,7 @@ internal class RouteChoicesUi private constructor(
             topology: RouteTopology,
             via: String,
             first: String,
-            atLeast: String = "%1\$s?",
+            atLeast: String = "%1\$s+",
             reaching: Set<String> = emptySet(),
         ): RouteChoicesUi {
             val choices = RouteChoices.of(sequence, row, rows, focus, topology, first, reaching)
