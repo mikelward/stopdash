@@ -52,6 +52,15 @@ class RouteMapInputsTest {
     }
 
     @Test
+    fun `a train running on past its stops listed has no terminus on the map`() {
+        // As far as a train naming no destination is sure to go: its last stop isn't where it ends, so isn't bolded.
+        val onward = RouteMapInputs.of(RouteStopsUi.Loaded(listOf(RouteStop("A2", "Alpha"), RouteStop("B2", "Beta")), onward = true), emptyMap())
+        assertEquals(null, onward.asDrawn.terminus)
+        assertEquals(null, onward.drawn(mapOf("B2" to "B1")).terminus)
+        assertEquals("B2", onward.drawn(mapOf("B2" to "B1")).path["B1"])
+    }
+
+    @Test
     fun `with nothing drawn as another, every stop is its own`() {
         assertEquals(inputs.asDrawn, inputs.drawn(emptyMap()))
         assertEquals("B2", inputs.asDrawn.path["B2"])
