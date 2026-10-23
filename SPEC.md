@@ -1433,7 +1433,8 @@ station goes by its mode too: a departure, a ride and its trains, a notice (unde
 the distance (its own mode's nearest stop), so nothing shows under another mode's heading. It shows how far
 its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**
 of all its departures. The near-me list and a searched
-station's page follow it; a platform's or a ride's own view doesn't. The card's rows stay **grouped by platform**,
+station's page follow it, each holding its placeholder until the choice is read, so a cold start never shows the list
+by platform first; a platform's or a ride's own view doesn't. The card's rows stay **grouped by platform**,
 never sorted by when trains leave: its **starred rows first**, then a **favorite ride's trains**, then each
 platform in turn by number (a bus stop's poles by letter), a line twice as thick between those blocks so the grouping
 reads without a heading for each. A favorite ride boarding at the station has no heading of its own: its trains

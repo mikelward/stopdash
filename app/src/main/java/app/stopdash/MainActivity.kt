@@ -299,6 +299,7 @@ import app.stopdash.ui.collectByIdentityWithLifecycle
 import app.stopdash.ui.countdownWords
 import app.stopdash.ui.distanceText
 import app.stopdash.ui.DeparturesUiState
+import app.stopdash.ui.rememberSettingRead
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
 import app.stopdash.ui.FartherCardsViewModel
@@ -4309,12 +4310,15 @@ class MainActivity : ComponentActivity() {
                 // And asks about every other rail line while it's open, for its *Other* (maintainer, 2026-10-17).
                 LocalLinesPage provides remember(viewModel) { viewModel::linesPage },
             ) {
+                // The list waits for the rider's grouping to be read: drawn from the saved snapshot before then, a
+                // cold start showed it by platform for a moment, then regrouped it by station (maintainer, 2026-10-23).
+                val groupingRead = rememberSettingRead(NearbyGroupingSetting.isLoaded, NearbyGroupingSetting::loaded)
                 MainScreen(
                     usageScreen = if (stationTitle != null) UsageEvent.Screen.STATION else UsageEvent.Screen.HOME,
                     listState = listState,
                     pendingTracker = shownTracker,
                     listWork = shownWork,
-                    state = shownState,
+                    state = if (groupingRead) shownState else DeparturesUiState.Loading,
                     // The lines near here and the chosen networks', under the place chips (maintainer,
                     // 2026-10-05), unless turned off in Settings; not before both choices are read, so one
                     // turned off never flashes up, nor the tube in place of the networks chosen (Codex, #592).
@@ -6342,11 +6346,13 @@ class MainActivity : ComponentActivity() {
             ),
         ) {
             val now = tickingNow()
+            // Waits for the grouping, as the near-me list does.
+            val groupingRead = rememberSettingRead(NearbyGroupingSetting.isLoaded, NearbyGroupingSetting::loaded)
             MainScreen(
                 usageScreen = UsageEvent.Screen.STATION,
                 // A searched station's page groups as the near-me list does.
                 stationGroups = NearbyGroupingSetting.changes.collectAsStateWithLifecycle().value == NearbyGrouping.STATION,
-                state = state,
+                state = if (groupingRead) state else DeparturesUiState.Loading,
                 now = now,
                 // Each station page has its own model, and so its own list.
                 listKey = viewModel,
