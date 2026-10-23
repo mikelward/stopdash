@@ -4512,8 +4512,13 @@ Builds on Phase 1's minimal line-status marking.
       from Edgware Road, say, may always reach Aldgate. Mark it as a guess, never as TfL's destination;
       learn what's common from the route data (and the train's later predictions, where it has them).
       Done (2026-10-21): its chip says "At least to <stop>?", the farthest stop every route its way runs from here
-      reaches before they part. Still to do: learn it from the train's later predictions where it has them, and
-      show the guess on its list row, not only its page's chip.
+      reaches before they part. The rest is the next item.
+- [ ] **The "At least to <stop>?" guess on a "Check Front of Train" train's list row** (maintainer, 2026-10-21,
+      the rest of the item above). Only its route page's chip says it today. The home list loads line routes for
+      favorite journeys only, so the row needs each such line's routes loaded too: one or two TfL route requests
+      per line a day, through the same cache, free. Until they're in, the row shows TfL's words and then the guess,
+      a change under the rider, unless it waits for them. Also: learn the guess from the train's later predictions
+      where it has them.
 - [ ] **Show a chip per disruption condition, not just the single most-severe one**
       (requested 2026-09-20). Today `mostSevereDisruption` collapses coexisting statuses to
       one label; the maintainer wants to revisit that — show a chip for each condition a line
