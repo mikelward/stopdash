@@ -212,6 +212,31 @@ class NearbyAreaTest {
     }
 
     @Test
+    fun `a change of start's search opens over its station, which the swipe from it draws as it was left`() {
+        show()
+        open(Page.StationSearch)
+        open(Page.Station("A"))
+        // Its trip up, then its From row: the search to start elsewhere over it.
+        composeRule.onNodeWithText("Station A").performClick()
+        open(Page.StartSearch("A"))
+        startSwipe()
+        composeRule.onNodeWithText("Station A's route page").assertExists()
+        assertEquals(false, onTop["Station A"])
+        letGo()
+        // A station picked there opens over it; Back returns through the search to the station as it was left, and
+        // from there to the search it was picked in.
+        open(Page.Station("B"))
+        back()
+        back()
+        assertEquals(listOf("Station B", Page.StartSearch("A").toString()), closed)
+        composeRule.onNodeWithText("Station A's route page").assertIsDisplayed()
+        back()
+        back()
+        assertEquals("Station A", closed.last())
+        composeRule.onNodeWithText("Search").assertIsDisplayed()
+    }
+
+    @Test
     fun `a station opened over another starts afresh, and its Back finds the one under it as it was`() {
         show()
         open(Page.Station("A"))
