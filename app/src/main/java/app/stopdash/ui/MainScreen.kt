@@ -3222,8 +3222,8 @@ private fun DepartureList(
     }
     // Grouped by station, the stations' order, each ride's station and each station's card, worked out on the worker
     // from every group the list has (AGENTS.md *Main thread: read and dispatch only*); the list picks out the ones
-    // it shows. The last one stands in while the next is worked out only for the same places, as rows whose times
-    // moved on do, never for others; null until one is in, which draws no station yet rather than the other
+    // it shows. The last one stands in while the next is worked out only for places still listed (the same ones, or
+    // more: a faraway place opened), as rows whose times moved on do, never for others; null until one is in, which draws no station yet rather than the other
     // grouping for a moment. The held and opened farther places go with it: a ride's train is never put in one.
     // Kept above the list where it's given one, so a return to the list draws its stations at once: worked out
     // again from none, the list came back empty for a frame and lost its scroll position (bug report, 2026-10-23).
@@ -3232,7 +3232,7 @@ private fun DepartureList(
         rememberWorked(
             stationSlot,
             Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held),
-            keep = { kept, wanted -> (kept.parts[0] as ListCards).places == (wanted.parts[0] as ListCards).places },
+            keep = { kept, wanted -> (wanted.parts[0] as ListCards).grownFrom(kept.parts[0] as ListCards) },
         ) {
             StationLayout.of(listCards.groups, listCards::of, journeyCards, starred, placeDistanceMeters, stopClusterIds, farther, held.values, stopDistanceMeters)
         }
@@ -4007,9 +4007,30 @@ private fun DepartureList(
             dismissedPlan.aboveGroup[index].orEmpty().filter { poleOnly(it) }.map { it to true }
         // Grouped by station, the planned group at [index], listed or an opened farther card's: its station's heading,
         // notices and one card, drawn with the station's first group.
+        // The stations drawn from their own cards while the layout standing in was worked out before them.
+        val standInStations = HashSet<String>()
         fun stationGroupItems(index: Int) {
             val station = groupStation(planned[index])
             if (index > 0 && groupStation(planned[index - 1]) == station) return
+            // A station the layout standing in was worked out before (a faraway place opened, its departures just in):
+            // headed and carded from its first group's own card, under the keys its laid-out heading and card will take,
+            // until the next layout is in. Drawn as nothing, the list shrank for a frame and its position snapped
+            // (maintainer, 2026-10-23).
+            if (stationLayout?.members?.containsKey(station) != true) {
+                // Once, at its first run: a new place's groups keep their own order, which may alternate by mode (Tube,
+                // Rail, Tube), and a key drawn twice crashes the list (Codex, #1183).
+                if (!standInStations.add(station)) return
+                val group = planned[index]
+                headingLeads = false
+                val distanceLabel = distanceSystem?.let { system -> placeDistanceMeters[group.placeKey]?.let { distanceText(it, system, resources) } }
+                item(key = "station|$station") {
+                    StationHeader(group.stopName, distanceLabel, modes = emptyList(), modeIds = emptyList(), folded = false, onToggle = {}, onOpen = null)
+                }
+                item(key = "station-card|$station") {
+                    StopGroupCard(listCards.of(group), now, starred = starred, onToggleStar = onToggleStar, starringAvailable = starringAvailable, onOpenDetail = onOpenDetail)
+                }
+                return
+            }
             val above = aboveAt(index)
             rideGroupItems(station)
             stationItems(station, closed = closesStation(above))
@@ -4067,7 +4088,9 @@ private fun DepartureList(
             // (maintainer, 2026-10-23): its notices are planned with its groups, so each heads its own station; one that
             // found no group (a closed pole with nothing listed) heads the card itself, as a loose notice does nearby.
             // None until the layout is worked out.
-            if (byStation && (asStations != null || opened != null)) {
+            // Opened with groups the layout standing in was worked out before, it stays folded under its heading until the
+            // next is in: drawn as nothing, the list shrank for a frame and its position snapped (maintainer, 2026-10-23).
+            if (byStation && asStations != null) {
                 cardNotices.forEach { (notice, dismissed) -> noticeGroupItems(notice, dismissed, card.place.meters, nearest) }
                 asStations?.forEach { index -> stationGroupItems(listed.size + index) }
                 continue
@@ -4075,7 +4098,7 @@ private fun DepartureList(
             cardNotices.forEach { (notice, dismissed) ->
                 noticeGroupItems(notice, dismissed, card.place.meters, nearest, station = opened?.firstOrNull())
             }
-            if (opened != null) {
+            if (opened != null && !byStation) {
                 opened.forEach { group -> groupItems(1, group) }
             } else if (cardNotices.isEmpty()) {
                 val cue = fartherCue(card, fetchedStopIds, unavailableStopIds, closedStops.stopIds)
