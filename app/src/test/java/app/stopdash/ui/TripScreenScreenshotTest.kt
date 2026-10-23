@@ -4860,6 +4860,22 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_trip_lists_wait_runs_from_its_first_cards_however_often_they_are_worked_out_again() {
+        // Maintainer's report (2026-10-23): a plan landing under TfL's rate limit worked its cards out again at each
+        // answer, and each restarted the cap, so "Checking trips…" stood for half a minute.
+        val held = mutableStateOf(planned.copy(planning = true))
+        composeRule.mainClock.autoAdvance = false
+        show(planned, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher(), held = held)
+        composeRule.mainClock.advanceTimeBy(REVEAL_CAP_MILLIS - 2_000)
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
+        // Another answer: the same routes as a new plan, so its cards are worked out again.
+        held.value = planned.copy(planning = true, routes = planned.routes.orEmpty().toList())
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(3_000)
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+    }
+
+    @Test
     fun the_disruptions_row_is_as_tall_saying_none_as_with_a_pill() {
         val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
             planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }

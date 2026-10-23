@@ -2223,7 +2223,7 @@ internal const val REVEAL_CAP_MILLIS = 8_000L
 /**
  * Whether a trip's list is shown yet: once [hasCards], with no plan landing, no live refresh running
  * and no line's route still loading ([check]); or [REVEAL_CAP_MILLIS] after the cards
- * came, whatever is still out, so a check that never answers can't hide the routes. Once shown it
+ * first came, whatever is still out, so a check that never answers can't hide the routes. Once shown it
  * stays shown, refreshes and re-plans included: from then on a card moves only when what it says
  * changes. Timed on frames, as a screenshot test drives them.
  */
@@ -2238,19 +2238,30 @@ private fun rememberRevealed(
 ) {
     var revealed by revealedState
     val ready = hasCards && !state.refreshing && !state.planning && check != TripMessage.CHECKING && settledAround
+    // When the cards first came, by the frame clock: the cap runs from then, not again each time they're worked
+    // out afresh (a plan's next answer, a leg placed), which held a plan landing under TfL's rate limit back for
+    // half a minute (maintainer's report, 2026-10-23).
+    val cardsCame = remember(revealedState) { longArrayOf(NOT_YET) }
     // Keyed on the holder too: each plan's holder gets its own cap timer (Codex, #543).
     LaunchedEffect(revealedState, hasCards, hasPlan, ready) {
         // No plan means one starting afresh, a process recreated included (its plans are memory-only),
         // so a restored reveal mustn't let the new plan's cards show as they land (Codex, #543).
-        if (!hasPlan) revealed = false
+        if (!hasPlan) {
+            revealed = false
+            cardsCame[0] = NOT_YET
+        }
         if (revealed || !hasCards) return@LaunchedEffect
         if (!ready) {
-            val start = withFrameMillis { it }
-            while (withFrameMillis { it } - start < REVEAL_CAP_MILLIS) Unit
+            val now = withFrameMillis { it }
+            if (cardsCame[0] == NOT_YET) cardsCame[0] = now
+            while (withFrameMillis { it } - cardsCame[0] < REVEAL_CAP_MILLIS) Unit
         }
         revealed = true
     }
 }
+
+// [rememberRevealed]'s cards not in yet for this plan.
+private const val NOT_YET = Long.MIN_VALUE
 
 /**
  * How long a trip's list took to show and what it last waited for, for one debug-log line ([shown]):

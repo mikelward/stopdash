@@ -2399,7 +2399,10 @@ trains are reachable and toward the arrival: one before the first ride (from the
 better one), between stations, and after the last ride to the picked stop.
 
 **Lifecycle.** The trip screen appears at once, titled with both ends, with a "Planning…"
-placeholder; the Planner call runs off the render path. A plan is kept in memory for the trip and
+placeholder; the Planner call runs off the render path. Its routes then wait behind "Checking trips…"
+for what they show to land, never more than 8 seconds from when they're first in, however often a
+plan's later answers rework them (maintainer's report, 2026-10-23: half a minute while TfL rate-limited
+the app). A plan is kept in memory for the trip and
 reused if the same trip is reopened within 15 minutes. From "Here", a re-locate (the crosshairs, or
 a fresh fix) that resolves to a different nearest stop **150 m or more** from where the trip took its
 stop discards the plan and re-plans at once, showing "Planning…" rather than the old routes. Closer than
