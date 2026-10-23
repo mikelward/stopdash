@@ -119,4 +119,34 @@ class FartherMergeOffMainTest {
         ).first()
         assertSame(DeparturesUiState.Loading, shown.state)
     }
+
+    // Card a open, its stop measured as the opened cards' flow measures it ([openDistancesOf]).
+    private val openedA = OpenedCards(null, mapOf("a" to openA), listOf(openA.distanceMeters.keys to card), openDistanceMeters = openA.distanceMeters)
+
+    @Test
+    fun theListsDistances_comeWithTheOpenCardsStopsMergedIn() = runBlocking {
+        // The list measures its rows by its own stops' distances and an opened card's, merged here on the
+        // worker rather than in composition, a new map on every recomposition (AGENTS.md *Main thread*).
+        val nearby = mapOf("E" to 300.0)
+        val distances = MutableStateFlow(nearby)
+        val shown = shownWithOpened(MutableStateFlow(list), MutableStateFlow(openedA), compute, distances).first()
+        assertEquals(mapOf("E" to 300.0, "MA" to 2000.0), shown.listDistanceMeters)
+        // With none open, the list's own map, unchanged.
+        val none = shownWithOpened(MutableStateFlow(list), MutableStateFlow(OpenedCards.NONE), compute, distances).first()
+        assertSame(nearby, none.listDistanceMeters)
+    }
+
+    @Test
+    fun theListsDistancesChanging_bringANewMerge() = runBlocking {
+        val distances = MutableStateFlow(mapOf("E" to 300.0))
+        val updates = mutableListOf<ShownFarther>()
+        val job = launch {
+            shownWithOpened(MutableStateFlow(list), MutableStateFlow(openedA), compute, distances).take(2).toList(updates)
+        }
+        while (synchronized(updates) { updates.isEmpty() }) yield()
+        distances.value = mapOf("E" to 150.0)
+        job.join()
+        assertEquals(listOf(300.0, 150.0), updates.map { it.listDistanceMeters["E"] })
+        assertTrue(updates.all { it.listDistanceMeters["MA"] == 2000.0 })
+    }
 }

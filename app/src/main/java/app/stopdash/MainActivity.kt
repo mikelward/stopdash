@@ -4141,13 +4141,15 @@ class MainActivity : ComponentActivity() {
             // The list with the opened cards' rows merged in, the places offered as cards and the
             // cards' standing, published together off the main thread: the screen only ever draws a
             // finished merge, and a place a relocation drops goes with its rows, not before them.
-            val shownFarther by remember(fartherModels, viewModel) { fartherModels.shownWith(viewModel.state) }
+            // The list's stops' distances go to the merge as they change, by reference; it measures the opened cards'
+            // stops with them on the worker, a new map only when either changes (AGENTS.md *Main thread*).
+            val shownFarther by remember(fartherModels, viewModel) { fartherModels.shownWith(viewModel.state, ready.distanceMeters) }
                 .collectAsStateWithLifecycle()
+            SideEffect { fartherModels.showDistances(ready.distanceMeters) }
             val fartherLoads = shownFarther.loads
             LaunchedEffect(farther, ready.location) { farther?.let { fartherModels.retain(it, ready.location) } }
             // Worked out with the cards' standing, off the main thread.
             val fartherCards = shownFarther.cards
-            val fartherDistanceMeters = shownFarther.distanceMeters
             // Each open card's departures, kept live while shown as the list's are, then shown
             // through the list's own rows beside its card.
             for ((cardKey, load) in fartherLoads) {
@@ -4371,7 +4373,7 @@ class MainActivity : ComponentActivity() {
                     // a revealed stop collapses like an eager one. Empty for a location-free list
                     // (a watched-stops view), which is shown as-is.
                     // Plus an opened farther station's stops, so its departures show beside its card.
-                    stopDistanceMeters = ready.distanceMeters + fartherDistanceMeters,
+                    stopDistanceMeters = shownFarther.listDistanceMeters,
                     stationLead = stationLead,
                     nearestStops = ready.nearestStopByLine,
                     lineMeters = ready.nearestMetersByLine,

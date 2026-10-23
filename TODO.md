@@ -151,9 +151,9 @@ exercises the whole spine the widget later renders from.
       bundled positions). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
       behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
-      input on the main thread before checking it off. Known still there: the list's stop distances
-      merged with an opened farther card's (`ready.distanceMeters + fartherDistanceMeters`), a new map on
-      every recomposition that the list's own `remember`s then compare. (`refresh`'s nearby places and
+      input on the main thread before checking it off. (The list's stop distances are merged with an
+      opened farther card's on the worker, with its rows (`ShownFarther.listDistanceMeters`), no longer a
+      new map on every recomposition; `refresh`'s nearby places and
       `setJourneyStops`' comparisons are worked out on the worker; `FartherCardsViewModel`'s `retain`
       and `open` after its lookup, and the `remeasure` `retain` calls on each opened card's model, now
       work on the worker; the licenses dialog now opens the tapped
