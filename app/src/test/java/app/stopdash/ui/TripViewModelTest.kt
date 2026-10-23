@@ -251,11 +251,15 @@ class TripViewModelTest {
         val towardOrigins = mutableListOf<TripOrigin>()
         var byToward: Map<String, List<TripRoute>> = emptyMap()
         var towardNotFound: Set<String> = emptySet()
-        // How long a request via each stop takes to answer, in ms.
+        // How long a request via each stop waits for the app's request budget before it's sent, and then takes to
+        // answer, in ms.
+        var towardQueued: Map<String, Long> = emptyMap()
         var towardDelays: Map<String, Long> = emptyMap()
-        override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
+        override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, sent: () -> Unit): List<TripRoute> {
             towardAsked += via
             towardOrigins += from
+            towardQueued[via]?.let { delay(it) }
+            sent()
             towardDelays[via]?.let { delay(it) }
             if (via in towardNotFound) throw TflException.NotFound(null)
             if (via in failFor) throw TflException.Offline(null)
@@ -7459,7 +7463,7 @@ class TripViewModelTest {
             val planner = object : JourneyPlanner {
                 override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?) =
                     listOf(longWalk)
-                override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
+                override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, sent: () -> Unit): List<TripRoute> {
                     threads.note()
                     return listOf(busToTrain)
                 }
@@ -7553,6 +7557,45 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf("490G0A", "490G0C"), planner.towardAsked)
         assertEquals(listOf(longWalk, busToTrain.copy(towardStop = true)), trip.state.value.routes)
+    }
+
+    // A bug report: with the request budget spent, each stop's request waited its turn to be sent, was taken as slow
+    // to answer, and had the next stop asked alongside, which only lengthened the wait for the rest.
+    @Test
+    fun `a stop's request waiting to be sent isn't slow to answer, so the next stop isn't asked alongside`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(longWalk)).apply {
+            towardQueued = mapOf("490G0A" to 10_000L)
+            towardDelays = mapOf("490G0A" to 1_000L)
+            byToward = mapOf("490G0A" to listOf(busToTrain))
+        }
+        val warnings = mutableListOf<String>()
+        val trip = towardTrip(planner, warnings)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("490G0A"), planner.towardAsked)
+        assertEquals(listOf(longWalk, busToTrain.copy(towardStop = true)), trip.state.value.routes)
+        assertFalse(warnings.toString(), warnings.any { "slow to answer" in it })
+    }
+
+    @Test
+    fun `a stop is slow to answer from when its request was sent`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(longWalk)).apply {
+            towardQueued = mapOf("490G0A" to 10_000L)
+            towardNotFound = setOf("490G0A")
+            towardDelays = mapOf("490G0A" to 8_000L)
+            byToward = mapOf("490G0C" to listOf(busToTrain))
+        }
+        val trip = towardTrip(planner, mutableListOf())
+        trip.refresh()
+        advanceTimeBy(12_500)
+        // Sent at 10 s, so not yet slow.
+        assertEquals(listOf("490G0A"), planner.towardAsked)
+        advanceTimeBy(1_000)
+        assertEquals(listOf("490G0A", "490G0C"), planner.towardAsked)
+        advanceUntilIdle()
+        assertEquals(listOf(longWalk, busToTrain.copy(towardStop = true)), trip.state.value.routes)
+        // Done when A's refusal came.
+        assertEquals(18_000L, currentTime)
     }
 
     // Codex, #1016: as each of a first plan's answers lands, neither the watcher for its routes nor a write of the

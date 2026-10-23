@@ -2667,7 +2667,9 @@ apply to it, so the bus the Planner's own requests passed over always has its ca
 journey found"); then the next stop on the destination's side serving one of its lines is asked
 instead, once. A refusal can take the Planner several seconds (7 s seen), so a stop that hasn't answered
 in 3 s, past most of the Planner's answers, has that next stop asked alongside it; the next stop's routes
-count only once the first is refused, and are let go if it answers (maintainer, 2026-10-20). The refusal is remembered for that
+count only once the first is refused, and are let go if it answers (maintainer, 2026-10-20). The 3 s count
+from when the request goes to the Planner, never while it waits its turn for the app's own request budget,
+where another request would only lengthen the wait for the rest. The refusal is remembered for that
 destination, under the same walk, step-free and mode choices, while the app runs (in memory only, never
 saved, as plans are), so a later plan asks the next stop straight away and never that one again; a
 different choice may route through the stop, so it asks again. Failing, or with no route through either

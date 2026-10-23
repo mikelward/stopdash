@@ -16,6 +16,7 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTime
 import app.stopdash.domain.WalkingSpeed
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -99,7 +100,8 @@ internal class TowardRequests(
         coroutineScope {
             for (ask in asks) {
                 launch {
-                    suspend fun via(stop: String) = withContext(io) { planner.quickestVia(from, destination, stop, speed, limit, access, modes, at) }
+                    suspend fun via(stop: String, sent: () -> Unit = {}) =
+                        withContext(io) { planner.quickestVia(from, destination, stop, speed, limit, access, modes, at, sent) }
                     // A stop refused before, for this destination under these choices: its next straight away,
                     // unless refused too.
                     val next = ask.fallback?.takeIf { !refused.has(it, destination, choices) }
@@ -115,17 +117,21 @@ internal class TowardRequests(
                     // answer, not only after its refusal: the Planner has taken 7 s to refuse a stop it finds no route
                     // through, the next stop then asked from scratch. Its answer counts only after that refusal.
                     val then = next?.takeIf { it != first }
+                    // When [first]'s request went to the Planner: slow is timed from then, never from a wait for the
+                    // app's own request budget, which another request would only lengthen.
+                    val sent = CompletableDeferred<Unit>()
                     // The stop the answer came via, and the answer or the request's failure.
                     val (viaStop, answer) = coroutineScope {
                         val spare = then?.let { stop -> async(start = CoroutineStart.LAZY) { attempt { via(stop) } } }
                         val early = spare?.let {
                             launch {
+                                sent.await()
                                 delay(SPARE_AFTER_MILLIS)
                                 warn("$label via a stop towards the destination: slow to answer, so the next stop asked alongside")
                                 it.start()
                             }
                         }
-                        val own = attempt { via(first) }
+                        val own = attempt { via(first) { sent.complete(Unit) } }
                         early?.cancel()
                         if (own.exceptionOrNull() is TflException.NotFound && spare != null) {
                             // The Planner found no route through it, though it may plan from it readily: remembered, and
@@ -178,8 +184,8 @@ internal class TowardRequests(
         }
 
     private companion object {
-        // How long a request via a stop runs before the next stop for its lines is asked alongside, in case it's
-        // refused: past most answers the Planner gives (about 1 to 2.5 s), well short of a slow refusal.
+        // How long a request via a stop runs at the Planner before the next stop for its lines is asked alongside, in
+        // case it's refused: past most answers the Planner gives (about 1 to 2.5 s), well short of a slow refusal.
         const val SPARE_AFTER_MILLIS = 3_000L
 
         // The NaPTAN stop type of a bus stop, as the bundled stops are searched by.

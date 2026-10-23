@@ -253,8 +253,9 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
         at: TripTime?,
+        sent: () -> Unit,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, at = at)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, at = at, sent = sent)), from, to)
 
     // One request, for the fewest changes from one stop to another ([DirectRoute]): its failure is the caller's to handle.
     override suspend fun fewestChangesBetween(
@@ -346,6 +347,8 @@ class KtorTflClient(
         busOnly: Boolean = false,
         // A later trip's time ([TripTime]); none plans for now.
         at: TripTime? = null,
+        // Told once, when the request first goes to TfL past its wait for a slot and the rate limit.
+        sent: () -> Unit = {},
     ): List<TripRoute> {
         val source = planSource(preference, via, leaveOut, between, busOnly, at)
         val modeList = if (busOnly) checkNotNull(modes.busOnlyModes) else plannerModes(modes, leaveOut)
@@ -359,7 +362,10 @@ class KtorTflClient(
         var offered = ""
         try {
             return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, modeList, preference, via, at) { status ->
-                if (waited == null) waited = asked.elapsedNow().inWholeMilliseconds
+                if (waited == null) {
+                    waited = asked.elapsedNow().inWholeMilliseconds
+                    sent()
+                }
                 status?.let { outcome = it }
             }.also { routes ->
                 if (outcome == null) outcome = "${routes.size} routes"
