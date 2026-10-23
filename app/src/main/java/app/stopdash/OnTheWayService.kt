@@ -306,6 +306,8 @@ internal suspend fun followTrip(
     }
     if (read == null) return
     var woke: TripFixes.Seen? = null
+    // The last fix a refresh was handed: one still held after it never wakes another ([awaitRefresh]).
+    var handled: TripFixes.Seen? = null
     var refreshing: Instant? = null
     // Each trip in turn: one started in place of another is followed from its own start. Replace ends
     // the trip on the way before the new one is kept, so a trip gone while a start is in flight is
@@ -324,11 +326,12 @@ internal suspend fun followTrip(
             while (trip.value?.startedAt == following.startedAt) {
                 keepAwake()
                 refresh(woke)
+                if (woke != null) handled = woke
                 // Whichever comes first: the trip gone, a fix, the timer (null), or another trip started in
                 // its place (null), whose next ride's board is read now rather than a wait later.
                 woke = merge(
                     trip.filter { it == null }.map<ActiveTrip?, TripFixes.Seen?> { null },
-                    flow { emit(awaitRefresh(fixes, every, minGap, trip, from = following.startedAt)) },
+                    flow { emit(awaitRefresh(fixes, every, minGap, trip, from = following.startedAt, handled = handled)) },
                 ).first()
             }
         } == null

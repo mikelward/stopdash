@@ -85,8 +85,11 @@ private val WANTS_FIX_RECHECK: Duration = Duration.ofSeconds(10)
 /**
  * Waits for a trip's next refresh, called as the last one ends: [every] later, or sooner with the
  * first fix [fixes] brings once [minGap] has passed. That fix, or null for the timer. One that came
- * during the gap is passed over for the next: by then it's that much older, and while the rider
- * moves another follows within seconds. A new trip on the way in [trip] (one started in place of
+ * during the gap (or while the last refresh ran, which cleared the one before it, [refreshFix]) wakes
+ * the refresh as the gap ends: underground another may not come for minutes, and a fix there is the
+ * best word on where the rider is (maintainer, 2026-10-23: one at Camden Town 2 s after a refresh was
+ * passed over, and stale by the next). [handled] is the fix the last refresh woke for, if any: never
+ * waking another. A new trip on the way in [trip] (one started in place of
  * the trip refreshed, which started at [from]) ends the wait at once, with null: its boards and train
  * are read now, not up to [every] later (maintainer, 2026-10-04). [from] is read before that refresh,
  * so a trip started while it ran wakes this too.
@@ -97,10 +100,11 @@ suspend fun awaitRefresh(
     minGap: Duration = ON_THE_WAY_MIN_GAP,
     trip: StateFlow<ActiveTrip?>? = null,
     from: Instant? = null,
+    handled: TripFixes.Seen? = null,
 ): TripFixes.Seen? = withTimeoutOrNull(every.toMillis()) {
     val fix = flow {
         delay(minGap.toMillis())
-        val since = fixes.value?.seq ?: 0
+        val since = handled?.seq ?: 0
         emit(fixes.first { it != null && it.seq > since })
     }
     if (trip == null) return@withTimeoutOrNull fix.first()
