@@ -2610,7 +2610,11 @@ still rides the coach, the cable car and replacement buses, any of which can cro
 buses turned off there's none to find. The answers merge in that order, and
 a route more than one offers (the same lines between the same stops at the same times) appears once;
 the list then orders them as always (tiers, then arrival). Any answer alone still plans the trip, and
-says which request failed in the debug log; only all failing fails the plan.
+says which request failed in the debug log; only all failing fails the plan. A trip's first plan shows
+each answer's routes as it lands, merged in that order with those in so far, rather than once the
+slowest of the four has answered: with the app's request budget short, they're sent in turn, so the
+last can trail the first by many seconds. A re-plan keeps the last plan until all four have answered,
+as it does across a station's several stops.
 
 **One ride to the fastest route's last stop.** To a **place** at a coordinate — a saved favorite, or
 a place or postcode picked in the *To…* search — the fewest changes can trade the one bus the whole way for a train and a long walk from the station, since a walk

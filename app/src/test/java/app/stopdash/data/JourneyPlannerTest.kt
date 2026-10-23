@@ -33,6 +33,7 @@ import java.time.LocalDateTime
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -666,6 +667,46 @@ class JourneyPlannerTest {
             (if (request.fewestChanges()) busAnswer("10", "30", pence = 175) else busAnswer("10", "30")) to HttpStatusCode.OK
         }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
         assertEquals(listOf(TripFare(175)), routes.map { it.fare })
+    }
+
+    // A bug report: the first of a plan's requests answered in under 3 s, and nothing showed until its slowest, sent
+    // last with the request budget spent, answered 18 s later.
+    @Test
+    fun `tells the routes in so far as each of a plan's requests answers, in the asks' order, all but the last`() = runTest {
+        // Each request held until let go, each answered with a bus of its own.
+        val lines = mapOf("quickest" to "10", "fewest" to "20", "least" to "30", "bus" to "40")
+        val gates = lines.keys.associateWith { CompletableDeferred<Unit>() }
+        val engine = MockEngine { request ->
+            val ask = when {
+                request.busOnly() -> "bus"
+                request.fewestChanges() -> "fewest"
+                request.leastWalking() -> "least"
+                else -> "quickest"
+            }
+            gates.getValue(ask).await()
+            respond(ByteReadChannel(busAnswer(lines.getValue(ask))), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val client = KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" })
+        val told = Channel<List<String>>(Channel.UNLIMITED)
+        val routes = async {
+            client.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS")) { sofar ->
+                told.send(sofar.map { it.rides.single().lineId })
+            }
+        }
+        gates.getValue("least").complete(Unit)
+        assertEquals(listOf("30"), told.receive())
+        gates.getValue("quickest").complete(Unit)
+        assertEquals(listOf("10", "30"), told.receive())
+        gates.getValue("bus").complete(Unit)
+        assertEquals(listOf("10", "30", "40"), told.receive())
+        gates.getValue("fewest").complete(Unit)
+        // The last is the whole, returned rather than told.
+        assertEquals(listOf("10", "20", "30", "40"), routes.await().map { it.rides.single().lineId })
+        assertTrue(told.isEmpty)
     }
 
     @Test

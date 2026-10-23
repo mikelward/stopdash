@@ -99,6 +99,7 @@ class LaterTripViewModelTest {
             modes: TripModes,
             at: TripTime?,
             via: String?,
+            landed: (suspend (List<TripRoute>) -> Unit)?,
         ): List<TripRoute> {
             threads?.note()
             val key = (to as TripDestination.Stop).id
@@ -436,7 +437,7 @@ class LaterTripViewModelTest {
         val walk = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "Place D", at(30), at(36))
         val route = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("blue", "B", "C", 20, 30), walk))
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?) =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?, landed: (suspend (List<TripRoute>) -> Unit)?) =
                 listOf(route)
 
             override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> =
