@@ -3202,10 +3202,15 @@ private fun DepartureList(
             }
         }
     }
-    // [inStation]: drawn under its station's heading ([StationHeader]) while it has no trains to join the
-    // station's card with (checking, or none due), headed a step smaller and saying how far it boards only
-    // for a bus, whose poles can be a walk apart; the station's heading says how far the station is.
-    fun LazyListScope.journeyItems(cards: List<JourneyCard>, farMeters: Map<String, Double>? = null, inStation: Boolean = false) {
+    // [inStation]: a group of its own just before its station's while it has no trains of its own group to show
+    // (checking, none due, or more to say than its trains), headed as a station is, with [stationDistance], how far
+    // the station is, and folding apart from it, as a ride with trains is ([rideGroupItems]; maintainer, 2026-10-23).
+    fun LazyListScope.journeyItems(
+        cards: List<JourneyCard>,
+        farMeters: Map<String, Double>? = null,
+        inStation: Boolean = false,
+        stationDistance: String? = null,
+    ) {
             cards.forEachIndexed { index, card ->
                 val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { distanceText(it, system, resources) } }
                 // How far the stop a near ride boards from is, for its heading ([rideMeters]).
@@ -3241,6 +3246,25 @@ private fun DepartureList(
                             RideHiddenLineRow(name, onShow = { onShowRideLine(card.journey, entry) })
                         }
                     }
+                } else if (inStation) {
+                    val foldKey = "ride|${card.journey.key}"
+                    val folded = foldKey in foldedStations
+                    item(key = "journey-header|${card.journey.key}") {
+                        // Its saved mode's icon alone (none for a ride saved before rides kept their mode): one lookup, as its
+                        // trains may not be in yet.
+                        val mode = card.journey.mode
+                        StationHeader(
+                            stringResource(R.string.journey_title, card.journey.from.name, card.journey.to.name),
+                            stationDistance,
+                            modes = listOfNotNull(ModeIcon.of(mode)),
+                            modeIds = listOf(mode).filter { it.isNotBlank() },
+                            folded = folded,
+                            onToggle = { foldedStations = if (foldKey in foldedStations) foldedStations - foldKey else foldedStations + foldKey },
+                            onOpen = onOpen,
+                            rideForms = card.fromForms to card.toForms,
+                        )
+                    }
+                    if (folded) return@forEachIndexed
                 } else if (!byStop) {
                     item(key = "journey-header|${card.journey.key}") {
                         JourneyHeader(
@@ -3251,7 +3275,6 @@ private fun DepartureList(
                             firstOnScreen = index == 0,
                             onOpen = onOpen,
                             distanceLabel = distanceLabel ?: rideDistance,
-                            inStation = inStation,
                         )
                     }
                 }
@@ -3796,6 +3819,9 @@ private fun DepartureList(
             headingLeads = false
             val distanceLabel = distanceSystem?.let { system -> stationLayout?.meters?.get(station)?.let { distanceText(it, system, resources) } }
             val folded = station in foldedStations
+            // Its rides with no trains of their own group to show, each a group just before the station's, as a ride with
+            // trains is ([rideGroupItems]).
+            journeyItems(rideStations[station].orEmpty().filterNot(::joinsStationCard), inStation = true, stationDistance = distanceLabel)
             item(key = "station|$station") {
                 StationHeader(
                     first.stopName,
@@ -3809,8 +3835,6 @@ private fun DepartureList(
                     checkingClosure = station in checkingStations,
                 )
             }
-            if (folded) return
-            journeyItems(rideStations[station].orEmpty().filterNot(::joinsStationCard), inStation = true)
         }
         // Its favorite rides boarding there, each a group of its own just before the station's, headed as a station is
         // ("Highgate ➔ Bank"), how far the station is, and folding apart from it (maintainer, 2026-10-23).
@@ -3829,6 +3853,7 @@ private fun DepartureList(
                         folded = folded,
                         onToggle = { foldedStations = if (foldKey in foldedStations) foldedStations - foldKey else foldedStations + foldKey },
                         onOpen = onOpenJourney?.let { open -> { open(ride.journey) } },
+                        rideForms = ride.fromForms to ride.toForms,
                     )
                 }
                 if (folded) return@forEach
@@ -4399,7 +4424,13 @@ internal class StationRideRows(
 }
 
 /** A ride's trains leaving from one station ([StationRideRows.rides]). */
-internal class StationRide(val journey: FavoriteJourney, val rows: List<Pair<DepartureRow, List<DestinationGroup>>>)
+internal class StationRide(
+    val journey: FavoriteJourney,
+    val rows: List<Pair<DepartureRow, List<DestinationGroup>>>,
+    // Its ends' forms ([JourneyCard.fromForms]), for its group's heading to shorten.
+    val fromForms: List<String> = listOf(journey.from.name),
+    val toForms: List<String> = listOf(journey.to.name),
+)
 
 /**
  * The trains of the rides that join a station's card ([joinsStationCard]), from [rides] by the station each
@@ -4411,14 +4442,14 @@ internal class StationRide(val journey: FavoriteJourney, val rows: List<Pair<Dep
 @WorkerThread
 internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: (DepartureRow) -> String?): StationRideRows {
     val byStation = LinkedHashMap<String, LinkedHashMap<String, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>>()
-    val journeys = HashMap<String, FavoriteJourney>()
+    val journeys = HashMap<String, JourneyCard>()
     val ends = IdentityHashMap<DepartureRow, Set<String>>()
     val changeAt = IdentityHashMap<DepartureRow, String>()
     rides.forEach { (station, cards) ->
         if (station == null) return@forEach
         cards.filter(::joinsStationCard).forEach { ride ->
             val trains = ride.state.drawn ?: return@forEach
-            journeys[ride.journey.key] = ride.journey
+            journeys[ride.journey.key] = ride
             fun add(card: StopCard, at: String?) = card.group.rows.zip(card.lines).forEach { pair ->
                 byStation.getOrPut(stationOf(pair.first) ?: station) { LinkedHashMap() }.getOrPut(ride.journey.key) { mutableListOf() }.add(pair)
                 ends[pair.first] = ride.destinationIds
@@ -4428,7 +4459,7 @@ internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: 
             trains.changeStops.forEach { change -> change.cards.forEach { add(it, change.stopName) } }
         }
     }
-    val byRide = byStation.mapValues { (_, rides) -> rides.map { (key, rows) -> StationRide(journeys.getValue(key), rows) } }
+    val byRide = byStation.mapValues { (_, rides) -> rides.map { (key, rows) -> journeys.getValue(key).let { StationRide(it.journey, rows, it.fromForms, it.toForms) } } }
     return StationRideRows(byRide, ends, changeAt)
 }
 
@@ -4519,6 +4550,8 @@ internal class StationLayout(
                         ),
                         ModeIcon.of(ids),
                         ids,
+                        ride.fromForms,
+                        ride.toForms,
                     )
                 }
             }
@@ -4556,7 +4589,15 @@ internal class Joined<T>(private val first: List<T>, private val second: List<T>
 }
 
 /** A favorite ride's group before its station's: headed as a station is ("Highgate ➔ Bank"), over its own [card]. */
-internal class RideGroup(val journey: FavoriteJourney, val card: StopCard, val modes: List<ModeIcon>, val modeIds: List<String>)
+internal class RideGroup(
+    val journey: FavoriteJourney,
+    val card: StopCard,
+    val modes: List<ModeIcon>,
+    val modeIds: List<String>,
+    // Its ends' forms, for its heading to shorten evenly ([RideTitle]).
+    val fromForms: List<String> = listOf(journey.from.name),
+    val toForms: List<String> = listOf(journey.to.name),
+)
 
 /**
  * The places of [groups] a list grouped by station draws with their own headings, not as a station's card: an
@@ -4807,6 +4848,9 @@ private fun StationHeader(
     onOpen: (() -> Unit)?,
     closed: Boolean = false,
     checkingClosure: Boolean = false,
+    // A favorite ride's group ("Highgate ➔ Bank"): its ends' forms, shortened evenly to fit ([RideTitle]), [name] then
+    // only heard.
+    rideForms: Pair<List<String>, List<String>>? = null,
 ) {
     val action = stringResource(if (folded) R.string.station_unfold else R.string.station_fold)
     val state = stringResource(if (folded) R.string.station_folded else R.string.station_unfolded)
@@ -4844,15 +4888,25 @@ private fun StationHeader(
                         }
                     }
                 }
-                Text(
-                    text = name,
-                    style = style,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+                if (rideForms != null) {
+                    RideTitle(
+                        from = rideForms.first,
+                        to = rideForms.second,
+                        style = style.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                } else {
+                    Text(
+                        text = name,
+                        style = style,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
                 if (closed) {
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -5915,14 +5969,11 @@ private fun JourneyHeader(
     onOpen: (() -> Unit)? = null,
     // How far it is ("120 m", or a collapsed far journey's "2.4 km"), dimmed after the star; null for none.
     distanceLabel: String? = null,
-    // Under its station's heading ([StationHeader]): headed as its platforms are, [distanceLabel] at the
-    // line's end in line with theirs.
-    inStation: Boolean = false,
 ) {
     val openLabel = stringResource(R.string.action_open_journey)
     val title = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
     val spoken = distanceLabel?.let { "$title, $it" } ?: title
-    val style = if (inStation) stationGroupHeaderStyle() else groupHeaderStyle()
+    val style = groupHeaderStyle()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -5935,7 +5986,7 @@ private fun JourneyHeader(
     ) {
         // Both ends shorten evenly, so a long name at one never pushes the other off the line; the star
         // and the distance are measured first, so they always show.
-        Row(if (inStation) Modifier.weight(1f) else Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
             RideTitle(
                 from = fromForms,
                 to = toForms,
@@ -5955,12 +6006,11 @@ private fun JourneyHeader(
         }
         if (distanceLabel != null) {
             Text(
-                text = if (inStation) distanceLabel else " ($distanceLabel)",
+                text = " ($distanceLabel)",
                 style = style,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 softWrap = false,
-                modifier = if (inStation) Modifier.padding(start = 8.dp, end = STATION_CHEVRON_BOX) else Modifier,
             )
         }
     }
