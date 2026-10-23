@@ -4022,7 +4022,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [ ] **When it syncs**: when the app comes to the front, and a few seconds after a change (a
         one-time WorkManager job waiting for a network). No periodic job; the widget and the watch
         never sync. A ride removed on the other phone drops its widget pins, as Settings' Remove
-        does.
+        does. *One sync is built: `SyncRun` (`:domain`) lists the folder, reads the other phones'
+        files that changed, stamps this phone's changes by Drive's clock, merges, applies only
+        while the store is unchanged, and uploads this phone's file only when it changed; what it
+        keeps between syncs (`SyncState`) is the phone's alone. Nothing runs it yet.*
   - [ ] **Keep sync per phone in backups**: the install id and the ledger excluded from Auto Backup
         and device-to-device transfer, so a restored phone never writes as the phone it came from.
   - [ ] **Privacy before it ships**: SPEC *Privacy*, `docs/PRIVACY.md`, and the Play Data Safety

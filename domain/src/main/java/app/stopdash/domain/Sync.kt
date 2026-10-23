@@ -90,8 +90,9 @@ object Sync {
      * [same] says whether a ledger value and a local one are the same entry: one this build re-encodes
      * without fields only a newer build knows isn't a change here, so it never overwrites that build's
      * richer copy. [understood] says whether this build can read a ledger value at all: one it can't (a
-     * newer build's format for that entry) is never in the store, as nothing here could write it there,
-     * so its absence isn't a removal and it's kept as it is, for the build that wrote it.
+     * newer build's format for that entry) is that build's. Nothing here could write it to the store,
+     * which holds at most this build's last readable copy of the entry, so neither that copy nor its
+     * absence is a change here, and the entry is kept as it is, for the build that wrote it.
      *
      * A sync reads the other phones' files first and passes their [latestOf] as [seen], then [merge]s
      * them in: the ledger, not the merged view, is what the store is compared with, so an entry only
@@ -119,7 +120,7 @@ object Sync {
             val value = local[id]
             after[id] = when {
                 value == null && entry.value == null -> entry
-                value == null && entry.value != null && !understood(entry.value) -> entry
+                entry.value != null && !understood(entry.value) -> entry
                 value == null -> SyncEntry(stamp(), null)
                 entry.value != null && same(entry.value, value) -> entry
                 else -> SyncEntry(stamp(), value)
