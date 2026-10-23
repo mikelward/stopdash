@@ -266,6 +266,8 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   gets an `@codex review` poke 5 min after the last review/rebuttal/push, as does a review
   stuck at running (👀) 10 min; a poke that hangs the same way gets a second an hour later,
   and only a second that hangs too is escalated, never the first (maintainer, 2026-10-22).
+  A security review stuck at running holds no merge: a clean code review and green CI with
+  nothing else blocking merge without it (maintainer, 2026-10-23).
 - **Once Codex +1s a head, make no unnecessary change without asking** (maintainer,
   2026-10-13): tidy-ups wait for a yes or a follow-up PR; required rebases (`dirty`/`behind`),
   red-CI fixes, and drive/autopilot steps proceed unasked.
