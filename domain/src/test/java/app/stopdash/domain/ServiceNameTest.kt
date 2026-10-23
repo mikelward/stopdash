@@ -33,6 +33,23 @@ class ServiceNameTest {
     }
 
     @Test
+    fun `a name already tidied comes back as it is`() {
+        // Applied where a name comes in and again where it's shown (maintainer, 2026-10-23), so a second
+        // pass must change nothing.
+        for ((name, mode) in listOf(
+            "West Midlands Trains" to "national-rail",
+            "LNR & WMR" to "national-rail",
+            "West Midlands Trains" to "",
+            "Elizabeth line" to "elizabeth-line",
+            "Victoria" to "tube",
+            "134" to "bus",
+        )) {
+            val once = riderLineName(name, mode)
+            assertEquals(once, riderLineName(once, mode))
+        }
+    }
+
+    @Test
     fun `a trailing bracketed alias is dropped, so it can't contradict the pill`() {
         assertEquals(
             "London Northwestern Railway",

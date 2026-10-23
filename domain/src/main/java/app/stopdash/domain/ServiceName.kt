@@ -13,8 +13,10 @@ fun serviceName(lineName: String, mode: String, lineId: String = ""): String? {
 
 /**
  * The name a rider knows a service by, applied where names come into the app (from TfL, the rail
- * feed and a saved copy) so every title, direction and spoken label agrees with the pill: the
- * source's own name, except for West Midlands Trains' line. TfL names it after the parent company
+ * feed and a saved copy), and again by the surfaces that draw one as a defense against a way in that
+ * misses it (maintainer, 2026-10-23), so it must leave a tidied name as it is. Every title, direction
+ * and spoken label then agrees with the pill: the source's own name, except for West Midlands Trains'
+ * line. TfL names it after the parent company
  * and the rail feed "LNR & WMR" for both its brands, but every train it runs from London is
  * publicly branded London Northwestern Railway, and its pill reads LNR (maintainer, 2026-09-30;
  * SPEC *Line pill colors*). For National Rail, or a line whose mode TfL didn't say (an interchange

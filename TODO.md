@@ -161,12 +161,12 @@ exercises the whole spine the widget later renders from.
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker; so are `MainActivity`'s saved
       journeys oriented and measured, `rememberShownJourneys`.)
-- [ ] **Line names tidied where they come in, not where they're shown** (Codex on #1128). `riderLineName`
-      says it's applied where names come into the app, but several surfaces still apply it as they draw,
-      one name at a time on the main thread: a long-press menu's "Hide ‹line›" items and a ride's row menu
-      (through `lineLabel`), a pill's spoken name, the trip's "either" lines. Tidying each name once where
-      it's read in (TfL, the rail feed, a saved copy) would leave those surfaces only reading; a design
-      change across the stores, so the maintainer's call.
+- [x] **Line names tidied where they come in, and again where they're shown** (Codex on #1128;
+      maintainer, 2026-10-23: keep both). Every way a name comes in already tidies it (`riderLineName`
+      in each TfL and rail-feed reader and each store's load); the surfaces that draw one (a pill's
+      spoken name, the trip's "either" lines, the widget's and watch's pills, `lineLabel`, the route
+      page's title) apply it again as a defense against a way in that misses it. It's idempotent and a
+      fixed handful of checks on one name, not a pass over a list, so it stays.
 - [ ] **Shortened names measured off the main thread** (Codex on #862): each shortened name picks the form
       that fits by measuring its text as it composes, the first time and when its width, style or font
       scale changes: `ShortenedText` (a departure's destination), `ShortenedLines` (a trip step's title),
