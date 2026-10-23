@@ -1506,6 +1506,41 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_stop_tapped_under_show_stops_opens_its_details() {
+        // As a route page's stop does (maintainer, 2026-10-23): its departures, lines and stations around it, headed by
+        // the ride, with no Go nor journey to star as the trip is already on its way.
+        val opened = mutableListOf<RouteStopOpen>()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides HeldWorker().dispatcher, LocalOpenRouteStop provides { opened += it }) {
+                    OnTheWayScreen(
+                        victoriaTrip.copy(boarded = true, onBoardSeen = true),
+                        TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNode(hasText("Warren Street") and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("onTheWayRideStop"))).performClick()
+        val warrenStreet = opened.single()
+        assertEquals("940GZZLUWRR", warrenStreet.stopId)
+        assertEquals("940GZZLUWRR", warrenStreet.stationId)
+        assertEquals("Warren Street", warrenStreet.name)
+        assertEquals(app.stopdash.domain.LineRef("victoria", "Victoria", "tube"), warrenStreet.line)
+        assertEquals("Victoria", warrenStreet.fromName)
+        assertTrue(warrenStreet.ridden)
+        assertFalse(warrenStreet.boarding)
+        assertEquals(null, warrenStreet.go)
+        assertEquals(null, warrenStreet.journey)
+        // Where it boards: its own stop, no ride to it.
+        composeRule.onNode(hasText("Victoria") and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("onTheWayRideStop"))).performClick()
+        val boarding = opened.last()
+        assertEquals("940GZZLUVIC", boarding.stopId)
+        assertTrue(boarding.boarding)
+        assertFalse(boarding.ridden)
+    }
+
+    @Test
     fun open_stops_stay_shown_while_a_refresh_is_worked_out() {
         // A new answer moves the train on: the rows stay while its list is worked out, then the dot moves (Codex, #968).
         val worker = HeldWorker()

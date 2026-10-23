@@ -25,6 +25,23 @@ class RideStopListTest {
     }
 
     @Test
+    fun each_stop_listed_keeps_its_own_id_beside_its_name() {
+        // So a tap opens that stop's details (maintainer, 2026-10-23): where it boards, then each call.
+        val stops = rideStopList(victoria, null, boarded = false)!!
+        assertEquals(listOf("940GZZLUVIC", "940GZZLUGPK", "940GZZLUOXC", "940GZZLUWRR", "940GZZLUEUS", "940GZZLUKSX"), stops.ids)
+        // A call named by nothing is left out, its id with it, so each id stays beside its own name.
+        val unnamed = victoria.copy(pathNames = listOf("Green Park", "", "Warren Street", "Euston", ""))
+        val kept = rideStopList(unnamed, null, boarded = false)!!
+        assertEquals(listOf("Victoria", "Green Park", "Warren Street", "Euston", "King's Cross St. Pancras"), kept.names)
+        assertEquals(listOf("940GZZLUVIC", "940GZZLUGPK", "940GZZLUWRR", "940GZZLUEUS", "940GZZLUKSX"), kept.ids)
+        // Shown again for a later answer, marked afresh where it boards: the ids go with it.
+        val held = RideStopList(listOf("Alpha", "Bravo"), 1, ids = listOf("A1", "B1"))
+        val shown = held.shownStops(stale = false, progress = null, boarded = false)
+        assertEquals(0, shown.here)
+        assertEquals(listOf("A1", "B1"), shown.ids)
+    }
+
+    @Test
     fun on_board_the_rider_is_at_the_stop_before_the_next() {
         val riding = TripProgress.Riding(victoria, "Warren Street", 3, null, getOffSoon = false)
         assertEquals(2, rideStopList(victoria, riding, boarded = true)!!.here)

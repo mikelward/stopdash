@@ -55,7 +55,10 @@ class RouteGo(
     val at: Int? = null,
 )
 
-/** Opens a route page's tapped stop's details over it, provided by the activity; null (a test) leaves taps inert. */
+/**
+ * Opens a tapped stop's details over its page (a route page's, or On the way's Show stops), provided by the activity;
+ * null (a test) leaves taps inert.
+ */
 val LocalOpenRouteStop = compositionLocalOf<((RouteStopOpen) -> Unit)?> { null }
 
 /**
