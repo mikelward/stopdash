@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -183,5 +184,69 @@ class HereOriginOffMainTest {
         trip = true
         composeRule.waitForIdle()
         assertEquals(setOf("A", "B"), firstTripFrame.single()?.map { it.id }?.toSet())
+    }
+
+    // The rider a few steps on, nearer the tube stop: a re-pick of the set, as a walk the list follows makes.
+    private val moved = NearbyStopsViewModel.State.Ready(
+        eager = listOf(NearbySelection.NearbyCluster("B", listOf(tube), 55.0)),
+        more = emptyList(),
+        distanceMeters = mapOf("B" to 55.0),
+        location = Coordinates(0.0005, 0.0),
+    )
+
+    @Test
+    fun a_trips_origin_stands_through_a_re_pick_until_the_new_sets_is_in() {
+        // Maintainer's report (2026-10-23): each re-pick (the list following a walk) left the trip's origin pending for a
+        // frame, which took the trip off the screen; it came back behind "Checking trips…" at the top of its list.
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val work = HereOriginWork()
+        var set by mutableStateOf(ready)
+        val frames = mutableListOf<SetOrigin?>()
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides held) { frames += rememberSetOrigin(set, emptySet(), work, standIn = true) }
+        }
+        composeRule.waitForIdle()
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        assertSame(ready, frames.last()?.set)
+        frames.clear()
+        set = moved
+        composeRule.waitForIdle()
+        // The new set's not worked out yet: the last one's stands, its own stops with it, never a frame without one.
+        assertTrue(frames.isNotEmpty())
+        for (frame in frames) {
+            assertSame(ready, frame?.set)
+            assertEquals(setOf("A", "B"), frame?.stops?.map { it.id }?.toSet())
+        }
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        assertSame(moved, frames.last()?.set)
+        assertEquals(listOf("B"), frames.last()?.stops?.map { it.id })
+        assertTrue(frames.none { it == null })
+    }
+
+    @Test
+    fun not_standing_in_a_re_picks_origin_is_pending_until_it_is_in() {
+        // A station's own list offers its To… from the set it shows, never the last one's.
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val work = HereOriginWork()
+        var set by mutableStateOf(ready)
+        var result: SetOrigin? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides held) { result = rememberSetOrigin(set, emptySet(), work, standIn = false) }
+        }
+        composeRule.waitForIdle()
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        assertSame(ready, result?.set)
+        set = moved
+        composeRule.waitForIdle()
+        assertNull(result)
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        assertSame(moved, result?.set)
+        assertEquals(listOf("B"), result?.stops?.map { it.id })
     }
 }

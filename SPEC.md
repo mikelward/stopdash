@@ -2409,7 +2409,10 @@ through "Planning…". A new fix that keeps the trip keeps the
 plan while the rider is within **150 m** of where it was planned from (a fix's wander, or a few steps);
 once they are farther, the plan's first walk is from somewhere they've left, so the trip plans again
 from where they are, keeping the old routes up meanwhile, so the reachable first-leg trains follow
-the rider. A plan reused from earlier is held to the same test when the trip opens. **Pulling the
+the rider. Nor does a re-pick of the stops near the rider (a walk the list follows, a return to the app)
+take the trip off the screen while the new stops are worked out: its routes stay as drawn, where the
+rider scrolled them, rather than drop back to "Checking trips…" at the top (maintainer's report,
+2026-10-23). A plan reused from earlier is held to the same test when the trip opens. **Pulling the
 routes down** is the rider asking for the latest (maintainer, 2026-09-29): the trip plans again at
 once, from the same start to the same place at the same walking speed, however young its plan, and
 asks afresh for every boarding stop's arrivals and National Rail board, forgetting what every screen

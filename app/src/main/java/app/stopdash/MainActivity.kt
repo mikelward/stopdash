@@ -410,6 +410,7 @@ import app.stopdash.ui.hereAnchor
 import app.stopdash.ui.keptTripStart
 import app.stopdash.ui.rememberFarReveal
 import app.stopdash.ui.rememberHereOrigin
+import app.stopdash.ui.rememberSetOrigin
 import app.stopdash.ui.stationOriginWork
 import app.stopdash.ui.rememberLastPull
 import app.stopdash.ui.rememberListStateFor
@@ -3099,6 +3100,7 @@ class MainActivity : ComponentActivity() {
                                 distanceMeters: Map<String, Double>,
                                 clusters: List<NearbySelection.NearbyCluster>,
                                 noneNearby: Boolean,
+                                standingIn: Boolean = false,
                             ) {
                                 val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
                                 // A precise fix that moves the set moves the trip too, as its own
@@ -3175,18 +3177,21 @@ class MainActivity : ComponentActivity() {
                                         repicked = nearbyViewModel.repicked,
                                         locationBanner = nearbyViewModel.locationBanner,
                                         noneNearby = noneNearby,
+                                        standingIn = standingIn,
                                         rootBack = true,
                                     )
                                 }
                             }
                             // The trip from here's origin: worked out from the current set, off the main
                             // thread, so a re-locate moves the trip with the rider; none left (all hidden)
-                            // ends it. Null until it's in, never an empty origin, which would end it.
+                            // ends it. Null until it's in, never an empty origin, which would end it. A re-pick's
+                            // leaves the last set's standing meanwhile ([rememberSetOrigin]), so the trip stays up.
                             val nearbyNow = nearby
                             val hereOrigin = if (trip && nearbyNow is NearbyStopsViewModel.State.Ready) {
                                 val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
-                                rememberHereOrigin(
+                                rememberSetOrigin(
                                     nearbyNow, hidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places"),
+                                    standIn = true,
                                 )
                             } else {
                                 null
@@ -3214,14 +3219,16 @@ class MainActivity : ComponentActivity() {
                                         if (hereOrigin == null) {
                                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                                         } else NearMeTrip(
-                                            origin = hereOrigin,
+                                            origin = hereOrigin.stops,
                                             // The nearest stop of any mode, hidden or not, keys the trip; the
-                                            // Planner starts from where the rider is ([here]).
-                                            anchors = state.nearbyStops,
-                                            here = state.location,
-                                            distanceMeters = state.distanceMeters,
-                                            clusters = state.eager + state.more,
+                                            // Planner starts from where the rider is ([here]). All from the set
+                                            // the origin is for, which a re-pick's may still be standing in for.
+                                            anchors = hereOrigin.set.nearbyStops,
+                                            here = hereOrigin.set.location,
+                                            distanceMeters = hereOrigin.set.distanceMeters,
+                                            clusters = hereOrigin.set.eager + hereOrigin.set.more,
                                             noneNearby = false,
+                                            standingIn = hereOrigin.set !== state,
                                         )
                                     } else if (hereTripOpen && listUnderTrip.dropped) {
                                         // Under the trip from here, drawn only for a back swipe from it: its departures
@@ -5088,6 +5095,7 @@ class MainActivity : ComponentActivity() {
             distanceMeters: Map<String, Double>,
             clusters: List<NearbySelection.NearbyCluster>,
             noneNearby: Boolean,
+            standingIn: Boolean = false,
         ) {
             // With no stop in range the page has nothing but the trip, so leaving it leaves the page.
             val leave = if (noneNearby) onClose else closeTrip
@@ -5135,6 +5143,7 @@ class MainActivity : ComponentActivity() {
                 keepSearchOnEmptyOrigin = changeTo != null,
                 here = planFrom,
                 noneNearby = noneNearby,
+                standingIn = standingIn,
                 // A page of its own: its Back at its root closes it, onto the station's list (or, with none, the
                 // station), which the back swipe draws.
                 rootBack = rootBack,
@@ -5186,19 +5195,20 @@ class MainActivity : ComponentActivity() {
         }
         // Worked out off the main thread: null until it's in. Only the trip waits on it (a placeholder,
         // never an empty origin, which would read as nowhere to start); the station's own page shows
-        // at once (Codex on #544).
+        // at once (Codex on #544). The trip's stays up through a re-pick ([rememberSetOrigin]).
         val originWork = stationOriginWork()
-        val origin = rememberHereOrigin(ready, hidden, originWork)
+        val setOrigin = rememberSetOrigin(ready, hidden, originWork, standIn = tripPage)
+        val origin = setOrigin?.stops
         // Mid-change of start, a station with nothing to start from (every mode there hidden) shows
         // its own page, which says so and offers "Show all"; once there is somewhere to start, the
         // trip opens at the To… the change carries rather than leaving the rider to pick it again.
         if (!tripPage && !to.open && changeTo != null && !origin.isNullOrEmpty()) {
             LaunchedEffect(Unit) { onTo(changeTo) }
         }
-        if (tripPage && origin == null) {
+        if (tripPage && setOrigin == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else if (tripPage && origin != null) {
-            Trip(origin, ready.distanceMeters, ready.eager + ready.more, noneNearby = false)
+        } else if (tripPage && setOrigin != null) {
+            Trip(setOrigin.stops, setOrigin.set.distanceMeters, setOrigin.set.eager + setOrigin.set.more, noneNearby = false, standingIn = setOrigin.set !== ready)
         } else {
             DeparturesForStops(
                 ready = ready,
@@ -5371,6 +5381,10 @@ class MainActivity : ComponentActivity() {
         // [here] alone, which needs none (Codex on #315), keyed by where it plans from in place of a
         // nearest stop. Otherwise an empty [origin] (every mode hidden) ends the trip, as before.
         noneNearby: Boolean = false,
+        // The set [origin] and the rest are from is the last one, standing in while a re-pick's origin is worked out
+        // ([rememberSetOrigin]): the re-pick's refresh waits for the set it picked, as from here the trip's position
+        // is the last set's meanwhile, and a move far enough to plan again would be judged from where the rider was.
+        standingIn: Boolean = false,
         // The trip is its page ([Page.HereTrip], or a station's page it's all there is of): Back from its To… search
         // with nothing picked yet, from the wait for where it goes, or from its routes closes the page, which the back
         // swipe draws closing ([RootBack]).
@@ -5904,8 +5918,8 @@ class MainActivity : ComponentActivity() {
         val repick by repicked.collectByIdentityWithLifecycle()
         val pickId = tripRepickId(noneNearby, here, repick?.id)
         // The model remembers which re-pick it refreshed for, so a rotation (a new effect over the
-        // retained model) doesn't fetch again.
-        LaunchedEffect(trip, pickId) { trip.refreshFor(pickId) }
+        // retained model) doesn't fetch again. Not while the last set stands in ([standingIn]).
+        LaunchedEffect(trip, pickId, standingIn) { if (!standingIn) trip.refreshFor(pickId) }
         // The list's own foreground tick: live times refresh, and a plan past its reuse is planned
         // again, only while the trip is on screen (no background work, SPEC *Trips with a change*).
         LaunchedEffect(lifecycleOwner, trip) {
@@ -5924,7 +5938,7 @@ class MainActivity : ComponentActivity() {
         val relocatingNow = relocating.collectAsStateWithLifecycle().value
         // A re-locate that has ended, with the re-pick it left: one that brought none new leaves a pull
         // from here nothing more to wait for ([TripViewModel.fixSettled]).
-        LaunchedEffect(trip, relocatingNow) { if (!relocatingNow) trip.fixSettled(pickId) }
+        LaunchedEffect(trip, relocatingNow, standingIn) { if (!relocatingNow && !standingIn) trip.fixSettled(pickId) }
         val pulling by trip.pulling.collectAsStateWithLifecycle()
         // A stop or station the trip goes to is a place too (maintainer, 2026-10-14: "Stations are
         // places"): placed from the bundled lists, off the main thread, and paired with its id so a
