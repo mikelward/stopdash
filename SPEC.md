@@ -1365,8 +1365,10 @@ meeting one of them as the track it is there, so a station of the train's route 
 meeting it, as on the line's own map, however much of a dashed track is shut further along. A train going nowhere from the stop
 (one ending there), or whose route can't be told,
 leaves the whole line drawn; the line's own page keeps every route as before. The **All** chip, last among the route
-chips, draws the whole line on the route page too, every route's stations labeled and the train's path open, until
-a route's chip is tapped (maintainer, 2026-10-22: "when the All chip is selected it would keep the current view").
+chips, draws the whole line on the route page too, every route's stations labeled and every station shown, nothing
+folded, the train's path among them, until a route's chip is tapped (maintainer, 2026-10-22: "when the All chip is
+selected it would keep the current view"; 2026-10-23: it "should expand the whole line, not just the one we came
+from").
 
 **On a route page's map, the stretch behind the boarding stop folds into one line** (maintainer, 2026-10-21:
 "fully collapse and show High Barnet/Mill Hill East (both origins) and tapping could expand one level"):
