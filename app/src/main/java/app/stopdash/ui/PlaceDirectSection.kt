@@ -138,42 +138,26 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
             LinePill(row.lineName, row.lineId, row.mode, Modifier.widthIn(min = 56.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterStart) {
-                // Named by the stop it gets the rider off at (maintainer, 2026-10-15); where its trains
-                // don't agree on one, by where it leaves from, said as such.
-                Text(
-                    row.offStop?.name ?: stringResource(R.string.trip_from, row.fromName),
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("placeDirectStop-${row.lineId}"),
-                )
-            }
-            // A line not running a good service says so under its stop, in TfL's words ("Severe
-            // Delays"), so its trains never read as running normally.
-            shown.disruption?.let { disruption ->
-                Text(
-                    stringResource(R.string.trip_line_status, row.lineName, disruption),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(bottom = 4.dp).testTag("placeDirectStatus-${row.lineId}"),
-                )
-            }
-            // A stop it boards at, or every stop near the place it gets off at, has a closure notice.
-            shown.notice?.let { notice ->
-                Text(
-                    notice,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(bottom = 4.dp).testTag("placeDirectNotice-${row.lineId}"),
-                )
-            }
+        Box(Modifier.weight(1f).heightIn(min = 40.dp), contentAlignment = Alignment.CenterStart) {
+            // Named by the stop it gets the rider off at (maintainer, 2026-10-15); where its trains
+            // don't agree on one, by where it leaves from, said as such.
+            Text(
+                row.offStop?.name ?: stringResource(R.string.trip_from, row.fromName),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("placeDirectStop-${row.lineId}"),
+            )
         }
         Spacer(Modifier.width(8.dp))
-        Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterEnd) {
+        // A line not running a good service, in TfL's words ("Jubilee: Severe Delays"), and a closure notice
+        // where it boards or at every stop near where it gets off: a ⚠ just before the times, as a route card's
+        // ride has (maintainer, 2026-10-23), so its trains never read as running normally. Its words are read
+        // out with it, and the ride a tap opens shows them.
+        val warning = listOfNotNull(shown.disruption?.let { stringResource(R.string.trip_line_status, row.lineName, it) }, shown.notice)
+            .takeIf { it.isNotEmpty() }?.joinToString("; ")
+        Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+            warning?.let { DisruptionWarningGlyph(it, Modifier.padding(end = 8.dp).testTag("placeDirectWarning-${row.lineId}")) }
             when {
                 mine == null -> if (shown.grayed) {
                     // A time that may not run grayed and said so, as a board's row does ([doubtfulTimes]).

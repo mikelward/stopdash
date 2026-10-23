@@ -1575,8 +1575,10 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithTag("placeDirectStop-elizabeth", useUnmergedTree = true).assertTextEquals("Canary Wharf")
         composeRule.onNodeWithTag("placeDirectStop-dlr", useUnmergedTree = true).assertTextEquals("From Bank")
         composeRule.onAllNodesWithTag("placeDirect-135").assertCountEquals(0)
-        // A line not running a good service says so under its row.
-        composeRule.onNodeWithText("Jubilee: Minor Delays").assertIsDisplayed()
+        // A line not running a good service carries a ⚠ before its times, its words read out with it, never
+        // a line of text under its row.
+        composeRule.onNodeWithTag("placeDirectWarning-jubilee", useUnmergedTree = true).assertContentDescriptionEquals("Jubilee: Minor Delays")
+        composeRule.onAllNodes(hasText("Jubilee: Minor Delays"), useUnmergedTree = true).assertCountEquals(0)
         captureSnapshot("trip-place-direct.png")
         composeRule.onNodeWithText("+1 more").performClick()
         composeRule.onNodeWithTag("placeDirect-135").assertExists()
@@ -2525,7 +2527,7 @@ class TripScreenScreenshotTest {
     }
 
     // What the Direct section says beside or in place of its rows is as large as the rows (maintainer,
-    // 2026-10-17): its checking note, that some lines went unchecked, and a row's line status.
+    // 2026-10-17): its checking note and that some lines went unchecked.
     @Test
     fun the_direct_sections_notes_are_as_large_as_its_rows() {
         showDirect(
@@ -2538,7 +2540,17 @@ class TripScreenScreenshotTest {
         )
         val row = textLayoutOf(composeRule.onNodeWithTag("placeDirectStop-jubilee", useUnmergedTree = true)).layoutInput.style.fontSize
         assertEquals(row, textLayoutOf(composeRule.onNodeWithTag("placeDirectPartial")).layoutInput.style.fontSize)
-        assertEquals(row, textLayoutOf(composeRule.onNodeWithTag("placeDirectStatus-jubilee", useUnmergedTree = true)).layoutInput.style.fontSize)
+    }
+
+    @Test
+    fun a_direct_rows_closure_and_line_status_share_one_warning() {
+        val closed = directRow("jubilee", "Jubilee", "tube", "Bond Street", 2, 5, 9, disruption = "Severe Delays")
+            .copy(notice = "Bond Street: Station closed")
+        showDirect(PlaceDirectViewModel.State.Ready(listOf(closed), checking = false, uncertain = false))
+        // One ⚠, as a route card's ride has, saying both; the row stays one line.
+        composeRule.onNodeWithTag("placeDirectWarning-jubilee", useUnmergedTree = true)
+            .assertContentDescriptionEquals("Jubilee: Severe Delays; Bond Street: Station closed")
+        composeRule.onAllNodes(hasText("Bond Street: Station closed"), useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test

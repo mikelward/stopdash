@@ -2517,9 +2517,10 @@ stops is a row for each; trains whose stop can't be told (a train at a fork) sha
 it leaves from ("From Bank"); nearest stop first, a row on
 show keeping its place while the trip is open (a line found later goes under the rows, never above, and
 a stop the rider's fix wavers just past the trip's reach stays one until 50 m past it; SPEC principle 4); a line
-not running a good service says so under its row ("Jubilee: Minor Delays"), as does a closure at the
-stop it boards at, or at every stop near the place it gets off at; a line whose status, or a stop whose
-closures, couldn't be had counts as unchecked. With a
+not running a good service, or a closure at the stop it boards at or at every stop near the place it gets
+off at, puts a ⚠ just before its row's times, as a route card's ride has, its words read out with it
+("Jubilee: Minor Delays") and shown on the ride a tap opens, so the row stays one line (maintainer,
+2026-10-23); a line whose status, or a stop whose closures, couldn't be had counts as unchecked. With a
 step-free level chosen (*Step-free*), a line shows only where the stop it leaves from and a stop near
 the place both meet it, by the bundled step-free table (a bus always does), each
 at the id the train calls at, which the table describes apart from its station's others; a station the table
