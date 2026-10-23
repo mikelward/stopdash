@@ -7163,8 +7163,8 @@ internal fun RouteDetailScreen(
                         }
                     }
                     CompositionLocalProvider(LocalLineMapExtras provides extras, LocalOpenLineMapStop provides openMapStop) {
-                        // No "Show all stations": drawn in the page's column, the whole line at once would stall it; its
-                        // folds open one by one, as the stop list drew a route's every stop.
+                        // No "Show all stations": the All chip shows the whole line, every station; the train's route
+                        // opens its folds one by one.
                         LineMapColumn(mapSection, railColorFor(row), offerAll = false)
                     }
                 } else if (!mapHeld && mapSection != null && lineOnly) {

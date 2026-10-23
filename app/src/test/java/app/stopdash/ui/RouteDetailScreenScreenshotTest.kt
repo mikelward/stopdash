@@ -2481,6 +2481,11 @@ class RouteDetailScreenScreenshotTest {
         captureSnapshot("route-detail-route-chip-no-train.png")
     }
 
+    // A line map's fold, opened by a tap ("Show 2 stations").
+    private val lineMapFold = SemanticsMatcher("a line map fold") { node ->
+        node.config.getOrNull(SemanticsActions.OnClick)?.label?.let { Regex("Show \\d+ stations?").matches(it) } == true
+    }
+
     @Test
     fun theAllChip_drawsTheWholeLine_andARouteChipGoesBackToItsRouteAlone() {
         // The Northern line at Highgate (synthetic routes), south to Morden by Bank: the map draws that route alone,
@@ -2549,6 +2554,15 @@ class RouteDetailScreenScreenshotTest {
             "the Charing Cross branch's stations drawn",
             composeRule.onAllNodesWithText("Mornington Crescent", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
         )
+        // The whole line open, not just the train's route (maintainer, 2026-10-23): every station drawn, none folded,
+        // those behind the train included.
+        composeRule.onAllNodes(lineMapFold, useUnmergedTree = true).assertCountEquals(0)
+        for (station in names.values) {
+            assertTrue(
+                "$station drawn",
+                composeRule.onAllNodesWithText(station, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+            )
+        }
         // Its own route's chip again: that route alone.
         composeRule.onNodeWithTag("routeChips").performScrollToNode(hasTestTag("routeChoice-0"))
         composeRule.onNodeWithTag("routeChoice-0").performClick()
@@ -2594,7 +2608,8 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("routeChoice-all").assertIsSelected()
         composeRule.onNodeWithTag("lineMap").assertExists()
-        // The line's ends and the junctions its branches leave from, as the line page opens on them.
+        // Every station, none folded (maintainer, 2026-10-23), the line's ends and junctions among them.
+        composeRule.onAllNodes(lineMapFold, useUnmergedTree = true).assertCountEquals(0)
         for (station in listOf("High Barnet", "Camden Town", "Kennington", "Morden")) {
             assertTrue(
                 "$station drawn",

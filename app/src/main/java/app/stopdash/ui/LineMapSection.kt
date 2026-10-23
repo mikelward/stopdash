@@ -45,7 +45,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -395,9 +397,10 @@ internal fun rememberLineMapSection(
     var opened by (held?.opened ?: ownOpened)
     var all by (held?.all ?: ownAll)
     var current = true
+    // The whole line has every station shown, nothing folded (maintainer, 2026-10-23).
     val ui = rememberLineMap(
-        lineId, status, starred, riding, opened, all, retry, statusKey, quieted, rides, nearby, planned, upcomingHeld, ridesOpen, seed,
-        nearMe, reportCurrent = { current = it }, wholeLine = wholeLine,
+        lineId, status, starred, riding, opened, all || wholeLine, retry, statusKey, quieted, rides, nearby, planned, upcomingHeld,
+        ridesOpen, seed, nearMe, reportCurrent = { current = it }, wholeLine = wholeLine,
     )
     val atFirst = opened == null && !all
     return if (ui == null) {
@@ -448,17 +451,33 @@ internal fun LazyListScope.lineMapSection(state: LineMapSectionState, railColor:
 @Composable
 internal fun LineMapColumn(state: LineMapSectionState, railColor: Color, modifier: Modifier = Modifier, offerAll: Boolean = true) {
     val ui = state.ui
+    // In the page's column, not a lazy list, every row is drawn: a whole line's at once (the All chip on a long
+    // National Rail line) would stall the frame that shows it. So its first rows are drawn at once and the rest a
+    // batch a frame, below them. The count follows the map down, so a map grown again comes in batches too.
+    val size = (ui as? LineMapUi.Ready)?.items?.size ?: 0
+    var drawn by remember { mutableIntStateOf(LINE_MAP_FIRST_ROWS) }
+    LaunchedEffect(size) {
+        if (drawn > size) drawn = maxOf(size, LINE_MAP_FIRST_ROWS)
+        while (drawn < size) {
+            withFrameNanos {}
+            drawn += LINE_MAP_ROWS_PER_FRAME
+        }
+    }
     Column(modifier.fillMaxWidth()) {
         LineMapHeading(state, offerAll)
         when (ui) {
             is LineMapUi.Ready -> {
                 if (!ui.map.closurePlaced) LineMapNotPlaced()
-                ui.items.forEach { item -> key("lineMap:${item.key}") { LineMapItemRow(item, ui, railColor, state) } }
+                ui.items.asSequence().take(drawn).forEach { item -> key("lineMap:${item.key}") { LineMapItemRow(item, ui, railColor, state) } }
             }
             else -> LineMapStateNote(ui, state.retry)
         }
     }
 }
+
+// A page column's map rows drawn in the frame it shows, more than a screenful, and those drawn each frame after.
+internal const val LINE_MAP_FIRST_ROWS = 40
+internal const val LINE_MAP_ROWS_PER_FRAME = 20
 
 @Composable
 private fun LineMapHeading(state: LineMapSectionState, offerAll: Boolean = true) {
