@@ -1287,7 +1287,9 @@ unavailable rather than guessing a trunk (principle 1). **A bus runs to its rout
 destination names neither a stop ahead nor the route: a bus blind shows an area or landmark, not
 its last stop's name, so matching by name alone left most buses with no list. A
 bus short-working whose label *does* name a stop ahead still ends there, and two variants that part
-ways ahead are still unavailable. Rail keeps the strict name match — its destinations are stations,
+ways ahead are still unavailable. A bus whose destination names two stops one after the other
+(a station's stop, then the bus station at its route's end) runs to the end: it passes the first on
+its way. Rail keeps the strict name match — its destinations are stations,
 so a miss there is a working the sequence doesn't model. **A terminus named another way is found by
 its id**: a National Rail board spells some stations its own way ("St Albans" for TfL's "St Albans
 City"), so where no stop ahead has the destination's name, the stop with its terminus's id ends the
