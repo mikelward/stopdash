@@ -970,6 +970,9 @@ object NearbyGroupingSetting {
     /** Whether the stored choice has been read, so Settings can hold its row until then. */
     val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
+    /** The choice once the stored one has been read, for a list to group by (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): NearbyGrouping = holder.loaded()
+
     /** The user chose [grouping]: applied at once, persisted in order. */
     fun set(grouping: NearbyGrouping) = holder.set(grouping)
 
