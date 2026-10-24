@@ -1583,7 +1583,8 @@ the list says how it went (added, already a favorite, couldn't save). The boardi
 and while it picks, a long press on a stop picks it as a tap does (never toggling a ride behind the pick). The route page's menu offers the same
 "Add favorite ride…", putting the page into it (Back then only stops picking); a trip's route page and On the way's
 too (maintainer, 2026-10-24), though they pin nothing and star no stop's ride, the trip or On the way saying how the
-save went once the page has closed. Outside it the page is as
+save went once the page has closed; and a favorite ride's own page, from where the ride boards, even while its line
+has no train. Outside it the page is as
 ever. **Saying which favorite** (maintainer, 2026-10-24): every action names what it saves, **"Add favorite ride"** or
 **"Add favorite place"** (and **"Remove favorite ride"** / **"Remove favorite place"**), with "…" only where a picker
 follows, since "favorite" alone meant a place in one menu and a ride in another. **A trip's direct route** (one ride, no change) offers **"Add favorite ride"** in its card's long press, beside

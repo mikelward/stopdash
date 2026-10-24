@@ -1360,6 +1360,8 @@ fun MainScreen(
     // The favorite journey whose ride page is open, by key: opened from its line's row with no train
     // ([JourneyCard.lineCard]), drawn from its card while the card is shown.
     var rideKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // Picking where another ride from the open ride's stop goes ("Add favorite ride…" in its page's menu), kept with it.
+    var ridePicking by rememberSaveable(rideKey) { mutableStateOf(false) }
     val openRide: (String) -> Unit = { key ->
         UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STOP_ROW))
         rideKey = key
@@ -1607,7 +1609,22 @@ fun MainScreen(
         },
     )
     if (rideShown != null && rideShownLoaded != null) {
-        RidePage(rideShown, rideShownLoaded, now, onBack = { rideKey = null }, lineOpen = routeLineOpen, timetableOpen = routeTimetableOpen, held = rideHeld)
+        RidePage(
+            rideShown, rideShownLoaded, now,
+            // Picking where another ride from its stop goes, Back only stops it.
+            onBack = { if (ridePicking) ridePicking = false else rideKey = null },
+            lineOpen = routeLineOpen, timetableOpen = routeTimetableOpen, held = rideHeld,
+            picking = ridePicking,
+            // The ride saved off the page, which closes to the list, where its outcome is said.
+            onPickTo = onAddRide?.let { add ->
+                { loaded, stop ->
+                    add(rideShown.row, loaded, stop)
+                    ridePicking = false
+                    rideKey = null
+                }
+            },
+            onStartPicking = { ridePicking = true },
+        )
         return
     }
     if (detailLoaded != null && detailRow != null) {
@@ -7500,6 +7517,9 @@ internal fun RouteDetailScreen(
     // A trip's own route page (planned or on the way): a stop's details opened from it offer no Go and no journey to
     // star, as On the way's Show stops (maintainer, 2026-10-23), since either would stand in for the trip itself.
     ofTrip: Boolean = false,
+    // A favorite ride's own page ([RidePage]): its menu offers "Add favorite ride…" from where the ride boards, with or
+    // without a train on its line now.
+    ofRide: Boolean = false,
     // Whether its line's page ("View line") is open over it: held by the caller, whose usage stats count
     // the page shown ([UsageEvent.Screen.LINE]); one of its own otherwise.
     lineOpen: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
@@ -7922,7 +7942,12 @@ internal fun RouteDetailScreen(
                     }
                     // "Add favorite…": this page asks where the ride from here goes, its stops a tap away, as a long
                     // press on its row opens it (SPEC *Journeys*). Not on a route chosen with no train to save it on.
-                    val startPicking = onStartPicking?.takeIf { !picking && (starrable || ofTrip) && trainless == null && onPickTo != null && rideAddable(row) }
+                    // A favorite ride's own page ([ofRide]) offers it too, though its line has no train now: the ride saved boards
+                    // where this one does (maintainer, 2026-10-24).
+                    val startPicking = onStartPicking?.takeIf {
+                        !picking && onPickTo != null &&
+                            (ofRide && row.lineId.isNotBlank() || (starrable || ofTrip) && trainless == null && rideAddable(row))
+                    }
                     AppMenuOverflow { close ->
                         if (startPicking != null) {
                             DropdownMenuItem(
