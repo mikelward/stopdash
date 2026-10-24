@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.CARD_TEXT_SCALE
 import app.stopdash.domain.FONT_SCALE_PINCH_SLOP_DP
 import app.stopdash.domain.FontSizeSettings
 import app.stopdash.domain.UsageEvent
@@ -450,6 +451,26 @@ internal fun StableInputDensity(content: @Composable () -> Unit) {
     }
     CompositionLocalProvider(LocalDensity provides base, content = content)
 }
+
+/**
+ * [content] with its text at [CARD_TEXT_SCALE] of the size around it: the list's group headings and
+ * departure cards, which keep the size they had before the default rose to 105% (SPEC *Display size*).
+ * Only `fontScale` changes, as for the chosen size, so paddings, icons and touch targets stay put.
+ */
+@Composable
+internal fun CardTextSize(content: @Composable () -> Unit) {
+    // Once only: a heading drawn inside a card (a faraway place's) is already at the card's size (Codex, #1191).
+    if (LocalCardTextSize.current) {
+        content()
+        return
+    }
+    val base = LocalDensity.current
+    val scaled = remember(base) { Density(base.density, base.fontScale * CARD_TEXT_SCALE) }
+    CompositionLocalProvider(LocalDensity provides scaled, LocalCardTextSize provides true, content = content)
+}
+
+// Whether the text here is already at [CARD_TEXT_SCALE], so a [CardTextSize] inside another applies nothing more.
+private val LocalCardTextSize = staticCompositionLocalOf { false }
 
 /**
  * Re-provides the chosen text size inside a window that does not inherit it (a popup or dialog).

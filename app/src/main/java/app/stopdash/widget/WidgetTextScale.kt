@@ -7,6 +7,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.logAppSettingsWarning
+import app.stopdash.domain.CARD_TEXT_SCALE
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.ui.FontSizeSetting
 import kotlinx.coroutines.CancellationException
@@ -17,10 +18,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  * The app's own text size (SPEC *Display size*), for the widget: a factor on top of the system's
  * font scale, which a widget's sp text already follows. Off the render path — the size the app has
  * in force when this process holds it (so a change that didn't save still shows, as in the app),
- * else the stored one. A store that can't be read draws at the system's own size, which is what a
- * rider who never chose one has anyway, as does one it can't read within [SETTINGS_READ_BOUND_MILLIS].
+ * else the stored one, at [CARD_TEXT_SCALE] of it, as the list's departure cards are drawn: at the default size,
+ * the system's own. A store that can't be read draws at the default, which is what a rider who never chose
+ * one has anyway, as does one it can't read within [SETTINGS_READ_BOUND_MILLIS].
  */
-internal suspend fun widgetTextScale(context: Context): Float {
+internal suspend fun widgetTextScale(context: Context): Float = CARD_TEXT_SCALE * chosenTextScale(context)
+
+private suspend fun chosenTextScale(context: Context): Float {
     // The size the app shows in this process, chosen or read, whether or not the store can be read now.
     FontSizeSetting.shownScale.value?.let { return it }
     return try {

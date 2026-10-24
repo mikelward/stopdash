@@ -525,7 +525,7 @@ class FavoriteJourneysScreenshotTest {
         val shown = composeRule.onNodeWithContentDescription(full, useUnmergedTree = true)
         val node = shown.fetchSemanticsNode()
         val text = node.config[SemanticsProperties.Text].joinToString()
-        assertTrue(text, text.startsWith("Alerts to King's X & St") && text.endsWith("…: Mon–Fri 16:00–18:00"))
+        assertTrue(text, text.startsWith("Alerts to King's X & S") && text.endsWith("…: Mon–Fri 16:00–18:00"))
         val layouts = mutableListOf<TextLayoutResult>()
         node.config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
         assertEquals(false, layouts.single().hasVisualOverflow)

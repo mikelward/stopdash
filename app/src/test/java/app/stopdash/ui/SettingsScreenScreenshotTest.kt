@@ -969,7 +969,7 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Text size").assertIsDisplayed()
-        composeRule.onNodeWithText("100%").assertIsDisplayed()
+        composeRule.onNodeWithText("105%").assertIsDisplayed()
         composeRule.onNodeWithTag("textSizeSlider").assertExists()
         composeRule.onNodeWithText("Pinch to resize text").assertIsDisplayed()
         composeRule.onNodeWithTag("pinchSwitch").assertIsOn()
