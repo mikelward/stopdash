@@ -1466,10 +1466,15 @@ favorite rides** By stop/platform splits a ride boarding from several stops into
 stop and its platform or pole ➔ where the ride goes ("King's X – Plat 5 ➔ Bank"), each just before its station's; By
 station gives it no group at all: its trains lead their own platform's rows in its station's card, each with the ride's star
 after where it goes (maintainer, 2026-10-23), and stays there while it checks again, so a refresh never flashes the list
-back to platform headings (maintainer, 2026-10-24). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
-group just before the station's too, headed the same way, its own line with a spinner or dash and what it says under
-it as By stop/platform draws them: a closure, a far end it couldn't check, trains behind "+N more" or routes it
-couldn't check. A ride boarding at a station the list hasn't loaded (a farther place) is headed the same way, with how far its own stop is, and
+back to platform headings (maintainer, 2026-10-24). By ride or By stop, a ride with no trains of its own group to show (still checking, none due) or more to say than its
+trains is a group just before the station's too, headed the same way, its own line with a spinner or dash and what it
+says under it as By stop/platform draws them: a closure, a far end it couldn't check, trains behind "+N more" or routes
+it couldn't check. By station it has no heading whatever it says, so the list stays grouped by station (maintainer,
+2026-10-24): its trains join the card as ever, and under the station's heading, above the card, go its notices (each
+naming its place; not one at a stop it boards from that the list shows as the station's own, nor one a ride before it
+there shows), its own line with a spinner or dash while it has no train to show, and its notes, each naming where it goes
+("Warren Street: some routes couldn't be checked", "Warren Street: couldn't check trains"), with "More to Warren Street"
+(its own view) for trains behind "+N more", which stay in their platforms' rows, or stops it didn't fetch. A ride boarding at a station the list hasn't loaded (a farther place) is headed the same way, with how far its own stop is, and
 drawn among the stations by that distance, just before the first one farther away (or after them all), rather than atop the
 list above nearer stations (bug report, 2026-10-24); one with no distance yet leads the list, headed the same way. A faraway
 ride keeps its place at the foot of the list. With

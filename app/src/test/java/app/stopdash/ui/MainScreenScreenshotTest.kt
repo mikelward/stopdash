@@ -6169,6 +6169,7 @@ class MainScreenScreenshotTest {
         stops: List<StopArrivals>,
         rideGrouping: RideGrouping = RideGrouping.RIDE,
         stationGroups: Boolean = true,
+        journeyDestinationStops: List<StopArrivals> = emptyList(),
     ): @Composable () -> Unit = {
         val repository = RouteStopsRepository(
             object : RouteSequenceSource {
@@ -6217,6 +6218,7 @@ class MainScreenScreenshotTest {
                 onSetRideLineHidden = { _, _, _ -> },
                 rideGrouping = rideGrouping,
                 stationGroups = stationGroups,
+                journeyDestinationStops = journeyDestinationStops,
             )
         }
     }
@@ -6235,7 +6237,11 @@ class MainScreenScreenshotTest {
             SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(name))
 
     // King's Cross with a starred row, and a bus stop's two poles a walk apart.
-    private fun groupedByStationOn(rideGrouping: RideGrouping = RideGrouping.RIDE, stationGroups: Boolean = true) {
+    private fun groupedByStationOn(
+        rideGrouping: RideGrouping = RideGrouping.RIDE,
+        stationGroups: Boolean = true,
+        journeyDestinationStops: List<StopArrivals> = emptyList(),
+    ) {
         // Every train with its direction, so the ride judges them all and says nothing couldn't be checked.
         val kingsCross = kingsCrossStPancras().let { stop ->
             stop.copy(departures = stop.departures.map { if (it.direction.isEmpty()) it.copy(direction = "inbound") else it })
@@ -6255,6 +6261,7 @@ class MainScreenScreenshotTest {
                         stops = stops,
                         rideGrouping = rideGrouping,
                         stationGroups = stationGroups,
+                        journeyDestinationStops = journeyDestinationStops,
                     )()
                 }
             }
@@ -6305,6 +6312,25 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station, a ride with a notice still joins its station's card, the notice under the station's heading`() {
+        // A notice at the ride's far end used to keep it under a heading of its own, so the list stopped reading as
+        // grouped by station (bug report, 2026-10-24). Now its train stays in King's Cross's card, and the notice, which
+        // names Warren Street, goes under King's Cross's heading, above the card (maintainer, 2026-10-24).
+        val warrenStreet = StopArrivals(
+            "940GZZLUWRR", "Warren Street", emptyList(), now.minusSeconds(60),
+            disruptions = listOf(StopDisruption("Victoria line: minor delays")),
+        )
+        groupedByStationOn(RideGrouping.STATION, journeyDestinationStops = listOf(warrenStreet))
+        composeRule.onAllNodes(hasContentDescription("➔ Warren Street", substring = true)).assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
+        fun top(text: String) = composeRule.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().minOf { it.boundsInRoot.top }
+        val order = listOf("King's Cross St. Pancras", "minor delays", "Brixton", "High Barnet")
+        assertEquals(order, order.sortedBy { top(it) })
+        captureSnapshot("main-station-groups-ride-notice.png", heightPx = 4200)
     }
 
     @Test
@@ -6437,6 +6463,41 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithContentDescription("No trains to Warren Street soon").assertCountEquals(0)
         composeRule.onNodeWithText("Morden", substring = true).assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station with rides By station, a ride with no train due is under its station's heading, its dash saying so`() {
+        // As above, but rides By station: no heading of its own, its own line with a dash under King's Cross's heading,
+        // above the station's card (maintainer, 2026-10-24).
+        val kingsCross = kingsCrossStPancras().let { stop ->
+            stop.copy(
+                departures = stop.departures.filter { it.destination != "Brixton" }.map { if (it.direction.isEmpty()) it.copy(direction = "inbound") else it },
+            )
+        }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    groupedByStation(
+                        starred = emptySet(),
+                        stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0),
+                        stops = listOf(kingsCross),
+                        rideGrouping = RideGrouping.STATION,
+                    )()
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Warren Street, Tube")).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("No trains to Warren Street soon").assertExists()
+        // Saying where it goes, with the ride's star, so two rides on one line tell apart.
+        composeRule.onNodeWithText("Warren Street").assertExists()
+        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
+        composeRule.onAllNodesWithText("120 m").assertCountEquals(1)
+        val dash = composeRule.onNodeWithContentDescription("No trains to Warren Street soon").getUnclippedBoundsInRoot().top
+        assertTrue(composeRule.onNodeWithText("King's Cross St. Pancras").getUnclippedBoundsInRoot().top < dash)
+        assertTrue(dash < composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top)
+        captureSnapshot("main-station-groups-ride-none-in-station.png", heightPx = 2400)
     }
 
     @Test
