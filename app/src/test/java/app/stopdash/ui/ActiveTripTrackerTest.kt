@@ -6638,6 +6638,59 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a vague fix lets go of a bus past where the rider could be, and drives nothing else`() = runTest {
+        // A network fix sure to 900 m by B, 5 s old: at most as far as D (twice its accuracy, slack, 5 s at the fastest),
+        // while the bus followed has passed F (maintainer, 2026-10-23: told to get off three stops early).
+        sequences["red"] = longBusLine
+        trains["7"] = listOf(call("C", 18))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { onFollowedBus(false) })
+        now = at(17)
+        tracker.restore()
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 900f, ageMillis = 5_000L))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        val riding = tracker.progress.value as TripProgress.Riding
+        // Placed as far on as they could be, at D: F and C to go, so "get off soon" comes early rather than late.
+        assertEquals(2, riding.stopsLeft)
+        assertTrue(riding.byPosition)
+        assertTrue(logged.any { "sure to 900 m" in it && "let go" in it })
+    }
+
+    @Test
+    fun `a vague fix far along the ride counts the stops it can't reach as passed`() = runTest {
+        // Seen on the bus followed, its calls still counting from B; a network fix sure to 900 m by F, 5 s old, reaches D
+        // but not B: they're past B, whatever the calls say (maintainer, 2026-10-23).
+        sequences["red"] = longBusLine
+        val named = longBus.copy(pathNames = listOf("B", "D", "F", "C"))
+        trains["7"] = listOf(call("B", 11), call("D", 13), call("F", 15), call("C", 17))
+        val followed = OnTheWay.follow(
+            ActiveTrip(TripRoute(listOf(named, walkOn)), "H", startedAt = t0, legStartedAt = at(5)),
+            Departure("red", "Red", "outbound", "C", null, at(6), "bus", vehicleId = "7"),
+        ).copy(boarded = true, boardedAt = at(6), onBoardSeen = true, dueOffAt = at(17))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { followed })
+        now = at(10)
+        tracker.restore()
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.53, -0.12), isFallback = false, accuracyMeters = 900f, ageMillis = 5_000L))
+        // Still the bus followed, counted from D: D, F and C to go.
+        assertEquals("7", tracker.trip.value?.vehicleId)
+        assertEquals(3, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        assertTrue(logged.any { "counted on from there" in it })
+    }
+
+    @Test
+    fun `a vague fix keeps a bus the rider could be on`() = runTest {
+        sequences["red"] = longBusLine
+        // Next due at F: past only D, which they could be at.
+        trains["7"] = listOf(call("F", 18), call("C", 21))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { onFollowedBus(false) })
+        now = at(17)
+        tracker.restore()
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 900f, ageMillis = 5_000L))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+        // Nor does it say they boarded, or were left behind: it bounds a ride and nothing else.
+        assertTrue(logged.none { "seen at the stop" in it || "on board by where seen" in it })
+    }
+
+    @Test
     fun `a fix old enough that the rider could have caught up keeps the bus followed`() = runTest {
         sequences["red"] = longBusLine
         trains["7"] = listOf(call("C", 18))
@@ -6647,7 +6700,7 @@ class ActiveTripTrackerTest {
         tracker.restore()
         tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f, ageMillis = 110_000L))
         assertEquals("7", tracker.trip.value?.vehicleId)
-        // Nor does a vague fix place them, however fresh it was once.
+        // Nor a vague one 30 s old, which could reach F, the stop the bus is past.
         tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 900f, ageMillis = 30_000L))
         assertEquals("7", tracker.trip.value?.vehicleId)
     }

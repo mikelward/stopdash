@@ -1166,10 +1166,14 @@ class ActiveTripTracker(
             forgetFix?.cancel()
             lastFix = null
         }
-        val fresh = rider?.takeIf { allowed }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
-        // Too old for that, a sure fix still places a rider on board, to check the train followed against
-        // ([behindFollowed]): underground it may be the only one for minutes (maintainer, 2026-10-23).
-        val placing = rider?.takeIf { allowed && fresh == null && OnTheWay.placesOnRide(it) }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked), OnTheWay.RIDE_FIX_WITHIN_MILLIS) }
+        // On board a train followed, one too vague for anything else ([OnTheWay.tooVagueToAct]) only bounds where the
+        // rider could be, below: only there does a vague fix reach a refresh ([OnTheWay.placingFix]).
+        val onBoard = _trip.value?.let { it.boarded && it.vehicleId.isNotBlank() } == true
+        val boundsOnly = rider != null && onBoard && OnTheWay.tooVagueToAct(rider)
+        val fresh = rider?.takeIf { allowed && !boundsOnly }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+        // Too old or too vague for that, a fix still says where a rider on board could be, to check the train followed
+        // against ([behindFollowed]): underground it may be the only one for minutes (maintainer, 2026-10-23).
+        val placing = rider?.takeIf { allowed && fresh == null && OnTheWay.boundsRide(it) }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked), OnTheWay.RIDE_FIX_WITHIN_MILLIS) }
         // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
         // once: one due before the next refresh is still the rider's to catch.
         // Each boarding stop's board is asked for at most once a refresh, answer or failure,
@@ -1199,7 +1203,7 @@ class ActiveTripTracker(
                 }
             }
             // A fix given too old to place anyone but on a ride ([placing]) settles nothing else.
-            val given = rider?.takeIf { (it.ageMillis ?: 0) <= OnTheWay.FIX_FRESH_WITHIN_MILLIS }
+            val given = rider?.takeIf { (it.ageMillis ?: 0) <= OnTheWay.FIX_FRESH_WITHIN_MILLIS && !boundsOnly }
             // Seen past where they got off a ride, or back from it (maintainer, 2026-10-06): kept with the trip.
             notePast(given?.takeIf { allowed }, asked)
             // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
@@ -1837,6 +1841,9 @@ class ActiveTripTracker(
         // Seen past the stop those calls count to next: counted from where they're seen, as the calls lag a bus
         // by a stop or so (maintainer, 2026-10-19).
         if (seenRider != null && next.legIndex == trip.legIndex) seenPastCalls(next, progress, seenRider, seenAt, now)?.let { next = it }
+        // A vague one can't place them, but the stops it can't reach are behind them (maintainer, 2026-10-23).
+        val vague = placedRider?.takeIf { !OnTheWay.placesOnRide(it) }
+        if (vague != null && next.legIndex == trip.legIndex) vaguePastCalls(next, progress, vague, seenAt)?.let { next = it }
         // Its next call's time well past: counted on a stop, as the calls lag a bus (maintainer, 2026-10-20).
         val dueCalls = calls
         if (dueCalls != null && next.legIndex == trip.legIndex) {
@@ -2033,6 +2040,20 @@ class ActiveTripTracker(
         // When it was taken, by the clock as its age now holds: [now] was read before the reads that aged it (Codex, #1173).
         val takenAt = clock().minusMillis(seen.ageMillis ?: 0)
         val positions = withContext(compute) { OnTheWay.ridePositions(on, sequence) }
+        // Each fix on board against the train followed, by stop counts only: which fixes are right, and which a train's
+        // calls should yield to, is told from these (maintainer, 2026-10-23: network fixes put the rider a few stations off).
+        val trainNext = withContext(compute) { OnTheWay.followedAt(trip, on, calls, now, sequence.stopAreas) }
+        withContext(compute) { warn(OnTheWay.fixAgainstTrainNote(on, seen, positions, trainNext)) }
+        if (!OnTheWay.placesOnRide(seen)) {
+            // Too vague to place them, only to bound where they could be: let go only of a train past the stop after the
+            // furthest they could have reached (maintainer, 2026-10-23). Not two in a row: underground the next is often the
+            // same network fix again, and one put stations off is put there again, so a second is no new evidence.
+            val trainAt = trainNext ?: return null
+            val furthest = withContext(compute) { OnTheWay.outranVague(on, trainAt, seen, positions, sequence) } ?: return null
+            warn("on the way: a fix sure to ${seen.accuracyMeters?.roundToInt()} m reaches no further than stop ${furthest.from + 1} of ${on.path.size}, the train followed on line ${on.lineId} past stop $trainAt, let go")
+            val let = OnTheWay.onBoardAlong(trip, furthest, takenAt, on = on)
+            return if (let.warnedLeg == let.legIndex) let.copy(warnedLeg = -1, alertLeft = true) else let
+        }
         val along = withContext(compute) { OnTheWay.placeAlong(on, seen, positions) }
         if (along == null) return null
         if ((seen.ageMillis ?: 0) > OnTheWay.FIX_FRESH_WITHIN_MILLIS) {
@@ -2116,6 +2137,19 @@ class ActiveTripTracker(
     private class PastSeen(val startedAt: Instant, val legIndex: Int, val stop: Int)
 
     @Volatile private var pastSeen: PastSeen? = null
+
+    // [trip] counted on past its train's next call by a vague [rider], aged by the reads since [seenAt]
+    // ([OnTheWay.vaguePastCalls]); null when it moves nothing, or the route can't be read. Logged by stops, never a place.
+    private suspend fun vaguePastCalls(trip: ActiveTrip, progress: TripProgress, rider: LocationFix, seenAt: Long): ActiveTrip? {
+        val leg = OnTheWay.ridden(trip) ?: return null
+        if (progress !is TripProgress.Riding || leg.isWalk || leg.path.isEmpty()) return null
+        val sequence = routeOf(leg.lineId) ?: return null
+        val fix = aged(rider, Duration.ofMillis(elapsed() - seenAt), OnTheWay.RIDE_FIX_WITHIN_MILLIS) ?: return null
+        val takenAt = clock().minusMillis(fix.ageMillis ?: 0)
+        val moved = withContext(compute) { OnTheWay.vaguePastCalls(trip, progress, fix, OnTheWay.ridePositions(leg, sequence), takenAt) } ?: return null
+        warn("on the way: a fix sure to ${fix.accuracyMeters?.roundToInt()} m reaches no stop before ${moved.seenAlongStop + 1} of ${leg.path.size} on line ${leg.lineId}, counted on from there")
+        return moved
+    }
 
     private suspend fun boardedAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): SeenAlong? {
         // On board by where they were seen, the line they were seen along ([OnTheWay.ridden]).
