@@ -54,6 +54,8 @@ fun FavoriteJourneyPicker(
             onCancelRemoveRecent = onCancelRemoveRecent,
             onRemoveRecent = onRemoveRecent,
             positionOf = positionOf,
+            // Picking a ride's ends already: no second ride from a row's menu.
+            onAddRide = null,
         )
     } else {
         StationSearchScreen(
@@ -76,6 +78,8 @@ fun FavoriteJourneyPicker(
             onCancelRemoveRecent = onCancelRemoveRecent,
             onRemoveRecent = onRemoveRecent,
             positionOf = positionOf,
+            // Picking a ride's ends already: no second ride from a row's menu.
+            onAddRide = null,
         )
     }
 }

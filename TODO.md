@@ -1624,9 +1624,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [x] **Long press opens a menu everywhere**, listing the favorite actions that apply; no long press saves on
           its own (a route page's stop and line-map station, a trip card, a near-me row). A tap still opens the stop;
           removing a ride is from the same menu or the stop's own star.
-    - [ ] **Fill the gaps with the same menu items**: "Add favorite ride…" in the ⋮ of a trip's route page and
-          On the way's and a favorite ride's page (done; a stop's details opened from a route page now save
-          its place from ⋮, with the star change above); a search row's menu offering the rides from it.
+    - [x] **Fill the gaps with the same menu items**: "Add favorite ride…" in the ⋮ of a trip's route page,
+          On the way's and a favorite ride's page; a stop's details opened from a route page save its place from ⋮
+          (with the star change below); a search row's menu offers a ride from a stop (Settings' Add, From set to it).
     - [x] **The star in a stop's top bar always means the ride to it** (maintainer, 2026-10-24), its place moving
           into ⋮ as "Add favorite place", on a stop opened from a route page as from Lines….
     - [ ] **Deferred: a ride from a stop opened from Lines…**, which has no boarding stop: ask for the other

@@ -1096,6 +1096,11 @@ class MainActivity : ComponentActivity() {
                 var favoritePlacesOpen by pages.flag(Page.FavoritePlaces)
                 // The favorite-journeys list, opened from Settings and layered above it.
                 var favoriteJourneysOpen by pages.flag(Page.FavoriteJourneys)
+                // A ride added from a search row's menu ("Add favorite ride…"): the stop it starts at, taken by the favorite
+                // rides' Add as its From as their list opens, so it asks To… at once.
+                var rideStartId by rememberSaveable { mutableStateOf<String?>(null) }
+                var rideStartName by rememberSaveable { mutableStateOf("") }
+                var rideStartLevel by rememberSaveable { mutableStateOf<String?>(null) }
                 // Process-lived, like the removal itself, so a failure after Back or a rotation still
                 // says so on reopening (Codex on #589).
                 val journeyRemoveFailed by JourneyRemovals.failed.collectAsStateWithLifecycle()
@@ -2006,6 +2011,12 @@ class MainActivity : ComponentActivity() {
                             favoritePlacesOpen = true
                         },
                         removePlace = ::removeFavoritePlace,
+                        addRide = { stop ->
+                            rideStartId = stop.id
+                            rideStartName = stop.name
+                            rideStartLevel = stop.level?.code
+                            favoriteJourneysOpen = true
+                        },
                     ),
                     LocalOpenRouteStop provides openRouteStop,
                     LocalAddTripRide provides ::addTripRide,
@@ -2390,13 +2401,16 @@ class MainActivity : ComponentActivity() {
                                 val removeScope = (application as? StopdashApp)?.applicationScope ?: overlayScope
                                 // Add picks two stations over this list, From then To (maintainer, 2026-10-07);
                                 // the start picked is kept over a rotation, by its id and name alone.
-                                var journeyPicking by rememberSaveable { mutableStateOf(false) }
-                                var journeyFromId by rememberSaveable { mutableStateOf<String?>(null) }
-                                var journeyFromName by rememberSaveable { mutableStateOf("") }
+                                // Opened from a search row's menu, it starts picking with that stop as From.
+                                var journeyPicking by rememberSaveable { mutableStateOf(rideStartId != null) }
+                                var journeyFromId by rememberSaveable { mutableStateOf(rideStartId) }
+                                var journeyFromName by rememberSaveable { mutableStateOf(rideStartName) }
                                 // Whether the start is a favorite place (by its id) rather than a station.
                                 var journeyFromPlace by rememberSaveable { mutableStateOf(false) }
                                 // The level a station start was picked at, by its code ([Pick.Level]), kept with it.
-                                var journeyFromLevel by rememberSaveable { mutableStateOf<String?>(null) }
+                                var journeyFromLevel by rememberSaveable { mutableStateOf(rideStartLevel) }
+                                // Taken: a later opening of the list starts on the list.
+                                LaunchedEffect(Unit) { rideStartId = null }
                                 val journeyAdding by JourneyAdds.note.collectAsStateWithLifecycle()
                                 // The journey whose alerts are open (SPEC *Journeys → Alerts*), the row's own copy, kept
                                 // over a rotation, so the screen draws at once rather than after a lookup (Codex on #700).

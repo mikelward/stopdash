@@ -32,8 +32,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * What a search row's long press can do (maintainer, 2026-10-12), each null where the screen offers
- * none: show the row on the map, take it off Recent (asked as before: [onAskRemoveRecent]), and add it
- * to the favorite places, or remove the one saved at its position.
+ * none: show the row on the map, take it off Recent (asked as before: [onAskRemoveRecent]), add a favorite
+ * ride from it ([onAddRide]), and add it to the favorite places, or remove the one saved at its position.
  */
 internal class SearchRowActions(
     val onShowOnMap: ((String, Coordinates) -> Unit)? = null,
@@ -41,8 +41,10 @@ internal class SearchRowActions(
     // The pick, and a searched place's type's icon for the editor to start on ([placeIconOf]).
     val onAddPlace: ((StationMatch, String?) -> Unit)? = null,
     val onRemovePlace: ((FavoritePlace) -> Unit)? = null,
+    // A stop's favorite rides: Settings' Add, From set to the stop, asking To… (maintainer, 2026-10-24).
+    val onAddRide: ((StationMatch) -> Unit)? = null,
 ) {
-    val any: Boolean get() = onShowOnMap != null || onAskRemoveRecent != null || onAddPlace != null || onRemovePlace != null
+    val any: Boolean get() = onShowOnMap != null || onAskRemoveRecent != null || onAddPlace != null || onRemovePlace != null || onAddRide != null
 }
 
 /**
@@ -54,6 +56,8 @@ internal class SearchRowHost(
     val showOnMap: (String, Coordinates) -> Unit,
     val addPlace: (StationMatch, String?) -> Unit,
     val removePlace: (FavoritePlace, onRemoved: () -> Unit) -> Unit,
+    // The favorite rides' Add, From set to the stop ([SearchRowActions.onAddRide]).
+    val addRide: ((StationMatch) -> Unit)? = null,
 )
 
 /** The activity's [SearchRowHost]; none (no such items) outside it, as in a screenshot test. */
@@ -148,6 +152,11 @@ internal fun SearchRowMenu(
                 val place = known.saved
                 val add = actions.onAddPlace
                 // Nothing about favorites where whether the row is one couldn't be read.
+                // A ride from a stop (not a place: a ride's ends are stops or saved places), asked To… next.
+                val ride = actions.onAddRide
+                if (ride != null && entry is SearchEntry.Stop) {
+                    MenuItem(stringResource(R.string.add_favorite_ride), "rowMenuAddRide") { onDismiss(); ride(entry.match) }
+                }
                 if (placesKnown && unsave != null && place != null) {
                     MenuItem(stringResource(R.string.station_search_remove_favorite), "rowMenuRemovePlace") { onDismiss(); unsave(place) }
                 } else if (placesKnown && add != null) {
