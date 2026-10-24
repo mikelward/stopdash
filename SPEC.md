@@ -1618,7 +1618,8 @@ one tap from the ride, where per-stop headings would be a tap per stop.
 boarding from several stops used to head each stop's departures like a near-me stop, so its heading
 read as empty and its trains as the near-me list already started. **By ride**, the default,
 keeps the heading directly over one card of all its stops' trains and heads no stop at all, as a ride
-boarding from one stop always read: a rider who favorited the ride knows where it boards. **By
+boarding from one stop always read: a rider who favorited the ride knows where it boards. Either way a
+ride's heading is bold, as a station's is By station, its distance regular (maintainer, 2026-10-24). **By
 stop/platform** drops the ride's heading instead: each stop it boards from is headed as a bus place's heading
 reads, the stop with its platform or pole ➔ where the ride goes, then the ride's gold star as on its
 own title, then how far the stop is ("Park – Stop L ➔ Hill ★ (120 m)"; the distance is the first thing to go on a

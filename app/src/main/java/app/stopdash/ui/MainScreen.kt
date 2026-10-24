@@ -6239,7 +6239,9 @@ private fun RideStopHeader(
             stop = forms.name,
             qualifier = forms.qualifier,
             destination = destinationForms,
-            style = style,
+            // Bold, as a station's heading is (maintainer, 2026-10-24); the distance stays regular, as there.
+            style = style.copy(fontWeight = FontWeight.Bold),
+            distanceStyle = style,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
             distance = distanceLabel,
@@ -6291,7 +6293,8 @@ private fun JourneyHeader(
             RideTitle(
                 from = fromForms,
                 to = toForms,
-                style = style,
+                // Bold, as a station's heading is (maintainer, 2026-10-24); the distance stays regular, as there.
+                style = style.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f, fill = false),
             )
