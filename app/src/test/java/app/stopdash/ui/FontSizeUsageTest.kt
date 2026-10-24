@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.CARD_TEXT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.FontSizeSettings
 import app.stopdash.domain.MaxWalk
@@ -129,8 +130,8 @@ class FontSizeUsageTest {
         FontSizeSetting.setScale(1.4f)
         // Published at once for the widget's redraw, though the write will fail.
         assertEquals(1.4f, FontSizeSetting.shownScale.value)
-        // And the widget draws at it, read or not.
-        assertEquals(1.4f, widgetTextScale(ApplicationProvider.getApplicationContext()))
+        // And the widget draws at it, read or not, as the list's departure cards do.
+        assertEquals(1.4f * CARD_TEXT_SCALE, widgetTextScale(ApplicationProvider.getApplicationContext()), 1e-6f)
         // The failed write still asks for the properties again, and they carry the size in force.
         val deadline = System.nanoTime() + 5_000_000_000L
         while (sent.isEmpty() && System.nanoTime() < deadline) {

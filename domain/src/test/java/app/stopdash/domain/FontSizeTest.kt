@@ -119,4 +119,11 @@ class FontSizeTest {
         assertEquals(DEFAULT_FONT_SCALE, defaults.scale, 0f)
         assertTrue(defaults.pinchEnabled)
     }
+
+    @Test
+    fun `at the default size the list's headings and cards draw at the system's own size`() {
+        // The default rose to 105% (maintainer, 2026-10-24); the dense board stays as it was at 100%.
+        assertEquals(1.05f, DEFAULT_FONT_SCALE, 0f)
+        assertEquals(1f, DEFAULT_FONT_SCALE * CARD_TEXT_SCALE, 1e-6f)
+    }
 }

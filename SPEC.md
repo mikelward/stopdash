@@ -4596,13 +4596,16 @@ the rest of the device. It multiplies only text: paddings, icons, and touch targ
 4dp-grid layout, so larger text grows what is read without breaking what is tapped. The
 offered range is 80%–160% of the system size — wide enough to help a low-vision reader,
 bounded so a departure card's one-line countdown still lays out beside its line pill at the
-top of the range (D8). The default is the system's own size (100%): StopDash follows the
-platform setting until the user chooses otherwise, so the dense default layout stays as-is and
-scaling is opt-in.
+top of the range (D8). The default is a little over the system's own size, **105%**
+(maintainer, 2026-10-24): Settings, notes, a route page's text and the rest read a touch larger,
+while the list's group headings and departure cards (on the list, a station's or platform's page, a
+trip's boards) and the widget keep the size they had at 100% — their text takes 1/105% of the chosen
+size, so the dense board keeps its layout. Every chosen size moves both alike, so a pinch still
+resizes everything in step. A size the user already chose is kept as it was.
 
-The home-screen widget is drawn at the same size: its text, and the line pills and line budget
-that follow the text, are sized as for the system's font scale times the user's factor, and a
-change made in the app redraws a placed widget at once.
+The home-screen widget is drawn as the list's departure cards are: its text, and the line pills
+and line budget that follow the text, are sized as for the system's font scale times the user's
+factor and the cards' 1/105%, and a change made in the app redraws a placed widget at once.
 
 Two controls change the one stored size, kept in sync because they write the same value: a
 **slider** on Settings and a **two-finger pinch anywhere in the app** (a pinch resizes the

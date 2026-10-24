@@ -4984,7 +4984,7 @@ private fun FartherCardView(
     showDistance: Boolean = true,
     // False when the place's notice group already heads it, so the place isn't named twice.
     showHeading: Boolean = true,
-) {
+) = CardTextSize {
     val place = card.place
     val cueText = stringResource(
         when (cue) {
@@ -5081,7 +5081,7 @@ private fun StationHeader(
     // A favorite ride's group ("Highgate ➔ Bank"): its ends' forms, shortened evenly to fit ([RideTitle]), [name] then
     // only heard.
     rideForms: Pair<List<String>, List<String>>? = null,
-) {
+) = CardTextSize {
     val action = stringResource(if (folded) R.string.station_unfold else R.string.station_fold)
     val state = stringResource(if (folded) R.string.station_folded else R.string.station_unfolded)
     val openLabel = stringResource(R.string.action_show_station)
@@ -5242,7 +5242,7 @@ internal fun StopGroupHeader(
     // This place's closure check is still out: a small spinner where the "Closed" chip would be,
     // until it's back (SPEC *Freshness → Cold load*).
     checkingClosure: Boolean = false,
-) {
+) = CardTextSize {
     val style = groupHeaderStyle()
     // The name and platform as heavy as a station's heading ([StationHeader]; maintainer, 2026-10-23); the distance
     // stays regular, as there.
@@ -6116,7 +6116,7 @@ private fun JourneyActions(
  * then its own list item ([RideHiddenLineRow]), as Settings' Hidden list reads.
  */
 @Composable
-private fun RideHiddenLinesHeading() {
+private fun RideHiddenLinesHeading() = CardTextSize {
     Text(
         text = stringResource(R.string.ride_hidden_lines_title),
         style = MaterialTheme.typography.bodyLarge,
@@ -6157,7 +6157,7 @@ private fun RideStopHeader(
     distanceLabel: String? = null,
     // Under its station's heading ([StationHeader]): headed as its platforms are.
     inStation: Boolean = false,
-) {
+) = CardTextSize {
     val style = if (inStation) stationGroupHeaderStyle() else groupHeaderStyle()
     // "Park, Stop L to Hill, 120 m": the stop as a heading reads it, never the drawn arrow.
     val stop = groupHeaderSpoken(qualifier, rememberHeaderWords())?.let { "$name, $it" } ?: name
@@ -6210,7 +6210,7 @@ private fun JourneyHeader(
     onOpen: (() -> Unit)? = null,
     // How far it is ("120 m", or a collapsed far journey's "2.4 km"), dimmed after the star; null for none.
     distanceLabel: String? = null,
-) {
+) = CardTextSize {
     val openLabel = stringResource(R.string.action_open_journey)
     val title = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
     val spoken = distanceLabel?.let { "$title, $it" } ?: title
@@ -6338,7 +6338,7 @@ internal fun StopGroupCard(
     // long press hides a line from that ride alone, as the ride's own card offers, never the mode everywhere.
     rideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
-) {
+) = CardTextSize {
     val group = card.group
     val rideStar = stringResource(R.string.ride_row_star)
     // Rows stand a moment as they are ([settled]) before they say they're being checked, so a quick check

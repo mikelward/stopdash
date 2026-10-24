@@ -24,12 +24,21 @@ const val MIN_FONT_SCALE = 0.8f
 const val MAX_FONT_SCALE = 1.6f
 
 /**
- * The size StopDash starts at: the system's own (100%). StopDash respects the platform font-size
- * setting by default and only departs from it once the user pinches or drags to their own size,
- * which is then stored like any other choice. Reversible — one constant. Only the *starting*
- * point; anything already stored is read back unchanged.
+ * The size StopDash starts at: a little over the system's own (105%, maintainer, 2026-10-24), so
+ * Settings, notes and a route page's text read a touch larger, while the list's group headings and
+ * departure cards stay as they were at 100% ([CARD_TEXT_SCALE]). The user pinches or drags to their
+ * own size, which is then stored like any other choice. Reversible — one constant. Only the
+ * *starting* point; anything already stored is read back unchanged.
  */
-const val DEFAULT_FONT_SCALE = 1.0f
+const val DEFAULT_FONT_SCALE = 1.05f
+
+/**
+ * The factor the list's group headings and departure cards (and the widget, drawn as they are) take
+ * on top of the chosen size, so at [DEFAULT_FONT_SCALE] they draw at the system's own size, as they
+ * did when the default was 100% (maintainer, 2026-10-24): the dense board keeps its layout while the
+ * rest of the app grows. Every chosen size scales them alike, so a pinch still moves them in step.
+ */
+const val CARD_TEXT_SCALE = 1f / DEFAULT_FONT_SCALE
 
 /** The settings that decide how StopDash's text is sized, read as one value. */
 data class FontSizeSettings(
