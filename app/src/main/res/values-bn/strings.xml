@@ -703,7 +703,7 @@
     <string name="menu_about">সম্পর্কে</string>
     <string name="about_title">সম্পর্কে</string>
     <string name="settings_version">ভার্সন %1$s</string>
-    <string name="about_data_sources">লাইভ সময় TfL ও National Rail থেকে। জায়গা ও রাস্তা © OpenStreetMap অবদানকারী, ODbL-এর অধীনে। Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">লাইভ সময় TfL ও National Rail থেকে। জায়গা ও রাস্তা © OpenStreetMap অবদানকারী, ODbL-এর অধীনে। Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right %1$s. Contains Royal Mail data © Royal Mail copyright and database right %1$s. Contains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="settings_licenses_title">ওপেন সোর্স লাইসেন্স</string>
     <string name="settings_licenses_authors">নির্মাতা: %1$s</string>
     <string name="action_back">ফিরে যান</string>

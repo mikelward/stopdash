@@ -47,9 +47,9 @@ internal fun AboutDialog(onOpenLicenses: () -> Unit, onDismiss: () -> Unit) {
                         modifier = Modifier.padding(top = 4.dp),
                     )
                     // The data's sources and NaPTAN's licence statement (the bundled National Rail
-                    // station codes are built from it).
+                    // station codes are built from it), with the bundled postcodes' copyright year.
                     Text(
-                        text = stringResource(R.string.about_data_sources),
+                        text = stringResource(R.string.about_data_sources, BuildConfig.PLACE_DATA_COPYRIGHT_YEAR),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp),

@@ -703,7 +703,7 @@
     <string name="menu_about">Hakkında</string>
     <string name="about_title">Hakkında</string>
     <string name="settings_version">Sürüm %1$s</string>
-    <string name="about_data_sources">Canlı saatler TfL ve National Rail kaynaklıdır. Yerler ve sokaklar © OpenStreetMap contributors, ODbL kapsamında. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">Canlı saatler TfL ve National Rail kaynaklıdır. Yerler ve sokaklar © OpenStreetMap contributors, ODbL kapsamında. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right %1$s. Contains Royal Mail data © Royal Mail copyright and database right %1$s. Contains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="settings_licenses_title">Açık kaynak lisansları</string>
     <string name="settings_licenses_authors">Geliştiren: %1$s</string>
     <string name="action_back">Geri</string>

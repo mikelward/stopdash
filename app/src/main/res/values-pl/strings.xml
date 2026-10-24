@@ -726,7 +726,7 @@
     <string name="menu_about">O aplikacji</string>
     <string name="about_title">O aplikacji</string>
     <string name="settings_version">Wersja %1$s</string>
-    <string name="about_data_sources">Czasy na żywo: TfL i National Rail. Miejsca i ulice: © współtwórcy OpenStreetMap, licencja ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">Czasy na żywo: TfL i National Rail. Miejsca i ulice: © współtwórcy OpenStreetMap, licencja ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right %1$s. Contains Royal Mail data © Royal Mail copyright and database right %1$s. Contains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="settings_licenses_title">Licencje open source</string>
     <string name="settings_licenses_authors">Autorzy: %1$s</string>
     <string name="action_back">Wstecz</string>

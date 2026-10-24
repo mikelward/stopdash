@@ -2009,7 +2009,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [x] **A monthly refresh workflow** for `assets/places/place_index.tsv`:
                   `place-index-refresh.yml`, like `station-index-refresh.yml` but opening its pull
                   request for a person to merge rather than merging itself.
-              - [ ] **Move the year in the About screen's Ordnance Survey statements** with the refresh.
+              - [x] **Move the year in the About screen's Ordnance Survey statements** with the refresh:
+                  the index's header dates each source (OpenStreetMap, Code-Point Open's release,
+                  Wikidata), and the build turns them into `BuildConfig` fields, the year among them.
               - [ ] **Check the index on a low-end device**: it reads in ~1 s and searches in ~20 ms on a
                   desktop JVM; a phone is slower. A binary format, or a prefix index, if either drags.
               - [ ] **Decide how far the bundled places, streets and postcodes reach** (maintainer,

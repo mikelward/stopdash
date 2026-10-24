@@ -112,7 +112,9 @@ OpenStreetMap, from Overture Maps, or from both; the measured sizes below are Ov
   - OpenStreetMap is ODbL. The app has to credit "© OpenStreetMap contributors", and a derived
     database we distribute must itself be offered under ODbL.
   - Code-Point Open needs three statements: Ordnance Survey's Crown copyright and database right,
-    Royal Mail's, and National Statistics' Crown copyright and database right.
+    Royal Mail's, and National Statistics' Crown copyright and database right. Their year is the
+    Code-Point Open release's: the index's header dates each source, and the app's build reads the
+    release from it, so a refresh moves the About screen's year with no hand edit.
 - **Quality:** good for named places and streets, but **no popularity signal**. Without one,
   "Tate" can't tell Tate Modern from a corner shop. OpenStreetMap's Wikipedia and Wikidata links
   can stand in for popularity, which is what Nominatim does. Store it as an importance score per

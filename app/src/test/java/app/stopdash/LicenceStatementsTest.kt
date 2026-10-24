@@ -28,7 +28,7 @@ class LicenceStatementsTest {
     private companion object {
         val CREDITS = Regex("""<string name="about_data_sources">(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
 
-        // "Contains … v3.0." or "Contains … 2026.": each statement up to its licence version or year.
-        val STATEMENT = Regex("""Contains [^.]*?(?:v\d+\.\d+|\d{4})\.""")
+        // "Contains … v3.0." or "Contains … %1$s.": each statement up to its licence version or year.
+        val STATEMENT = Regex("""Contains [^.]*?(?:v\d+\.\d+|%1\${'$'}s)\.""")
     }
 }
