@@ -7909,7 +7909,7 @@ internal fun RouteDetailScreen(
                     }
                     // "Add favorite…": this page asks where the ride from here goes, its stops a tap away, as a long
                     // press on its row opens it (SPEC *Journeys*). Not on a route chosen with no train to save it on.
-                    val startPicking = onStartPicking?.takeIf { !picking && starrable && trainless == null && onPickTo != null && rideAddable(row) }
+                    val startPicking = onStartPicking?.takeIf { !picking && (starrable || ofTrip) && trainless == null && onPickTo != null && rideAddable(row) }
                     AppMenuOverflow { close ->
                         if (startPicking != null) {
                             DropdownMenuItem(

@@ -6,6 +6,9 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -195,6 +198,41 @@ class RoutePickScreenshotTest {
         composeRule.onNodeWithContentDescription("More options").performClick()
         composeRule.onNodeWithText("Add favourite ride…").performClick()
         composeRule.runOnIdle { assertEquals(1, started) }
+    }
+
+    @Test
+    fun a_trips_route_page_offers_add_favorite_ride_and_picks_as_the_lists_does() {
+        // A trip's route page pins nothing and stars no stop's ride, but its menu still offers "Add favorite ride…"
+        // (maintainer, 2026-10-24), picking as the near-me list's page does.
+        var picking by mutableStateOf(false)
+        val picked = mutableListOf<RouteStop>()
+        setPage {
+            CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = false,
+                    ofTrip = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = stops,
+                    picking = picking,
+                    onPickTo = { _, stop -> picked += stop },
+                    onStartPicking = { picking = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
+        composeRule.onNodeWithText("Warren Street", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(RouteStop("940GZZLUWRR", "Warren Street")), picked)
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

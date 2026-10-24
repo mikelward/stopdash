@@ -122,6 +122,7 @@ import app.stopdash.domain.widgetQuestionsSettled
 import app.stopdash.domain.widgetUpdateCardGone
 import app.stopdash.domain.widgetUpdateCardShown
 import app.stopdash.sync.rememberDriveSyncSwitch
+import app.stopdash.ui.LocalAddRouteRide
 import app.stopdash.ui.LocalAddTripRide
 import app.stopdash.ui.addLegJourney
 import app.stopdash.ui.fartherStationId
@@ -2008,6 +2009,7 @@ class MainActivity : ComponentActivity() {
                     ),
                     LocalOpenRouteStop provides openRouteStop,
                     LocalAddTripRide provides ::addTripRide,
+                    LocalAddRouteRide provides ::addRide,
                     LocalPlanFromStop provides planFromStop,
                     LocalHideUndoCarrier provides hideUndoCarrier,
                     // The saved places' own icons, for a From/To bar naming one of them.
