@@ -468,7 +468,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   held from a surer one, or not at all, and then why (the fix too vague for the distance left, or
   you near the walk's end) — never how far, which way, or where,
 - on a ride followed by where you're seen (no train matched), **how far along it each fix placed
-  you**, as a stop count ("stop 5 of 9", or not placed) with the fix's accuracy radius; and when a
+  you**, as a stop count ("stop 5 of 9", or not placed) with the fix's accuracy radius; on a ride
+  with a train followed, the same for **each fix against that train**: the fix's accuracy radius and
+  age, the stop count it places you at (or, for a vague one, the furthest it could), and the stop
+  count the train is next due at; and when a
   "get off soon" alert is shown, the stops left and whether they were counted from the train
   followed or from where you were seen — never which stop, or where,
 - for each **widget render**, how many stored stops it kept against the nearby set (and that
