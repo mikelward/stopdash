@@ -158,7 +158,7 @@ private fun PlaceChip(
             .combinedClickable(
                 role = Role.Button,
                 onClick = onClick,
-                onLongClick = onLongClick,
+                onLongClick = onLongClick?.let(::unlessPinch),
                 onLongClickLabel = onLongClick?.let { onLongClickLabel },
             ),
         contentAlignment = Alignment.Center,

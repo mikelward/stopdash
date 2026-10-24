@@ -2565,7 +2565,7 @@ private fun RouteList(
                                     .combinedClickable(
                                         enabled = !sliding.moving,
                                         onLongClickLabel = onLongPress?.let { moreLabel },
-                                        onLongClick = onLongPress,
+                                        onLongClick = onLongPress?.let(::unlessPinch),
                                         onClick = {
                                             // Worked out with the cards ([ListedCards.choices]): the tap only reads it.
                                             val choice = choices.getOrNull(position) ?: UsageEvent.RouteChoice.UNKNOWN
@@ -5017,7 +5017,7 @@ private fun TripLineRow(
                         watch != null -> Modifier.combinedClickable(
                             onClickLabel = opens?.let { stringResource(R.string.trip_lines_line) },
                             onLongClickLabel = watchLabel,
-                            onLongClick = { menu = true },
+                            onLongClick = unlessPinch { menu = true },
                             onClick = { opens?.invoke() },
                         )
                         opens != null -> Modifier.clickable(onClickLabel = stringResource(R.string.trip_lines_line)) { opens() }

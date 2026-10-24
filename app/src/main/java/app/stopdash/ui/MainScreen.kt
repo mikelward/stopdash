@@ -5288,7 +5288,7 @@ internal fun StopGroupHeader(
                             detectTapGestures(
                                 onPress = { if (tappable) showPress(it, presses) },
                                 onTap = { currentOnClick?.invoke() },
-                                onLongPress = { hideMenuOpen = true },
+                                onLongPress = unlessPinchAt { hideMenuOpen = true },
                             )
                         }
                         .semantics {
@@ -6790,7 +6790,7 @@ internal fun RouteRow(
                             // Only a row a tap does something on shows a press, as a clickable one would.
                             onPress = { if (opens) showPress(it, presses) },
                             onTap = if (opens) ({ _ -> open() }) else null,
-                            onLongPress = onLongPress,
+                            onLongPress = onLongPress?.let(::unlessPinchAt),
                         )
                     }
                 } else {

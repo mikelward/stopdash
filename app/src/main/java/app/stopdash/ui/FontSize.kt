@@ -346,7 +346,23 @@ class FontSizeState internal constructor(
 internal object MultiTouch {
     var seen = false
         internal set
+
+    /**
+     * Whether the gesture under way has had a second finger down: from that finger until the last one
+     * lifts. A long press the first finger started then opens nothing ([unlessPinch]): two fingers are a
+     * pinch to resize the text, never a press on what one of them landed on (maintainer, 2026-10-24).
+     * Cleared as the gesture ends, unlike [seen], so a screen reader's long-press action after a pinch
+     * still opens its menu.
+     */
+    var pinching = false
+        internal set
 }
+
+/** [press], a long press's, unless the gesture is a pinch ([MultiTouch.pinching]). */
+internal fun unlessPinch(press: () -> Unit): () -> Unit = { if (!MultiTouch.pinching) press() }
+
+/** [press], a long press at an offset ([androidx.compose.foundation.gestures.detectTapGestures]'), unless the gesture is a pinch. */
+internal fun unlessPinchAt(press: (Offset) -> Unit): (Offset) -> Unit = { if (!MultiTouch.pinching) press(it) }
 
 /**
  * A two-finger pinch anywhere in StopDash resizes its text (SPEC *Display size*), tracking the
@@ -369,6 +385,7 @@ internal fun Modifier.pinchFontSize(
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         MultiTouch.seen = false
+        MultiTouch.pinching = false
         var pinching = false
         // The gesture's running size, kept unclamped: what is shown and stored is clamped, but the
         // gesture remembers an overshoot so pinching back returns where the fingers say.
@@ -381,7 +398,10 @@ internal fun Modifier.pinchFontSize(
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val pressed = event.changes.count { it.pressed }
                 if (pressed == 0) break
-                if (pressed >= 2) MultiTouch.seen = true
+                if (pressed >= 2) {
+                    MultiTouch.seen = true
+                    MultiTouch.pinching = true
+                }
                 // The switch is read per event, so turning pinch off applies to the next pinch.
                 if (pressed >= 2 && enabled()) {
                     val spread = event.pressedSpread()
@@ -412,6 +432,7 @@ internal fun Modifier.pinchFontSize(
                 pointerCount = pressed
             }
         } finally {
+            MultiTouch.pinching = false
             // Clamped like every preview, so releasing leaves the size where the last frame showed
             // it rather than storing an overshoot the screen never drew. In a `finally` so a host
             // that goes away mid-pinch still ends the gesture; settling is the right end for a
