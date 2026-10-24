@@ -35,10 +35,11 @@
     <!-- TODO: translate -->
     <!-- A departure row's long press and its route page's menu: the route page asking "To…", where a tap on a stop
          saves the favorite ride from the row's stop to it (SPEC *Journeys*); the long-press label a screen reader hears. -->
-    <string name="add_favorite_ride" tools:ignore="MissingTranslation">Add favorite…</string>
+    <!-- TODO: translate -->
+    <string name="add_favorite_ride" tools:ignore="MissingTranslation">Add favorite ride…</string>
     <!-- The route page's title while picking where a favorite ride goes, its stops under "To…". -->
     <!-- TODO: translate -->
-    <string name="route_pick_title" tools:ignore="MissingTranslation">Add favorite</string>
+    <string name="route_pick_title" tools:ignore="MissingTranslation">Add favorite ride</string>
     <!-- TODO: translate -->
     <!-- Said on the list once a ride picked that way is saved: %1$s and %2$s are its ends, as Add's notes name them. -->
     <string name="ride_added" tools:ignore="MissingTranslation">Added %1$s ⇄ %2$s</string>
@@ -581,7 +582,8 @@
     <!-- A stop's departures opened from its details: back to the details, in the bar where To… would be. -->
     <string name="station_browse_back">Back</string>
     <string name="line_stop_open_line">Open %1$s</string>
-    <string name="line_stop_favorite">Add to favorite places</string>
+    <!-- TODO: translate -->
+    <string name="line_stop_favorite">Add favorite place</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
          places, streets and postcodes too. -->
     <string name="station_search_to_hint">Station, stop, place or postcode</string>
@@ -795,8 +797,10 @@
     <!-- Under the Recent heading when a removal couldn't be saved on the device, so the row is still listed. -->
     <!-- A search row's long press: what it opens, for TalkBack, and its menu's favorite items. -->
     <string name="station_search_row_menu_action">More options</string>
-    <string name="station_search_add_favorite">Add favorite</string>
-    <string name="station_search_remove_favorite">Remove favorite</string>
+    <!-- TODO: translate -->
+    <string name="station_search_add_favorite">Add favorite place</string>
+    <!-- TODO: translate -->
+    <string name="station_search_remove_favorite">Remove favorite place</string>
     <string name="station_search_remove_recent_failed">Couldn\'t remove that from Recent</string>
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
@@ -1266,7 +1270,8 @@
          stop*), and that button as TalkBack reads it (%1$s is the stop's name). -->
     <string name="action_plan_via">Via</string>
     <string name="action_plan_via_spoken">Plan a trip via %1$s</string>
-    <string name="action_star_journey">Favorite ride</string>
+    <!-- TODO: translate -->
+    <string name="action_star_journey">Add favorite ride</string>
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->
     <string name="action_open_journey">Show ride</string>
@@ -1300,10 +1305,12 @@
     <!-- A journey's far end whose closure check failed: it may be closed. %1$s is the stop's name. -->
     <string name="journey_destination_unchecked">Couldn\'t check %1$s for closures</string>
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
-    <string name="action_unstar_journey">Remove favorite</string>
+    <!-- TODO: translate -->
+    <string name="action_unstar_journey">Remove favorite ride</string>
     <string name="route_stop_journey_starred">Favorite ride</string>
     <!-- A stop's details opened from a route page's stop: its star, saving the journey there as a favorite. -->
-    <string name="station_journey_add">Favorite</string>
+    <!-- TODO: translate -->
+    <string name="station_journey_add">Add favorite ride</string>
     <string name="station_journey_write_failed">Couldn\'t save that change</string>
     <!-- Said app-wide when that change failed after its stop's page was left. -->
     <string name="station_journey_write_failed_away">Couldn\'t save your favorite ride</string>

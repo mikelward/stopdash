@@ -220,11 +220,11 @@ class LineSearchScreenshotTest {
         saved = false
         composeRule.waitForIdle()
         captureSnapshot("route-stop-details.png")
-        composeRule.onNodeWithContentDescription("Favourite").performClick()
+        composeRule.onNodeWithContentDescription("Add favourite ride").performClick()
         assertEquals(1, toggles)
         saved = true
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Remove favourite").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Remove favourite ride").assertIsDisplayed()
         composeRule.onNodeWithTag("routeStopGo").performClick()
         assertEquals(1, goes)
         // Departures beside Go.
@@ -481,7 +481,7 @@ class LineSearchScreenshotTest {
         // Waits on the stop's links, which carry where it is.
         composeRule.onNodeWithTag("lineStopFavorite").assertIsNotEnabled()
         ready = true
-        composeRule.onNodeWithContentDescription("Add to favourite places").performClick()
+        composeRule.onNodeWithContentDescription("Add favourite place").performClick()
         assertEquals(1, favorited)
     }
 
