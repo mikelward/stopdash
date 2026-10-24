@@ -326,6 +326,8 @@ internal fun RideStopTitle(
     distanceColor: Color = color,
     marker: (@Composable () -> Unit)? = null,
     markerWidth: Dp = 0.dp,
+    // The distance's own weight: regular beside a bold heading, as a station's heading has it.
+    distanceStyle: TextStyle = style,
 ) {
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
@@ -339,8 +341,8 @@ internal fun RideStopTitle(
             qualifier.map { measurer.measure(it, style, maxLines = 1).size.width + arrow }.ifEmpty { listOf(arrow) }
         }
         val distanceText = distance?.let { " ($it)" }
-        val distanceWidth = remember(distanceText, style, fontScale) {
-            distanceText?.let { measurer.measure(it, style, maxLines = 1).size.width }
+        val distanceWidth = remember(distanceText, distanceStyle, fontScale) {
+            distanceText?.let { measurer.measure(it, distanceStyle, maxLines = 1).size.width }
         }
         val pair = rememberEvenPair(stop, destination, style, width, gaps, distanceWidth)
         val shownQualifier = qualifier.getOrNull(minOf(pair.level, qualifier.lastIndex))
@@ -378,7 +380,7 @@ internal fun RideStopTitle(
             )
             marker?.invoke()
             if (distanceText != null && pair.extra) {
-                Text(text = distanceText, style = style, color = distanceColor, maxLines = 1, softWrap = false)
+                Text(text = distanceText, style = distanceStyle, color = distanceColor, maxLines = 1, softWrap = false)
             }
         }
     }
