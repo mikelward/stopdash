@@ -1641,6 +1641,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         avoid this happening again"): `TapHoldsStillTest` taps each kind (open a faraway place, fold a station, a
         platform, a ride) in each grouping, stepping the list's worker one answer at a time, and checks the tapped
         heading never moves; AGENTS.md asks for a case with each new grouping or tap.
+  - [ ] **A favorite ride is its two stops, on every route between them** (maintainer, 2026-10-24: "all routes from
+        origin to destination. That's what we asked the user to enter"; "there should be no persisted concept of which
+        line it was pinned from. Rides are between stops. Period."). A ride stores its two ends and nothing about a
+        line: saving one from a route page (or a long press, or Add) records the stops alone, and every use of the
+        line it was saved on (placing a bus ride's way-back poles, the status line declared at its origin, the lines
+        its alerts ask about, Settings' row, the ride's own view) works from the lines serving both ends instead.
+        Hiding a line from a ride stays the one deliberate way to narrow it, and any line can be hidden, the one it
+        was saved from included. Rides saved by older builds drop their line on read. Settings' row naming only the
+        saved line (a bus ride listing one of the two routes between its stops) is the visible symptom.
   - [ ] **A dismissed pole closure says nothing**: By stop/platform keeps a "Closed" chip on the pole's heading
         while its buses are listed; By station has no pole heading, so once the notice is dismissed nothing
         says that pole is closed.
