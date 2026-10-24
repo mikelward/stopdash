@@ -1993,11 +1993,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   Cathedral drew a ferris wheel. The builder now prefers any other public tag (worship,
                   cemetery, park, square, theater, stadium, historic) or a typed building over
                   `tourism=attraction`; rank (Wikipedia coverage) is unchanged.
-              - [ ] **Rebuild `place_index.tsv` to carry it**: the shipped file predates the rule
-                  (needs Geofabrik, which the cloud sandbox can't reach).
-              - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
-                  `station-index-refresh.yml` (needs `osmium` and `pyproj`; Geofabrik's extracts refresh daily),
-                  which also moves the year in the About screen's Ordnance Survey statements.
+              - [ ] **Rebuild `place_index.tsv` to carry it**: the shipped file predates the rule; run
+                  `place-index-refresh.yml` by hand once it's on `main`.
+              - [x] **A monthly refresh workflow** for `assets/places/place_index.tsv`:
+                  `place-index-refresh.yml`, like `station-index-refresh.yml` but opening its pull
+                  request for a person to merge rather than merging itself.
+              - [ ] **Move the year in the About screen's Ordnance Survey statements** with the refresh.
               - [ ] **Check the index on a low-end device**: it reads in ~1 s and searches in ~20 ms on a
                   desktop JVM; a phone is slower. A binary format, or a prefix index, if either drags.
               - [ ] **Decide how far the bundled places, streets and postcodes reach** (maintainer,
