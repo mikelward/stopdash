@@ -358,6 +358,15 @@ object JourneyAlerts {
     }
 
     /**
+     * Every line [journey] rides, either way round: the line it was saved on and every line the app last
+     * found running directly between its ends ([pinnedLines]), as a ride is its two stops, not a line
+     * (maintainer, 2026-10-24: the 43 beside the 134). Never one the rider hid from it.
+     */
+    @WorkerThread
+    fun linesBetween(journey: FavoriteJourney, pinnedByOrigin: Map<String, Set<String>>): Set<String> =
+        (setOf(journey.lineId) + pinnedByOrigin.values.flatten()).filterTo(LinkedHashSet()) { it.isNotBlank() && !journey.hides(it) }
+
+    /**
      * What each journey's alert says, as far as a check can tell: the record ([announced]), overruled by
      * the alert actually up ([up], its own fingerprint), since an alert is posted before it's recorded and
      * the process can die between the two (Codex on #700). Every decision reads this, not the record alone.

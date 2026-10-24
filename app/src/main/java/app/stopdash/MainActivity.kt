@@ -366,6 +366,7 @@ import app.stopdash.ui.JourneyAlertsScreen
 import app.stopdash.ui.AlertLine
 import app.stopdash.ui.anyJourneyAlertsOn
 import app.stopdash.ui.journeyAlertSummaries
+import app.stopdash.ui.journeyLineLabels
 import app.stopdash.ui.JourneyAlertsUi
 import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
@@ -2464,6 +2465,22 @@ class MainActivity : ComponentActivity() {
                                         // A scan over the journeys, worked out off the main thread too.
                                         anyAlertsOn = anyJourneyAlertsOn(summaries),
                                         askLocation = !allTime && !locationDeclined && !schedules.isNullOrEmpty(),
+                                        // Every line each ride takes, from the pins the list last wrote: a ride is its two
+                                        // stops, not the line it was saved from (maintainer, 2026-10-24).
+                                        lineLabels = if (journeys == null) {
+                                            emptyMap()
+                                        } else {
+                                            val snapshot = withContext(Dispatchers.IO) {
+                                                try {
+                                                    DataStoreSnapshotStore.from(applicationContext, warn = ::logWidgetSnapshotWarning).load()
+                                                } catch (e: IOException) {
+                                                    // Unreadable: each row names the line it was saved on, as before any pins.
+                                                    logStarWarning("favorite rides: snapshot unreadable (${e::class.simpleName})")
+                                                    null
+                                                }
+                                            }
+                                            withContext(Workers.compute) { journeyLineLabels(journeys, snapshot) }
+                                        },
                                         // Carried with the journeys, so the two lists are shown together; a place end
                                         // under its place's name now, so a renamed Home is shown renamed.
                                         pending = withContext(Workers.compute) {
@@ -2674,7 +2691,7 @@ class MainActivity : ComponentActivity() {
                                     val listAlertWriteFailed by JourneyAlertWrites.failed.collectAsStateWithLifecycle()
                                     val journeyAlertsPaused by JourneyAlertPause.paused.collectAsStateWithLifecycle()
                                     FavoriteJourneysScreen(
-                                        state = FavoriteJourneysUi(journeysShown?.journeys, pending = journeysShown?.pending.orEmpty(), loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), anyAlertsOn = journeysShown?.anyAlertsOn == true, askLocation = journeysShown?.askLocation == true),
+                                        state = FavoriteJourneysUi(journeysShown?.journeys, pending = journeysShown?.pending.orEmpty(), loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), lineLabels = journeysShown?.lineLabels.orEmpty(), anyAlertsOn = journeysShown?.anyAlertsOn == true, askLocation = journeysShown?.askLocation == true),
                                         onBack = { favoriteJourneysOpen = false },
                                         onAdd = {
                                             JourneyAdds.dismiss()
@@ -8303,6 +8320,8 @@ internal class FavoriteJourneysList(
     val pending: List<app.stopdash.domain.PendingJourney> = emptyList(),
     // Some journey's alerts are on, worked out with [summaries] off the main thread.
     val anyAlertsOn: Boolean = false,
+    // Each journey's lines as its row names them ([journeyLineLabels]), worked out with the rest.
+    val lineLabels: Map<String, String> = emptyMap(),
 )
 
 internal object JourneyAlertWrites {

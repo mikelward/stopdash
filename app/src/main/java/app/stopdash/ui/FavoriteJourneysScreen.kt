@@ -45,6 +45,7 @@ import java.time.format.TextStyle
 import app.stopdash.domain.Hubs
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
@@ -99,6 +100,9 @@ data class FavoriteJourneysUi(
     // off the main thread): one line per watched direction, or none for "Tap to enable alerts". A journey
     // missing (not worked out yet, or the schedules unreadable) says nothing of alerts.
     val alertSummaries: Map<String, List<AlertLine>> = emptyMap(),
+    // Each journey's lines as its row names them, by key ([journeyLineLabels], worked out off the main thread);
+    // one missing names the line it was saved on.
+    val lineLabels: Map<String, String> = emptyMap(),
     // Some journey's alerts are on ([anyJourneyAlertsOn], worked out off the main thread), so the menu
     // offers Pause alerts.
     val anyAlertsOn: Boolean = false,
@@ -551,6 +555,7 @@ fun FavoriteJourneysScreen(
                                 JourneyRow(
                                     journey,
                                     alerts = state.alertSummaries[journey.key],
+                                    lines = state.lineLabels[journey.key] ?: journey.lineName,
                                     onRemove = { onRemove(journey) },
                                     onOpen = onOpenAlerts?.let { open -> { open(journey) } },
                                 )
@@ -636,6 +641,8 @@ private fun Note(text: String, error: Boolean = false) {
 private fun JourneyRow(
     journey: FavoriteJourney,
     alerts: List<AlertLine>?,
+    // Every line it rides ([journeyLineLabels]): a ride is its two stops, not the line it was saved from.
+    lines: String,
     onRemove: () -> Unit,
     onOpen: (() -> Unit)?,
 ) {
@@ -664,7 +671,7 @@ private fun JourneyRow(
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.semantics { contentDescription = spoken },
             )
-            journey.lineName.takeIf { it.isNotBlank() }?.let { line ->
+            lines.takeIf { it.isNotBlank() }?.let { line ->
                 Text(
                     text = line,
                     style = MaterialTheme.typography.bodyMedium,
@@ -777,6 +784,23 @@ internal suspend fun anyJourneyAlertsOn(
     summaries: Map<String, List<AlertLine>>,
     worker: CoroutineDispatcher = app.stopdash.domain.Workers.compute,
 ): Boolean = withContext(worker) { summaries.values.any { it.isNotEmpty() } }
+
+/**
+ * What each journey's row names as its lines, by journey key: every line it rides ([JourneyAlerts.linesBetween],
+ * from [snapshot]'s pins), by name, a route by its number (the 43 before the 134), not only the line it was saved
+ * from (maintainer, 2026-10-24). With no pins yet it names the line it was saved on.
+ */
+@WorkerThread
+internal fun journeyLineLabels(journeys: List<FavoriteJourney>, snapshot: DeparturesSnapshot?): Map<String, String> {
+    val pinned = JourneyAlerts.pinnedLines(snapshot)
+    val names = JourneyAlerts.lineNames(snapshot)
+    return journeys.associate { journey ->
+        val labels = JourneyAlerts.linesBetween(journey, pinned[journey.key].orEmpty()).map { id ->
+            names[id] ?: journey.lineName.takeIf { id.equals(journey.lineId, ignoreCase = true) && it.isNotBlank() } ?: id
+        }
+        journey.key to labels.distinct().sortedWith(HomeLines::compareNatural).joinToString(", ")
+    }
+}
 
 /**
  * What each journey's row in Settings says of its alerts ([FavoriteJourneysUi.alertSummaries]): for
