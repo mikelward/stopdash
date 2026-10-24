@@ -1617,6 +1617,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         watch, search and Lines stop using them; the gold bar, the route page's unpin star and the rows' Unpin
         go with them. Meanwhile a pinned row whose long press opens "Add favorite…" at once (no menu: a
         station page's rows, a ride's own line) is unpinned only from its route page's star.
+  - [ ] **One way to add a favorite, everywhere** (maintainer, 2026-10-24, after an inventory of every place
+        a ride or place is saved). In order, one PR each:
+    - [x] **Wording**: every action says "Add favorite ride" or "Add favorite place" (and Remove …), "…" only
+          where a picker follows.
+    - [ ] **Long press opens a menu everywhere**, listing the favorite actions that apply; no long press saves on
+          its own (a route page's stop and line-map station, a trip card, a near-me row). A tap on a starred stop
+          still removes its ride.
+    - [ ] **Fill the gaps with the same menu items**: "Add favorite ride…" in the ⋮ of a trip's route page, On
+          the way's and a favorite ride's page; "Add favorite place" in the ⋮ of a stop's details opened from a
+          route page (it has no way to save the place today); a search row's menu offering the rides from it.
+    - [ ] **Awaiting the maintainer: the star in a stop's top bar always means the ride to it**, its place moving
+          into ⋮ as "Add favorite place" (today the same star saves a place on a stop opened from Lines…).
+    - [ ] **Deferred: a ride from a stop opened from Lines…**, which has no boarding stop: ask for the other
+          end, perhaps offering only stations on that line.
   - [ ] **Stop letters on a bus route's map** (maintainer, 2026-10-23): the route map names a pole as
         "– Stop N"; how it should show the letter on the pole is to be designed with the maintainer first.
 
