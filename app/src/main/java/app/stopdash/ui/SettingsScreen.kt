@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.SelectableChipColors
 import androidx.compose.material3.MaterialTheme
@@ -86,6 +87,7 @@ import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MAX_FONT_SCALE
 import app.stopdash.domain.MIN_FONT_SCALE
 import app.stopdash.domain.fontScalePercent
+import app.stopdash.domain.stepFontScale
 import app.stopdash.sync.DriveSyncStatus
 import app.stopdash.sync.DriveSyncView
 import java.time.ZoneId
@@ -945,7 +947,7 @@ private fun SettingErrorRow(text: String, onDismiss: () -> Unit, modifier: Modif
 
 /**
  * The text-size control: the title with the current percentage and a Reset, over a slider across
- * the offered range (SPEC *Display size*). It moves the same size a two-finger pinch does — both
+ * the offered range between a minus and a plus that move it one percent (SPEC *Display size*). It moves the same size a two-finger pinch does — both
  * write one value — so a user who can't pinch (or would rather not) has an equivalent control.
  *
  * The slider is hosted at the **unscaled** density ([StableInputDensity]): the size it drags
@@ -992,23 +994,41 @@ private fun TextSizeRow(fontSize: FontSizeState) {
                 }
             }
         }
-        StableInputDensity {
-            Slider(
-                value = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE),
-                onValueChange = {
-                    dragging = true
-                    fontSize.preview(it)
-                },
-                onValueChangeFinished = {
-                    dragging = false
-                    fontSize.commit(fontSize.scale)
-                },
-                valueRange = MIN_FONT_SCALE..MAX_FONT_SCALE,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("textSizeSlider")
-                    .semantics { contentDescription = sliderDescription },
-            )
+        // A minus and a plus either side of the slider, one whole percent a tap, applied and saved
+        // at once like Reset: the exact size a drag can make hard to land on.
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = { fontSize.chooseScale(stepFontScale(fontSize.scale, -1)) },
+                enabled = percent > fontScalePercent(MIN_FONT_SCALE),
+                modifier = Modifier.testTag("textSizeSmaller"),
+            ) {
+                Icon(RemoveIcon, contentDescription = stringResource(R.string.settings_text_size_smaller))
+            }
+            StableInputDensity {
+                Slider(
+                    value = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE),
+                    onValueChange = {
+                        dragging = true
+                        fontSize.preview(it)
+                    },
+                    onValueChangeFinished = {
+                        dragging = false
+                        fontSize.commit(fontSize.scale)
+                    },
+                    valueRange = MIN_FONT_SCALE..MAX_FONT_SCALE,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("textSizeSlider")
+                        .semantics { contentDescription = sliderDescription },
+                )
+            }
+            IconButton(
+                onClick = { fontSize.chooseScale(stepFontScale(fontSize.scale, 1)) },
+                enabled = percent < fontScalePercent(MAX_FONT_SCALE),
+                modifier = Modifier.testTag("textSizeLarger"),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.settings_text_size_larger))
+            }
         }
     }
 }

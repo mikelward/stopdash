@@ -956,7 +956,7 @@ class SettingsScreenScreenshotTest {
 
     /**
      * The text-size controls render inside the theme, which provides the shared font-size state:
-     * the labeled slider (at the default system size) and the pinch switch (SPEC *Display size*).
+     * the labeled slider (at the default system size) between its minus and plus, and the pinch switch (SPEC *Display size*).
      * They appear above the live-widget row, so the recorded settings snapshots capture them too.
      */
     @Test
@@ -971,6 +971,10 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithText("Text size").assertIsDisplayed()
         composeRule.onNodeWithText("105%").assertIsDisplayed()
         composeRule.onNodeWithTag("textSizeSlider").assertExists()
+        composeRule.onNodeWithContentDescription("Smaller text").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Larger text").assertIsDisplayed()
+        composeRule.onNodeWithTag("textSizeSlider").performScrollTo()
+        captureSnapshot("settings-text-size.png")
         composeRule.onNodeWithText("Pinch to resize text").assertIsDisplayed()
         composeRule.onNodeWithTag("pinchSwitch").assertIsOn()
     }
