@@ -4610,7 +4610,9 @@ factor and the cards' 1/105%, and a change made in the app redraws a placed widg
 Two controls change the one stored size, kept in sync because they write the same value: a
 **slider** on Settings and a **two-finger pinch anywhere in the app** (a pinch resizes the
 *app*, not the page it happened on). A switch on Settings gates the pinch, for a user who
-would rather not resize by accident. Both move the size *live* as they are used and persist
+would rather not resize by accident. Two fingers down are a pinch, never a long press: once a
+second finger lands, a long press the first one started opens no menu (favorite, hide, more), so
+resizing never pops one up mid-gesture (maintainer, 2026-10-24). Both move the size *live* as they are used and persist
 once, when the gesture or drag ends; a size arriving from storage while the fingers are down
 is held rather than snapping the text out from under them. The size is warmed into memory at
 startup so the first frame is already the user's size — corrected a frame later on a cold

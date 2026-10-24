@@ -796,7 +796,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                             detectTapGestures(
                                 onPress = { if (opens) showPress(it, presses) },
                                 onTap = if (opens) ({ _ -> currentOpen?.invoke() }) else null,
-                                onLongPress = {
+                                onLongPress = unlessPinchAt {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     currentSave?.invoke()
                                 },

@@ -613,7 +613,7 @@ private fun Modifier.rowClicks(onClick: () -> Unit, onLongClick: (() -> Unit)?, 
     if (onLongClick == null) {
         clickable(onClick = onClick)
     } else {
-        combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = longClickLabel)
+        combinedClickable(onClick = onClick, onLongClick = unlessPinch(onLongClick), onLongClickLabel = longClickLabel)
     }
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */

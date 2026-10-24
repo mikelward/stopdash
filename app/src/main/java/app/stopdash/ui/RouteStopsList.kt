@@ -664,7 +664,7 @@ private fun StopOnRail(
                                 onPress = { if (opens) showPress(it, presses) },
                                 onTap = if (opens) ({ _ -> currentOnOpen?.invoke() }) else null,
                                 onLongPress = if (toggles) {
-                                    { _ ->
+                                    unlessPinchAt {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         currentOnClick?.invoke()
                                     }
