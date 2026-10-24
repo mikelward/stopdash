@@ -8,6 +8,7 @@ import app.stopdash.domain.Connections
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RouteStop
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -35,6 +36,13 @@ internal val LocalAddFavoriteRide = staticCompositionLocalOf<((open: () -> Unit)
  * page's is ([RideAdds]). Provided by the activity; null (a test) offers none.
  */
 internal val LocalAddTripRide = staticCompositionLocalOf<((FavoriteJourney, LineSequence?) -> Unit)?> { null }
+
+/**
+ * A ride picked on a trip's route page ("Add favorite ride…" in its menu): saved as a near-me row's route page saves
+ * one ([RouteDetailScreen]'s `onPickTo`), said on the trip ([RideAdds]). Provided by the activity; null (a test)
+ * offers none.
+ */
+internal val LocalAddRouteRide = staticCompositionLocalOf<((DepartureRow, RouteStopsUi.Loaded, RouteStop) -> Unit)?> { null }
 
 /**
  * Whether [row] can be a favorite ride's start: a line to ride, rail or bus (the lines a ride follows), and a train

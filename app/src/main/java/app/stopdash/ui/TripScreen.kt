@@ -1719,6 +1719,9 @@ private fun TripContent(
             else -> UsageEvent.Screen.ROUTE
         },
     )
+    // Picking where a favorite ride from the page's train goes ("Add favorite ride…" in its menu), kept with the page.
+    var detailPicking by rememberSaveable(detailOpened) { mutableStateOf(false) }
+    val addRouteRide = LocalAddRouteRide.current
     if (detailRow != null) {
         RouteDetailScreen(
             lineOpen = routeLineOpen,
@@ -1743,7 +1746,18 @@ private fun TripContent(
                 state.live[detailRow.stopId]?.failed == true,
             now = now,
             onToggleStar = {},
-            onBack = { detailKey = null },
+            // Picking, Back only stops it, as on the near-me list's page picked from its menu.
+            onBack = { if (detailPicking) detailPicking = false else detailKey = null },
+            picking = detailPicking,
+            // The ride saved off the page, which closes to the trip, where its outcome is said ([RideAdds]).
+            onPickTo = addRouteRide?.let { add ->
+                { loaded, stop ->
+                    add(detailRow, loaded, stop)
+                    detailPicking = false
+                    detailKey = null
+                }
+            },
+            onStartPicking = { detailPicking = true },
             focus = detailDestination?.let { RouteFocus(it, detailBranch) },
             // A leg with no train to follow still shows its line's stops, from the leg's own route.
             onDismissAlert = alerts.onDismiss?.takeIf { detailRow.status != null }?.let { dismiss -> { dismiss(detailRow) } },
