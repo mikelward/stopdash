@@ -158,6 +158,8 @@ internal fun RidePage(
         row = row,
         isStarred = false,
         starrable = false,
+        // A stop tapped on its list opens its details over the page, as on a route page's.
+        onOpenStop = LocalOpenRouteStop.current,
         disruptionUnknown = disruptionUnknown,
         disruptionChecking = disruptionChecking,
         lineUnknown = lineUnknown,

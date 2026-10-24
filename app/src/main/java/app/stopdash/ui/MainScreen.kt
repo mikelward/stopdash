@@ -7389,6 +7389,9 @@ internal fun RouteDetailScreen(
     // Opens a tapped stop's details over this page, headed by the departure followed, with Go and the
     // journey there to favorite (maintainer, 2026-10-09). Null leaves a tap inert.
     onOpenStop: ((RouteStopOpen) -> Unit)? = null,
+    // A trip's own route page (planned or on the way): a stop's details opened from it offer no Go and no journey to
+    // star, as On the way's Show stops (maintainer, 2026-10-23), since either would stand in for the trip itself.
+    ofTrip: Boolean = false,
     // Whether its line's page ("View line") is open over it: held by the caller, whose usage stats count
     // the page shown ([UsageEvent.Screen.LINE]); one of its own otherwise.
     lineOpen: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
@@ -8132,7 +8135,7 @@ internal fun RouteDetailScreen(
                 RouteStopOpen(
                     stationId = sequence?.stopAreas?.get(stopId).orEmpty().ifBlank { stopId },
                     name = name.ifBlank { stopId },
-                    journey = journey,
+                    journey = journey.takeUnless { ofTrip },
                     interchangeId = sequence?.stopHubs?.get(stopId).orEmpty(),
                     stopId = stopId,
                     line = LineRef(row.lineId, row.lineName.ifBlank { row.lineId }, row.mode),
@@ -8143,7 +8146,7 @@ internal fun RouteDetailScreen(
                     position = position,
                     boarding = if (at != null) at == 0 else loaded?.stops?.firstOrNull()?.id == stopId,
                     ridden = ridden,
-                    go = if (ridden && loaded != null && followed != null) {
+                    go = if (!ofTrip && ridden && loaded != null && followed != null) {
                         RouteGo(loaded.stops, loaded.positions, sequence?.stopAreas.orEmpty(), followed.expectedArrival, at)
                     } else {
                         null

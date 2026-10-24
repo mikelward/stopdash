@@ -1417,6 +1417,9 @@ private fun BoardRoutePage(
                     // Nothing on the trip stars a row, as on a trip's own route pages.
                     isStarred = false,
                     starrable = false,
+                    // A stop tapped on its list opens its details over the page, as on the near-me list's.
+                    onOpenStop = LocalOpenRouteStop.current,
+                    ofTrip = true,
                     // The line's check alone vouches for it here: the trip's own check tells of its stops, on the
                     // trip under this page.
                     disruptionUnknown = status.unknown,
