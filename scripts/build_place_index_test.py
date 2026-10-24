@@ -57,6 +57,39 @@ class PlaceOfTest(unittest.TestCase):
         self.assertIsNone(place_of({"name": "A", "public_transport": "station", "shop": "kiosk"}))
         self.assertIsNone(place_of({"name": "A Pier", "amenity": "ferry_terminal", "man_made": "pier"}))
 
+    def test_any_other_public_tag_says_what_an_attraction_is(self):
+        # An attraction tag says a place is worth seeing, not what it is.
+        cathedral = {"name": "Omega Cathedral", "tourism": "attraction", "amenity": "place_of_worship",
+                     "building": "cathedral", "religion": "christian"}
+        self.assertEqual(("amenity=place_of_worship", True), place_of(cathedral))
+        self.assertEqual("church", place_type("amenity=place_of_worship", cathedral))
+        for tags, category in (
+            ({"landuse": "cemetery"}, "landuse=cemetery"),
+            ({"leisure": "park"}, "leisure=park"),
+            ({"place": "square"}, "place=square"),
+            ({"amenity": "theatre"}, "amenity=theatre"),
+            ({"leisure": "stadium"}, "leisure=stadium"),
+            ({"shop": "department_store"}, "shop=department_store"),
+            ({"historic": "castle"}, "historic=castle"),
+        ):
+            self.assertEqual((category, True), place_of({"name": "Alpha", "tourism": "attraction", **tags}), category)
+
+    def test_an_attractions_building_names_its_type(self):
+        outline = {"name": "Omega Cathedral", "tourism": "attraction", "building": "cathedral", "wikidata": "Q1"}
+        self.assertEqual(("building=cathedral", True), place_of(outline))
+        self.assertEqual("church", place_type("building=cathedral", outline))
+        self.assertEqual(("building=stadium", True), place_of({"name": "A", "tourism": "attraction", "building": "stadium"}))
+        # A shop or an office is only what it was built as.
+        for building in ("yes", "retail", "office", "commercial"):
+            self.assertEqual(("tourism=attraction", True),
+                             place_of({"name": "A", "tourism": "attraction", "building": building}), building)
+
+    def test_an_attraction_with_nothing_else_to_say_stays_one(self):
+        self.assertEqual(("tourism=attraction", True), place_of({"name": "Alpha Wheel", "tourism": "attraction"}))
+        # Over a business it shelters: a famous market hall's cafe isn't what it is.
+        self.assertEqual(("tourism=attraction", True),
+                         place_of({"name": "Alpha Hall", "tourism": "attraction", "amenity": "cafe"}))
+
     def test_a_plaque_is_no_destination_but_a_war_memorial_is(self):
         self.assertIsNone(place_of({"name": "A", "historic": "memorial", "memorial": "plaque"}))
         self.assertEqual(("historic=memorial", True), place_of({"name": "A", "historic": "memorial", "memorial": "war_memorial"}))
