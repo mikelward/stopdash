@@ -6290,6 +6290,8 @@ class MainScreenScreenshotTest {
         fun top(text: String) = composeRule.onNodeWithText(text).getUnclippedBoundsInRoot().top
         val rideHeading = composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Warren Street, Tube"))
         assertTrue(rideHeading.getUnclippedBoundsInRoot().top < top("King's Cross St. Pancras"))
+        // With the gold star a ride's own heading has, so it doesn't read as a stop's (bug report, 2026-10-24).
+        composeRule.onNodeWithTag("rideStar", useUnmergedTree = true).assertExists()
         // Its train, then the station's starred row first, then its platforms by number, not by when trains leave:
         // Platform 1's train (1 min) before Platform 3's (2 min) before Platform 4's (5 min), though Platform 7's
         // (2 min) and 6's (4 min) leave sooner than 4's.

@@ -1440,8 +1440,9 @@ by platform first; a platform's or a ride's own view doesn't. The card's rows st
 never sorted by when trains leave: its **starred rows first**, then each
 platform in turn by number (a bus stop's poles by letter), a line twice as thick between those blocks so the grouping
 reads without a heading for each. A favorite ride boarding at the station is **a group of its own just before the
-station's**, headed as a station is ("Highgate ➔ Bank": its mode's icon, its ends abbreviated evenly where the line is short,
-how far the station is, a chevron folding it apart from the station), over a card of its trains; a tap opens its train as the ride's card would (maintainer,
+station's**, headed as a station is ("Highgate ➔ Bank ★": its mode's icon, its ends abbreviated evenly where the line is short,
+the gold star a ride's heading always carries so it doesn't read as a stop's (bug report, 2026-10-24), how far the station
+is, a chevron folding it apart from the station), over a card of its trains; a tap opens its train as the ride's card would (maintainer,
 2026-10-23). With no direct train due, its trains to change from fill that card, each destination in brackets
 at its size ("(Morden/Charing X)"; where to change is only heard, a second line being too small to read), with no
 dash for the direct train it hasn't got. A ride boarding at two places has each train in the group before the station it
@@ -1452,7 +1453,10 @@ station gives it no group at all: its trains lead its station's card, after the 
 after where it goes (maintainer, 2026-10-23). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
 group just before the station's too, headed the same way, its own line with a spinner or dash and what it says under
 it as By stop/platform draws them: a closure, a far end it couldn't check, trains behind "+N more" or routes it
-couldn't check. A ride boarding nowhere on the list, and a faraway one, keep their places atop and at the foot of the list. With
+couldn't check. A ride boarding at a station the list hasn't loaded (a farther place) is headed the same way, with how far its own stop is, and
+drawn among the stations by that distance, just before the first one farther away (or after them all), rather than atop the
+list above nearer stations (bug report, 2026-10-24); one with no distance yet leads the list, headed the same way. A faraway
+ride keeps its place at the foot of the list. With
 no platform headings there's one distance per station, so a bus stop says its nearest pole's. Stations go nearest
 first with **no starred band**: a starred row leads its own station rather than lifting it to the top. A station's
 notice sits under its heading and folds with it, on a searched station's page too (By stop/platform puts its notices
