@@ -155,13 +155,7 @@ class LineSearchScreenshotTest {
 
     // The Victoria line from Victoria to Warren Street, public stations, as a route page's stop list opens it.
     private val victoriaLine = LineRef("victoria", "Victoria", "tube")
-    private val toWarrenStreet = app.stopdash.domain.FavoriteJourney(
-        app.stopdash.domain.JourneyEnd("940GZZLUVIC", "Victoria"),
-        app.stopdash.domain.JourneyEnd("940GZZLUWRR", "Warren Street"),
-        "victoria",
-        lineName = "Victoria",
-        mode = "tube",
-    )
+    private val toWarrenStreet = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("940GZZLUVIC", "Victoria"), app.stopdash.domain.JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(app.stopdash.domain.LineRef("victoria", "Victoria", "tube")))
 
     private fun routeMode(
         journey: StationJourneyState? = StationJourneyState(toWarrenStreet, saved = false, failed = false) {},

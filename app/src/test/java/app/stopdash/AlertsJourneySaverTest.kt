@@ -2,6 +2,7 @@ package app.stopdash
 
 import androidx.compose.runtime.saveable.SaverScope
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyEnd
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -13,7 +14,7 @@ class AlertsJourneySaverTest {
 
     @Test
     fun `the journey comes back with everything the screen draws from`() {
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston", areaId = "940GZZLUEUS"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern", "Northern", "tube")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston", areaId = "940GZZLUEUS"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "Northern", "tube")))
         val saved = with(AlertsJourneySaver) { scope.save(journey) }!!
         assertEquals(journey, AlertsJourneySaver.restore(saved))
     }

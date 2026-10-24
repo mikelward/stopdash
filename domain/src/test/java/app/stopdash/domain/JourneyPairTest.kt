@@ -19,8 +19,8 @@ class JourneyPairTest {
     fun `two stations on one line make a journey on it, each end named as picked`() {
         val result = JourneyPair.resolve("King's Cross St. Pancras", kingsCross, "Waterloo", waterloo) as JourneyPair.Result.Found
         val journey = result.journey
-        assertEquals("northern", journey.lineId)
-        assertEquals("Northern", journey.lineName)
+        assertEquals("northern", journey.lineIds.single())
+        assertEquals("Northern", journey.lines.single().name)
         assertEquals("tube", journey.mode)
         assertEquals(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras", 51.53, -0.12, "940GZZLUKSX"), journey.from)
         assertEquals("940GZZLUWLO", journey.to.stopId)
@@ -56,9 +56,10 @@ class JourneyPairTest {
         ) + euston
         val kxBus = listOf(StopLocation("490000000B", "King's Cross Station", 51.53, -0.12, listOf(LineRef("30", "30", "bus")), clusterId = "490G00000001")) + kingsCross
         val rail = JourneyPair.resolve("Euston", busAndTube, "King's Cross St. Pancras", kxBus) as JourneyPair.Result.Found
-        assertTrue(rail.journey.lineId in setOf("northern", "victoria"))
+        // Every rail line between the two stations picked, and no bus.
+        assertEquals(setOf("northern", "victoria"), rail.journey.lineIds.toSet())
         val bus = JourneyPair.resolve("Euston", busAndTube.take(1), "King's Cross St. Pancras", kxBus.take(1)) as JourneyPair.Result.Found
-        assertEquals("30", bus.journey.lineId)
+        assertEquals("30", bus.journey.lineIds.single())
         assertEquals("490G00000000", bus.journey.from.areaId)
         // A cluster id that's only the stop's name is no stop area.
         val named = listOf(StopLocation("490000000C", "Somewhere", 51.5, -0.1, listOf(LineRef("30", "30", "bus")), clusterId = "Somewhere"))
@@ -146,7 +147,7 @@ class JourneyPairTest {
         // Its stations, never the interchange's other bus stop, named apart.
         assertEquals(setOf("490012553B", "940GZZLUKSX", "910GKNGX"), placed.map { it.id }.toSet())
         val journey = (JourneyPair.resolve("St Pancras International", placed, "Waterloo", waterloo) as JourneyPair.Result.Found).journey
-        assertEquals("northern", journey.lineId)
+        assertEquals("northern", journey.lineIds.single())
     }
 
     @Test
@@ -165,7 +166,7 @@ class JourneyPairTest {
         assertEquals(listOf("HUBKGX"), JourneyPair.interchanges(listOf(kxRail)))
         val placed = JourneyPair.withPlace(listOf(kxRail), listOf(kxTube, kxPole))
         assertEquals(listOf("910GKNGX", "940GZZLUKSX", "490012553B"), placed.map { it.id })
-        assertEquals("northern", (JourneyPair.resolve("King's Cross", placed, "Waterloo", waterloo) as JourneyPair.Result.Found).journey.lineId)
+        assertEquals("northern", (JourneyPair.resolve("King's Cross", placed, "Waterloo", waterloo) as JourneyPair.Result.Found).journey.lineIds.single())
         // A stop in no interchange, or another one, has none to look in.
         assertEquals(emptyList<String>(), JourneyPair.interchanges(listOf(eustonPlaced)))
         assertEquals(listOf(eustonPlaced), JourneyPair.withPlace(listOf(eustonPlaced), listOf(kxPole.copy(interchangeId = "HUBEXA"))))
@@ -221,12 +222,12 @@ class JourneyPairTest {
         assertEquals(JourneyPair.Result.NoDirectLine, JourneyPair.resolve("Euston", picked, "King's Cross St. Pancras", kingsCross))
         val placed = JourneyPair.withPlace(picked, listOf(eustonPlaced))
         val journey = (JourneyPair.resolve("Euston", placed, "King's Cross St. Pancras", kingsCross) as JourneyPair.Result.Found).journey
-        assertEquals("northern", journey.lineId)
+        assertEquals("northern", journey.lineIds.single())
         assertEquals("940GZZLUEUS", journey.from.stopId)
         assertEquals("Euston", journey.from.name)
         // Rail before a bus that reaches it too.
         val busToo = listOf(kingsCross.single().copy(lines = kingsCross.single().lines + LineRef("X1", "X1", "bus")))
-        assertEquals("northern", (JourneyPair.resolve("Euston", placed, "King's Cross St. Pancras", busToo) as JourneyPair.Result.Found).journey.lineId)
+        assertEquals("northern", (JourneyPair.resolve("Euston", placed, "King's Cross St. Pancras", busToo) as JourneyPair.Result.Found).journey.lineIds.single())
     }
 
     @Test
@@ -235,7 +236,7 @@ class JourneyPairTest {
         assertEquals(JourneyPair.Result.NoDirectLine, JourneyPair.resolve("Example Road", from, "Euston", listOf(eustonPlaced)))
         val toAll = JourneyPair.withPlace(listOf(eustonPlaced), listOf(outside, farther))
         val journey = (JourneyPair.resolve("Example Road", from, "Euston", toAll) as JourneyPair.Result.Found).journey
-        assertEquals("X1", journey.lineId)
+        assertEquals("X1", journey.lineIds.single())
         assertEquals("bus", journey.mode)
         assertEquals("490EXAMPLEA", journey.to.stopId)
         assertEquals("Euston", journey.to.name)

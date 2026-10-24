@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
@@ -25,13 +26,13 @@ import kotlinx.coroutines.withContext
 val LocalLegTimetables = staticCompositionLocalOf<LegTimetables?> { null }
 
 /**
- * [journey] as a trip's ride from [origin], where its card boards, to its far end: its page's stop list and
+ * [journey] as a trip's ride on [line] from [origin], where its card boards, to its far end: its page's stop list and
  * timetable are then the ride's own, the direction and branch it takes, not a guess at the line's.
  */
-internal fun journeyRide(journey: FavoriteJourney, origin: String): TripLeg = TripLeg(
-    mode = journey.mode,
-    lineId = journey.lineId,
-    lineName = journey.lineName.ifBlank { journey.lineId },
+internal fun journeyRide(journey: FavoriteJourney, origin: String, line: LineRef): TripLeg = TripLeg(
+    mode = line.mode.ifBlank { journey.mode },
+    lineId = line.id,
+    lineName = line.name.ifBlank { line.id },
     fromId = origin,
     fromName = journey.from.name,
     toId = journey.to.stopId,

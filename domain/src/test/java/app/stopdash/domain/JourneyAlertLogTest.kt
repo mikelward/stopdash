@@ -11,7 +11,7 @@ import org.junit.Test
 class JourneyAlertLogTest {
     private val zone = ZoneId.of("Europe/London")
     private val now = Instant.parse("2026-10-09T06:16:00Z")
-    private val journey = FavoriteJourney(JourneyEnd("A", "Alpha"), JourneyEnd("B", "Beta"), "northern", "Northern", "tube")
+    private val journey = FavoriteJourney(JourneyEnd("A", "Alpha"), JourneyEnd("B", "Beta"), listOf(LineRef("northern", "Northern", "tube")))
 
     @Test
     fun `a scheduled check says when, in local time, and whether it asks TfL`() {

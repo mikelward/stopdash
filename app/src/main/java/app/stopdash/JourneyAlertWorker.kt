@@ -154,12 +154,12 @@ internal object JourneyAlertChecks {
 
     /**
      * What a post for a journey was made for: its open directions (their origins' stop ids), whose lines
-     * it speaks of, when it times out (the first of their windows to close), and the journey's saved
-     * line: one removed and saved again on another line is a different journey to the check that asked
-     * about the old one (Codex on #700). And the lines it hides: a check that read the ride before a hide
+     * it speaks of, when it times out (the first of their windows to close), and the lines found serving
+     * the journey: a check that asked about fewer lines than the ride now has answered for less than it
+     * (Codex on #700). And the lines it hides: a check that read the ride before a hide
      * asked about the line since hidden, so its answer is no longer the ride's (Codex on #874).
      */
-    data class Watch(val directions: Set<String>, val until: Instant?, val lineId: String = "", val hiddenLines: Set<String> = emptySet()) {
+    data class Watch(val directions: Set<String>, val until: Instant?, val lines: Set<String> = emptySet(), val hiddenLines: Set<String> = emptySet()) {
         /** How an alert made for this names it ([JourneyAlertResult.scope]). */
         val scope: String? get() = JourneyAlertResult.scope(directions, until)
     }
@@ -183,7 +183,7 @@ internal object JourneyAlertChecks {
     internal fun watches(journeys: List<FavoriteJourney>, schedules: Map<String, JourneyAlertSchedule>, at: java.time.ZonedDateTime): Map<String, Watch> {
         val directions = JourneyAlerts.directionsOf(journeys, schedules, at)
         return journeys.filter { directions[it.key].orEmpty().isNotEmpty() }
-            .associate { it.key to Watch(directions.getValue(it.key), JourneyAlerts.watchedUntil(it, schedules, at)?.toInstant(), it.lineId, Journeys.hiddenLineIds(it)) }
+            .associate { it.key to Watch(directions.getValue(it.key), JourneyAlerts.watchedUntil(it, schedules, at)?.toInstant(), it.lineIds.mapTo(HashSet()) { id -> id.lowercase() }, Journeys.hiddenLineIds(it)) }
     }
 
     /**

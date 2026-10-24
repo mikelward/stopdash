@@ -125,24 +125,14 @@ class HubsPickTest {
         // A pole the bundle doesn't hold leaves the area to decide; with no model the area stays.
         assertEquals("490000005A", YourStops.rowAt(area, "490099999X", hubs::asStopRow).id)
         assertEquals(area, YourStops.rowAt(area, "490000005B") { it })
-        val ride = FavoriteJourney(
-            from = JourneyEnd("490000005B", "Example Junction", areaId = "490G000005"),
-            to = JourneyEnd("490000001A", "Example Pancras", areaId = "490G000001"),
-            lineId = "1",
-            mode = "bus",
-        )
+        val ride = FavoriteJourney(from = JourneyEnd("490000005B", "Example Junction", areaId = "490G000005"), to = JourneyEnd("490000001A", "Example Pancras", areaId = "490G000001"), lines = listOf(LineRef("1", "", "bus")))
         assertEquals(listOf("490000005B", "490000001A"), YourStops.of(listOf(ride), emptyList(), emptyList(), emptyList(), asRow = hubs::asStopRow).favorites.map { it.id })
     }
 
     @Test
     fun `a favorite ride's end and a starred place at one bus stop are one search row, and a recent pick there leads`() {
         val bus = listOf("bus")
-        val ride = FavoriteJourney(
-            from = JourneyEnd("490000007A", "Example Green", areaId = "490G000007"),
-            to = JourneyEnd("490000001A", "Example Pancras", areaId = "490G000001"),
-            lineId = "1",
-            mode = "bus",
-        )
+        val ride = FavoriteJourney(from = JourneyEnd("490000007A", "Example Green", areaId = "490G000007"), to = JourneyEnd("490000001A", "Example Pancras", areaId = "490G000001"), lines = listOf(LineRef("1", "", "bus")))
         // The star's place was recorded by the other side's stop area.
         val starred = listOf(StationMatch("490G000008", "Example Green", bus))
         val yours = YourStops.of(listOf(ride), starred, recent = emptyList(), known = emptyList(), asRow = hubs::asStopRow)

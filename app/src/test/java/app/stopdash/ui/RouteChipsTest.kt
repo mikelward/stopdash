@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Departure
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
@@ -177,7 +178,7 @@ class RouteChipsTest {
                         now = now,
                         onRefresh = {},
                         stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
-                        journeys = listOf(FavoriteJourney(JourneyEnd(HGT, "Highgate"), JourneyEnd(CHX, "Charing Cross"), "northern")),
+                        journeys = listOf(FavoriteJourney(JourneyEnd(HGT, "Highgate"), JourneyEnd(CHX, "Charing Cross"), listOf(LineRef("northern", "", "")))),
                         rideGrouping = RideGrouping.RIDE,
                     )
                 }

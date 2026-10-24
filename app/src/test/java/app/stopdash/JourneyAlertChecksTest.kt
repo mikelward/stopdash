@@ -8,6 +8,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyAlertSchedule
@@ -42,7 +43,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class JourneyAlertChecksTest {
     private val context: Application = ApplicationProvider.getApplicationContext()
-    private val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern", "Northern", "tube")
+    private val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "Northern", "tube")))
 
     // A Monday at 06:00, before either default window.
     private val early = LocalDateTime.of(2026, 10, 5, 6, 0).atZone(ZoneId.systemDefault()).toInstant()
@@ -500,8 +501,8 @@ class JourneyAlertChecksTest {
         runBlocking { JourneyAlertChecks.sync(context, listOf(journey), both, mid.toInstant(), io = io) }
         val read = JourneyAlertChecks.watches(listOf(journey), both, mid).getValue(journey.key)
         val before = JourneyAlertChecks.syncs()
-        // Removed and saved again between the same stations on another line, while the check was out.
-        val other = journey.copy(lineId = "${journey.lineId}-other")
+        // Found running on another line too, while the check was out: the check asked about fewer lines than it has now.
+        val other = journey.copy(lines = journey.lines + app.stopdash.domain.LineRef("${journey.lineIds.single()}-other", "", ""))
         runBlocking { JourneyAlertChecks.sync(context, listOf(other), JourneyAlerts.defaultsFor(other), mid.toInstant(), io = io) }
         assertTrue(!stillApplies(before, read, listOf(journey), both, mid.toInstant()))
     }

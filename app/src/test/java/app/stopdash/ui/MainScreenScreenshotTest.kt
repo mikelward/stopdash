@@ -3659,7 +3659,7 @@ class MainScreenScreenshotTest {
             clusterId = "Victoria",
         )
         // Saved before ends' areas were, and neither its route nor its departures name one.
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "bus")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "bus")))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -3703,7 +3703,7 @@ class MainScreenScreenshotTest {
             clusterId = "HUBVIC",
         )
         // A mode saved as TfL cased it.
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "Bus")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "Bus")))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -3742,7 +3742,7 @@ class MainScreenScreenshotTest {
             },
         )
         // Saved before ends' areas were recorded, and its origin's departures not in.
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
         var opened: FavoriteJourney? = null
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3790,7 +3790,7 @@ class MainScreenScreenshotTest {
             clusterId = "HUBVIC",
         )
         // Saved before ends' areas and positions were recorded: no areaId, latitude or longitude.
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
         var opened: FavoriteJourney? = null
         var mapShown: JourneyEnd? = null
         composeRule.setContent {
@@ -3840,7 +3840,7 @@ class MainScreenScreenshotTest {
             listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5")),
             fetchedAt = now.minusSeconds(60),
         )
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
         var reopened = 0
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3900,10 +3900,7 @@ class MainScreenScreenshotTest {
             fetchedAt = now.minusSeconds(60),
         )
         // Victoria's published position, as TfL's route sequence gives it.
-        val journey = FavoriteJourney(
-            JourneyEnd("940GZZLUVIC", "Victoria", 51.4965, -0.1447, areaId = "HUBVIC"),
-            JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
-        )
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria", 51.4965, -0.1447, areaId = "HUBVIC"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
         var flipped: FavoriteJourney? = null
         var stationOpened: JourneyEnd? = null
         var mapShown: JourneyEnd? = null
@@ -4028,17 +4025,19 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Warren Street").assertExists()
 
-        // The line it was saved on opens "Add favorite…" at once, its route page asking "To…": there's nothing else to
-        // offer, and nothing is pinned.
+        // The line it was first saved on offers its hide too, as any of the ride's lines does (maintainer,
+        // 2026-10-24: no line is the ride's own); nothing is pinned.
         composeRule.onNodeWithText("Walthamstow Central").performTouchInput { longClick() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("routePickTitle").assertExists()
+        composeRule.onNodeWithText("on this ride", substring = true).assertExists()
         assertEquals(null, toggled)
-        composeRule.onAllNodesWithText("on this ride", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.waitForIdle()
 
-        // Another line's row opens a menu: add a favorite ride on it, or hide it from this ride.
+        // Another line's row opens the same menu: add a favorite ride on it, or hide it from this ride.
         composeRule.onNodeWithText("Warren Street").performTouchInput { longClick() }
         composeRule.onNodeWithText("Add favourite…").assertExists()
         composeRule.onNodeWithText("Hide X1 on this ride").performClick()
@@ -4071,9 +4070,7 @@ class MainScreenScreenshotTest {
         routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
         stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
     )
-    private val victoriaToWarrenStreet = FavoriteJourney(
-        JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
-    )
+    private val victoriaToWarrenStreet = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
 
     @Test
     fun `a far journey waits behind a button at the foot, unfetched, and revealing it loads it`() {
@@ -4270,7 +4267,7 @@ class MainScreenScreenshotTest {
             "NORTH" to "North End",
         ),
     )
-    private val kingToNorthEnd = FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), "northern")
+    private val kingToNorthEnd = FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), listOf(LineRef("northern", "", "")))
 
     private fun forkedOrigin(vararg departures: Pair<String, Long>) = StopArrivals(
         "KING", "King",
@@ -4308,7 +4305,7 @@ class MainScreenScreenshotTest {
                             now,
                             {},
                             stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
-                            journeys = listOf(FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), "l1", "L1", "bus")),
+                            journeys = listOf(FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), listOf(LineRef("l1", "L1", "bus")))),
                         )
                     }
                 }
@@ -4681,9 +4678,7 @@ class MainScreenScreenshotTest {
             // The way-back pole's routes: another bus, and an interchange line of no single mode.
             stopLines = mapOf("490000002S" to listOf(LineRef("b2", "B2", "bus"), LineRef("hubline", "Hub", ""))),
         )
-        val parkToHill = FavoriteJourney(
-            JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus",
-        )
+        val parkToHill = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), listOf(LineRef("b1", "B1", "bus")))
         var origins: List<StopRef> = emptyList()
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -4737,7 +4732,7 @@ class MainScreenScreenshotTest {
         listOf(Departure(line, line.uppercase(), "outbound", "Hill", null, now.plusSeconds(inSeconds), "bus")),
         fetchedAt = now.minusSeconds(60), clusterId = "490G1", stopLetter = letter,
     )
-    private val parkToHill = FavoriteJourney(JourneyEnd("490000001L", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+    private val parkToHill = FavoriteJourney(JourneyEnd("490000001L", "Park"), JourneyEnd("490000002N", "Hill"), listOf(LineRef("b1", "B1", "bus")))
 
     @Test
     fun `a bus journey shows buses from the stop beside its origin, under that stop's letter in its own view`() {
@@ -4868,9 +4863,7 @@ class MainScreenScreenshotTest {
 
     @Test
     fun `grouped by stop, a ride with nothing to group yet keeps its heading`() {
-        val journey = FavoriteJourney(
-            JourneyEnd("940GZZLUMRH", "Manor House"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "piccadilly",
-        )
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUMRH", "Manor House"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), listOf(LineRef("piccadilly", "", "")))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -4902,11 +4895,7 @@ class MainScreenScreenshotTest {
             "940GZZLUHR5" to "Heathrow Terminal 5",
         ),
     )
-    private val kingsCrossToHeathrow = FavoriteJourney(
-        JourneyEnd("940GZZLUKSX", "King's Cross & St Pancras International"),
-        JourneyEnd("940GZZLUHRC", "Heathrow Terminals 2 & 3"),
-        "piccadilly",
-    )
+    private val kingsCrossToHeathrow = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross & St Pancras International"), JourneyEnd("940GZZLUHRC", "Heathrow Terminals 2 & 3"), listOf(LineRef("piccadilly", "", "")))
     private fun kingsCrossPiccadilly() = StopArrivals(
         "940GZZLUKSX",
         "King's Cross St. Pancras",
@@ -4988,7 +4977,7 @@ class MainScreenScreenshotTest {
                             {},
                             stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
                             journeys = listOf(
-                                FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus"),
+                                FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), listOf(LineRef("b1", "B1", "bus"))),
                             ),
                         )
                     }
@@ -5202,7 +5191,7 @@ class MainScreenScreenshotTest {
             fetchedAt = now.minusSeconds(60),
             lines = listOf(LineRef("victoria", "Victoria", "tube")),
         )
-        val journey = victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")
+        val journey = victoriaToWarrenStreet.copy(lines = victoriaToWarrenStreet.lines.map { it.copy(name = "Victoria", mode = "tube") })
         var statuses by mutableStateOf(mapOf("victoria" to LineStatus("victoria", severity = 2, description = "Suspended")))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -5251,7 +5240,7 @@ class MainScreenScreenshotTest {
             fetchedAt = now.minusSeconds(60),
             lines = listOf(LineRef("victoria", "Victoria", "tube")),
         )
-        val journey = victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")
+        val journey = victoriaToWarrenStreet.copy(lines = victoriaToWarrenStreet.lines.map { it.copy(name = "Victoria", mode = "tube") })
         val asked = mutableListOf<String>()
         val timetables = app.stopdash.domain.LegTimetables(
             object : app.stopdash.domain.LegTimetableSource {
@@ -5316,7 +5305,7 @@ class MainScreenScreenshotTest {
             fetchedAt = now.minusSeconds(60),
             lines = listOf(LineRef("victoria", "Victoria", "tube")),
         )
-        val journey = victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")
+        val journey = victoriaToWarrenStreet.copy(lines = victoriaToWarrenStreet.lines.map { it.copy(name = "Victoria", mode = "tube") })
         val timetables = app.stopdash.domain.LegTimetables(
             object : app.stopdash.domain.LegTimetableSource {
                 override suspend fun legTimetable(lineId: String, fromId: String, toId: String) = app.stopdash.domain.StopTimetable(
@@ -5401,7 +5390,7 @@ class MainScreenScreenshotTest {
                             now,
                             {},
                             stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
-                            journeys = listOf(victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")),
+                            journeys = listOf(victoriaToWarrenStreet.copy(lines = victoriaToWarrenStreet.lines.map { it.copy(name = "Victoria", mode = "tube") })),
                             rideGrouping = RideGrouping.RIDE,
                         )
                     }
@@ -5549,9 +5538,7 @@ class MainScreenScreenshotTest {
 
     @Test
     fun `a journey whose route isn't known yet says it's checking, not that there are no trains`() {
-        val journey = FavoriteJourney(
-            JourneyEnd("940GZZLUMRH", "Manor House"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "piccadilly",
-        )
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUMRH", "Manor House"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), listOf(LineRef("piccadilly", "", "")))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -6223,7 +6210,7 @@ class MainScreenScreenshotTest {
                 starred = starred,
                 stopDistanceMeters = stopDistanceMeters,
                 journeys = listOf(
-                    FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "tube"),
+                    FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "tube"))),
                 ),
                 onToggleJourney = {},
                 onHideMode = {},
@@ -6374,7 +6361,7 @@ class MainScreenScreenshotTest {
                             {},
                             stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0),
                             journeys = listOf(
-                                FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GEdgware", "Edgware"), "northern"),
+                                FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GEdgware", "Edgware"), listOf(LineRef("northern", "", ""))),
                             ),
                             onToggleJourney = {},
                             onHideMode = {},
@@ -6399,11 +6386,14 @@ class MainScreenScreenshotTest {
         assertTrue(top("(High Barnet", substring = true) < top("King's Cross St. Pancras"))
         assertTrue(top("King's Cross St. Pancras") < top("Morden"))
         captureSnapshot("main-station-groups-ride-change.png", heightPx = 2400)
-        // A long press on the ride's train does what its own card does, never hiding the mode everywhere: on the line
-        // it was saved on, "Add favorite…" at once, its route page asking "To…".
+        // A long press on the ride's train does what its own card does, never hiding the mode everywhere: it offers
+        // the ride's own hide, as on any of its lines.
         composeRule.onNodeWithText("(High Barnet", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithText("on this ride", substring = true).assertExists()
+        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.waitForIdle()

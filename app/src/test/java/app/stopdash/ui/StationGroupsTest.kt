@@ -4,6 +4,7 @@ import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.StarredRow
@@ -59,7 +60,7 @@ class StationGroupsTest {
 
     @Test
     fun `a ride's station is its origin's place, else its origin's stop area, else none, with its own mode`() {
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUVIC", "Victoria"), "victoria", mode = "tube")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUVIC", "Victoria"), listOf(LineRef("victoria", "", "tube")))
         val card = JourneyCard(journey, JourneyCardState.NotChecked(), boardingIds = listOf("940GZZLUKSX"))
         assertEquals("KX|TUBE", rideStation(card, mapOf("940GZZLUKSX" to "KX"), emptyMap()))
         // Every row of its origin moved onto its card: the origin's StopArea still finds the station.
@@ -68,12 +69,12 @@ class StationGroupsTest {
         // Not yet placed: its saved origin.
         assertEquals("KX|TUBE", rideStation(card.copy(boardingIds = emptyList()), mapOf("940GZZLUKSX" to "KX"), emptyMap()))
         // A rail ride boarding at the same stop is the place's rail station, never its Underground one.
-        assertEquals("KX|RAIL", rideStation(card.copy(journey = journey.copy(mode = "national-rail")), mapOf("940GZZLUKSX" to "KX"), emptyMap()))
+        assertEquals("KX|RAIL", rideStation(card.copy(journey = journey.copy(lines = journey.lines.map { it.copy(mode = "national-rail") })), mapOf("940GZZLUKSX" to "KX"), emptyMap()))
     }
 
     @Test
     fun `a ride's trains go to the card of the station each leaves from, its own where that isn't listed`() {
-        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far"), "line")
+        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far"), listOf(LineRef("line", "", "")))
         val trains = JourneyCardState.Trains(listOf(row("A1", "A"), row("B1", "B"), row("C1", "C")))
         val card = JourneyCard(journey, trains, boardingIds = listOf("A1", "B1", "C1"), destinationIds = setOf("Z"))
         val rows = stationRideRows(mapOf("A" to listOf(card))) { mapOf("A1" to "A", "B1" to "B")[it.stopId] }
@@ -136,7 +137,7 @@ class StationGroupsTest {
 
     @Test
     fun `a ride with only trains to change from is drawn under its station, each saying where to change`() {
-        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far"), "line")
+        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far"), listOf(LineRef("line", "", "")))
         val change = app.stopdash.domain.JourneyChange("FORK", "Fork", row("A1", "A"))
         val card = JourneyCard(journey, JourneyCardState.Trains(emptyList(), changes = listOf(change)), boardingIds = listOf("A1"), destinationIds = setOf("Z"))
         assertTrue(joinsStationCard(card))
@@ -165,7 +166,7 @@ class StationGroupsTest {
             stopName = "Near", key = "n2", showHeader = true, rows = listOf(row("N2", "N")), placeKey = "N",
             qualifier = StopQualifier.Platform("2", null),
         )
-        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", "")))
         // Its train, a row of its own (the list has already left it out of the platform's).
         val train = row("N2", "N").copy(destination = "Far end")
         val ride = JourneyCard(journey, JourneyCardState.Trains(listOf(train)), boardingIds = listOf("N2"), destinationIds = setOf("Z"))
@@ -191,7 +192,7 @@ class StationGroupsTest {
 
     @Test
     fun `grouped by platform, a ride stays in its platforms only where the list shows every train of it`() {
-        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", "")))
         // Rows with trains: a line's status alone shows none of a ride's.
         fun train(minutes: Long) = app.stopdash.domain.Departure("line", "Line", "", "Somewhere", null, Instant.EPOCH.plusSeconds(minutes * 60), "tube")
         fun timed(stopId: String, vararg minutes: Long) = row(stopId, "N").copy(upcoming = minutes.map(::train))
@@ -221,7 +222,7 @@ class StationGroupsTest {
             stopName = "Near", key = "n1", showHeader = true, rows = listOf(row("N1", "N")), placeKey = "N",
             qualifier = StopQualifier.Platform("1", null),
         )
-        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", "")))
         val trains = JourneyCardState.Trains(
             listOf(
                 row("N1", "N").copy(destination = "Far end", platform = "Platform 1"),
@@ -277,7 +278,7 @@ class StationGroupsTest {
             qualifier = StopQualifier.Platform("1", null),
         )
         val far = group("f", "F1", "F")
-        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), "line")
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", "")))
         val ride = JourneyCard(journey, JourneyCardState.Trains(listOf(row("N1", "N"))), boardingIds = listOf("N1"), destinationIds = setOf("Z"))
         val layout = StationLayout.of(
             groups = listOf(far, nearPlatform2, nearPlatform1),
@@ -308,7 +309,7 @@ class StationGroupsTest {
         val near = group("n", "N1", "N")
         val far = group("f", "F1", "F")
         fun ride(from: String, to: String) =
-            JourneyCard(FavoriteJourney(JourneyEnd(from, from), JourneyEnd(to, to), "line"), JourneyCardState.NotChecked(), boardingIds = listOf(from))
+            JourneyCard(FavoriteJourney(JourneyEnd(from, from), JourneyEnd(to, to), listOf(LineRef("line", "", ""))), JourneyCardState.NotChecked(), boardingIds = listOf(from))
         val between = ride("M1", "Z")
         val beyond = ride("X1", "Z")
         val unmeasured = ride("U1", "Z")
@@ -364,7 +365,7 @@ class StationGroupsTest {
         val bus = StopGroup(stopName = "Place", key = "b", showHeader = true, rows = listOf(row("A3", "A").copy(mode = "bus")), placeKey = "A")
         val rail = StopGroup(stopName = "Place", key = "r", showHeader = true, rows = listOf(row("A2", "A").copy(mode = "national-rail")), placeKey = "A")
         fun ride(mode: String) = JourneyCard(
-            FavoriteJourney(JourneyEnd("A9", "Place"), JourneyEnd("Z", "Far end"), lineId = mode, mode = mode),
+            FavoriteJourney(JourneyEnd("A9", "Place"), JourneyEnd("Z", "Far end"), listOf(LineRef(mode, "", mode))),
             JourneyCardState.Trains(emptyList()),
             boardingIds = listOf("A9"),
         )
@@ -387,7 +388,7 @@ class StationGroupsTest {
         val own = group("a", "A1", "A")
         val heldPlace = group("h", "H1", "H")
         val fartherPlace = group("f", "F1", "F")
-        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far end"), "line")
+        val journey = FavoriteJourney(JourneyEnd("A1", "Place"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", "")))
         val ride = JourneyCard(
             journey,
             JourneyCardState.Trains(listOf(row("A1", "A"), row("H1", "H"), row("F1", "F"))),

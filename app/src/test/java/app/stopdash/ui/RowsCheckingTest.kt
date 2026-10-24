@@ -121,7 +121,7 @@ class RowsCheckingTest {
 
     @Test
     fun a_row_with_no_answer_of_its_own_spins_at_once() {
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", "Victoria", "tube")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "Victoria", "tube")))
         val line = JourneyCard(journey, JourneyCardState.Checking("victoria's route")).lineCard
         composeRule.mainClock.autoAdvance = false
         show(line, { RowsChecking("Checking trains…", atOnce = true) })
@@ -133,7 +133,7 @@ class RowsCheckingTest {
 
     @Test
     fun a_ride_with_no_train_due_draws_its_line_with_a_dash_heard_as_none_soon() {
-        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", "Victoria", "tube")
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "Victoria", "tube")))
         val line = JourneyCard(journey, JourneyCardState.Trains(emptyList())).lineCard
         show(line, { null }, noTrainsSpoken = "No trains to Warren Street soon")
         composeRule.waitForIdle()

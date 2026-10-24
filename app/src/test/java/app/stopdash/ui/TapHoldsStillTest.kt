@@ -117,7 +117,7 @@ class TapHoldsStillTest {
 
     // With [rideGrouping], a favorite ride from the first stop rides along, grouped that way.
     private fun opensFartherInPlace(stationGroups: Boolean, rideGrouping: RideGrouping? = null) {
-        val journeys = if (rideGrouping == null) emptyList() else listOf(FavoriteJourney(JourneyEnd("S1", "Stop 1"), JourneyEnd("D1", "Dest 1"), "l1", mode = "bus"))
+        val journeys = if (rideGrouping == null) emptyList() else listOf(FavoriteJourney(JourneyEnd("S1", "Stop 1"), JourneyEnd("D1", "Dest 1"), listOf(LineRef("l1", "", "bus"))))
         var farther by mutableStateOf(listOf(FartherCard(fartherPlace)))
         val departures = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
         // The activity merges an opened card's departures and distances into the list's own ([FartherMerge]).

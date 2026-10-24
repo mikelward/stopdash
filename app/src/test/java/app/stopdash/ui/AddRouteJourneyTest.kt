@@ -3,6 +3,7 @@ package app.stopdash.ui
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRoute
@@ -87,7 +88,7 @@ class AddRouteJourneyTest {
         // The end's position and stop area ride along, as a long press on the route page saves them.
         assertEquals(51.5247, saved.to.latitude!!, 0.0)
         assertEquals("HUBWRR", saved.to.areaId)
-        assertEquals("victoria", saved.lineId)
+        assertEquals("victoria", saved.lineIds.single())
         assertEquals("tube", saved.mode)
     }
 
@@ -102,13 +103,7 @@ class AddRouteJourneyTest {
         )
         assertEquals(1, journeys.state.value!!.size)
         // Saved the other way round (from Warren Street to here): the route page places it here, so it's this ride.
-        val back = FavoriteJourney(
-            JourneyEnd("940GZZLUWRR", "Warren Street"),
-            JourneyEnd("940GZZLUVIC", "Victoria"),
-            "victoria",
-            "Victoria",
-            "tube",
-        )
+        val back = FavoriteJourney(JourneyEnd("940GZZLUWRR", "Warren Street"), JourneyEnd("940GZZLUVIC", "Victoria"), listOf(LineRef("victoria", "Victoria", "tube")))
         val reversed = Journeys(listOf(back))
         assertEquals(
             JourneyAddNote.AlreadySaved("Victoria", "Warren Street"),
@@ -158,7 +153,7 @@ class AddRouteJourneyTest {
     }
 
     // A trip card's "Add favorite": its direct ride, saved through the same save.
-    private val tripRide = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", "Victoria", "tube")
+    private val tripRide = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "Victoria", "tube")))
 
     @Test
     fun `a trip's ride saves once, then says it's a favorite already`() = runTest {

@@ -189,7 +189,10 @@ object HomeLines {
      * (AGENTS.md *Main thread: read and dispatch only*). An unreadable store (null) reads as none.
      */
     fun journeyLineIds(journeys: Flow<List<FavoriteJourney>?>, compute: CoroutineDispatcher): Flow<Set<String>> =
-        journeys.map { list -> list.orEmpty().mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) } }.flowOn(compute)
+        journeys.map { list ->
+            // Every line found serving each ride, but those the rider hid from it.
+            list.orEmpty().flatMapTo(HashSet()) { ride -> ride.lineIds.filter { it.isNotBlank() && !ride.hides(it) } }
+        }.flowOn(compute)
 
     /**
      * The lines the trip on the way still rides ([RouteDisruption.comingLineRefs]), for the row to cover as the
@@ -464,11 +467,11 @@ object HomeLines {
             stop.departures.forEach { if (wanted(it.lineId)) refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode)) }
             stop.lines.forEach { if (wanted(it.id)) refs.putIfAbsent(it.id, it) }
         }
-        rides.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
+        rides.forEach { ride -> ride.lines.forEach { if (it.id.isNotBlank() && !ride.hides(it.id)) refs.putIfAbsent(it.id, it) } }
         tripLines.forEach { refs.putIfAbsent(it.id, it) }
         // Asked about with the always-covered lines: a farther card's line too, whose stop isn't fetched.
         val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
-            rides.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
+            rides.forEach { ride -> ride.lineIds.forEach { if (it.isNotBlank() && !ride.hides(it)) add(it) } }
             tripLines.forEach { add(it.id) }
             if (watchNearby) screen?.farIds?.let { addAll(it) }
         }

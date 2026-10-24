@@ -1641,7 +1641,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         avoid this happening again"): `TapHoldsStillTest` taps each kind (open a faraway place, fold a station, a
         platform, a ride) in each grouping, stepping the list's worker one answer at a time, and checks the tapped
         heading never moves; AGENTS.md asks for a case with each new grouping or tap.
-  - [ ] **A favorite ride is its two stops, on every route between them** (maintainer, 2026-10-24: "all routes from
+  - [x] **A favorite ride is its two stops, on every route between them** (maintainer, 2026-10-24: "all routes from
         origin to destination. That's what we asked the user to enter"; "there should be no persisted concept of which
         line it was pinned from. Rides are between stops. Period."). A ride stores its two ends and nothing about a
         line: saving one from a route page (or a long press, or Add) records the stops alone, and every use of the
@@ -1650,6 +1650,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         Hiding a line from a ride stays the one deliberate way to narrow it, and any line can be hidden, the one it
         was saved from included. Rides saved by older builds drop their line on read. Settings' row naming only the
         saved line (a bus ride listing one of the two routes between its stops) is the visible symptom.
+  - [ ] **A ride's no-trains row names all its lines**: while a ride has no train to show, its card's one
+        row carries the first line found serving it (its pill, spinner or dash); a shared pill of every line
+        (as a trip's shared leg draws two bus numbers in one) would name them all, as the ride now holds them all alike.
+  - [ ] **The list's ride lines and bus areas off composition**: `MainScreen`'s `cardJourneys`, `journeyStarLines`
+        and `journeyAreas` are `remember` blocks that walk the rides on the main thread (as they did before a ride
+        held several lines; Codex on #1205). Work them out with the list's worker state and test that they run off it.
   - [ ] **A dismissed pole closure says nothing**: By stop/platform keeps a "Closed" chip on the pole's heading
         while its buses are listed; By station has no pole heading, so once the notice is dismissed nothing
         says that pole is closed.
