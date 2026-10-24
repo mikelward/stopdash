@@ -154,6 +154,33 @@ class PagesTest {
     }
 
     @Test
+    fun `a trip opened alone over a route page leaves no station list under it`() {
+        // Directions on a route page on the near-me list: the stop's trip right over it, Back returning there.
+        pages.openStationTripAlone(EUSTON)
+        shown(Page.StationTrip(EUSTON))
+        assertEquals(Page.Station(EUSTON), pages.station)
+        assertFalse(pages.hasStationList(EUSTON))
+        pages.closeStationTrip(EUSTON)
+        shown()
+        assertEquals(null, pages.station)
+        // Closed by the station's own Back, the same.
+        pages.openStationTripAlone(EUSTON)
+        pages.closeStation()
+        shown()
+        // A stop whose list is open already: its own trip over its list, as its To… opens.
+        openStationId = KINGS_CROSS
+        pages.openStationTripAlone(KINGS_CROSS)
+        pages.openStationTrip(KINGS_CROSS)
+        shown(Page.Station(KINGS_CROSS), Page.StationTrip(KINGS_CROSS))
+        assertTrue(pages.hasStationList(KINGS_CROSS))
+        pages.closeStations()
+        // Plan again from a trip opened alone: the new station opens where the trip was.
+        pages.openStationTripAlone(EUSTON)
+        pages.replaceStation(VICTORIA)
+        shown(Page.Station(VICTORIA))
+    }
+
+    @Test
     fun `the end of the station flow closes a change of start's search with the stations`() {
         // A station opened over Lines…, with no search under it: its From row's search over it.
         linesOpen = true

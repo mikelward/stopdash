@@ -1101,6 +1101,14 @@ running here, has the same page: "No live times", then "No trains due here in th
 timetable", and each way's next trains after the gap; where its timetable can't say, just that TfL has no live
 times there. A line's disruption or a stop's notice says why itself, and gives no timetable.
 
+**Directions from the stop** (maintainer, 2026-10-24): a route page opened from a list (the near-me list, or a
+station's) has the near-me list's **Directions** button in its bar (To… for a screen reader), which opens the To… search
+from the stop the page was opened at, as that stop's own page's To… does: the trip plans from that stop, with no walk
+from where the rider is. Leaving that trip with nothing picked (Back from its search, or from its routes) returns to the
+route page, not to the stop's list, which the rider never asked for; where the page is on that stop's own list
+already, it's that stop's To…, its Back to the list as ever. A trip's or a ride's route page, already a trip's, has
+none.
+
 **The timetable page** (maintainer, 2026-10-22): every route page of a TfL line has a **Timetable** button (a clock,
 in its bar), whatever the line's status or the stop's notices, since the rider asked for the timetable itself: a
 closed station or a suspended line doesn't hide it. It opens a page of its own over the route page with the day's

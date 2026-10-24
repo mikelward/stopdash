@@ -375,6 +375,7 @@ import app.stopdash.ui.addPendingJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
 import app.stopdash.ui.setRideLineHidden
 import app.stopdash.ui.LocalOpenRouteStop
+import app.stopdash.ui.LocalPlanFromStop
 import app.stopdash.ui.LocalPlaceIcons
 import app.stopdash.ui.RouteStopOpen
 import app.stopdash.ui.RouteGo
@@ -1175,7 +1176,13 @@ class MainActivity : ComponentActivity() {
                 // ([carryTo]), at the trip's To… it was picked for, even if it was open already (Codex on #1147).
                 // A station's trip is a page of its own over it, open while its To… is ([Page.StationTrip]).
                 val syncStationTrip: (String) -> Unit = { id ->
-                    if (stations[id]?.to?.open == true) pages.openStationTrip(id) else pages.closeStationTrip(id)
+                    if (stations[id]?.to?.open == true) {
+                        pages.openStationTrip(id)
+                    } else {
+                        pages.closeStationTrip(id)
+                        // A trip opened alone (a route page's Directions) was all the station had: it closes with it.
+                        if (!pages.hasStationList(id)) stations.remove(id)
+                    }
                 }
                 val openStation: (String, OpenStation, Boolean) -> Unit = { id, station, carryTo ->
                     stations[id] = OpenStation.opened(stations[id], station, carryTo)
@@ -1973,6 +1980,15 @@ class MainActivity : ComponentActivity() {
                     // Over whatever is up, even if the details it replaces were open under it.
                     pages.show(Page.RouteStop)
                 } }
+                // A route page's Directions: the To… search from the stop it was opened at, right over the route page,
+                // with no page of the stop's list under it, so Back and the back swipe return to the route page
+                // ([Pages.openStationTripAlone]). A stop whose list is open already (the page is on it) shows its own To….
+                val planFromStop: (String, String) -> Unit = { id, name ->
+                    originChange = null
+                    stations[id] = OpenStation.opened(stations[id], OpenStation(name, to = ToChoice.NONE.startPicking()), true)
+                    pages.openStationTripAlone(id)
+                    syncStationTrip(id)
+                }
                 CompositionLocalProvider(
                     // A search row's menu: the row on the map, or the favorite-places editor filled in with it,
                     // Save or Cancel returning to the search, as from a stop's details.
@@ -1987,6 +2003,7 @@ class MainActivity : ComponentActivity() {
                         removePlace = ::removeFavoritePlace,
                     ),
                     LocalOpenRouteStop provides openRouteStop,
+                    LocalPlanFromStop provides planFromStop,
                     LocalHideUndoCarrier provides hideUndoCarrier,
                     // The saved places' own icons, for a From/To bar naming one of them.
                     LocalPlaceIcons provides savedPlacesState.icons,
@@ -4977,6 +4994,7 @@ class MainActivity : ComponentActivity() {
             // pages do: the details they'd open sit under this page, stepped aside for it, so a tap would open them
             // unseen and in place of the ones it was opened from (Codex on #736).
             LocalOpenRouteStop provides null,
+            LocalPlanFromStop provides null,
             LocalOpenLineStop provides null,
         ) {
             val stopsModel: StationStopsViewModel = viewModel(

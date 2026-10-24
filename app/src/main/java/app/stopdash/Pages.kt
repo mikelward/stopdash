@@ -157,8 +157,16 @@ internal class Pages(val stack: NavBackStack<Page>) {
             if (trip >= 0) stack[trip] = Page.HereTrip(value)
         }
 
-    /** The station showing, of those open: the one opened last, on top or under what's over it. */
-    val station: Page.Station? get() = stack.lastOrNull { it is Page.Station } as Page.Station?
+    /**
+     * The station showing, of those open: the one opened last, on top or under what's over it. A trip opened alone
+     * ([openStationTripAlone]) is its station's, with no list under it.
+     */
+    val station: Page.Station?
+        get() = when (val page = stack.lastOrNull { it is Page.Station || it is Page.StationTrip }) {
+            is Page.Station -> page
+            is Page.StationTrip -> Page.Station(page.id)
+            else -> null
+        }
 
     /**
      * The station [id]'s page showing: opened over whatever is on top, or brought up from under it ([show]), its trip
@@ -199,7 +207,26 @@ internal class Pages(val stack: NavBackStack<Page>) {
         if (at >= 0) stack.add(at + 1, trip)
     }
 
-    /** The trip from the station [id] closed, as its To… closes, the station's list showing under it. */
+    /**
+     * The trip from the station [id] showing alone, over whatever is up, with no page of the station's list under it
+     * (a route page's Directions): Back and the back swipe from it return to the page it was opened over. A station
+     * whose list is open already opens its trip over that ([openStation]).
+     */
+    fun openStationTripAlone(id: String) {
+        if (Page.Station(id) in stack) return openStation(id)
+        stack.remove(Page.StartSearch(id))
+        val trip = Page.StationTrip(id)
+        stack.remove(trip)
+        stack.add(trip)
+    }
+
+    /** Whether the station [id] has a page of its list open, rather than its trip alone ([openStationTripAlone]). */
+    fun hasStationList(id: String): Boolean = Page.Station(id) in stack
+
+    /**
+     * The trip from the station [id] closed, as its To… closes, the station's list showing under it; a trip opened
+     * alone ([openStationTripAlone]) closes the station with it.
+     */
     fun closeStationTrip(id: String) {
         stack.remove(Page.StationTrip(id))
     }
@@ -224,6 +251,12 @@ internal class Pages(val stack: NavBackStack<Page>) {
      */
     fun replaceStation(id: String) {
         val replaced = station ?: return openStation(id)
+        // A trip opened alone has no list of its own to replace: the new station opens over what it was opened over.
+        if (replaced !in stack) {
+            stack.remove(Page.StartSearch(replaced.id))
+            stack.remove(Page.StationTrip(replaced.id))
+            return openStation(id)
+        }
         // Its trip and a change of start's search over it go too: Plan again starts the trip afresh, and would leave
         // them over the station that takes its place. The new trip opens with the To… it comes with.
         stack.remove(Page.StartSearch(replaced.id))
