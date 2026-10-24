@@ -93,18 +93,25 @@ class StationGroupsTest {
         val checking = card.copy(state = JourneyCardState.Checking("route"))
         assertTrue(stationRideRows(mapOf("A" to listOf(checking))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
         // As does one with more to say than its trains, so what it says stays with them under its heading: a
-        // route it couldn't check, a far end it couldn't check, a closure, a train held again while it checks.
+        // route it couldn't check, a far end it couldn't check, a closure.
         val saying = listOf(
             card.copy(state = trains.copy(incomplete = true)),
             card.copy(destinationUnchecked = true),
             card.copy(closures = listOf(listOf(row("Z", "Z")))),
-            card.copy(state = JourneyCardState.Checking("route", held = trains)),
         )
         saying.forEach { ride ->
             assertFalse(joinsStationCard(ride))
             assertTrue(stationRideRows(mapOf("A" to listOf(ride))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
         }
         assertTrue(joinsStationCard(card))
+        // Checking again, holding the trains it drew last, it stays in the card rather than flash out to a heading of
+        // its own each refresh.
+        val again = card.copy(state = JourneyCardState.Checking("route", held = trains))
+        assertTrue(joinsStationCard(again))
+        assertEquals(
+            stationRideRows(mapOf("A" to listOf(card))) { mapOf("A1" to "A")[it.stopId] }.byStation.mapValues { (_, p) -> p.map { it.first.stopId } },
+            stationRideRows(mapOf("A" to listOf(again))) { mapOf("A1" to "A")[it.stopId] }.byStation.mapValues { (_, p) -> p.map { it.first.stopId } },
+        )
         // A ride boarding nowhere listed leads the list instead.
         assertTrue(stationRideRows(mapOf(null to listOf(card))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
     }
@@ -300,6 +307,19 @@ class StationGroupsTest {
         val byRide = layout(app.stopdash.domain.RideGrouping.RIDE).rideGroups.getValue("N|TUBE")
         assertEquals(1, byRide.size)
         assertEquals(2, byRide.single().card.group.rows.size)
+        // Checking again, held from its last check, it keeps its groups, both ways.
+        val again = ride.copy(state = JourneyCardState.Checking("route", held = trains))
+        fun checkingLayout(grouping: app.stopdash.domain.RideGrouping) = StationLayout.of(
+            groups = listOf(platform1),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(again),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = grouping,
+        ).rideGroups.getValue("N|TUBE")
+        assertEquals(1, checkingLayout(app.stopdash.domain.RideGrouping.RIDE).size)
+        assertEquals(byStop.size, checkingLayout(app.stopdash.domain.RideGrouping.STOP).size)
     }
 
     @Test

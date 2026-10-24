@@ -1070,6 +1070,7 @@ fun MainScreen(
     val ridesInPlatforms = shown?.ridesInPlatforms.orEmpty()
     val platformRideRowsShown = shown?.rideRows.orEmpty()
     val platformRideEndsShown = shown?.rideEnds.orEmpty()
+    val checkingRidesShown = shown?.checkingRides.orEmpty()
     val journeyRowsShown = shown?.cardRows.orEmpty()
     val rows = shown?.rows.orEmpty()
     val dismissedClosures = shown?.dismissedClosures.orEmpty()
@@ -2015,6 +2016,7 @@ fun MainScreen(
                             rideGrouping = rideGrouping,
                             platformRideRows = if (platformRows != null) emptyMap() else platformRideRowsShown,
                             platformRideEnds = if (platformRows != null) emptyMap() else platformRideEndsShown,
+                            checkingRides = checkingRidesShown,
                             ridePlaceMeters = shownRidePlaceMeters,
                             rideMeters = shownRideMeters,
                             onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
@@ -2258,6 +2260,8 @@ private fun LoadedContent(
     // A favorite ride's trains kept in their own platforms' groups (Group favorite rides: By station), by identity.
     platformRideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     platformRideEnds: Map<DepartureRow, Set<String>> = emptyMap(),
+    // The rides checking again, by journey key ([ShownRows.checkingRides]), whose trains drawn among the list's say so.
+    checkingRides: Set<String> = emptySet(),
     ridePlaceMeters: Map<String, Double> = emptyMap(),
     rideMeters: Map<String, Double> = emptyMap(),
     onRevealFar: (() -> Unit)? = null,
@@ -2547,6 +2551,7 @@ private fun LoadedContent(
                         farJourneyMeters = farJourneyMeters,
                         rideGrouping = rideGrouping,
                         platformRideRows = platformRideRows,
+                        checkingRides = checkingRides,
                         platformRideEnds = platformRideEnds,
                         ridePlaceMeters = ridePlaceMeters,
                         rideMeters = rideMeters,
@@ -3157,6 +3162,8 @@ private fun DepartureList(
     // A favorite ride's trains kept in their own platforms' groups (Group favorite rides: By station), by identity.
     platformRideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     platformRideEnds: Map<DepartureRow, Set<String>> = emptyMap(),
+    // The rides checking again, by journey key ([ShownRows.checkingRides]), whose trains drawn among the list's say so.
+    checkingRides: Set<String> = emptySet(),
     // How far each place the cards board from is, worked out with the rows ([ridePlaceMeters]).
     ridePlaceMeters: Map<String, Double> = emptyMap(),
     // How far the stop each card boards from is, by journey key, worked out with them ([rideMeters]).
@@ -3804,6 +3811,7 @@ private fun DepartureList(
                     // A ride's train kept in its platform opens as its ride's card would (Codex, #1185).
                     onOpenDetail = openAsRide(platformRideEnds, onOpenDetail, onOpenCardDetail),
                     rideRows = platformRideRows,
+                    checkingRides = checkingRides,
                     onHideRideLine = onHideRideLine,
                     onAddRailKey = onAddRailKey,
                     onHideMode = onHideMode,
@@ -4080,6 +4088,7 @@ private fun DepartureList(
                         // A long press hides the line from this ride alone, as its own card offers (SPEC *Hiding a line
                         // from a ride*), never the mode everywhere.
                         rideLineHide = rememberRideLineHide(ride.journey, onHideRideLine),
+                        checking = journeyChecking(ride.journey, ride.journey.key in checkingRides),
                         checkingStale = if (fetchingStops.isEmpty()) null else RowsChecking(stringResource(R.string.checking_stamp), stopIds = fetchingStops),
                     )
                 }
@@ -4120,6 +4129,7 @@ private fun DepartureList(
                     // A ride's train in the card (By station) opens as its ride's card would, and wears its star.
                     onOpenDetail = openAsRide(rideEnds, onOpenDetail, onOpenCardDetail),
                     rideRows = stationLayout?.rideJourneys.orEmpty(),
+                    checkingRides = checkingRides,
                     onHideRideLine = onHideRideLine,
                     rideChangeAt = stationLayout?.rideChangeAt.orEmpty(),
                     onAddRailKey = onAddRailKey,
@@ -4648,10 +4658,12 @@ internal fun rideStation(
  * A ride whose trains join its station's card, a star after each destination for its heading: one whose check is
  * done, with trains to show and nothing else to say. One with a closure, a far end it couldn't check, a train to
  * change for, trains behind "+N more" or routes it couldn't check keeps its heading under the station's, so what
- * it says stays with it; as does one checking again, whose times say so.
+ * it says stays with it. One checking again stays in the card by the trains it drew last ([drawn]), the card's own
+ * times saying it checks: leaving for a heading of its own each refresh flashed the list back to platform headings
+ * (maintainer, 2026-10-24).
  */
 internal fun joinsStationCard(card: JourneyCard): Boolean {
-    val trains = card.state as? JourneyCardState.Trains ?: return false
+    val trains = card.state.drawn ?: return false
     // Its trains to change from join too, each saying where to change ([StationRideRows.changeAt]), so a ride with no
     // direct train due draws no dash of its own above its station (maintainer, 2026-10-23).
     return (trains.drawnRows.isNotEmpty() || trains.visibleChanges.isNotEmpty()) && card.closures.isEmpty() &&
@@ -6493,6 +6505,9 @@ internal fun StopGroupCard(
     // long press hides a line from that ride alone, as the ride's own card offers, never the mode everywhere.
     rideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
+    // The rides checking again, by journey key ([ShownRows.checkingRides]): each of [rideRows] of one, its time held
+    // from the last check, fades as its ride's own card's would, never passing for a checked one (SPEC D4).
+    checkingRides: Set<String> = emptySet(),
 ) = CardTextSize {
     val group = card.group
     val rideStar = stringResource(R.string.ride_row_star)
@@ -6500,6 +6515,9 @@ internal fun StopGroupCard(
     // changes nothing on screen; a row with no answer of its own says so at once.
     val checkingShown = settled(checking != null, at = checking == null || checking.atOnce)
     val staleCheckingShown = settled(checkingStale != null, at = checkingStale == null)
+    val rideCheckingShown = settled(checkingRides.isNotEmpty(), at = checkingRides.isEmpty())
+    val rideCheckingSpoken = stringResource(R.string.journey_checking)
+    val rideCheckingBusSpoken = stringResource(R.string.journey_checking_bus)
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
     // (SPEC D8). Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
@@ -6530,6 +6548,8 @@ internal fun StopGroupCard(
                         // fetching a stale row's stop, whose guesses ("21:14?") it fades (SPEC D4).
                         val cardChecking = checking.takeIf { checkingShown }
                         val rowChecking = cardChecking
+                            ?: rowRide?.takeIf { rideCheckingShown && it.key in checkingRides }
+                                ?.let { RowsChecking(if (it.bus) rideCheckingBusSpoken else rideCheckingSpoken) }
                             ?: checkingStale?.takeIf { stale && staleCheckingShown && it.stopIds?.contains(row.stopId) != false }
                         val isStarred = StarredRow.of(row) in starred
                         if (!row.hasTrains) {

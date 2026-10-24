@@ -211,6 +211,9 @@ internal class ShownRows(
     val rideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     // Those rows' rides' far ends, by identity: tapped, a row opens its route page as its ride's card would.
     val rideEnds: Map<DepartureRow, Set<String>> = emptyMap(),
+    // The rides of [cards] checking again, by journey key: wherever the list draws their held trains (a platform's or
+    // station's card, a ride's group), those times say so, as the ride's own card's do (SPEC D4).
+    val checkingRides: Set<String> = emptySet(),
 )
 
 /**
@@ -554,6 +557,7 @@ internal fun shownRowsOf(
         joined,
         if (rideRows.isEmpty()) emptyMap() else rideRows,
         if (rideEnds.isEmpty()) emptyMap() else rideEnds,
+        cards.filter { it.state is JourneyCardState.Checking }.mapTo(HashSet()) { it.journey.key },
     )
 }
 

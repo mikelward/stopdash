@@ -1465,7 +1465,8 @@ leaves from (its own station's where that one is a loading or farther card, draw
 favorite rides** By stop/platform splits a ride boarding from several stops into a group per stop, each headed by the
 stop and its platform or pole ➔ where the ride goes ("King's X – Plat 5 ➔ Bank"), each just before its station's; By
 station gives it no group at all: its trains lead their own platform's rows in its station's card, each with the ride's star
-after where it goes (maintainer, 2026-10-23). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
+after where it goes (maintainer, 2026-10-23), and stays there while it checks again, so a refresh never flashes the list
+back to platform headings (maintainer, 2026-10-24). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
 group just before the station's too, headed the same way, its own line with a spinner or dash and what it says under
 it as By stop/platform draws them: a closure, a far end it couldn't check, trains behind "+N more" or routes it
 couldn't check. A ride boarding at a station the list hasn't loaded (a farther place) is headed the same way, with how far its own stop is, and
