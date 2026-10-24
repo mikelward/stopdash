@@ -1448,9 +1448,11 @@ its nearest stop is (where the list measures it: not a searched station's page) 
 of all its departures. The near-me list and a searched
 station's page follow it, each holding its placeholder until the choice is read, so a cold start never shows the list
 by platform first; a platform's or a ride's own view doesn't. The card's rows stay **grouped by platform**,
-never sorted by when trains leave: its **starred rows first**, then each
-platform in turn by number (a bus stop's poles by letter), a line twice as thick between those blocks so the grouping
-reads without a heading for each. A favorite ride boarding at the station is **a group of its own just before the
+never sorted by when trains leave: **each platform with a starred row or a favorite ride's train first**, those rows
+leading its other trains so what else leaves from where the rider stands follows straight on (a Bank ride's trains,
+then the Charing Cross trains from the same platform), then the platforms with neither (maintainer, 2026-10-24), each
+tier by number (a bus stop's poles by letter), a line twice as thick between platforms so the grouping reads without a
+heading for each. A favorite ride boarding at the station is **a group of its own just before the
 station's**, headed as a station is ("Highgate ➔ Bank ★": its mode's icon, its ends abbreviated evenly where the line is short,
 the gold star a ride's heading always carries so it doesn't read as a stop's (bug report, 2026-10-24), how far the station
 is, a chevron folding it apart from the station), over a card of its trains; a tap opens its train as the ride's card would (maintainer,
@@ -1460,7 +1462,7 @@ dash for the direct train it hasn't got. A ride boarding at two places has each 
 leaves from (its own station's where that one is a loading or farther card, drawn under its own heading). **Group
 favorite rides** By stop/platform splits a ride boarding from several stops into a group per stop, each headed by the
 stop and its platform or pole ➔ where the ride goes ("King's X – Plat 5 ➔ Bank"), each just before its station's; By
-station gives it no group at all: its trains lead its station's card, after the starred rows, each with the ride's star
+station gives it no group at all: its trains lead their own platform's rows in its station's card, each with the ride's star
 after where it goes (maintainer, 2026-10-23). A ride with no trains of its own group to show (still checking, none due) or more to say than its trains is a
 group just before the station's too, headed the same way, its own line with a spinner or dash and what it says under
 it as By stop/platform draws them: a closure, a far end it couldn't check, trains behind "+N more" or routes it
