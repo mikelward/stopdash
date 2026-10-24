@@ -1570,7 +1570,7 @@ a menu everywhere, and none saves on its own** (maintainer, 2026-10-24): a route
 saves the same journey, filled once saved, a tap then removing it (maintainer, 2026-10-09; a row of
 its own atop the stop's page from 2026-10-06): the discoverable path, the long press the shortcut. It waits on the saved journeys
 being read rather than guess which way a tap goes, says a change it couldn't save, and a removal
-drops the widget's pins as Settings' Remove does. The boarding stop's details offer no journey, and no star. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
+drops the widget's pins as Settings' Remove does. The boarding stop's details offer no journey, and no star. **A star in a top bar only ever means the ride** (maintainer, 2026-10-24): the stop's details save it as a favorite place from their ⋮ menu's **"Add favorite place"** instead, the boarding stop's too, as a stop opened from Lines… does. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
 favorite journeys the rider never meant to, which then pinned to the widget.
 **A long press on a route row asks where the ride goes** (maintainer, 2026-10-23, replacing pinning
 the row): its menu's **"Add favorite ride…"** opens the row's own route page, as a tap does, picking: titled **Add
@@ -4194,15 +4194,16 @@ interchange's other stations add (the rail lines beside a tube station), then th
 with no request, so a bus stop, which it doesn't hold, shows none. An index that can't be read is said in
 their place, **Couldn't load the lines here**, never shown as a stop with no lines (no Retry: the index is
 read once per process, so asking again would only say it again).
-A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
+Its ⋮ menu's **"Add favorite place"** **adds it as a favorite place** (maintainer, 2026-10-07; a star in its top bar until
+2026-10-24, when a top bar's star came to mean only the ride, and a stop with no boarding stop has none to save):
 the favorite-places editor opens over it, filled in as a custom place named for the station at its
 position (the index's, else its stops' center, as a pick from the place search, a lookup that fails
 offering a retry on its row), so the rider can still rename it or pick its icon and days before Save;
-Save or Cancel returns to the stop. Home and Work are set from Settings, as before. A pin beside the star **shows it on
+Save or Cancel returns to the stop. Home and Work are set from Settings, as before. A pin in its top bar **shows it on
 a map** (maintainer, 2026-10-07): the phone's maps app opens on a labeled pin at the stop's published
 position (the index's, else where the line's map placed it), never the rider's fix, as a tap on a
 near-me header's distance does; with no maps app it says so. The pin waits on the stop's links, so the
-index's position wins over the map's, and is greyed for a stop placed by neither. The star waits on the stop's links, which carry its position. Back returns to the line, its map just as it was,
+index's position wins over the map's, and is greyed for a stop placed by neither. "Add favorite place" waits on the stop's links, which carry its position. Back returns to the line, its map just as it was,
 scrolled and unfolded, Back from From's station page included; closing the line forgets it, so the line
 opened again starts at its top.
 A station's **facilities** close its details (maintainer, 2026-10-09), "Toilets · Waiting room · Taxi

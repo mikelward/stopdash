@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasText
@@ -333,23 +334,30 @@ class LineSearchScreenshotTest {
     }
 
     @Test
-    fun route_stop_with_no_journey_has_no_star() {
-        // Its boarding stop: no journey to favorite there, and no place favorite in its stead.
+    fun route_stop_with_no_journey_has_no_star_but_saves_its_place_from_the_menu() {
+        // Its boarding stop: no journey to favorite there, so no star, which only ever means the ride; the
+        // place is saved from ⋮ (maintainer, 2026-10-24).
+        var favorited = 0
         composeRule.setContent {
             StopDashTheme {
-                LineStopPage(
-                    name = "Victoria",
-                    distance = null,
-                    onFrom = {},
-                    onTo = {},
-                    onBack = {},
-                    onFavorite = {},
-                    route = routeMode(journey = null),
-                )
+                CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                    LineStopPage(
+                        name = "Victoria",
+                        distance = null,
+                        onFrom = {},
+                        onTo = {},
+                        onBack = {},
+                        onFavorite = { favorited++ },
+                        route = routeMode(journey = null),
+                    )
+                }
             }
         }
         composeRule.onNodeWithTag("routeStopJourney").assertDoesNotExist()
         composeRule.onNodeWithTag("lineStopFavorite").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.onNodeWithTag("lineStopFavorite").assertTextEquals("Add favourite place").performClick()
+        assertEquals(1, favorited)
     }
 
     @Test
@@ -464,18 +472,23 @@ class LineSearchScreenshotTest {
     }
 
     @Test
-    fun the_star_adds_the_stop_as_a_favorite_place_once_it_is_placed() {
+    fun the_menu_adds_the_stop_as_a_favorite_place_once_it_is_placed() {
         var ready by mutableStateOf(false)
         var favorited = 0
         composeRule.setContent {
             StopDashTheme {
-                LineStopPage(name = "Euston", distance = null, onFrom = {}, onTo = null, onBack = {}, actionsReady = ready, onFavorite = { favorited++ })
+                CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                    LineStopPage(name = "Euston", distance = null, onFrom = {}, onTo = null, onBack = {}, actionsReady = ready, onFavorite = { favorited++ })
+                }
             }
         }
+        // No star: with no ride to save, the top bar has none (maintainer, 2026-10-24).
+        composeRule.onNodeWithContentDescription("Add favourite place").assertDoesNotExist()
         // Waits on the stop's links, which carry where it is.
+        composeRule.onNodeWithContentDescription("More options").performClick()
         composeRule.onNodeWithTag("lineStopFavorite").assertIsNotEnabled()
         ready = true
-        composeRule.onNodeWithContentDescription("Add favourite place").performClick()
+        composeRule.onNodeWithTag("lineStopFavorite").performClick()
         assertEquals(1, favorited)
     }
 
