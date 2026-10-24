@@ -622,20 +622,73 @@ def geofabrik_md5(text):
     return m.group(1)
 
 
+# Geofabrik's server is shared and sometimes slow: a stalled or cut-off answer is asked for again,
+# resuming where it stopped, a few times with a growing pause, before the build gives up.
+DOWNLOAD_ATTEMPTS = 5
+USER_AGENT = "stopdash-place-index-builder (https://github.com/mikelward/stopdash)"
+
+
+def fetched(url, urlopen=urllib.request.urlopen, sleep=time.sleep, sink=None):
+    """[url]'s body, or with [sink] each chunk handed to it, resuming a transfer that stalls or is cut
+    off. Returns the bytes read (without [sink]) or how many were handed on (with it)."""
+    data, offset = bytearray(), 0
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        headers = {"User-Agent": USER_AGENT}
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        try:
+            with urlopen(urllib.request.Request(url, headers=headers), timeout=120) as response:
+                if offset and getattr(response, "status", 206) != 206:
+                    raise SystemExit(f"{url}: the server won't resume a cut-off download; not trusting it")
+                length = response.headers.get("Content-Length") if response.headers else None
+                expected = offset + int(length) if length and length.isdigit() else None
+                while chunk := response.read(1 << 20):
+                    offset += len(chunk)
+                    if sink:
+                        sink(chunk)
+                    else:
+                        data += chunk
+                if expected is None or offset == expected:
+                    return offset if sink else bytes(data)
+                print(f"{url}: cut off at {offset} of {expected} bytes", file=sys.stderr)
+        except (TimeoutError, ConnectionError, http.client.IncompleteRead, urllib.error.URLError) as e:
+            if isinstance(e, urllib.error.HTTPError) and e.code not in RETRIED_STATUSES:
+                raise
+            print(f"{url}: {type(e).__name__} after {offset} bytes", file=sys.stderr)
+        if attempt == DOWNLOAD_ATTEMPTS - 1:
+            raise SystemExit(f"{url}: no complete answer after {DOWNLOAD_ATTEMPTS} attempts")
+        pause = 10 * 2 ** attempt
+        print(f"{url}: waiting {pause} s", file=sys.stderr)
+        sleep(pause)
+
+
+def fetch_extract(url, path, urlopen=urllib.request.urlopen, sleep=time.sleep):
+    """Geofabrik's extract at [url], saved at [path] and checked against its MD5 sum. A mismatch is a
+    file republished while it downloaded when the sum has moved since, and is downloaded once more;
+    otherwise it is corrupt and the build stops."""
+    for _ in range(2):
+        expected = geofabrik_md5(fetched(url + ".md5", urlopen, sleep).decode("ascii", "replace"))
+        digest = hashlib.md5()
+        with open(path, "wb") as f:
+            def sink(chunk):
+                digest.update(chunk)
+                f.write(chunk)
+            fetched(url, urlopen, sleep, sink=sink)
+        if digest.hexdigest() == expected:
+            return
+        now = geofabrik_md5(fetched(url + ".md5", urlopen, sleep).decode("ascii", "replace"))
+        if now == expected:
+            break
+        print(f"{url}: republished while it downloaded; downloading it again", file=sys.stderr)
+    raise SystemExit(f"{url}: the download doesn't match Geofabrik's checksum; not reading it")
+
+
 def fetch_osm(directory):
     """Geofabrik's extracts, downloaded into [directory] and checked against Geofabrik's MD5 sums."""
     paths = []
     for name in OSM_EXTRACTS:
-        url = f"{GEOFABRIK}/{name}-latest.osm.pbf"
-        expected = geofabrik_md5(urllib.request.urlopen(url + ".md5", timeout=60).read().decode("ascii", "replace"))
         path = os.path.join(directory, f"{name}.osm.pbf")
-        digest = hashlib.md5()
-        with urllib.request.urlopen(url, timeout=300) as response, open(path, "wb") as f:
-            while chunk := response.read(1 << 20):
-                digest.update(chunk)
-                f.write(chunk)
-        if digest.hexdigest() != expected:
-            raise SystemExit(f"{name}: the download doesn't match Geofabrik's checksum; not reading it")
+        fetch_extract(f"{GEOFABRIK}/{name}-latest.osm.pbf", path)
         paths.append(path)
     return paths
 
