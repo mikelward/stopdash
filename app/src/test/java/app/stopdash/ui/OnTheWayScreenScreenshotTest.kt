@@ -162,9 +162,13 @@ class OnTheWayScreenScreenshotTest {
         heading: HeadingSource = HeadingSource { null },
         // The app menu, whose overflow holds a route page's "View line"; none by default.
         appMenu: AppMenuActions? = null,
+        // A ride picked on a train's route page ("Add favorite ride…"); none by default.
+        addRouteRide: ((app.stopdash.domain.DepartureRow, RouteStopsUi.Loaded, app.stopdash.domain.RouteStop) -> Unit)? = null,
     ) {
         composeRule.setContent {
-            androidx.compose.runtime.CompositionLocalProvider(LocalHeadingSource provides heading, LocalAppMenu provides appMenu) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalHeadingSource provides heading, LocalAppMenu provides appMenu, LocalAddRouteRide provides addRouteRide,
+            ) {
             StopDashTheme(dynamicColor = false) {
                 OnTheWayScreen(
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
@@ -947,6 +951,39 @@ class OnTheWayScreenScreenshotTest {
         routePageBack()
         composeRule.onNodeWithTag("onTheWayRoutePage").assertDoesNotExist()
         assertEquals(0, back)
+    }
+
+    @Test
+    fun a_trains_route_page_adds_a_favorite_ride_and_on_the_way_says_how_it_went() {
+        // Its menu offers "Add favorite ride…" as a trip's route page does (maintainer, 2026-10-24): the page asks
+        // "To…", Back only stops picking, and the save's outcome is said on On the way once the page is closed.
+        show(
+            trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)),
+            nextTrains = stanmoreBoard(21, 24),
+            appMenu = appMenu,
+            addRouteRide = { _, _, _ -> },
+        )
+        composeRule.onNodeWithText("Stanmore").performClick()
+        awaitRoutePage()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription(string(app.stopdash.R.string.menu_more)) and onRoutePage).performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertExists()
+        // Back stops picking, the page staying open.
+        routePageBack()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayRoutePage").assertExists()
+        // The page closed, a saved ride is said here.
+        routePageBack()
+        composeRule.waitForIdle()
+        try {
+            RideAdds.added.value = RideAdded("Wembley Park", "Stanmore", null)
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Added Wembley Park ⇄ Stanmore").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(null, RideAdds.added.value)
+        } finally {
+            RideAdds.shown()
+        }
     }
 
     @Test
