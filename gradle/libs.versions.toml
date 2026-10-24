@@ -1,6 +1,6 @@
 [versions]
 aboutlibraries = "15.3.0"
-androidlog = "5.1.83"
+androidlog = "5.1.92"
 agp = "9.4.1"
 # Lint's API rides AGP: its version is AGP's plus 23.0.0.
 lint = "32.4.1"
