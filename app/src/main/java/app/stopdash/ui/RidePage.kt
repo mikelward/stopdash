@@ -8,6 +8,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.stopdash.domain.RouteStop
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LegTimetables
@@ -142,6 +143,11 @@ internal fun RidePage(
     // Held as last drawn, its card gone from the list ([MainScreen]): nothing it shows is current any more, so it's
     // said as out of date and its timetable's trains, which need every check current, are left out.
     held: Boolean = false,
+    // "Add favorite ride…" from its menu (maintainer, 2026-10-24): [picking] asks "To…", a stop picked going to
+    // [onPickTo]; [onStartPicking] puts the page into it. Null offers none.
+    picking: Boolean = false,
+    onPickTo: ((RouteStopsUi.Loaded, RouteStop) -> Unit)? = null,
+    onStartPicking: (() -> Unit)? = null,
 ) {
     val row = view.row
     val disruptionUnknown = loaded.lineUncheckedFor(row) || row.stopId in loaded.stopsDisruptionUnknown
@@ -174,6 +180,10 @@ internal fun RidePage(
         nextTrains = nextTrains,
         // Where more than one way joins its ends, the rider chooses the one listed.
         rideChoices = true,
+        ofRide = true,
+        picking = picking,
+        onPickTo = onPickTo,
+        onStartPicking = onStartPicking,
         // Its card's closure notices and an unchecked far end, as the card says them: why its timetable is withheld.
         closures = view.closures,
         uncheckedEnd = view.card.journey.to.name.takeIf { view.card.destinationUnchecked },

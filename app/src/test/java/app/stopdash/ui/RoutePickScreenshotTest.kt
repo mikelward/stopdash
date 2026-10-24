@@ -235,6 +235,41 @@ class RoutePickScreenshotTest {
         assertEquals(listOf(RouteStop("940GZZLUWRR", "Warren Street")), picked)
     }
 
+    @Test
+    fun a_favorite_rides_page_offers_add_favorite_ride_with_no_train_on_its_line() {
+        // A favorite ride's own page, its line with no train now: its menu still offers "Add favorite ride…" from where
+        // the ride boards (maintainer, 2026-10-24), picking as a route page does.
+        var picking by mutableStateOf(false)
+        val picked = mutableListOf<RouteStop>()
+        setPage {
+            CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                RouteDetailScreen(
+                    row = row.copy(upcoming = emptyList()),
+                    isStarred = false,
+                    starrable = false,
+                    ofRide = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = stops,
+                    picking = picking,
+                    onPickTo = { _, stop -> picked += stop },
+                    onStartPicking = { picking = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
+        composeRule.onNodeWithText("Oxford Circus", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(RouteStop("940GZZLUOXC", "Oxford Circus")), picked)
+    }
+
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {
         if (!capturing()) return
         val root = composeRule.activity.window.decorView.rootView
