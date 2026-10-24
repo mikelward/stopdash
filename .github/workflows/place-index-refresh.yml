@@ -1,0 +1,177 @@
+name: place-index-refresh
+
+# Rebuilds the bundled place index (app/src/main/assets/places/place_index.tsv, and its ODbL notice)
+# from OpenStreetMap (Geofabrik's extracts), OS Code-Point Open and Wikidata, once a month or when
+# started by hand, and when it changed opens (or updates) a pull request with it. Unlike the
+# station refresh it doesn't merge itself: a person reads the summary first.
+#
+# Split like station-index-refresh.yml: the build job downloads and runs the builder with a
+# read-only token; the publish job runs nothing it downloaded — it only commits the built files and
+# opens the pull request, with the gradle-update environment's GRADLE_UPDATE_PAT (a pull request
+# opened with the default token starts no CI).
+#
+# Cost and reliability (AGENTS.md): 0 pounds — seven Geofabrik county extracts (about 600 MB, checked
+# against Geofabrik's MD5 sums), one ~20 MB Code-Point Open zip, a few hundred batched Wikidata
+# queries, and roughly 15 minutes of Actions time a month; nothing the app sends, so no Play Data
+# Safety or battery change. If a source is down or answers short (under 100,000 places, 30,000
+# streets, 150,000 postcodes, 500 neighborhoods or 5,000 Wikidata items with an article), the
+# builder refuses to write, the run fails (GitHub emails the owner) and the committed index stays.
+on:
+  schedule:
+    - cron: '17 4 3 * *'   # the 3rd of each month, off the top of the hour
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: place-index-refresh
+  cancel-in-progress: false
+env:
+  DIR: app/src/main/assets/places
+  BRANCH: place-index/refresh
+jobs:
+  build:
+    name: build place index
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      sha: ${{ steps.base.outputs.sha }}
+      tip: ${{ steps.base.outputs.tip }}
+    steps:
+      # main, whatever ref a manual run was started from: the refresh is proposed against main.
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+      # The commit built from, and the refresh branch's tip as the run starts (blank if none), which
+      # the publish job's push leases on.
+      - name: Record the base commit and the refresh branch's tip
+        id: base
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tip=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the builder's readers
+        run: python3 -m pip install --no-cache-dir osmium==4.3.2 pyproj==3.7.2
+      - name: Test the place index builder
+        run: python3 scripts/build_place_index_test.py
+      - name: Keep the committed index
+        run: |
+          mkdir -p build/old
+          cp "$DIR/place_index.tsv" build/old/place_index.tsv
+      - name: Build the index
+        run: python3 scripts/build_place_index.py --out "$DIR/place_index.tsv"
+      - name: Compare with the committed index
+        id: diff
+        run: |
+          if [ -z "$(git status --porcelain -- "$DIR")" ]; then
+            echo "The index is unchanged; nothing to open."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git status --short -- "$DIR"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Counts by kind and by place type, before and after, for the pull request's body: the diff
+      # itself is too large to read.
+      - name: Summarize the change
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          export LC_ALL=C
+          summarize() {
+            awk -F'\t' '/^#/ { next } { k[$1]++ } $1 == "P" { t[$3]++ } END {
+              for (x in k) printf "kind %s\t%d\n", x, k[x]; for (x in t) printf "type %s\t%d\n", x, t[x] }' "$1" | sort
+          }
+          summarize build/old/place_index.tsv > build/old.counts
+          summarize "$DIR/place_index.tsv" > build/new.counts
+          {
+            echo "| Entries | Before | After |"
+            echo "| --- | ---: | ---: |"
+            join -t "$(printf '\t')" -a1 -a2 -e 0 -o 0,1.2,2.2 build/old.counts build/new.counts \
+              | awk -F'\t' '$2 != $3 { printf "| %s | %s | %s |\n", $1, $2, $3 }'
+          } > build/summary.md
+          cat build/summary.md
+      - name: Upload the index
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: place-index
+          path: |
+            ${{ env.DIR }}/place_index.tsv
+            ${{ env.DIR }}/OPENSTREETMAP_ODBL_NOTICE.txt
+          if-no-files-found: error
+      - name: Upload the summary
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: place-index-summary
+          path: build/summary.md
+          if-no-files-found: error
+
+  publish:
+    name: open the refresh pull request
+    needs: [build]
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment: gradle-update
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+      - name: Download the index
+        uses: actions/download-artifact@v4
+        with:
+          name: place-index
+          path: build/place-index
+      - name: Download the summary
+        uses: actions/download-artifact@v4
+        with:
+          name: place-index-summary
+          path: build/summary
+      - name: Commit it to the refresh branch
+        env:
+          TOKEN: ${{ secrets.GRADLE_UPDATE_PAT }}
+          REPO: ${{ github.repository }}
+          TIP: ${{ needs.build.outputs.tip }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::GRADLE_UPDATE_PAT is not set in the gradle-update environment."
+            exit 1
+          fi
+          cp build/place-index/place_index.tsv build/place-index/OPENSTREETMAP_ODBL_NOTICE.txt "$DIR/"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add -- "$DIR"
+          git commit -m "Refresh search's places, streets and postcodes"
+          # This workflow's own branch, leased on the tip the build job saw, so a push someone else
+          # made there during the run fails this one rather than being overwritten.
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" \
+            push --force-with-lease="refs/heads/$BRANCH:$TIP" "https://github.com/$REPO.git" "HEAD:refs/heads/$BRANCH"
+      - name: Open the pull request, or update the open one's body
+        env:
+          GH_TOKEN: ${{ secrets.GRADLE_UPDATE_PAT }}
+        run: |
+          {
+            echo "The rebuild of the bundled place index (place-index-refresh.yml) found changes. The diff is too large to read; these are the counts that moved. Look for a type or kind that dropped sharply before merging. The builder already refuses an index short of its minimums."
+            echo
+            cat build/summary/summary.md
+          } > build/body.md
+          # This repository's own branch only: a fork's same-named branch isn't the refresh.
+          open=$(gh pr list --head "$BRANCH" --state open --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)] | .[0].number // empty')
+          if [ -n "$open" ]; then
+            gh pr edit "$open" --body-file build/body.md
+            exit 0
+          fi
+          gh pr create --base main --head "$BRANCH" \
+            --title "Refresh search's places, streets and postcodes" \
+            --body-file build/body.md
