@@ -3333,7 +3333,7 @@ private fun DepartureList(
     val stationLayout = if (byStation) {
         rememberWorked(
             stationSlot,
-            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters, stationTopology),
+            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters, stationTopology, closureRows),
             keep = { kept, wanted -> (wanted.parts[0] as ListCards).grownFrom(kept.parts[0] as ListCards) },
         ) {
             StationLayout.of(
@@ -3341,6 +3341,7 @@ private fun DepartureList(
                 rideGrouping ?: RideGrouping.RIDE,
                 rideMeters,
                 stationTopology,
+                closureRows,
             )
         }
     } else {
@@ -3391,14 +3392,17 @@ private fun DepartureList(
     // is ([farMeters]).
     // The rest behind "+N more" (or "More", with stops not yet fetched), opening the journey's own view,
     // which draws and fetches them all.
-    fun LazyListScope.journeyMore(card: JourneyCard, state: JourneyCardState.Trains) {
+    // [named]: under its station's heading, with no heading of its own, so named by its far end.
+    fun LazyListScope.journeyMore(card: JourneyCard, state: JourneyCardState.Trains, named: Boolean = false) {
         val open = onOpenJourney
         if (journeyView || open == null || state.hiddenRows == 0 && !state.capped) return
         item(key = "journey-more|${card.journey.key}") {
             TextButton(onClick = { open(card.journey) }, modifier = Modifier.testTag("journeyMore")) {
                 Text(
                     // Stops not yet fetched hold rows not yet counted: no number then (Codex, #691).
-                    if (state.capped) {
+                    if (named) {
+                        stringResource(R.string.journey_more_named, card.journey.to.name)
+                    } else if (state.capped) {
                         stringResource(R.string.journey_more)
                     } else {
                         stringResource(R.string.trip_direct_more, state.hiddenRows)
@@ -3417,6 +3421,10 @@ private fun DepartureList(
         farMeters: Map<String, Double>? = null,
         inStation: Boolean = false,
         stationDistance: String? = null,
+        // Under its station's heading, a ride boarding at a listed station (grouped by station): no heading of its own, its
+        // trains in the station's card ([joinsStationCard]) and what it says beside them here, under the station's
+        // heading ([stationGroupItems]; maintainer, 2026-10-24).
+        underStation: Boolean = false,
     ) {
             cards.forEachIndexed { index, card ->
                 val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { distanceText(it, system, resources) } }
@@ -3428,9 +3436,11 @@ private fun DepartureList(
                 // where it goes, so the ride needs no heading of its own — once it has departures to
                 // group. Until then (checking, couldn't check, none due) its heading stays, so the note
                 // under it says which ride.
-                val byStop = !journeyView && rideGrouping == RideGrouping.STOP &&
+                val byStop = !journeyView && !underStation && rideGrouping == RideGrouping.STOP &&
                     card.state.drawn?.visibleRows?.isNotEmpty() == true
-                if (journeyView) {
+                if (underStation) {
+                    // Headed by its station's heading.
+                } else if (journeyView) {
                     item(key = "journey-actions|${card.journey.key}") {
                         JourneyActions(
                             card.journey,
@@ -3488,17 +3498,51 @@ private fun DepartureList(
                 }
                 // The origin's closure notice rides the journey card: a farther origin isn't on the near-me
                 // list, so without it the trains below would read as catchable at a closed station.
-                card.closures.forEachIndexed { index, rows ->
+                // Under its station's heading, those the station and a ride before it don't show already, as the layout drawn
+                // worked them out ([StationLayout.rideNotices]): its own, never the card's, which a layout standing in for
+                // newer cards would misread.
+                fun closureItem(rows: List<DepartureRow>, title: String) {
                     val closure = rows.first()
                     item(key = "journey-closure|${card.journey.key}|${closure.stopId}") {
                         // Dismissed on every pole that carries it, so the next pole's copy doesn't take its place.
-                        StopClosureCard(closure, onDismiss = { rows.forEach(onDismissAlert) }, title = card.closureTitles[index])
+                        StopClosureCard(closure, onDismiss = { rows.forEach(onDismissAlert) }, title = title)
                     }
+                }
+                if (underStation) {
+                    stationLayout?.rideNotices?.get(card.journey.key)?.forEach { (rows, title) -> closureItem(rows, title) }
+                } else {
+                    card.closures.forEachIndexed { i, rows -> closureItem(rows, card.closureTitles[i]) }
                 }
                 if (card.destinationUnchecked) {
                     item(key = "journey-destination-unchecked|${card.journey.key}") {
                         JourneyNote(stringResource(R.string.journey_destination_unchecked, card.journey.to.name))
                     }
+                }
+                // Its trains in its station's card, all else it says here: trains behind "+N more" and more stops than it
+                // fetched, both "More to …" (its own view), the rest of its trains staying in their platforms' rows; routes it
+                // couldn't check.
+                // Joined as the layout drawn has it ([StationLayout.rideJoined]): one standing in from before the ride had trains
+                // has none of them, so its placeholder stays until the layout that has them is in.
+                if (underStation && stationLayout?.rideJoined?.contains(card.journey.key) == true) {
+                    val drawn = card.state.drawn ?: return@forEachIndexed
+                    // Named by its far end, there being no heading of its own to say which ride.
+                    val open = onOpenJourney
+                    if ((drawn.capped || drawn.hiddenRows > 0) && open != null) {
+                        item(key = "journey-more|${card.journey.key}") {
+                            TextButton(onClick = { open(card.journey) }, modifier = Modifier.testTag("journeyMore")) {
+                                Text(stringResource(R.string.journey_more_named, card.journey.to.name))
+                            }
+                        }
+                    }
+                    if (drawn.incomplete) {
+                        item(key = "journey-note|${card.journey.key}") {
+                            JourneyNote(
+                                stringResource(R.string.journey_incomplete_named, card.journey.to.name),
+                                onRetry = onRetryJourneyRoutes.takeIf { drawn.retry },
+                            )
+                        }
+                    }
+                    return@forEachIndexed
                 }
                 // Until the grouping is read, its trains are held as though still checking (rideGrouping).
                 val heldState = if (!journeyView && rideGrouping == null && card.state is JourneyCardState.Trains) {
@@ -3529,6 +3573,7 @@ private fun DepartureList(
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
                             noTrainsTimetabled = timetabled,
+                            rideDestination = card.journey.to.name.takeIf { underStation && stopCard === card.lineCard },
                             rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                         )
                     }
@@ -3559,8 +3604,9 @@ private fun DepartureList(
                         }
                     } else if (state.shownAbove) {
                         // Every direct train it has, a nearer ride shows already: said under its heading, in
-                        // their place, unless trains to change from of its own follow ([saysShownAbove]).
-                        if (state.saysShownAbove) {
+                        // their place, unless trains to change from of its own follow ([saysShownAbove]). Under its
+                        // station's heading, with no heading of its own, those trains are in the station's card.
+                        if (state.saysShownAbove && !underStation) {
                             item(key = "journey-shown-above|${card.journey.key}") {
                                 JourneyNote(stringResource(R.string.journey_shown_above))
                             }
@@ -3612,12 +3658,17 @@ private fun DepartureList(
                     }
                     // No note says there's no direct train above the trains to change from: the ride's own line
                     // with a dash says so, as a suspended line's status row does.
-                    journeyMore(card, state)
+                    journeyMore(card, state, named = underStation)
                     journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onAddRailKey, checking = checking, onHideRideLine = onHideRideLine)
                     if (state.incomplete) {
                         item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
-                                stringResource(R.string.journey_incomplete),
+                                // Under its station's heading, with no heading of its own to say which ride.
+                                if (underStation) {
+                                    stringResource(R.string.journey_incomplete_named, card.journey.to.name)
+                                } else {
+                                    stringResource(R.string.journey_incomplete)
+                                },
                                 onRetry = onRetryJourneyRoutes.takeIf { state.retry },
                             )
                         }
@@ -3642,13 +3693,26 @@ private fun DepartureList(
                     } else {
                         item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
-                                stringResource(if (card.journey.bus) R.string.journey_not_checked_bus else R.string.journey_not_checked),
+                                // Under its station's heading, with no heading of its own, named by where it goes.
+                                when {
+                                    underStation && card.journey.bus -> stringResource(R.string.journey_not_checked_bus_named, card.journey.to.name)
+                                    underStation -> stringResource(R.string.journey_not_checked_named, card.journey.to.name)
+                                    card.journey.bus -> stringResource(R.string.journey_not_checked_bus)
+                                    else -> stringResource(R.string.journey_not_checked)
+                                },
                                 onRetry = onRetryJourneyRoutes.takeIf { state.retry },
                             )
                         }
                     }
                     JourneyCardState.RouteFailed -> item(key = "journey-note|${card.journey.key}") {
-                        JourneyNote(stringResource(R.string.journey_route_failed), onRetry = onRetryJourneyRoutes)
+                        JourneyNote(
+                            if (underStation) {
+                                stringResource(R.string.journey_route_failed_named, card.journey.to.name)
+                            } else {
+                                stringResource(R.string.journey_route_failed)
+                            },
+                            onRetry = onRetryJourneyRoutes,
+                        )
                     }
                 }
             }
@@ -4035,9 +4099,14 @@ private fun DepartureList(
             headingLeads = false
             val distanceLabel = distanceSystem?.let { system -> stationLayout?.meters?.get(station)?.let { distanceText(it, system, resources) } }
             val folded = station in foldedStations
-            // Its rides with no trains of their own group to show, each a group just before the station's, as a ride with
-            // trains is ([rideGroupItems]).
-            journeyItems(rideStations[station].orEmpty().filterNot(::joinsStationCard), inStation = true, stationDistance = distanceLabel)
+            // By the grouping the layout drawn was worked out for, not the setting: one standing in for a new setting has none of
+            // its rides' trains or notices where the new one puts them, so they stay where it has them until the new one is in.
+            // Grouped By ride or By stop, its rides with no trains of their own group to show (or more to say than their
+            // trains), each a group just before the station's, as a ride with trains is ([rideGroupItems]); By station,
+            // under its heading ([stationGroupItems]).
+            if (stationLayout?.rideGrouping != RideGrouping.STATION) {
+                journeyItems(rideStations[station].orEmpty().filterNot { joinsStationCard(it) }, inStation = true, stationDistance = distanceLabel)
+            }
             item(key = "station|$station") {
                 StationHeader(
                     first.stopName,
@@ -4176,6 +4245,8 @@ private fun DepartureList(
             stationItems(station, closed = closesStation(above))
             if (station in foldedStations) return
             stationNoticeItems(above)
+            // Rides By station: their notes, and the own line of one with no train to show, under its heading ([journeyItems]).
+            if (stationLayout?.rideGrouping == RideGrouping.STATION) journeyItems(rideStations[station].orEmpty(), underStation = true)
             // One card for the whole station, its poles' own notices above it.
             stationCardItems(station, stationLayout?.members?.get(station).orEmpty())
         }
@@ -4655,19 +4726,24 @@ internal fun rideStation(
 ): String? = (placeOfStop[rideOrigin(card)] ?: stopClusterIds[rideOrigin(card)])?.let { stationKey(it, mode) }
 
 /**
- * A ride whose trains join its station's card, a star after each destination for its heading: one whose check is
- * done, with trains to show and nothing else to say. One with a closure, a far end it couldn't check, a train to
- * change for, trains behind "+N more" or routes it couldn't check keeps its heading under the station's, so what
- * it says stays with it. One checking again stays in the card by the trains it drew last ([drawn]), the card's own
- * times saying it checks: leaving for a heading of its own each refresh flashed the list back to platform headings
- * (maintainer, 2026-10-24).
+ * A ride whose trains join its station's card, a star after each destination for its heading: one with trains to show
+ * and, unless [sayingUnderStation], nothing else to say. With rides grouped By station, what else it says (a notice, a
+ * far end it couldn't check, routes it couldn't check, more stops than it fetched) goes under the station's heading
+ * instead, so the list stays grouped by station whatever TfL says, and one with no train to show draws its own line
+ * there, with a spinner or a dash (maintainer, 2026-10-24). Otherwise (By ride or By stop, or grouped by platform, where
+ * a platform's group has no heading to say it under) one with more to say keeps its heading, so what it says stays with
+ * it. One checking again stays in the card by the trains it drew last ([drawn]), the card's own times saying it checks:
+ * leaving for a heading of its own each refresh flashed the list back to platform headings (maintainer, 2026-10-24).
  */
-internal fun joinsStationCard(card: JourneyCard): Boolean {
+internal fun joinsStationCard(card: JourneyCard, sayingUnderStation: Boolean = false): Boolean {
     val trains = card.state.drawn ?: return false
     // Its trains to change from join too, each saying where to change ([StationRideRows.changeAt]), so a ride with no
     // direct train due draws no dash of its own above its station (maintainer, 2026-10-23).
-    return (trains.drawnRows.isNotEmpty() || trains.visibleChanges.isNotEmpty()) && card.closures.isEmpty() &&
-        !card.destinationUnchecked && trains.hiddenRows == 0 && !trains.capped && !trains.incomplete
+    val hasTrains = trains.drawnRows.isNotEmpty() || trains.visibleChanges.isNotEmpty()
+    return hasTrains && (
+        sayingUnderStation || card.closures.isEmpty() && !card.destinationUnchecked && trains.hiddenRows == 0 &&
+            !trains.capped && !trains.incomplete
+        )
 }
 
 /**
@@ -4717,7 +4793,12 @@ internal fun RideStopForms.joined(): List<String> =
  * way Group favorite rides groups them, a ride has no heading here.
  */
 @WorkerThread
-internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: (DepartureRow) -> String?): StationRideRows {
+internal fun stationRideRows(
+    rides: Map<String?, List<JourneyCard>>,
+    // Rides grouped By station: a ride with more to say than its trains joins too ([joinsStationCard]).
+    sayingUnderStation: Boolean = false,
+    stationOf: (DepartureRow) -> String?,
+): StationRideRows {
     val byStation = LinkedHashMap<String, LinkedHashMap<String, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>>()
     // And by the stop each boards from: (station, journey key) to its parts, keyed by stop group.
     val parts = HashMap<Pair<String, String>, LinkedHashMap<String, Pair<List<String>, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>>>()
@@ -4727,7 +4808,7 @@ internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: 
     val rowJourneys = IdentityHashMap<DepartureRow, FavoriteJourney>()
     rides.forEach { (station, cards) ->
         if (station == null) return@forEach
-        cards.filter(::joinsStationCard).forEach { ride ->
+        cards.filter { joinsStationCard(it, sayingUnderStation) }.forEach { ride ->
             val trains = ride.state.drawn ?: return@forEach
             journeys[ride.journey.key] = ride
             fun add(card: StopCard, group: StopGroup, forms: RideStopForms, at: String?) = card.group.rows.zip(card.lines).forEach { pair ->
@@ -4799,6 +4880,16 @@ internal class StationLayout(
     val rideJourneys: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     // Each station's favorite rides, each a group of its own just before the station's (maintainer, 2026-10-23).
     val rideGroups: Map<String, List<RideGroup>> = emptyMap(),
+    // Rides By station: of each ride's notices ([JourneyCard.closures]), by journey key, those drawn under its station's
+    // heading, each with its title: not one at a stop it boards from that the list shows as the station's own, nor one a
+    // ride before it at the station shows (maintainer, 2026-10-24). Kept whole, so a layout standing in draws its own.
+    val rideNotices: Map<String, List<Pair<List<DepartureRow>, String>>> = emptyMap(),
+    // How Group favorite rides grouped the rides when this was worked out: the list draws them by it, not the setting.
+    val rideGrouping: RideGrouping = RideGrouping.RIDE,
+    // Rides By station, the journey keys of those whose trains this put in their station's card: a ride the list draws
+    // without a group of its own, as this layout has it, not as its newer card would, which a layout standing in has none
+    // of the trains of.
+    val rideJoined: Set<String> = emptySet(),
     // Each station's modes, an icon each before its name, as a search result shows a stop's (maintainer, 2026-10-23).
     val modes: Map<String, List<ModeIcon>> = emptyMap(),
     // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
@@ -4846,6 +4937,8 @@ internal class StationLayout(
             rideMeters: Map<String, Double> = emptyMap(),
             // How a platform's card draws a branching line's trains, for one a ride takes some of ([withoutRideTrains]).
             topology: RouteTopology = RouteTopology.EMPTY,
+            // The notices the list shows of its own, so a ride's same one at a stop it boards from isn't drawn again ([rideNotices]).
+            closureRows: List<DepartureRow> = emptyList(),
         ): StationLayout {
             fun metersOf(group: StopGroup): Double? =
                 group.rows.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull() ?: placeDistanceMeters[group.placeKey]
@@ -4869,7 +4962,7 @@ internal class StationLayout(
                 val station = if (rideMode(card).isBlank()) firstStationOfStop[rideOrigin(card)] else rideStation(card, placeOfStop, stopClusterIds)
                 station?.takeIf { it in drawn }?.let { rideStations[card.journey.key] = it }
             }
-            val rides = stationRideRows(journeyCards.groupBy { rideStations[it.journey.key] }) { row ->
+            val rides = stationRideRows(journeyCards.groupBy { rideStations[it.journey.key] }, sayingUnderStation = rideGrouping == RideGrouping.STATION) { row ->
                 placeOfStop[row.stopId]?.let { stationKey(it, row.mode) }?.takeIf { it in drawn }
             }
             fun rideCard(station: String, key: String, rows: List<Pair<DepartureRow, List<DestinationGroup>>>, name: String) = StopCard(
@@ -4930,8 +5023,30 @@ internal class StationLayout(
                 if (fartherGroups.size > start) fartherStart[card.place.key] = start until fartherGroups.size
             }
             val fartherModeIds = farther.associate { card -> card.place.key to card.place.lines.map { it.mode }.distinct() }
+            // Rides By station, each one's notices under its station's heading, each once there, never one at a stop it boards
+            // from the list shows as the station's own ([rideNotices]); one at a neighboring pole the list doesn't have is the
+            // ride's to show.
+            val rideNotices = if (!inCard) emptyMap() else HashMap<String, List<Pair<List<DepartureRow>, String>>>().also { notices ->
+                val listed = closureRows.mapTo(HashSet()) { it.stopId to it.stopDisruption }
+                val drawnAt = HashMap<String, HashSet<Pair<String, String?>>>()
+                journeyCards.forEach { card ->
+                    val station = rideStations[card.journey.key] ?: return@forEach
+                    val shown = drawnAt.getOrPut(station) { HashSet() }
+                    val boarding = card.boardingIds.toHashSet()
+                    notices[card.journey.key] = card.closures.indices.filter { i ->
+                        val notice = card.closures[i].first()
+                        val key = notice.stopId to notice.stopDisruption
+                        !(notice.stopId in boarding && key in listed) && shown.add(key)
+                    }.map { i -> card.closures[i] to card.closureTitles[i] }
+                }
+            }
             return StationLayout(
-                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rides.changeAt, rides.journeys, rideGroups, modes, modeIds,
+                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rides.changeAt, rides.journeys, rideGroups,
+                modes = modes,
+                modeIds = modeIds,
+                rideNotices = rideNotices,
+                rideGrouping = rideGrouping,
+                rideJoined = if (inCard) rides.rides.values.flatMapTo(HashSet()) { stationRides -> stationRides.map { it.journey.key } } else emptySet(),
                 firstGroups = members.mapValues { (_, stationGroups) -> stationGroups.first() },
                 members = members,
                 fartherGroups = fartherGroups,
@@ -6508,6 +6623,9 @@ internal fun StopGroupCard(
     // The rides checking again, by journey key ([ShownRows.checkingRides]): each of [rideRows] of one, its time held
     // from the last check, fades as its ride's own card's would, never passing for a checked one (SPEC D4).
     checkingRides: Set<String> = emptySet(),
+    // A ride's own line with no train ([JourneyCard.lineCard]) under its station's heading: its far end, shown with
+    // the ride's star where its status row has nothing else to say, so two rides on one line tell apart. Null shows none.
+    rideDestination: String? = null,
 ) = CardTextSize {
     val group = card.group
     val rideStar = stringResource(R.string.ride_row_star)
@@ -6579,6 +6697,25 @@ internal fun StopGroupCard(
                                         // Its disruption dismissed, planned work it still carries is noted instead.
                                         row.status?.let { status -> DisruptionChip(status.description) }
                                             ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
+                                            ?: rideDestination?.let { destination ->
+                                                // A ride's own line under its station's heading, with no heading of its own:
+                                                // where it goes and its star, as its trains say (maintainer, 2026-10-24).
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = destination,
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f, fill = false),
+                                                    )
+                                                    Icon(
+                                                        Icons.Filled.Star,
+                                                        contentDescription = rideStar,
+                                                        tint = LocalStarredBorderColor.current,
+                                                        modifier = Modifier.padding(start = 4.dp).size(16.dp.withText()),
+                                                    )
+                                                }
+                                            }
                                     }
                                     // A status row has no guess for a stale stop's refresh to fade: only the card's
                                     // own check says so here.

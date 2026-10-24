@@ -1306,6 +1306,21 @@
     <string name="journey_destination_unchecked">Couldn\'t check %1$s for closures</string>
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
     <!-- TODO: translate -->
+    <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, some of whose routes couldn't be checked. -->
+    <string name="journey_incomplete_named" tools:ignore="MissingTranslation">%1$s: some routes couldn\'t be checked</string>
+    <!-- TODO: translate -->
+    <!-- Under a station's heading, grouped by station: opens the own view of a favorite ride there, named by its far end, which boards at more stops than the list fetched. -->
+    <string name="journey_more_named" tools:ignore="MissingTranslation">More to %1$s</string>
+    <!-- TODO: translate -->
+    <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, whose trains couldn't be checked. -->
+    <string name="journey_not_checked_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check trains</string>
+    <!-- TODO: translate -->
+    <!-- As journey_not_checked_named, for a bus ride. -->
+    <string name="journey_not_checked_bus_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check buses</string>
+    <!-- TODO: translate -->
+    <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, whose route couldn't be loaded. -->
+    <string name="journey_route_failed_named" tools:ignore="MissingTranslation">%1$s: couldn\'t load the route</string>
+    <!-- TODO: translate -->
     <string name="action_unstar_journey" tools:ignore="MissingTranslation">Remove favorite ride</string>
     <string name="route_stop_journey_starred">Favorite ride</string>
     <!-- A stop's details opened from a route page's stop: its star, saving the journey there as a favorite. -->

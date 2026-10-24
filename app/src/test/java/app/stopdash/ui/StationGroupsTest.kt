@@ -92,15 +92,26 @@ class StationGroupsTest {
         // Still checking, with nothing drawn: it keeps its own heading and card.
         val checking = card.copy(state = JourneyCardState.Checking("route"))
         assertTrue(stationRideRows(mapOf("A" to listOf(checking))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
-        // As does one with more to say than its trains, so what it says stays with them under its heading: a
-        // route it couldn't check, a far end it couldn't check, a closure.
+        // Rides By station, one with more to say than its trains joins all the same, what it says going under the
+        // station's heading, so the list stays grouped by station: a route it couldn't check, a far end it couldn't
+        // check, a notice, more stops than it fetched, trains behind "+N more". Otherwise (By ride or By stop, or grouped
+        // by platform) it keeps its heading, what it says under it.
         val saying = listOf(
             card.copy(state = trains.copy(incomplete = true)),
             card.copy(destinationUnchecked = true),
             card.copy(closures = listOf(listOf(row("Z", "Z")))),
+            card.copy(state = trains.copy(capped = true)),
+            card.copy(state = trains.copy(limit = 1)),
         )
+        val joinedRows = stationRideRows(mapOf("A" to listOf(card))) { mapOf("A1" to "A")[it.stopId] }.byStation.mapValues { (_, p) -> p.size }
         saying.forEach { ride ->
+            assertTrue(joinsStationCard(ride, sayingUnderStation = true))
             assertFalse(joinsStationCard(ride))
+            // Its drawn trains; those behind "+N more" stay in their platforms' rows, its "More to …" under the heading.
+            assertEquals(
+                if (ride.state == trains.copy(limit = 1)) mapOf("A" to 1) else joinedRows,
+                stationRideRows(mapOf("A" to listOf(ride)), sayingUnderStation = true) { mapOf("A1" to "A")[it.stopId] }.byStation.mapValues { (_, p) -> p.size },
+            )
             assertTrue(stationRideRows(mapOf("A" to listOf(ride))) { mapOf("A1" to "A")[it.stopId] }.byStation.isEmpty())
         }
         assertTrue(joinsStationCard(card))
@@ -256,6 +267,51 @@ class StationGroupsTest {
         val change = app.stopdash.domain.JourneyChange("FORK", "Fork", timed("N1", 2))
         val changing = shown.copy(state = JourneyCardState.Trains(emptyList(), changes = listOf(change)))
         assertTrue(ridesInPlatforms(listOf(changing), listed).isEmpty())
+    }
+
+    @Test
+    fun `rides By station draw each notice once under their station's heading, never the station's own`() {
+        val platform1 = StopGroup(
+            stopName = "Near", key = "n1", showHeader = true, rows = listOf(row("N1", "N")), placeKey = "N",
+            qualifier = StopQualifier.Platform("1", null),
+        )
+        fun ride(to: String, vararg notices: DepartureRow) = JourneyCard(
+            FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd(to, "Far end"), listOf(LineRef("line", "", ""))),
+            JourneyCardState.Trains(listOf(row("N1", "N").copy(destination = "Far end"))),
+            closures = notices.map { listOf(it) },
+            boardingIds = listOf("N1"),
+            destinationIds = setOf(to),
+        )
+        val farNotice = row("Z", "Z").copy(stopDisruption = "Minor delays")
+        val ownNotice = row("N1", "N").copy(stopDisruption = "Lift out of service")
+        val first = ride("Z", farNotice, ownNotice)
+        val second = ride("Z2", farNotice)
+        fun layout(grouping: app.stopdash.domain.RideGrouping, listed: List<DepartureRow> = emptyList()) = StationLayout.of(
+            groups = listOf(platform1),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(first, second),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = grouping,
+            closureRows = listed,
+        )
+        // The far end's notice once, under the first ride to have it; the station's own stop's never, the list showing it
+        // already.
+        fun texts(notices: List<Pair<List<DepartureRow>, String>>?) = notices.orEmpty().map { (rows, _) -> rows.first().stopDisruption }
+        val notices = layout(app.stopdash.domain.RideGrouping.STATION, listOf(ownNotice)).rideNotices
+        assertEquals(listOf("Minor delays"), texts(notices[first.journey.key]))
+        assertEquals(emptyList<String?>(), texts(notices[second.journey.key]))
+        // A boarding stop's notice the list doesn't show (a neighboring pole it doesn't have) is the ride's to show.
+        assertEquals(listOf("Minor delays", "Lift out of service"), texts(layout(app.stopdash.domain.RideGrouping.STATION).rideNotices[first.journey.key]))
+        // By ride, each ride keeps its own heading, its notices under it as ever.
+        assertTrue(layout(app.stopdash.domain.RideGrouping.RIDE).rideNotices.isEmpty())
+        // Each layout says which grouping it was worked out for, so one standing in for a new setting is drawn by its own.
+        assertEquals(app.stopdash.domain.RideGrouping.STATION, layout(app.stopdash.domain.RideGrouping.STATION).rideGrouping)
+        assertEquals(app.stopdash.domain.RideGrouping.RIDE, layout(app.stopdash.domain.RideGrouping.RIDE).rideGrouping)
+        // And which rides it put in the station's card, so one standing in keeps a ride's placeholder it has no trains for.
+        assertEquals(setOf(first.journey.key, second.journey.key), layout(app.stopdash.domain.RideGrouping.STATION).rideJoined)
+        assertTrue(layout(app.stopdash.domain.RideGrouping.RIDE).rideJoined.isEmpty())
     }
 
     @Test
