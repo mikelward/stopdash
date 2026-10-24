@@ -2614,7 +2614,7 @@ private fun RouteList(
                                 leading = ride?.let { r ->
                                     {
                                         DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.station_search_add_favorite)) },
+                                            text = { Text(stringResource(R.string.action_star_journey)) },
                                             onClick = {
                                                 menuOpen = false
                                                 addRide?.invoke(r, shown.rideRoute)
