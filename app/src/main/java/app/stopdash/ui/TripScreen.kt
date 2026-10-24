@@ -1727,6 +1727,9 @@ private fun TripContent(
             row = detailRow.copy(stopDisruption = stopNotice(state.closures[detailRow.stopId], now)),
             isStarred = false,
             starrable = false,
+            // A stop tapped on its list opens its details over the page, as on the near-me list's.
+            onOpenStop = LocalOpenRouteStop.current,
+            ofTrip = true,
             // Vouched clean, as the list's page is, only once both checks are known and current: the
             // line's status (and its own last check didn't fail, nor is it as old as a stale countdown)
             // and its stop's own closure check, the stop judged as the route's ranking judges it

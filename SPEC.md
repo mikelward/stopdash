@@ -1245,7 +1245,9 @@ the rider can catch, as a planned ride does. A trip already on the way is replac
 so. A National Rail line offers Go only where its trains can be followed (*On the way*): with the rider's
 National Rail key, or through stopdash's proxy in a build that has one; without either, it offers Go as
 soon as a key is added. The top bar's star saves the journey there
-(*Journeys*). Back returns to the route page. A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
+(*Journeys*). Back returns to the route page. A trip's route pages, planned or on the way, and a favorite ride's page
+open the same details (maintainer, 2026-10-24); a trip's offer neither Go nor the journey there to star, as On the
+way's Show stops doesn't, since either would stand in for the trip itself. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,
 so the one filled dot is the rider's (the terminus keeps a bold name). **A station step-free for the line
 carries TfL's own symbol after its name** (maintainer, 2026-10-02), from the bundled table (*Data
@@ -4168,7 +4170,7 @@ stops' departures, by platform or pole, and those of the stops around it, *Findi
 starts nothing. Its bar names the stop alone, with **Back** where a station's page has To… and no crosshairs,
 since it's a look at somewhere else, not a place to plan from; none of the station flow is touched, so a
 station's page or trip open under the details is left as it was, and Back returns to the details. Its route pages
-leave their stations inert, as a trip's do, since the details a tap would open sit under the page. A station
+leave their stations inert, since the details a tap would open sit under the page. A station
 under several ids opens its interchange, as From does, so it waits on the stop's links. It replaced a board of
 the stop's departures in the details themselves (2026-10-07 to 2026-10-10), and the stations of its
 interchange and a short walk away listed by name: the page shows both, and a board under the details' own
