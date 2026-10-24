@@ -2007,8 +2007,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [ ] **Rebuild `place_index.tsv` to carry it**: the shipped file predates the rule; run
                   `place-index-refresh.yml` by hand once it's on `main`.
               - [x] **A monthly refresh workflow** for `assets/places/place_index.tsv`:
-                  `place-index-refresh.yml`, like `station-index-refresh.yml` but opening its pull
-                  request for a person to merge rather than merging itself.
+                  `place-index-refresh.yml`, like `station-index-refresh.yml`; it merges itself unless a
+                  kind or place type drops by more than a tenth (and at least 20), which holds it open.
               - [x] **Move the year in the About screen's Ordnance Survey statements** with the refresh:
                   the index's header dates each source (OpenStreetMap, Code-Point Open's release,
                   Wikidata), and the build turns them into `BuildConfig` fields, the year among them.
