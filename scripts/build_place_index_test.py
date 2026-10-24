@@ -11,7 +11,7 @@ from build_place_index import (  # noqa: E402
     TYPES, place_type,
     AREA_RADIUS_METERS, DUPLICATE_METERS, ODBL_NOTICE, area_grid, cell_of, display_name, geofabrik_md5, is_street,
     district_grid, district_near, match_key, meters_apart, near_cells, truncating_division, parse_wikipedia_counts, place_item, place_of, polygon_centroid, postcode_text,
-    query_service, render, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
+    query_service, render, fetched, fetch_extract, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
 )
 
 AT = (51.5, -0.12)
@@ -23,6 +23,22 @@ FAR = (51.5300, -0.12)      # ~3.3 km north
 
 def place(name, category="tourism=museum", public=True, at=AT, item=None, size=0.0):
     return (name, category, public, at[0], at[1], item, size)
+
+
+class FakeResponse:
+    """An HTTP response as urlopen gives one: a body read in pieces, headers and a status."""
+    def __init__(self, body, headers, status=200):
+        import io as _io
+        self._body, self.headers, self.status = _io.BytesIO(body), headers, status
+
+    def read(self, n=-1):
+        return self._body.read(n)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 def names(selected):
@@ -310,6 +326,63 @@ class NotableTest(unittest.TestCase):
         self.assertEqual([100, 100, 50], [len(a) for a in asked])
         self.assertEqual(5, editions["Q1"])
         self.assertNotIn("Q3", editions)
+
+    def test_a_cut_off_download_resumes_where_it_stopped(self):
+        body = b"x" * 10
+        calls, pauses = [], []
+        def urlopen(request, timeout):
+            calls.append(request.get_header("Range"))
+            if len(calls) == 1:
+                return FakeResponse(body[:4], {"Content-Length": "10"})  # the server hangs up early
+            if len(calls) == 2:
+                raise TimeoutError("The read operation timed out")
+            return FakeResponse(body[4:], {"Content-Length": "6"}, status=206)
+        self.assertEqual(body, fetched("https://example.com/a", urlopen, pauses.append))
+        self.assertEqual([None, "bytes=4-", "bytes=4-"], calls)
+        self.assertEqual([10, 20], pauses)
+
+    def test_a_server_that_wont_resume_stops_the_build(self):
+        responses = [FakeResponse(b"abc", {"Content-Length": "9"}), FakeResponse(b"abcdefghi", {})]
+        with self.assertRaises(SystemExit):
+            fetched("https://example.com/a", lambda r, timeout: responses.pop(0), lambda _: None)
+
+    def test_a_download_that_never_completes_stops_the_build(self):
+        def urlopen(request, timeout):
+            raise TimeoutError("The read operation timed out")
+        pauses = []
+        with self.assertRaises(SystemExit):
+            fetched("https://example.com/a", urlopen, pauses.append)
+        self.assertEqual(4, len(pauses))
+
+    def test_a_missing_file_is_not_asked_for_again(self):
+        import urllib.error
+        def urlopen(request, timeout):
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+        with self.assertRaises(urllib.error.HTTPError):
+            fetched("https://example.com/a", urlopen, lambda _: self.fail("paused for a 404"))
+
+    def test_an_extract_republished_while_it_downloaded_is_downloaded_again(self):
+        import hashlib, tempfile
+        old, new = b"old extract", b"new extract"
+        served = {".md5": [hashlib.md5(old).hexdigest(), hashlib.md5(new).hexdigest(), hashlib.md5(new).hexdigest()],
+                  ".pbf": [new, new]}  # the sum asked for first is the old file's
+        def urlopen(request, timeout):
+            kind = ".md5" if request.full_url.endswith(".md5") else ".pbf"
+            item = served[kind].pop(0)
+            return FakeResponse(f"{item}  a.osm.pbf\n".encode() if kind == ".md5" else item, {})
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "a.osm.pbf")
+            fetch_extract("https://example.com/a.osm.pbf", path, urlopen, lambda _: None)
+            self.assertEqual(new, open(path, "rb").read())
+
+    def test_a_corrupt_extract_stops_the_build(self):
+        import hashlib, tempfile
+        def urlopen(request, timeout):
+            if request.full_url.endswith(".md5"):
+                return FakeResponse(f"{hashlib.md5(b'good').hexdigest()}  a.osm.pbf\n".encode(), {})
+            return FakeResponse(b"bad", {})
+        with tempfile.TemporaryDirectory() as d, self.assertRaises(SystemExit):
+            fetch_extract("https://example.com/a.osm.pbf", os.path.join(d, "a.osm.pbf"), urlopen, lambda _: None)
 
     def test_the_query_service_is_retried_when_it_asks_us_to_slow_down(self):
         import io as _io, urllib.error
