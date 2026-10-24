@@ -3322,6 +3322,19 @@ private fun DepartureList(
     } else {
         null
     }
+    // The stations land above the loading cards drawn without them, the nearest place in being nearer than any
+    // still loading. A list still at its top stays there for them rather than keeping its first card in view and
+    // opening a page down (bug report, 2026-10-24); one the rider has moved holds still, as ever.
+    val stationsIn = stationLayout != null
+    val stationsWereIn = remember { booleanArrayOf(stationsIn) }
+    SideEffect {
+        if (stationsIn && !stationsWereIn[0] && !listState.isScrollInProgress &&
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        ) {
+            listState.requestScrollToItem(0)
+        }
+        stationsWereIn[0] = stationsIn
+    }
     // A held place that failed is let go (the banner names it), so if a later refresh brings it
     // back it joins the list as any stop does, not as a card it never was. So is one loading again
     // (a fresh cold load): it's held again only if it lands on screen again.
