@@ -168,6 +168,8 @@ fun StationSearchScreen(
     // The activity's by default ([LocalSearchRowHost]); a removed place reads the places again ([onRetryPlaces]).
     onShowOnMap: ((String, Coordinates) -> Unit)? = LocalSearchRowHost.current?.showOnMap,
     onAddPlace: ((StationMatch, String?) -> Unit)? = LocalSearchRowHost.current?.addPlace,
+    // "Add favorite ride…" from a stop row: the favorite rides' Add, From set to it, asking To… (maintainer, 2026-10-24).
+    onAddRide: ((StationMatch) -> Unit)? = LocalSearchRowHost.current?.addRide,
     onRemovePlace: ((FavoritePlace) -> Unit)? = LocalSearchRowHost.current?.let { host ->
         { place -> host.removePlace(place, { onRetryPlaces?.invoke() }) }
     },
@@ -180,7 +182,7 @@ fun StationSearchScreen(
 ) {
     val back = rememberBackFollow()
     if (rootBack) RootBack(back, onBack = onBack) else PredictiveBack(back, onBack = onBack)
-    val rowActions = SearchRowActions(onShowOnMap, onAskRemoveRecent, onAddPlace, onRemovePlace)
+    val rowActions = SearchRowActions(onShowOnMap, onAskRemoveRecent, onAddPlace, onRemovePlace, onAddRide)
     // The row whose menu is up. Not kept across a rotation, which closes it.
     var menuFor by remember { mutableStateOf<SearchEntry?>(null) }
     // A long press opens the row's menu; where the screen offers no action it does nothing, rather

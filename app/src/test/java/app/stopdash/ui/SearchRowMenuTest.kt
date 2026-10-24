@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
@@ -116,6 +118,33 @@ class SearchRowMenuTest {
         assertTrue(closed)
         composeRule.onNodeWithTag("rowMenuMap").performClick()
         assertEquals("Example Gallery" to Coordinates(51.51, -0.13), mapped)
+    }
+
+    @Test
+    fun a_stop_row_adds_a_favorite_ride_from_it_and_a_place_row_does_not() {
+        // A stop's menu offers "Add favorite ride…", handing the favorite rides' Add the stop as its From
+        // (maintainer, 2026-10-24); a place, which no ride starts at, offers none.
+        var from: StationMatch? = null
+        var closed = false
+        var entry by androidx.compose.runtime.mutableStateOf<SearchEntry>(bank)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                SearchRowMenu(
+                    entry = entry,
+                    recent = emptyList(),
+                    savedPlaces = emptyList(),
+                    actions = SearchRowActions(onAddRide = { from = it }),
+                    onDismiss = { closed = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("rowMenuAddRide").assertExists().performClick()
+        assertEquals(bank.match, from)
+        assertTrue(closed)
+        entry = gallery
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("rowMenuAddRide").assertDoesNotExist()
     }
 
     @Test

@@ -354,7 +354,9 @@ The app finds stops two ways:
   any picked lately. A **long press on any row**, typed result or the user's own, opens a menu
   titled with its name (maintainer, 2026-10-12): **Show on map**; **Remove from Recent**, on a row
   that is one of the recent picks, which asks "Remove from Recent?" and, confirmed, takes it off that list
-  (maintainer, 2026-10-10); and **Add favorite place**, which opens the favorite-place editor filled in
+  (maintainer, 2026-10-10); on a stop, **Add favorite ride…**, which opens Settings' Add with the stop as From,
+  asking To… (maintainer, 2026-10-24; the ride saved there, its list says so, Back returning to the search); and
+  **Add favorite place**, which opens the favorite-place editor filled in
   with the row, or **Remove favorite place** when a saved place sits at its position. A long press
   never opens the row. If a removal from Recent can't be saved the row stays and the search says so
   until the next long press, even if it was closed meanwhile; a starred row is unstarred where it was starred.
