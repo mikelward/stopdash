@@ -54,6 +54,16 @@ class RidesInPlatformsTest {
             cards = listOf(card), journeys = listOf(journey), rideGrouping = RideGrouping.STATION,
         )
         assertEquals(setOf(journey.key), shown.ridesInPlatforms)
+        assertTrue(shown.checkingRides.isEmpty())
+        // Checking again, held from its last check, it stays in its platform, and the list knows it checks, so its
+        // held times there say so rather than pass for checked ones.
+        val again = card.copy(state = JourneyCardState.Checking("route", held = card.state as JourneyCardState.Trains))
+        val checking = shownRowsOf(
+            built, built.marked.rows, listOf(victoria), starred = emptySet(), stopDistanceMeters = mapOf(stopId to 100.0),
+            cards = listOf(again), journeys = listOf(journey), rideGrouping = RideGrouping.STATION,
+        )
+        assertEquals(setOf(journey.key), checking.ridesInPlatforms)
+        assertEquals(setOf(journey.key), checking.checkingRides)
         val listedVictoria = shown.rows.single { it.lineId == "victoria" }
         val listedPiccadilly = shown.rows.single { it.lineId == "piccadilly" }
         assertEquals(setOf("940GZZLUWRR"), shown.rideEnds[listedVictoria])
