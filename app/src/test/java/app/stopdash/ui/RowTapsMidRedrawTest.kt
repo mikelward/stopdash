@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.LineRef
@@ -80,6 +82,9 @@ class RowTapsMidRedrawTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(LONG_PRESS_MILLIS)
         composeRule.onNodeWithText("Warren Street").performTouchInput { up() }
+        composeRule.waitForIdle()
+        // It opens the stop's menu, whose item saves with the latest action.
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("saved Warren Street (1)"), done)
     }

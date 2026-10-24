@@ -554,7 +554,7 @@ private fun StopOnRail(
     // How far the station is step-free for this line: TfL's symbol after the name ([StepFreeMark]),
     // read out as its words. None, or null, shows nothing.
     stepFree: StepFreeLevel? = null,
-    // Saves or removes the favorite journey to this station, by a long press; null offers none.
+    // Saves or removes the favorite journey to this station, from its long press's menu; null offers none.
     onClick: (() -> Unit)? = null,
     // Opens this station's page, by a tap; null offers none.
     onOpen: (() -> Unit)? = null,
@@ -569,7 +569,9 @@ private fun StopOnRail(
     val surface = MaterialTheme.colorScheme.surface
     val starredLabel = stringResource(R.string.route_stop_journey_starred)
     val haptics = LocalHapticFeedback.current
-    val toggleLabel = stringResource(if (starred) R.string.action_unstar_journey else R.string.action_star_journey)
+    val moreLabel = stringResource(R.string.more_actions)
+    // A long press opens the stop's menu, which saves or removes the ride (maintainer, 2026-10-24): none saves on its own.
+    var menuOpen by remember { mutableStateOf(false) }
     val openSaid = openLabel ?: stringResource(R.string.action_show_stop)
     // The latest actions, read by a detector keyed only on which there are: the list builds them
     // afresh on every recomposition, and keying the detector on them would restart it and drop a tap
@@ -591,6 +593,8 @@ private fun StopOnRail(
     // The blue dot is drawn, so it says nothing to a screen reader: the boarding stop is read as one
     // node with "Your stop" as its state, so TalkBack users hear which stop is theirs too.
     val currentStop = stringResource(R.string.route_stop_current)
+    Box {
+    if (onClick != null) FavoriteRideMenu(menuOpen, { menuOpen = false }, starred) { currentOnClick?.invoke() }
     Layout(
         contents = listOf(
             // The rail: the segment above the dot, the segment below it, and the dot itself —
@@ -666,7 +670,7 @@ private fun StopOnRail(
                                 onLongPress = if (toggles) {
                                     unlessPinchAt {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        currentOnClick?.invoke()
+                                        menuOpen = true
                                     }
                                 } else {
                                     null
@@ -676,7 +680,7 @@ private fun StopOnRail(
                         .semantics {
                             // `this.`: the row's own `onClick` parameter would shadow the semantics action.
                             if (onOpen != null) this.onClick(label = openSaid) { onOpen(); true }
-                            if (onClick != null) onLongClick(label = toggleLabel) { onClick(); true }
+                            if (onClick != null) onLongClick(label = moreLabel) { menuOpen = true; true }
                         }
                 } else {
                     Modifier
@@ -756,6 +760,7 @@ private fun StopOnRail(
             dotPlaceable.place(0, dotY - dotSize / 2)
             placements.forEach { (placeable, x, y) -> placeable.place(x, y) }
         }
+    }
     }
 }
 

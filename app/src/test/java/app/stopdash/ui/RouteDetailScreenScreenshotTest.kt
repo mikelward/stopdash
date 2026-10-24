@@ -1296,12 +1296,13 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertDoesNotExist()
         // Its folds open one by one: never the whole line drawn at once in the page's column.
         composeRule.onNodeWithText("Show all stations").assertDoesNotExist()
-        // A long press on a station the train calls at saves the journey there.
+        // A long press on a station the train calls at saves the journey there, from its menu.
         // Only a station the train calls at offers one: the line's far end, off its path, would save nothing.
         val longPressable = SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
         composeRule.onNode(hasText("Euston", substring = true) and longPressable).assertExists()
         composeRule.onNode(hasText("Brixton", substring = true) and longPressable).assertDoesNotExist()
         composeRule.onNodeWithText("Euston", useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         assertEquals(listOf("Euston"), toggled)
         captureSnapshot("route-detail-line-map.png", heightPx = 2400)
     }
@@ -1653,8 +1654,9 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Green Park", substring = true).performClick()
         composeRule.waitForIdle()
         assertTrue(toggled.isEmpty())
-        // A long press on an unstarred station stars a new journey from here, with the positions it has.
+        // A long press on an unstarred station stars a new journey from here, from its menu, with the positions it has.
         composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals(
             FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria", 51.5, -0.12), JourneyEnd("940GZZLUGPK", "Green Park"), listOf(LineRef("victoria", "Victoria", "tube"))),
@@ -1662,6 +1664,9 @@ class RouteDetailScreenScreenshotTest {
         )
         // The starred one toggles the saved journey itself (off).
         composeRule.onNodeWithText("Oxford Circus", substring = true).performTouchInput { longClick() }
+        // Its menu says it removes the ride (maintainer, 2026-10-24: a long press opens a menu everywhere).
+        composeRule.onNodeWithTag("stopRideToggle").assertTextEquals("Remove favourite ride")
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals(starredToOxford, toggled.last())
 
@@ -1735,8 +1740,9 @@ class RouteDetailScreenScreenshotTest {
         // It's the boarding stop, which Go offers no ride to; the others aren't.
         assertTrue(opened.last().boarding)
         assertFalse(greenPark.boarding)
-        // The long press still saves at once.
+        // The long press still saves, from its menu.
         composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals("940GZZLUGPK", toggled.single().to.stopId)
     }
@@ -1931,6 +1937,7 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("940GZZLUGPK", substring = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals("940GZZLUGPK", toggled.single().to.name)
     }
@@ -2014,9 +2021,10 @@ class RouteDetailScreenScreenshotTest {
         // name is also the header's destination).
         composeRule.onNode(
             SemanticsMatcher("star journey action") {
-                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Add favourite ride"
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Options"
             },
         ).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals("490000002N", toggled.single().to.stopId)
         assertEquals("bus", toggled.single().mode)
@@ -2067,6 +2075,7 @@ class RouteDetailScreenScreenshotTest {
         val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite ride")
         composeRule.onNode(star).assertIsDisplayed()
         composeRule.onNode(star).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         // The saved journey itself is toggled off, not a second one starred under these poles.
         assertEquals(starredOutbound.key, toggled.single().key)
@@ -2117,6 +2126,7 @@ class RouteDetailScreenScreenshotTest {
         val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite ride")
         composeRule.onNode(star).assertIsDisplayed()
         composeRule.onNode(star).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("stopRideToggle").performClick()
         composeRule.waitForIdle()
         assertEquals(saved.key, toggled.single().key)
     }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -747,7 +748,9 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
     }
     // Not at the rider's own stop: no journey ends where it starts.
     val longPress = extras?.onLongPress?.takeIf { extras.longPressReady && !row.riding && row.stopId in extras.longPressStops }
-    val longPressLabel = stringResource(if (row.starred) R.string.action_unstar_journey else R.string.action_star_journey)
+    val moreLabel = stringResource(R.string.more_actions)
+    // A long press opens the station's menu, which saves or removes the ride (maintainer, 2026-10-24).
+    var menuOpen by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val openLabel = extras?.openLabel ?: stringResource(R.string.line_stop_open)
     val surface = MaterialTheme.colorScheme.surface
@@ -784,6 +787,8 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
     val currentSave by rememberUpdatedState(save)
     val opens = open != null
     val presses = remember { MutableInteractionSource() }
+    Box {
+    if (save != null) FavoriteRideMenu(menuOpen, { menuOpen = false }, row.starred) { currentSave?.invoke() }
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
             .then(
@@ -798,13 +803,13 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                                 onTap = if (opens) ({ _ -> currentOpen?.invoke() }) else null,
                                 onLongPress = unlessPinchAt {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    currentSave?.invoke()
+                                    menuOpen = true
                                 },
                             )
                         }
                         .semantics {
                             if (open != null) onClick(label = openLabel) { open(); true }
-                            onLongClick(label = longPressLabel) { longPress(row.stopId, row.name); true }
+                            onLongClick(label = moreLabel) { menuOpen = true; true }
                         }
                     open != null -> Modifier.clickable(onClickLabel = openLabel, role = Role.Button) { open() }
                     else -> Modifier
@@ -882,6 +887,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                 )
             }
         }
+    }
     }
 }
 

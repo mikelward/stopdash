@@ -1621,9 +1621,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         a ride or place is saved). In order, one PR each:
     - [x] **Wording**: every action says "Add favorite ride" or "Add favorite place" (and Remove …), "…" only
           where a picker follows.
-    - [ ] **Long press opens a menu everywhere**, listing the favorite actions that apply; no long press saves on
-          its own (a route page's stop and line-map station, a trip card, a near-me row). A tap on a starred stop
-          still removes its ride.
+    - [x] **Long press opens a menu everywhere**, listing the favorite actions that apply; no long press saves on
+          its own (a route page's stop and line-map station, a trip card, a near-me row). A tap still opens the stop;
+          removing a ride is from the same menu or the stop's own star.
     - [ ] **Fill the gaps with the same menu items**: "Add favorite ride…" in the ⋮ of a trip's route page, On
           the way's and a favorite ride's page; "Add favorite place" in the ⋮ of a stop's details opened from a
           route page (it has no way to save the place today); a search row's menu offering the rides from it.
