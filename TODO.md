@@ -1989,6 +1989,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   name, less station/Underground/rail/pier words, matches a station or pier in
                   `stops.tsv` within 300 m, when the name carries a transit word. Police and fire
                   stations and shops named after a station stay.
+              - [x] **An attraction is what else it's tagged as** (maintainer, 2026-10-24): St Paul's
+                  Cathedral drew a ferris wheel. The builder now prefers any other public tag (worship,
+                  cemetery, park, square, theater, stadium, historic) or a typed building over
+                  `tourism=attraction`; rank (Wikipedia coverage) is unchanged.
+              - [ ] **Rebuild `place_index.tsv` to carry it**: the shipped file predates the rule
+                  (needs Geofabrik, which the cloud sandbox can't reach).
               - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
                   `station-index-refresh.yml` (needs `osmium` and `pyproj`; Geofabrik's extracts refresh daily),
                   which also moves the year in the About screen's Ordnance Survey statements.

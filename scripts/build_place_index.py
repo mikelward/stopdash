@@ -202,6 +202,10 @@ TYPE_OF_KEY = {"shop": "shop", "craft": "shop", "office": "office", "healthcare"
 # tagged with a religion not here (multifaith, Bahá'í…) is a plain place, never mislabeled a church.
 WORSHIP = {"christian": "church", "muslim": "mosque", "jewish": "synagogue", "hindu": "temple", "sikh": "temple",
            "buddhist": "temple", "jain": "temple"}
+# The types an attraction's building names over its attraction tag: what it is (a cathedral, a
+# stadium), not a shop or an office, which is only what the building was built as.
+ATTRACTION_BUILDING_TYPES = {"church", "mosque", "synagogue", "temple", "school", "college", "hospital", "hotel",
+                             "stadium", "museum", "library"}
 TYPES = sorted(set(TYPE_OF.values()) | set(TYPE_OF_KEY.values()) | set(WORSHIP.values()) | {"place"})
 
 
@@ -221,11 +225,16 @@ def place_item(tags):
 
 
 def place_of(tags):
-    """(category, public) for an OpenStreetMap object's tags (a dict) when it's a destination, else None."""
+    """(category, public) for an OpenStreetMap object's tags (a dict) when it's a destination, else None.
+
+    An attraction tag says a place is worth seeing, not what it is (its rank says it's famous): any
+    other public tag wins, and so does a building naming its type, so St Paul's Cathedral is a church,
+    Highgate Cemetery a cemetery and Trafalgar Square a square. A zoo or a big wheel stays an attraction."""
     if not tags.get("name") or tags.get("disused") == "yes" or tags.get("abandoned") == "yes":
         return None
     if any(tags.get(key) in values for key, values in TRANSIT.items()):
         return None
+    attraction = None
     for table, public in ((PUBLIC_PLACES, True), (OTHER_PLACES, False)):
         for key, values in table.items():
             value = tags.get(key)
@@ -233,7 +242,15 @@ def place_of(tags):
                 continue
             if key == "historic" and value == "memorial" and tags.get("memorial") in SMALL_MEMORIALS:
                 continue
+            if (key, value) == ("tourism", "attraction"):
+                attraction = f"{key}={value}", True
+                continue
             return f"{key}={value}", public
+        if attraction:
+            building = tags.get("building")
+            if TYPE_OF.get(f"building={building}") in ATTRACTION_BUILDING_TYPES:
+                return f"building={building}", True
+            return attraction
     # A named building is a place only when it names its Wikidata item (a famous tower, a landmark
     # hall): the rest are mostly blocks of flats.
     building = tags.get("building")
