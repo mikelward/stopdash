@@ -303,6 +303,37 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a ride boarding at no listed station goes before the first station farther than it, not atop the list`() {
+        // A ride whose stop is a farther place's was drawn atop the list, above nearer stations (bug report, 2026-10-24).
+        val near = group("n", "N1", "N")
+        val far = group("f", "F1", "F")
+        fun ride(from: String, to: String) =
+            JourneyCard(FavoriteJourney(JourneyEnd(from, from), JourneyEnd(to, to), "line"), JourneyCardState.NotChecked(), boardingIds = listOf(from))
+        val between = ride("M1", "Z")
+        val beyond = ride("X1", "Z")
+        val unmeasured = ride("U1", "Z")
+        val atNear = ride("N1", "Z")
+        val layout = StationLayout.of(
+            groups = listOf(near, far),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(beyond, unmeasured, between, atNear),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0, "F" to 1000.0),
+            stopClusterIds = emptyMap(),
+            rideMeters = mapOf(between.journey.key to 380.0, beyond.journey.key to 2000.0, atNear.journey.key to 100.0),
+        )
+        assertEquals(
+            mapOf("F|TUBE" to listOf(between.journey.key), StationLayout.AFTER_STATIONS to listOf(beyond.journey.key)),
+            layout.ridesBefore.mapValues { (_, cards) -> cards.map { it.journey.key } },
+        )
+        // Nearest first, as the stations are.
+        assertEquals(listOf("F|TUBE", StationLayout.AFTER_STATIONS), layout.ridesBefore.keys.toList())
+        // One at a listed station stays with it, and only one with no distance leads the list.
+        assertEquals(mapOf(atNear.journey.key to "N|TUBE"), layout.rideStations)
+        assertEquals(listOf(unmeasured.journey.key), layout.ridesAtop.map { it.journey.key })
+    }
+
+    @Test
     fun `a place's stations go by mode, each heading one icon, modes sharing an icon together`() {
         val bus = StopGroup(stopName = "Place", key = "b", showHeader = true, rows = listOf(row("A3", "A").copy(mode = "bus")), placeKey = "A")
         val rail = StopGroup(

@@ -3249,12 +3249,13 @@ private fun DepartureList(
     val stationLayout = if (byStation) {
         rememberWorked(
             stationSlot,
-            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping),
+            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters),
             keep = { kept, wanted -> (wanted.parts[0] as ListCards).grownFrom(kept.parts[0] as ListCards) },
         ) {
             StationLayout.of(
                 listCards.groups, listCards::of, journeyCards, starred, placeDistanceMeters, stopClusterIds, farther, held.values, stopDistanceMeters,
                 rideGrouping ?: RideGrouping.RIDE,
+                rideMeters,
             )
         }
     } else {
@@ -3311,6 +3312,8 @@ private fun DepartureList(
     // [inStation]: a group of its own just before its station's while it has no trains of its own group to show
     // (checking, none due, or more to say than its trains), headed as a station is, with [stationDistance], how far
     // the station is, and folding apart from it, as a ride with trains is ([rideGroupItems]; maintainer, 2026-10-23).
+    // With no [stationDistance], a ride boarding at no listed station, drawn among them by how far it is
+    // ([StationLayout.ridesBefore]), headed the same way with its own distance.
     fun LazyListScope.journeyItems(
         cards: List<JourneyCard>,
         farMeters: Map<String, Double>? = null,
@@ -3361,7 +3364,8 @@ private fun DepartureList(
                         val mode = card.journey.mode
                         StationHeader(
                             stringResource(R.string.journey_title, card.journey.from.name, card.journey.to.name),
-                            stationDistance,
+                            // A ride drawn among the stations by its own distance says that ([StationLayout.ridesBefore]).
+                            stationDistance ?: distanceSystem?.let { system -> rideMeters[card.journey.key]?.let { distanceText(it, system, resources) } },
                             modes = listOfNotNull(ModeIcon.of(mode)),
                             modeIds = listOf(mode).filter { it.isNotBlank() },
                             folded = folded,
@@ -3638,11 +3642,15 @@ private fun DepartureList(
             byStation -> emptyMap()
             else -> mapOf(null to journeyCards)
         }
-        val leadingCards = rideStations[null].orEmpty()
+        // Of those, grouped by station, a ride with a distance is drawn among the stations by it, worked out with them
+        // ([StationLayout.ridesBefore]), and only one with none leads the list.
+        val ridesBefore = stationLayout?.ridesBefore.orEmpty()
+        val leadingCards = if (stationLayout != null) stationLayout.ridesAtop else rideStations[null].orEmpty()
         val rideEnds: Map<DepartureRow, Set<String>> = stationLayout?.rideEnds.orEmpty()
         // Favorite journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
-        journeyItems(leadingCards)
+        // Grouped by station, headed as the rest are, its mode's icon and star, even atop (bug report, 2026-10-24).
+        journeyItems(leadingCards, inStation = byStation)
         nearbyEmptyNote?.let { note ->
             item(key = "nearby-empty") { JourneyNote(note) }
         }
@@ -4062,6 +4070,7 @@ private fun DepartureList(
                 return
             }
             val above = aboveAt(index)
+            journeyItems(ridesBefore[station].orEmpty(), inStation = true)
             rideGroupItems(station)
             stationItems(station, closed = closesStation(above))
             if (station in foldedStations) return
@@ -4098,6 +4107,7 @@ private fun DepartureList(
             groupItems(index, group)
         }
         slotItems(listed.size)
+        journeyItems(ridesBefore[StationLayout.AFTER_STATIONS].orEmpty(), inStation = true)
         // Below the loaded places: the farther stations and bus places, each collapsed until tapped
         // (in [CollapsedPlaces.ordered]'s order).
         for (card in farther) {
@@ -4677,8 +4687,16 @@ internal class StationLayout(
     // A farther card's modes, by its place key, an icon each before its name while it's yet to be opened.
     val fartherModes: Map<String, List<ModeIcon>> = emptyMap(),
     val fartherModeIds: Map<String, List<String>> = emptyMap(),
+    // The rides boarding at no station drawn here, by the station each is drawn just before, nearest first as the
+    // stations are, or [AFTER_STATIONS] for after them all, rather than atop the list above nearer stations (bug
+    // report, 2026-10-24); and those with no distance, which lead the list ([ridesAtop]).
+    val ridesBefore: Map<String, List<JourneyCard>> = emptyMap(),
+    val ridesAtop: List<JourneyCard> = emptyList(),
 ) {
     companion object {
+        /** [ridesBefore]'s for the rides farther than every station drawn. */
+        const val AFTER_STATIONS = ""
+
         @WorkerThread
         fun of(
             groups: List<StopGroup>,
@@ -4696,6 +4714,8 @@ internal class StationLayout(
             // How Group favorite rides groups a ride's trains: a group of its own (By ride), one per stop it boards from
             // (By stop), or leading its station's card, starred (By station) (maintainer, 2026-10-23).
             rideGrouping: RideGrouping = RideGrouping.RIDE,
+            // How far the stop each ride boards from is, by journey key ([rideMeters]), for [ridesBefore].
+            rideMeters: Map<String, Double> = emptyMap(),
         ): StationLayout {
             fun metersOf(group: StopGroup): Double? =
                 group.rows.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull() ?: placeDistanceMeters[group.placeKey]
@@ -4758,6 +4778,12 @@ internal class StationLayout(
             val meters = members.mapNotNull { (station, stationGroups) ->
                 stationGroups.mapNotNull(::metersOf).minOrNull()?.let { station to it }
             }.toMap()
+            val drawnByMeters = drawn.mapNotNull { station -> meters[station]?.let { station to it } }.sortedBy { it.second }
+            val (measured, ridesAtop) = journeyCards.filter { it.journey.key !in rideStations }.partition { it.journey.key in rideMeters }
+            val ridesBefore = measured.sortedBy { rideMeters.getValue(it.journey.key) }.groupBy { card ->
+                val rideAt = rideMeters.getValue(card.journey.key)
+                drawnByMeters.firstOrNull { it.second > rideAt }?.first ?: AFTER_STATIONS
+            }
             val modeIds = members.mapValues { (_, stationGroups) -> stationGroups.flatMap { group -> group.rows.map { it.mode } }.distinct() }
             val modes = modeIds.mapValues { (_, ids) -> ModeIcon.of(ids) }
             val fartherGroups = ArrayList<StopGroup>()
@@ -4777,6 +4803,8 @@ internal class StationLayout(
                 fartherStart = fartherStart,
                 fartherModes = fartherModeIds.mapValues { (_, ids) -> ModeIcon.of(ids) },
                 fartherModeIds = fartherModeIds,
+                ridesBefore = ridesBefore,
+                ridesAtop = ridesAtop,
             )
         }
     }
@@ -5097,6 +5125,14 @@ private fun StationHeader(
                         style = style.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // The gold star, as a ride's own heading has it ([JourneyHeader]): without it a bus ride's group read as
+                    // a bus stop's "Place ➔ Destination" heading (bug report, 2026-10-24). Decorative, as there.
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = LocalStarredBorderColor.current,
+                        modifier = Modifier.padding(start = 4.dp).size(16.dp).testTag("rideStar"),
                     )
                 } else {
                     Text(
