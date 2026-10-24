@@ -3944,7 +3944,7 @@ class MainScreenScreenshotTest {
         // A tap on the heading opens the journey's own view: its trains headed by where they board,
         // under Swap and Unstar, with the near-me list gone.
         composeRule.onNodeWithText("Victoria ➔ Warren Street").performClick()
-        composeRule.onNodeWithText("Remove favourite").assertExists()
+        composeRule.onNodeWithText("Remove favourite ride").assertExists()
         composeRule.onNodeWithText("Platform 5", substring = true).assertExists()
         composeRule.onAllNodesWithText("Manor House", substring = true).assertCountEquals(0)
         captureSnapshot("main-journey-view.png")
@@ -3968,7 +3968,7 @@ class MainScreenScreenshotTest {
         savedKnown = true
         savedLoading = false
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Remove favourite").assertExists()
+        composeRule.onNodeWithText("Remove favourite ride").assertExists()
 
         // A read that failed isn't loading: the view closes to the list rather than spin forever.
         saved = emptyList()
@@ -4031,7 +4031,7 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("on this ride", substring = true).assertExists()
         assertEquals(null, toggled)
-        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
@@ -4039,7 +4039,7 @@ class MainScreenScreenshotTest {
 
         // Another line's row opens the same menu: add a favorite ride on it, or hide it from this ride.
         composeRule.onNodeWithText("Warren Street").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Add favourite…").assertExists()
+        composeRule.onNodeWithText("Add favourite ride…").assertExists()
         composeRule.onNodeWithText("Hide X1 on this ride").performClick()
         composeRule.waitForIdle()
         val x1 = HiddenModes.lineKey("bus-x", "X1")
@@ -4119,7 +4119,7 @@ class MainScreenScreenshotTest {
         // Its heading still opens its own view.
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Remove favourite").assertExists()
+        composeRule.onNodeWithText("Remove favourite ride").assertExists()
     }
 
     @Test
@@ -4392,7 +4392,7 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
         composeRule.onNodeWithText("West End").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Add favourite…").assertExists()
+        composeRule.onNodeWithText("Add favourite ride…").assertExists()
         composeRule.onNodeWithText("on this ride", substring = true).performClick()
         composeRule.waitForIdle()
         assertEquals(1, writes.size)
@@ -6392,7 +6392,7 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
         composeRule.onNodeWithText("on this ride", substring = true).assertExists()
-        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()

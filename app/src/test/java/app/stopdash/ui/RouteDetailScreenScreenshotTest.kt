@@ -513,7 +513,7 @@ class RouteDetailScreenScreenshotTest {
 
         composeRule.onNodeWithText("Severe Delays").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Dismiss alert").assertIsDisplayed()
-        // No pin star: nothing new is pinned (maintainer, 2026-10-23); the menu's "Add favourite…" saves a ride.
+        // No pin star: nothing new is pinned (maintainer, 2026-10-23); the menu's "Add favourite ride…" saves a ride.
         composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Unpin from top").assertDoesNotExist()
         // The app bar names where the service is going; with no stop list shown, the body names the
@@ -2014,7 +2014,7 @@ class RouteDetailScreenScreenshotTest {
         // name is also the header's destination).
         composeRule.onNode(
             SemanticsMatcher("star journey action") {
-                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Favourite ride"
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Add favourite ride"
             },
         ).performTouchInput { longClick() }
         composeRule.waitForIdle()

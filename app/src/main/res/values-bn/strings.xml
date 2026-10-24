@@ -402,8 +402,6 @@
     <string name="station_search_remove_recent_confirm">সরান</string>
     <string name="station_search_remove_recent_cancel">বাতিল করুন</string>
     <string name="station_search_row_menu_action">আরও বিকল্প</string>
-    <string name="station_search_add_favorite">প্রিয় তালিকায় যোগ করুন</string>
-    <string name="station_search_remove_favorite">প্রিয় তালিকা থেকে সরান</string>
     <string name="station_search_remove_recent_failed">সাম্প্রতিক থেকে সরানো যায়নি</string>
     <string name="station_search_places_error">আপনার জায়গাগুলো লোড করা যায়নি</string>
     <string name="station_search_yours_error">আপনার স্টেশনগুলো লোড করা যায়নি</string>
@@ -735,9 +733,7 @@
     <string name="journey_route_failed">রুট লোড করা যায়নি</string>
     <string name="journey_destination_unchecked">%1$s বন্ধ কিনা যাচাই করা যায়নি</string>
     <string name="journey_incomplete">কিছু রুট যাচাই করা যায়নি</string>
-    <string name="action_unstar_journey">প্রিয় তালিকা থেকে সরান</string>
     <string name="route_stop_journey_starred">প্রিয় যাত্রা</string>
-    <string name="station_journey_add">প্রিয়</string>
     <string name="station_journey_write_failed">পরিবর্তনটি সেভ করা যায়নি</string>
     <string name="station_journey_write_failed_away">আপনার প্রিয় যাত্রা সেভ করা যায়নি</string>
     <string name="route_stop_in_alert">পরিষেবা সতর্কতায় আছে</string>

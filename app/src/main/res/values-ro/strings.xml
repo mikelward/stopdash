@@ -408,8 +408,6 @@
     <string name="station_search_remove_recent_confirm">Eliminați</string>
     <string name="station_search_remove_recent_cancel">Anulați</string>
     <string name="station_search_row_menu_action">Mai multe opțiuni</string>
-    <string name="station_search_add_favorite">Adăugați la preferate</string>
-    <string name="station_search_remove_favorite">Eliminați din preferate</string>
     <string name="station_search_remove_recent_failed">Nu s-a putut elimina din Recente</string>
     <string name="station_search_places_error">Nu s-au putut încărca locurile dvs.</string>
     <string name="station_search_yours_error">Nu s-au putut încărca stațiile dvs.</string>
@@ -741,9 +739,7 @@
     <string name="journey_route_failed">Nu s-a putut încărca ruta</string>
     <string name="journey_destination_unchecked">Nu s-au putut verifica închiderile pentru %1$s</string>
     <string name="journey_incomplete">Unele rute nu au putut fi verificate</string>
-    <string name="action_unstar_journey">Eliminați din preferate</string>
     <string name="route_stop_journey_starred">Cursă preferată</string>
-    <string name="station_journey_add">Adăugați la preferate</string>
     <string name="station_journey_write_failed">Nu s-a putut salva modificarea</string>
     <string name="station_journey_write_failed_away">Nu s-a putut salva cursa preferată</string>
     <string name="route_stop_in_alert">În zona alertei de circulație</string>

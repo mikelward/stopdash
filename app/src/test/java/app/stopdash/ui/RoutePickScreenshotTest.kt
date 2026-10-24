@@ -40,7 +40,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The route page picking where a favorite ride goes ("Add favorite…", SPEC *Journeys*; maintainer, 2026-10-23):
- * titled "Add favourite", then where it's from, "To…" and the stop list alone (no times, notices or actions;
+ * titled "Add favourite ride", then where it's from, "To…" and the stop list alone (no times, notices or actions;
  * maintainer, 2026-10-23), and a tap on a stop after the boarding stop picks it rather than opening its
  * details; the boarding stop picks nothing, and a long press doesn't toggle a ride while picking. Its menu's
  * "Add favorite…" puts the page into it. Public Victoria line stations only (SPEC *Privacy*).
@@ -108,7 +108,7 @@ class RoutePickScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
-        composeRule.onNodeWithText("Add favourite").assertIsDisplayed()
+        composeRule.onNodeWithText("Add favourite ride").assertIsDisplayed()
         composeRule.onNodeWithText("From Victoria", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("To…").assertIsDisplayed()
         // The departure's own lines are left off: its line heading, countdown and disruption note.
@@ -121,7 +121,7 @@ class RoutePickScreenshotTest {
             SemanticsMatcher("tap said as $label") { it.config.getOrNull(SemanticsActions.OnClick)?.label == label },
             useUnmergedTree = true,
         ).fetchSemanticsNodes().size
-        assertTrue(saidAs("Add favourite") > 0)
+        assertTrue(saidAs("Add favourite ride") > 0)
         assertEquals(0, saidAs("Show stop"))
 
         composeRule.onNodeWithText("Oxford Circus", substring = true).performClick()
@@ -193,7 +193,7 @@ class RoutePickScreenshotTest {
         // No pin star: nothing new is pinned.
         composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("More options").performClick()
-        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
         composeRule.runOnIdle { assertEquals(1, started) }
     }
 

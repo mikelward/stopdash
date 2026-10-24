@@ -12,7 +12,7 @@
     <string name="settings_summary_rides_summary">Watch your favourite rides\' lines</string>
     <string name="settings_summary_rides_edit">Edit favourite rides</string>
     <string name="favorite_places_title">Favourite places</string>
-    <string name="line_stop_favorite">Add to favourite places</string>
+    <string name="line_stop_favorite">Add favourite place</string>
     <string name="place_icon_shop">Shop</string>
     <string name="place_icon_theater">Theatre</string>
     <string name="favorite_places_edit_action">Edit favourite places</string>
@@ -22,8 +22,8 @@
     <string name="timetable_canceled">%1$s (cancelled)</string>
     <string name="timetable_canceled_spoken">%1$s, cancelled</string>
     <string name="journey_tip">Long-press a stop to favourite the ride there</string>
-    <string name="add_favorite_ride">Add favourite…</string>
-    <string name="route_pick_title">Add favourite</string>
+    <string name="add_favorite_ride">Add favourite ride…</string>
+    <string name="route_pick_title">Add favourite ride</string>
     <string name="settings_favorite_journeys_title">Favourite rides</string>
     <string name="settings_drive_sync_off">Keep your favourite rides the same on each phone</string>
     <string name="settings_ride_grouping_title">Group favourite rides</string>
@@ -32,10 +32,10 @@
     <string name="favorite_journeys_unavailable">Can\'t read your favourite rides.</string>
     <string name="favorite_journeys_add_already">%1$s ⇄ %2$s is already a favourite</string>
     <string name="journey_alerts_channel_description">A favourite ride\'s line is disrupted during its alert times</string>
-    <string name="action_star_journey">Favourite ride</string>
-    <string name="action_unstar_journey">Remove favourite</string>
+    <string name="action_star_journey">Add favourite ride</string>
+    <string name="action_unstar_journey">Remove favourite ride</string>
     <string name="route_stop_journey_starred">Favourite ride</string>
-    <string name="station_journey_add">Favourite</string>
+    <string name="station_journey_add">Add favourite ride</string>
     <string name="station_journey_write_failed_away">Couldn\'t save your favourite ride</string>
     <!-- A station's facilities as they're signed in the UK. -->
     <string name="facility_toilets">Toilets</string>
@@ -48,8 +48,8 @@
     <string name="compass_se">south-east</string>
     <string name="compass_sw">south-west</string>
     <string name="compass_nw">north-west</string>
-    <string name="station_search_add_favorite">Add favourite</string>
-    <string name="station_search_remove_favorite">Remove favourite</string>
+    <string name="station_search_add_favorite">Add favourite place</string>
+    <string name="station_search_remove_favorite">Remove favourite place</string>
     <!-- Place types (values/strings.xml). -->
     <string name="place_type_takeaway">Takeaway</string>
     <string name="place_type_mall">Shopping centre</string>

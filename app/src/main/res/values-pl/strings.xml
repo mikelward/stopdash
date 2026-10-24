@@ -422,8 +422,6 @@
     <string name="station_search_remove_recent_confirm">Usuń</string>
     <string name="station_search_remove_recent_cancel">Anuluj</string>
     <string name="station_search_row_menu_action">Więcej opcji</string>
-    <string name="station_search_add_favorite">Dodaj do ulubionych</string>
-    <string name="station_search_remove_favorite">Usuń z ulubionych</string>
     <string name="station_search_remove_recent_failed">Nie udało się usunąć z ostatnich</string>
     <string name="station_search_places_error">Nie udało się wczytać Twoich miejsc</string>
     <string name="station_search_yours_error">Nie udało się wczytać Twoich stacji</string>
@@ -758,9 +756,7 @@
     <string name="journey_route_failed">Nie udało się wczytać trasy</string>
     <string name="journey_destination_unchecked">Nie udało się sprawdzić zamknięć: %1$s</string>
     <string name="journey_incomplete">Nie udało się sprawdzić niektórych tras</string>
-    <string name="action_unstar_journey">Usuń z ulubionych</string>
     <string name="route_stop_journey_starred">Ulubiony przejazd</string>
-    <string name="station_journey_add">Dodaj do ulubionych</string>
     <string name="station_journey_write_failed">Nie udało się zapisać zmiany</string>
     <string name="station_journey_write_failed_away">Nie udało się zapisać ulubionego przejazdu</string>
     <string name="route_stop_in_alert">W komunikacie o utrudnieniach</string>

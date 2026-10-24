@@ -408,8 +408,6 @@
     <string name="station_search_remove_recent_confirm">Quitar</string>
     <string name="station_search_remove_recent_cancel">Cancelar</string>
     <string name="station_search_row_menu_action">Más opciones</string>
-    <string name="station_search_add_favorite">Añadir a favoritos</string>
-    <string name="station_search_remove_favorite">Quitar de favoritos</string>
     <string name="station_search_remove_recent_failed">No se pudo quitar de Recientes</string>
     <string name="station_search_places_error">No se pudieron cargar tus lugares</string>
     <string name="station_search_yours_error">No se pudieron cargar tus estaciones</string>
@@ -741,9 +739,7 @@
     <string name="journey_route_failed">No se pudo cargar la ruta</string>
     <string name="journey_destination_unchecked">No se pudieron comprobar cierres en %1$s</string>
     <string name="journey_incomplete">No se pudieron comprobar algunas rutas</string>
-    <string name="action_unstar_journey">Quitar de favoritos</string>
     <string name="route_stop_journey_starred">Trayecto favorito</string>
-    <string name="station_journey_add">Favorito</string>
     <string name="station_journey_write_failed">No se pudo guardar el cambio</string>
     <string name="station_journey_write_failed_away">No se pudo guardar tu trayecto favorito</string>
     <string name="route_stop_in_alert">En la alerta de servicio</string>

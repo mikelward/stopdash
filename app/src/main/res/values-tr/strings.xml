@@ -402,8 +402,6 @@
     <string name="station_search_remove_recent_confirm">Kaldır</string>
     <string name="station_search_remove_recent_cancel">İptal</string>
     <string name="station_search_row_menu_action">Diğer seçenekler</string>
-    <string name="station_search_add_favorite">Favorilere ekle</string>
-    <string name="station_search_remove_favorite">Favorilerden kaldır</string>
     <string name="station_search_remove_recent_failed">Son kullanılanlardan kaldırılamadı</string>
     <string name="station_search_places_error">Yerleriniz yüklenemedi</string>
     <string name="station_search_yours_error">İstasyonlarınız yüklenemedi</string>
@@ -735,9 +733,7 @@
     <string name="journey_route_failed">Güzergâh yüklenemedi</string>
     <string name="journey_destination_unchecked">%1$s için kapatma kontrolü yapılamadı</string>
     <string name="journey_incomplete">Bazı güzergâhlar kontrol edilemedi</string>
-    <string name="action_unstar_journey">Favorilerden kaldır</string>
     <string name="route_stop_journey_starred">Favori biniş</string>
-    <string name="station_journey_add">Favori</string>
     <string name="station_journey_write_failed">Değişiklik kaydedilemedi</string>
     <string name="station_journey_write_failed_away">Favori binişiniz kaydedilemedi</string>
     <string name="route_stop_in_alert">Hizmet uyarısında</string>
