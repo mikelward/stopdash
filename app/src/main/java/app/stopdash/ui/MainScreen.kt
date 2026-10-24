@@ -6824,12 +6824,11 @@ internal fun RouteRow(
     onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
     // The route this row shows (null for a status row), handed to the detail so it opens on it.
     focus: RouteFocus? = null,
-    // Makes a long press open a menu — "Add favorite…" (and Unpin, for a row pinned before), then "Hide ‹mode›" for
-    // this row's mode (SPEC *Finding stops → Hiding a mode*) — instead of opening "Add favorite…" at once. Null keeps
-    // the direct one.
+    // Adds "Hide ‹mode›" for this row's mode (SPEC *Finding stops → Hiding a mode*) to its long press's menu, after
+    // "Add favorite ride…" (and Unpin, for a row pinned before). Null keeps those alone.
     onHideMode: ((String) -> Unit)? = null,
-    // A favorite ride's row: a long press opens a menu — "Add favorite…" (and Unpin), then "Hide ‹line› on this
-    // ride" (SPEC *Hiding a line from a ride*). Null keeps the direct "Add favorite…".
+    // A favorite ride's row: a long press opens a menu — "Add favorite ride…" (and Unpin), then "Hide ‹line› on this
+    // ride" (SPEC *Hiding a line from a ride*). Null keeps "Add favorite ride…" alone.
     onHideFromRide: ((LineRef) -> Unit)? = null,
     // A tap that does this instead of opening the line's page, unlabeled like the card's own tap —
     // a trip's card, where the row is one of the trip's choices, not a line to look up.
@@ -6863,13 +6862,15 @@ internal fun RouteRow(
     val hideMode = row.mode.takeIf { onHideMode != null && it.isNotBlank() && !longPressesInstead }
     val rideHide = onHideFromRide.takeIf { row.lineId.isNotBlank() && !longPressesInstead && hideMode == null }
     val currentRideHide by rememberUpdatedState(rideHide)
-    val menu = hideMode != null || rideHide != null
+    // A long press opens a menu wherever it does anything (maintainer, 2026-10-24): "Add favorite ride…" alone is a
+    // menu of one, never the picker at once.
+    val pinned = starrable && isStarred && !longPressesInstead
+    val menu = hideMode != null || rideHide != null || addable || pinned
     var menuOpen by remember { mutableStateOf(false) }
     fun open() = currentOpenInstead?.invoke() ?: currentOpenDetail?.invoke(currentRow, currentFocus)
     val onLongPress: ((Offset) -> Unit)? = when {
         longPressesInstead -> { _ -> currentLongPressInstead?.invoke() }
         menu -> { _ -> menuOpen = true }
-        addable -> { _ -> addRide() }
         else -> null
     }
     val starColor = LocalStarredBorderColor.current
@@ -6900,7 +6901,6 @@ internal fun RouteRow(
                 when {
                     longPressesInstead -> onLongClick(label = moreLabel) { currentLongPressInstead?.invoke(); true }
                     menu -> onLongClick(label = moreLabel) { menuOpen = true; true }
-                    addable -> onLongClick(label = addLabel) { addRide(); true }
                 }
             }
             .then(
@@ -6916,7 +6916,7 @@ internal fun RouteRow(
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
-    // The menu's first items: "Add favorite…", then "Unpin from top" for a row pinned before pins went.
+    // The menu's first items: "Add favorite ride…", then "Unpin from top" for a row pinned before pins went.
     val starItem: (@Composable () -> Unit)? = if (addable || (starrable && isStarred)) {
         {
             if (addable) {
@@ -6962,6 +6962,8 @@ internal fun RouteRow(
                 },
             )
         }
+    } else if (starItem != null) {
+        StopDashMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) { starItem() }
     }
     }
 }

@@ -1562,16 +1562,18 @@ say journey.*
 
 A rider can **favorite a journey** — a segment between two stops, rail or bus (maintainer, 2026-09-23;
 called *starred* until 2026-10-06, when the maintainer renamed them *favorite journeys*, en-GB
-*favourite*): on a route page, a long press on a stop on the stop list (after the boarding stop) saves
-the segment from the boarding stop to it — both directions — and marks the stop with a star; another
-long press removes it. **A tap on the stop opens its details** (*Route detail*), whose top bar's star
+*favourite*): on a route page, a long press on a stop on the stop list (after the boarding stop) opens its menu,
+whose **"Add favorite ride"** saves the segment from the boarding stop to it — both directions — and marks the stop
+with a star, and whose **"Remove favorite ride"** takes it off; the line map's stations the same. **A long press opens
+a menu everywhere, and none saves on its own** (maintainer, 2026-10-24): a route row's, a trip card's and a stop's alike,
+"Add favorite ride…" alone on a row a menu of one. **A tap on the stop opens its details** (*Route detail*), whose top bar's star
 saves the same journey, filled once saved, a tap then removing it (maintainer, 2026-10-09; a row of
 its own atop the stop's page from 2026-10-06): the discoverable path, the long press the shortcut. It waits on the saved journeys
 being read rather than guess which way a tap goes, says a change it couldn't save, and a removal
 drops the widget's pins as Settings' Remove does. The boarding stop's details offer no journey, and no star. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
 favorite journeys the rider never meant to, which then pinned to the widget.
 **A long press on a route row asks where the ride goes** (maintainer, 2026-10-23, replacing pinning
-the row): **"Add favorite ride…"** opens the row's own route page, as a tap does, picking: titled **Add
+the row): its menu's **"Add favorite ride…"** opens the row's own route page, as a tap does, picking: titled **Add
 favorite ride**, then where it's from, **"To…"** and its stop list (or map) alone — no times, notices or
 actions, which are the departure's, not the ride's (maintainer, 2026-10-23). The stops are the train's as
 ever, those after the boarding stop on its way and branch, and a

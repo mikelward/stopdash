@@ -120,7 +120,11 @@ class StarLongPressTest {
         composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
         composeRule.waitForIdle()
-        // The row's own page, asking "To…"; nothing is pinned.
+        // Its menu first (maintainer, 2026-10-24: no long press acts on its own), then the row's own page, asking "To…";
+        // nothing is pinned.
+        composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
         assertNull(toggled)
 
@@ -144,7 +148,7 @@ class StarLongPressTest {
     }
 
     @Test
-    fun `the long press is labeled Add favourite for a screen reader`() {
+    fun `the long press opens a menu for a screen reader too`() {
         composeRule.setContent {
             StopDashTheme {
                 MainScreen(state = loaded(), now = now, onRefresh = {}, onAddRide = { _, _, _ -> })
@@ -152,12 +156,13 @@ class StarLongPressTest {
         }
         val labels = composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick))
             .fetchSemanticsNodes().mapNotNull { it.config.getOrNull(SemanticsActions.OnLongClick)?.label }
-        assertTrue(labels.toString(), "Add favourite ride…" in labels)
+        assertTrue(labels.toString(), "Options" in labels)
+        assertTrue(labels.toString(), "Add favourite ride…" !in labels)
         assertTrue(labels.toString(), "Pin to top" !in labels)
     }
 
     @Test
-    fun `long-pressing a pinned card asks where the ride goes too, never pinning or unpinning`() {
+    fun `long-pressing a pinned card offers its ride or unpinning, doing neither until one is picked`() {
         var toggled: DepartureRow? = null
         composeRule.setContent {
             StopDashTheme {
@@ -172,6 +177,10 @@ class StarLongPressTest {
             }
         }
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Unpin from top").assertExists()
+        assertNull(toggled)
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
         assertNull(toggled)
