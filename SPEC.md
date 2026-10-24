@@ -354,8 +354,8 @@ The app finds stops two ways:
   any picked lately. A **long press on any row**, typed result or the user's own, opens a menu
   titled with its name (maintainer, 2026-10-12): **Show on map**; **Remove from Recent**, on a row
   that is one of the recent picks, which asks "Remove from Recent?" and, confirmed, takes it off that list
-  (maintainer, 2026-10-10); and **Add favorite**, which opens the favorite-place editor filled in
-  with the row, or **Remove favorite** when a saved place sits at its position. A long press
+  (maintainer, 2026-10-10); and **Add favorite place**, which opens the favorite-place editor filled in
+  with the row, or **Remove favorite place** when a saved place sits at its position. A long press
   never opens the row. If a removal from Recent can't be saved the row stays and the search says so
   until the next long press, even if it was closed meanwhile; a starred row is unstarred where it was starred.
   *From…*, *To…* and a trip's *Via…* keep **separate recent lists** — where the rider looks from,
@@ -1139,7 +1139,7 @@ with location denied: soonest-first, with **starred** rows pinned to the top. St
 ranking only, separate from which stops are watched (add/remove membership). A star keys on
 the row's `(stop, service, resolved direction key)` identity, so it restores to exactly one
 row and survives restart. **Pins are being replaced by favorite rides** (maintainer, 2026-10-23): a
-**long-press on a route row** now opens **"Add favorite…"** (*Journeys*), and nothing new is pinned; a
+**long-press on a route row** now opens **"Add favorite ride…"** (*Journeys*), and nothing new is pinned; a
 route pinned before keeps its **gold leading-edge bar** on its row (no in-row element, so it costs no width)
 and its place at the top until pins are removed (`TODO.md`), and is unpinned from its row's menu, where it
 has one, or its route page's filled star. The earlier per-row star button was removed because it consumed width
@@ -1151,7 +1151,7 @@ destination by branch), not whichever of the line's trains is soonest
 (once the tapped route has no trains left at any of the stop's platforms it falls back to the row's
 soonest, and the title follows, so the title and stop list always name the same train) — its own app bar naming the route (line pill +
 destination, with the branch where the card showed one, "Hainault/Newbury Park") and
-offering "Add favorite…" in its menu (the long press is the shortcut, the page the discoverable path), then, heading
+offering "Add favorite ride…" in its menu (the long press is the shortcut, the page the discoverable path), then, heading
 the body, the service's **full name** — "Victoria line", "London Northwestern Railway" — so a short
 pill code is never a puzzle (left off where the pill already is the name: a bus number, DLR), then
 **every upcoming departure on that route** — not the card's first three — on one full-width
@@ -1571,16 +1571,18 @@ being read rather than guess which way a tap goes, says a change it couldn't sav
 drops the widget's pins as Settings' Remove does. The boarding stop's details offer no journey, and no star. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
 favorite journeys the rider never meant to, which then pinned to the widget.
 **A long press on a route row asks where the ride goes** (maintainer, 2026-10-23, replacing pinning
-the row): **"Add favorite…"** opens the row's own route page, as a tap does, picking: titled **Add
-favorite**, then where it's from, **"To…"** and its stop list (or map) alone — no times, notices or
+the row): **"Add favorite ride…"** opens the row's own route page, as a tap does, picking: titled **Add
+favorite ride**, then where it's from, **"To…"** and its stop list (or map) alone — no times, notices or
 actions, which are the departure's, not the ride's (maintainer, 2026-10-23). The stops are the train's as
 ever, those after the boarding stop on its way and branch, and a
 **tap on one saves the favorite ride** from the boarding stop to it — built as a long press on that stop
 saves it, saved as Settings' Add saves one — then closes the page to where the long press was, where
 the list says how it went (added, already a favorite, couldn't save). The boarding stop picks nothing,
 and while it picks, a long press on a stop picks it as a tap does (never toggling a ride behind the pick). The route page's menu offers the same
-"Add favorite…", putting the page into it (Back then only stops picking). Outside it the page is as
-ever. **A trip's direct route** (one ride, no change) offers **"Add favorite"** in its card's long press, beside
+"Add favorite ride…", putting the page into it (Back then only stops picking). Outside it the page is as
+ever. **Saying which favorite** (maintainer, 2026-10-24): every action names what it saves, **"Add favorite ride"** or
+**"Add favorite place"** (and **"Remove favorite ride"** / **"Remove favorite place"**), with "…" only where a picker
+follows, since "favorite" alone meant a place in one menu and a ride in another. **A trip's direct route** (one ride, no change) offers **"Add favorite ride"** in its card's long press, beside
 its hides and avoids (maintainer, 2026-10-24): it saves that ride from where it boards to where it gets off, on its
 line, as Settings' Add saves one, and the trip says how it went. A card that changes offers none.
 The ride then shows, edits and is removed as any other (Settings → Favorite rides), far ones held

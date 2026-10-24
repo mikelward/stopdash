@@ -45,7 +45,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * A long press on a departure's route row is "Add favorite…" (maintainer, 2026-10-23): it opens the row's route page,
  * as a tap does, asking "To…", and a tap on a stop there saves the favorite ride to it ([MainScreen]'s `onAddRide`)
- * and closes the page, its outcome said on the list. The long press carries the "Add favourite…" accessibility label.
+ * and closes the page, its outcome said on the list. The long press carries the "Add favourite ride…" accessibility label.
  * Pins are going: nothing new is pinned, and a row pinned before keeps its gold bar (a paint-only mark covered by the
  * screenshot tests) and is unpinned from its menu or its page. The page's pick mode itself is
  * [RoutePickScreenshotTest]'s.
@@ -152,7 +152,7 @@ class StarLongPressTest {
         }
         val labels = composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick))
             .fetchSemanticsNodes().mapNotNull { it.config.getOrNull(SemanticsActions.OnLongClick)?.label }
-        assertTrue(labels.toString(), "Add favourite…" in labels)
+        assertTrue(labels.toString(), "Add favourite ride…" in labels)
         assertTrue(labels.toString(), "Pin to top" !in labels)
     }
 
@@ -201,7 +201,7 @@ class StarLongPressTest {
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
         // The menu opens; nothing is opened or hidden until an item is picked, and nothing offers a pin.
         composeRule.onNodeWithTag("routePickTitle").assertDoesNotExist()
-        composeRule.onNodeWithText("Add favourite…").assertExists()
+        composeRule.onNodeWithText("Add favourite ride…").assertExists()
         composeRule.onNodeWithText("Pin to top").assertDoesNotExist()
         composeRule.onNodeWithText("Unpin from top").assertDoesNotExist()
         composeRule.onNodeWithText("Hide all Underground services").performClick()
@@ -213,7 +213,7 @@ class StarLongPressTest {
         assertEquals(HiddenModes.lineKey("victoria", "Victoria line"), hidden)
 
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Add favourite…").performClick()
+        composeRule.onNodeWithText("Add favourite ride…").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("routePickTitle").assertIsDisplayed()
         assertNull(toggled)
