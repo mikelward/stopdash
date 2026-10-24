@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -463,12 +464,7 @@ fun SettingsScreen(
                 }
                 val fontSize = LocalFontSizeState.current
                 if (fontSize != null) {
-                    TextSizeRow(
-                        scale = fontSize.scale,
-                        onPreview = fontSize::preview,
-                        onSettled = { fontSize.commit(fontSize.scale) },
-                        onReset = { fontSize.chooseScale(DEFAULT_FONT_SCALE) },
-                    )
+                    TextSizeRow(fontSize)
                     SettingSwitchRow(
                         title = stringResource(R.string.settings_pinch_title),
                         summary = stringResource(R.string.settings_pinch_summary),
@@ -957,14 +953,19 @@ private fun SettingErrorRow(text: String, onDismiss: () -> Unit, modifier: Modif
  * it changes, so a slider under the scaled density would die on its first resizing movement.
  */
 @Composable
-private fun TextSizeRow(
-    scale: Float,
-    onPreview: (Float) -> Unit,
-    onSettled: () -> Unit,
-    onReset: () -> Unit,
-) {
+private fun TextSizeRow(fontSize: FontSizeState) {
+    val scale = fontSize.scale
     val percent = fontScalePercent(scale)
     val sliderDescription = stringResource(R.string.settings_text_size_content_description, percent)
+    // Whether this row holds a drag, so leaving Settings with a finger still on the slider — which
+    // disposes it without `onValueChangeFinished` — still ends the drag where it was: the size state
+    // lives above the screen, and left mid-gesture it never saved the size and held back every later
+    // stored one. The release and this both persist [FontSizeState.scale], which [FontSizeState.preview]
+    // sets as the slider reports, so it is always where the finger last was.
+    var dragging by remember { mutableStateOf(false) }
+    DisposableEffect(fontSize) {
+        onDispose { if (dragging) fontSize.commit(fontSize.scale) }
+    }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -986,14 +987,22 @@ private fun TextSizeRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                TextButton(onClick = onReset) { Text(stringResource(R.string.settings_text_size_reset)) }
+                TextButton(onClick = { fontSize.chooseScale(DEFAULT_FONT_SCALE) }) {
+                    Text(stringResource(R.string.settings_text_size_reset))
+                }
             }
         }
         StableInputDensity {
             Slider(
                 value = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE),
-                onValueChange = onPreview,
-                onValueChangeFinished = onSettled,
+                onValueChange = {
+                    dragging = true
+                    fontSize.preview(it)
+                },
+                onValueChangeFinished = {
+                    dragging = false
+                    fontSize.commit(fontSize.scale)
+                },
                 valueRange = MIN_FONT_SCALE..MAX_FONT_SCALE,
                 modifier = Modifier
                     .fillMaxWidth()
