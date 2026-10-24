@@ -14,6 +14,7 @@ import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.StopArrivals
 import java.io.File
 import java.time.Instant
@@ -123,14 +124,8 @@ class RouteSequenceThameslinkTest {
             listOf(StopArrivals(ST_PANCRAS_DOMESTIC, "London St Pancras International", listOf(departure), fetchedAt = now)),
             now,
         )
-        val journey = FavoriteJourney(
-            JourneyEnd(ST_PANCRAS_DOMESTIC, "London St Pancras International"),
-            JourneyEnd(FINSBURY_PARK, "Finsbury Park"),
-            "thameslink",
-            "Thameslink",
-            "national-rail",
-        )
-        val segment = Journeys.segment(journey, thameslink)
+        val journey = FavoriteJourney(JourneyEnd(ST_PANCRAS_DOMESTIC, "London St Pancras International"), JourneyEnd(FINSBURY_PARK, "Finsbury Park"), listOf(LineRef("thameslink", "Thameslink", "national-rail")))
+        val segment = Journeys.segment(journey, thameslink, journey.lineIds.first())
         assertEquals(JourneySegment(ST_PANCRAS_DOMESTIC, setOf(FINSBURY_PARK)), segment)
         val trains = Journeys.trains(segment!!, rows, mapOf("thameslink" to thameslink), journey)
         assertEquals(listOf("Cambridge"), trains.rows.flatMap { row -> row.upcoming.map { it.destination } })

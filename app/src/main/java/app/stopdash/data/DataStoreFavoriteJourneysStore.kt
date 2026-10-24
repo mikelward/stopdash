@@ -21,6 +21,7 @@ import app.stopdash.domain.PendingJourneys
 import app.stopdash.domain.Pick
 import app.stopdash.domain.SavedJourneys
 import app.stopdash.domain.Workers
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.riderLineName
 import java.io.IOException
 import java.time.DayOfWeek
@@ -108,6 +109,13 @@ class DataStoreFavoriteJourneysStore internal constructor(
 
     override suspend fun setLineHidden(journey: FavoriteJourney, entry: String, hidden: Boolean) =
         edit { Journeys.withLineHidden(it, journey, entry, hidden) }
+
+    override suspend fun addLines(found: Map<String, Collection<LineRef>>): Unit = withContext(compute) {
+        // Only when some line is new: the list reports what it finds every refresh, and most find nothing new.
+        val stored = journeys().first() ?: return@withContext
+        if (stored.none { j -> found[j.key]?.let { Journeys.withLines(j, it) !== j } == true }) return@withContext
+        edit { list -> list.map { j -> found[j.key]?.let { Journeys.withLines(j, it) } ?: j } }
+    }
 
     override fun pendingJourneys(): Flow<List<PendingJourney>?> =
         dataStore.data
@@ -281,7 +289,8 @@ internal data class PersistedFavoriteJourneys(
     companion object {
         /** The current on-disk format. Bump when a field an older build would drop or misread is added. */
         // 2: a pending end's level ([PersistedPendingEnd.level]).
-        const val CURRENT_VERSION = 2
+        // 3: a ride's lines ([PersistedFavoriteJourney.lines]) in place of the one it was saved from.
+        const val CURRENT_VERSION = 3
     }
 }
 
@@ -298,14 +307,23 @@ internal data class PersistedJourneyEnd(
 internal data class PersistedFavoriteJourney(
     val from: PersistedJourneyEnd,
     val to: PersistedJourneyEnd,
-    val lineId: String,
+    // Before version 3, the line a ride was saved from: read into [lines] as one line serving it, no more.
+    // Still written, as the ride's first line, for a build before 3: a synced ride carries no file version
+    // (RideSync), so an older phone reads these and keeps a usable ride rather than one with no line (Codex on
+    // #1205); in the file, its version check keeps it unread anyway.
+    val lineId: String = "",
     val lineName: String = "",
     val mode: String = "",
+    // Version 3: the lines found serving the ride's two stops, all alike (FavoriteJourney.lines).
+    val lines: List<PersistedRideLine> = emptyList(),
     // The lines hidden from the ride, as HiddenModes.lineKey entries, in the order hidden. Added
     // without a version bump, as alerts were: an older build reads past it and its next write drops
     // them, which shows those lines again rather than misreading them.
     val hiddenLines: List<String> = emptyList(),
 )
+
+@Serializable
+internal data class PersistedRideLine(val id: String, val name: String = "", val mode: String = "")
 
 @Serializable
 internal data class PersistedPendingEnd(
@@ -402,7 +420,18 @@ private fun JourneyEnd.toPersisted() = PersistedJourneyEnd(stopId, name, latitud
 private fun PersistedJourneyEnd.toDomain() = JourneyEnd(stopId, name, latitude, longitude, areaId)
 
 internal fun List<FavoriteJourney>.toPersisted(alerts: Map<String, JourneyAlertSchedule> = emptyMap()): PersistedFavoriteJourneys =
-    PersistedFavoriteJourneys(alerts = alerts.mapValues { it.value.toPersisted() }, journeys = map { PersistedFavoriteJourney(it.from.toPersisted(), it.to.toPersisted(), it.lineId, it.lineName, it.mode, it.hiddenLines.toList()) })
+    PersistedFavoriteJourneys(alerts = alerts.mapValues { it.value.toPersisted() }, journeys = map { it.toPersisted() })
+
+/** [this] as stored and synced: its lines, and the first of them in the fields a build before version 3 reads. */
+internal fun FavoriteJourney.toPersisted(): PersistedFavoriteJourney {
+    val first = lines.firstOrNull()
+    return PersistedFavoriteJourney(
+        from.toPersisted(), to.toPersisted(),
+        lineId = first?.id.orEmpty(), lineName = first?.name.orEmpty(), mode = first?.mode.orEmpty(),
+        lines = lines.map { line -> PersistedRideLine(line.id, line.name, line.mode) },
+        hiddenLines = hiddenLines.toList(),
+    )
+}
 
 // Every version up to this build's is read, so a bump never hides what an older build saved; only a
 // newer one is kept unread (dev-docs/station-model.md *A saved level comes with a version*).
@@ -413,7 +442,11 @@ internal fun PersistedFavoriteJourneys.toDomain(): List<FavoriteJourney>? {
     // A hidden line is kept only as this build reads one: an entry of another kind, from a later build, is dropped.
     return journeys.map {
         FavoriteJourney(
-            it.from.toDomain(), it.to.toDomain(), it.lineId, riderLineName(it.lineName, it.mode), it.mode,
+            it.from.toDomain(), it.to.toDomain(),
+            // An older ride's saved line becomes one of its lines, none above the others.
+            (it.lines.map { line -> LineRef(line.id, line.name, line.mode) } +
+                listOfNotNull(it.lineId.takeIf(String::isNotBlank)?.let { id -> LineRef(id, riderLineName(it.lineName, it.mode), it.mode) }))
+                .filter { line -> line.id.isNotBlank() }.distinctBy { line -> line.id.lowercase() },
             it.hiddenLines.filterTo(LinkedHashSet(), HiddenModes::isLineKey),
         )
     }

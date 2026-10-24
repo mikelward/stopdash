@@ -42,6 +42,7 @@ import androidx.annotation.WorkerThread
 import app.stopdash.R
 import java.time.DayOfWeek
 import java.time.format.TextStyle
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.Hubs
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.DepartureRow
@@ -323,7 +324,7 @@ internal suspend fun addRouteJourney(
     warn: (String) -> Unit = {},
     worker: CoroutineDispatcher = Dispatchers.Default,
 ): JourneyAddNote? = withContext(worker) {
-    val journey = routeJourneyTo(row, loaded, stop, rowModeOf(row))
+    val journey = routeJourneyTo(row, loaded, stop, rideLinesTo(LineRef(row.lineId, row.lineName, rowModeOf(row)), loaded, row.stopId, stop.id))
     // The pair as Settings' Add would have saved it grayed, by each end's stop area: one list holds it at a time.
     val grayed = PendingJourney(
         PendingEnd.Station(journey.from.areaId.ifBlank { journey.from.stopId }, journey.from.name),
@@ -578,7 +579,7 @@ fun FavoriteJourneysScreen(
                                 JourneyRow(
                                     journey,
                                     alerts = state.alertSummaries[journey.key],
-                                    lines = state.lineLabels[journey.key] ?: journey.lineName,
+                                    lines = state.lineLabels[journey.key].orEmpty(),
                                     onRemove = { onRemove(journey) },
                                     onOpen = onOpenAlerts?.let { open -> { open(journey) } },
                                 )
@@ -809,9 +810,9 @@ internal suspend fun anyJourneyAlertsOn(
 ): Boolean = withContext(worker) { summaries.values.any { it.isNotEmpty() } }
 
 /**
- * What each journey's row names as its lines, by journey key: every line it rides ([JourneyAlerts.linesBetween],
- * from [snapshot]'s pins), by name, a route by its number (the 43 before the 134), not only the line it was saved
- * from (maintainer, 2026-10-24). With no pins yet it names the line it was saved on.
+ * What each journey's row names as its lines, by journey key: every line it rides ([JourneyAlerts.linesBetween]:
+ * those found serving it, and [snapshot]'s pins), by name, a route by its number (the 43 before the 134), none
+ * above another (maintainer, 2026-10-24: a ride is its two stops).
  */
 @WorkerThread
 internal fun journeyLineLabels(journeys: List<FavoriteJourney>, snapshot: DeparturesSnapshot?): Map<String, String> {
@@ -819,7 +820,7 @@ internal fun journeyLineLabels(journeys: List<FavoriteJourney>, snapshot: Depart
     val names = JourneyAlerts.lineNames(snapshot)
     return journeys.associate { journey ->
         val labels = JourneyAlerts.linesBetween(journey, pinned[journey.key].orEmpty()).map { id ->
-            names[id] ?: journey.lineName.takeIf { id.equals(journey.lineId, ignoreCase = true) && it.isNotBlank() } ?: id
+            names[id] ?: journey.lines.firstOrNull { it.id.equals(id, ignoreCase = true) }?.name?.takeIf { it.isNotBlank() } ?: id
         }
         journey.key to labels.distinct().sortedWith(HomeLines::compareNatural).joinToString(", ")
     }

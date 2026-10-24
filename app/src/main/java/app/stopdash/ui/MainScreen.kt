@@ -328,6 +328,9 @@ fun MainScreen(
     // Hides a line from a ride (its entry, true) or shows it again (false), saved with the ride (SPEC
     // *Hiding a line from a ride*); null (not read yet, or unreadable) offers neither.
     onSetRideLineHidden: ((FavoriteJourney, String, Boolean) -> Unit)? = null,
+    // Lines a ride's card found serving it that it didn't know yet, by ride key, to keep with the ride
+    // ([FavoriteJourneysStore.addLines]): a ride is its stops, its lines all alike (SPEC *Journeys*).
+    onRideLinesFound: ((Map<String, List<LineRef>>) -> Unit)? = null,
     // A hide or show that couldn't be saved: said once, then [onRideLineWriteFailureShown].
     rideLineWriteFailed: Boolean = false,
     onRideLineWriteFailureShown: () -> Unit = {},
@@ -572,7 +575,8 @@ fun MainScreen(
     val cardJourneys = remember(journeys, farJourneyMeters, journeyViewKey, farRevealed) {
         journeys.filter { it.key !in farJourneyMeters || farRevealed || it.key == journeyViewKey }
     }
-    val journeyStarLines = remember(cardJourneys) { cardJourneys.map { it.lineId }.filter { it.isNotBlank() }.distinct() }
+    // Every line found serving each ride, none above another: any of their routes may place its stops.
+    val journeyStarLines = remember(cardJourneys) { cardJourneys.flatMap { it.lineIds }.filter { it.isNotBlank() }.distinct() }
     // One map while the routes stay the same, so the work keyed on it runs once per change.
     val starSequences by remember(journeyStarLines, routeStopsRepository) { derivedStateOf { sequencesFor(journeyStarLines) } }
     // Where each journey boards and alights this way round: a bus's way back uses other poles. Worked
@@ -581,8 +585,12 @@ fun MainScreen(
     // flip keeps a journey's key, not which way round it is) (Codex, #564).
     val segmentsWanted = Inputs(cardJourneys, starSequences)
     val workedSegments = rememberWorked(listWork.segments, segmentsWanted, keep = { held, wanted -> held.parts[0] === wanted.parts[0] }) {
-        val segments = cardJourneys.associate { j -> j.key to starSequences[j.lineId]?.let { Journeys.segment(j, it) } }
-        val unplaced = cardJourneys.filter { starSequences[it.lineId] != null && segments[it.key] == null }.mapTo(LinkedHashSet()) { it.lineId }
+        // Placed by the first of its lines whose route places both ends, in the order they were found.
+        val segments = cardJourneys.associate { j ->
+            j.key to j.lineIds.asSequence().mapNotNull { line -> starSequences[line]?.let { Journeys.segment(j, it, line) } }.firstOrNull()
+        }
+        val unplaced = cardJourneys.filter { segments[it.key] == null }
+            .flatMapTo(LinkedHashSet()) { j -> j.lineIds.filter { starSequences[it] != null } }
         JourneySegments(segments, unplaced)
     }
     // Whether the journeys are still being placed on their routes as they stand: a journey whose route
@@ -595,13 +603,13 @@ fun MainScreen(
     LaunchedEffect(routeStopsRepository, unplacedJourneys) {
         unplacedJourneys.forEach { lineId -> routeStopsRepository?.reportUnplaced(lineId) }
     }
-    // A bus journey's origin stop area (from its starred line's route) and the area's poles, looked
+    // A bus journey's origin stop area (from its lines' routes) and the area's poles, looked
     // up once a day off the render path: another line may board beside the origin (stop K by
     // stop L) and reach the far end too (SPEC *Journeys*). A failed lookup is kept as such (null).
     val journeyAreas = remember(cardJourneys, journeySegments, starSequences) {
         cardJourneys.filter { it.bus }.mapNotNull { j ->
             val originId = journeySegments[j.key]?.originId ?: return@mapNotNull null
-            starSequences[j.lineId]?.stopAreas?.get(originId)?.takeIf { it.isNotBlank() }?.let { j.key to it }
+            j.lineIds.firstNotNullOfOrNull { starSequences[it]?.stopAreas?.get(originId)?.takeIf { area -> area.isNotBlank() } }?.let { j.key to it }
         }.toMap()
     }
     val loadedPoles = remember { mutableStateMapOf<String, List<StopLocation>?>() }
@@ -871,13 +879,14 @@ fun MainScreen(
             val fetchedId = segment?.originId ?: journey.from.stopId.takeUnless { journey.bus }
             val state = when {
                 // Its route in but the stops not yet placed on it as it stands.
-                segmentsPending && starSequences[journey.lineId] != null -> JourneyCardState.Checking("its stops placed on ${journey.lineId}'s route")
+                segmentsPending && journey.lineIds.any { starSequences[it] != null } -> JourneyCardState.Checking("its stops placed on its lines' routes")
                 // Asked for and not come back: the fetch failed with nothing earlier to show.
                 origin == null && fetchedId != null && fetchedId in ld?.unavailableStopIds.orEmpty() ->
                     JourneyCardState.NotChecked(refreshAsks = true)
-                journey.lineId !in journeySequences -> JourneyCardState.Checking("${journey.lineId}'s route")
-                journeySequences[journey.lineId] == null -> JourneyCardState.RouteFailed
-                // The route can't place the stops this way round (no single way-back stop).
+                // Not placed yet: a line's route still to come may place it.
+                segment == null && journey.lineIds.any { it !in journeySequences } -> JourneyCardState.Checking("its lines' routes")
+                segment == null && journey.lineIds.isNotEmpty() && journey.lineIds.all { journeySequences[it] == null } -> JourneyCardState.RouteFailed
+                // No route of its lines can place the stops this way round (no single way-back stop).
                 segment == null -> JourneyCardState.NotChecked()
                 origin == null -> JourneyCardState.Checking("departures at its origin")
                 // A bus origin's neighboring poles still being looked up, or their lines' routes loading.
@@ -982,14 +991,14 @@ fun MainScreen(
             // A destination whose check failed with nothing known: the card says so, not "open".
             // From the same check as the far end's closures ([ListRows.destinationsUnknown]) (Codex, #524).
             val destinationUnchecked = destinationIds.any { it in rows.destinationsUnknown }
-            // The origin's stop area, for a ride saved before its ends' areas were (Codex, #959): from its line's route,
+            // The origin's stop area, for a ride saved before its ends' areas were (Codex, #959): from its lines' routes,
             // where saved areas come from, so it's known once the route is (before departures); else as they name it.
             // Only a real area: blank when neither names one, so a bus ride's All stops stays hidden rather than
             // opening its pole alone ([stopPlace] falls back to the stop's own id) (Codex, #959).
-            val originArea = journeySequences[journey.lineId]?.stopAreas?.get(journey.from.stopId)?.ifBlank { null }
+            val originArea = journey.lineIds.firstNotNullOfOrNull { journeySequences[it]?.stopAreas?.get(journey.from.stopId)?.ifBlank { null } }
                 ?: origin?.let { stopPlace(it.stopId, it.stopName, it.clusterId, emptyList()).id.takeIf { id -> id != it.stopId } }.orEmpty()
-            // And its published position from its line's route, for a ride saved before ends' positions were (Codex, #959).
-            val originPosition = journeySequences[journey.lineId]?.stopPositions?.get(journey.from.stopId)
+            // And its published position from its lines' routes, for a ride saved before ends' positions were (Codex, #959).
+            val originPosition = journey.lineIds.firstNotNullOfOrNull { journeySequences[it]?.stopPositions?.get(journey.from.stopId) }
             JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition, headerWords, lineWord)
         }
     }
@@ -1049,6 +1058,14 @@ fun MainScreen(
         }
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()
+    // The lines each card finds reaching its ride's far end that the ride doesn't hold yet, kept with it so
+    // its alerts, status and Settings cover them too. Worked out on the worker; reported only when one is new.
+    val currentRideLinesFound by rememberUpdatedState(onRideLinesFound)
+    LaunchedEffect(journeyCards) {
+        val report = currentRideLinesFound ?: return@LaunchedEffect
+        val found = withContext(Workers.compute) { newRideLines(journeyCards) }
+        if (found.isNotEmpty()) report(found)
+    }
     // Grouped by platform with Group favorite rides By station: the rides kept in their own platforms' groups, and their rows.
     val ridesInPlatforms = shown?.ridesInPlatforms.orEmpty()
     val platformRideRowsShown = shown?.rideRows.orEmpty()
@@ -1146,10 +1163,10 @@ fun MainScreen(
                 ) {
                     return@rememberWorked held ?: TripRow.CHECKING
                 }
-                // A journey's lines: the one it was starred from, and every line its card shows reaching the
-                // far end, another pole's bus included (Codex, #598).
+                // A journey's lines: those found serving it (but those hidden from it), and every line its card
+                // shows reaching the far end, another pole's bus included (Codex, #598).
                 val journeyLines = HashSet<String>()
-                journeys.forEach { journeyLines += it.lineId }
+                journeys.forEach { ride -> ride.lineIds.forEach { if (!ride.hides(it)) journeyLines += it } }
                 journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
                 HomeLines.row(
                     loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, lineMeters,
@@ -2626,6 +2643,9 @@ internal class JourneysHere(
     val byJourney: Map<FavoriteJourney, Set<String>>,
     val starredStopIds: Set<String>,
     val byStop: Map<String, FavoriteJourney> = emptyMap(),
+    // A ride's lines from the boarding stop to each listed stop ([rideLinesTo]), worked out with the rest so a tap
+    // saving one only looks it up (Codex on #1205).
+    val linesTo: Map<String, List<LineRef>> = emptyMap(),
 ) {
     companion object {
         val NONE = JourneysHere(emptyMap(), emptySet())
@@ -2652,13 +2672,15 @@ internal fun rememberJourneysHere(
     stops: RouteStopsUi,
     stopId: String,
     lineId: String,
+    line: LineRef = LineRef(lineId, "", ""),
 ): JourneysShown {
-    val key = Inputs(stopId, lineId, journeys, stops)
+    // The line by its plain values: [Inputs] compares an object by identity, and the caller builds it anew each frame.
+    val key = Inputs(stopId, lineId, journeys, stops, line.name, line.mode)
     // The same page reopened finds its last answer at once ([JourneysMemo]), so its stars are there in
     // its first frame rather than inserted after, rewrapping a row (Codex on #555).
     val slot = remember { mutableStateOf(JourneysMemo.get(key)) }
     val here = rememberWorked(slot, key, keep = ::sameRowAndLine) {
-        journeysHere(journeys, stops as? RouteStopsUi.Loaded, stopId, lineId)
+        journeysHere(journeys, stops as? RouteStopsUi.Loaded, stopId, lineId, line)
     } ?: return JourneysShown(JourneysHere.NONE, current = false)
     val answered = slot.value
     SideEffect { if (answered != null) JourneysMemo.put(answered) }
@@ -2811,6 +2833,21 @@ internal open class AnswerMemo<T> {
     }
 }
 
+/**
+ * The lines [cards] show reaching their rides' far ends that the rides don't hold yet, by ride key: what a ride
+ * learns of the lines serving its two stops. Scans every card's rows: off the main thread.
+ */
+@WorkerThread
+internal fun newRideLines(cards: List<JourneyCard>): Map<String, List<LineRef>> =
+    cards.mapNotNull { card ->
+        val rows = (card.state as? JourneyCardState.Trains)?.rows ?: return@mapNotNull null
+        val known = card.journey.lineIds.mapTo(HashSet()) { it.lowercase() }
+        val new = rows.filter { it.lineId.isNotBlank() && it.lineId.lowercase() !in known }
+            .map { LineRef(it.lineId, it.lineName, rowModeOf(it)) }
+            .distinctBy { it.id.lowercase() }
+        new.takeIf { it.isNotEmpty() }?.let { card.journey.key to it }
+    }.toMap()
+
 /** [row]'s mode, from any of its departures when TfL left it off the soonest one. Scans them: off the main thread. */
 @WorkerThread
 internal fun rowModeOf(row: DepartureRow): String =
@@ -2827,18 +2864,32 @@ internal fun sameRowAndLine(held: Inputs, wanted: Inputs): Boolean =
     held.parts[0] == wanted.parts[0] && held.parts[1] == wanted.parts[1]
 
 /**
- * The favorite journey on [row]'s line from its boarding stop to [stop], as the route page's stop list ([loaded]) has
+ * The favorite journey from [row]'s boarding stop to [stop], as the route page's stop list ([loaded]) has
  * them: a long press on a stop there, a stop's page's Favorite, and a route row's "Add favorite…" all save this one.
  * Map lookups only. The name as the list shows it: a stop TfL gave no name keeps its id, so a saved journey's heading
- * never has a blank end. Its stop area rides along, so "Find a station" can open the end as the whole place. [mode] is
- * the row's, worked out by the caller ([rowModeOf]) so a tap handler calling this scans nothing (AGENTS.md *Main thread*).
+ * never has a blank end. Its stop area rides along, so "Find a station" can open the end as the whole place. [lines] are
+ * the ride's, worked out by the caller on the worker ([rideLinesTo], [JourneysHere.linesTo]) so a tap handler calling
+ * this scans nothing (AGENTS.md *Main thread*).
  */
-internal fun routeJourneyTo(row: DepartureRow, loaded: RouteStopsUi.Loaded?, stop: RouteStop, mode: String): FavoriteJourney {
+internal fun routeJourneyTo(row: DepartureRow, loaded: RouteStopsUi.Loaded?, stop: RouteStop, lines: List<LineRef>): FavoriteJourney {
     val positions = loaded?.positions.orEmpty()
     val areas = loaded?.sequence?.stopAreas.orEmpty()
     fun end(id: String, name: String) =
         JourneyEnd(id, name.ifBlank { id }, positions[id]?.first, positions[id]?.second, areas[id].orEmpty())
-    return FavoriteJourney(end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, mode)
+    return FavoriteJourney(end(row.stopId, row.stopName), end(stop.id, stop.name), lines)
+}
+
+/**
+ * A ride's lines from [boardingId] to [stopId] as a route page on [line] has them. A ride is its two stops (maintainer,
+ * 2026-10-24): this page's line, and every line its route data lists at both of them (a second bus beside this one), all
+ * alike; the list adds any it finds later ([Journeys.withLines]).
+ */
+@WorkerThread
+internal fun rideLinesTo(line: LineRef, loaded: RouteStopsUi.Loaded?, boardingId: String, stopId: String): List<LineRef> {
+    val stopLines = loaded?.sequence?.stopLines.orEmpty()
+    val atEnd = stopLines[stopId].orEmpty().mapTo(HashSet()) { it.id }
+    val shared = stopLines[boardingId].orEmpty().filter { it.id in atEnd }
+    return (listOf(line) + shared).filter { it.id.isNotBlank() }.distinctBy { it.id }
 }
 
 /**
@@ -2852,6 +2903,7 @@ internal fun journeysHere(
     page: RouteStopsUi.Loaded?,
     stopId: String,
     lineId: String,
+    line: LineRef = LineRef(lineId, "", ""),
 ): JourneysHere {
     val pageSequence = page?.sequence
     val pageStopIds = page?.stops?.mapTo(HashSet()) { it.id }.orEmpty()
@@ -2876,7 +2928,8 @@ internal fun journeysHere(
     }.toMap()
     val byStop = HashMap<String, FavoriteJourney>()
     for ((journey, ids) in byJourney) for (id in ids) byStop.putIfAbsent(id, boarding[journey] ?: journey)
-    return JourneysHere(byJourney, byJourney.values.flatMapTo(HashSet()) { it }, byStop)
+    val linesTo = page?.stops.orEmpty().associate { it.id to rideLinesTo(line, page, stopId, it.id) }
+    return JourneysHere(byJourney, byJourney.values.flatMapTo(HashSet()) { it }, byStop, linesTo)
 }
 
 /** Whether any of [listed] is step-free only by a lift in [table], so a lift outage can change it. */
@@ -5660,22 +5713,25 @@ internal data class JourneyCard(
     val hiddenLines: List<Pair<String, String>> = Journeys.hiddenLines(journey, lineWord)
 
     /**
-     * The ride's own line at its origin as a row with no times: the card's one row while it has no train
-     * to show, a spinner while it's first checked and a dash when none is due (SPEC *Journeys*). Shaped as
-     * that line's status row there, so a suspension's row gives way to it in place. Worked out with the
-     * card, on the worker.
+     * A line of the ride at its origin as a row with no times: the card's one row while it has no train
+     * to show, a spinner while it's first checked and a dash when none is due (SPEC *Journeys*). The first
+     * line found serving it that the rider hasn't hidden, standing for them all here only; shaped as that
+     * line's status row there, so a suspension's row gives way to it in place. Worked out with the card,
+     * on the worker.
      */
     val lineCard: StopCard = (boardingIds.firstOrNull() ?: journey.from.stopId).let { origin ->
+        // Every line hidden, or none known yet: a row with no line, never a hidden one back on the card (Codex on #1205).
+        val line = journey.lines.firstOrNull { !journey.hides(it.id) } ?: LineRef("", "", journey.mode)
         val row = DepartureRow(
             stopId = origin,
             stopName = journey.from.name,
-            lineId = journey.lineId,
-            // A journey saved before its line's name was kept still has a pill to show.
-            lineName = journey.lineName.ifBlank { journey.lineId },
+            lineId = line.id,
+            // A line saved before its name was kept still has a pill to show.
+            lineName = line.name.ifBlank { line.id },
             direction = "",
             directionKey = STATUS_DIRECTION_KEY,
             destination = "",
-            mode = journey.mode,
+            mode = line.mode.ifBlank { journey.mode },
             upcoming = emptyList(),
             fetchedAt = Instant.EPOCH,
         )
@@ -6370,7 +6426,7 @@ internal fun StopGroupCard(
                     val rowRide = if (rideRows.isEmpty()) null else rideRows[row]
                     val rideRow = rowRide != null
                     // A ride's train's long press is the ride's: hide a line from it alone ([rideLineHide]).
-                    val rowHideFromRide = (rowRide?.let { ride -> onHideRideLine?.let { hide -> RideLineHide(ride.lineId) { line -> hide(ride, line) } } } ?: rideLineHide)
+                    val rowHideFromRide = (rowRide?.let { ride -> onHideRideLine?.let { hide -> RideLineHide { line -> hide(ride, line) } } } ?: rideLineHide)
                         ?.takeIf { it.offers(row.lineId) }?.onHide
                     val rowHideMode = if (rideRow) null else onHideMode
                     key(row.stopId, row.lineId, row.directionKey, row.platform, rideRow) {
@@ -8076,7 +8132,7 @@ internal fun RouteDetailScreen(
             // back boards across the road).
             // The row's mode, from any of its departures when TfL left it off the soonest one.
             val rowMode = row.mode.ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
-            val journeysHere = rememberJourneysHere(journeys, stops, row.stopId, row.lineId)
+            val journeysHere = rememberJourneysHere(journeys, stops, row.stopId, row.lineId, LineRef(row.lineId, row.lineName, rowMode))
             // Each listed station's step-free level for this line, from TfL's bundled table (SPEC
             // *Step-free access*); nothing until the table is read. Where a station is step-free only
             // by a lift, TfL's lift outages are asked for once the list is up, and again when that
@@ -8110,7 +8166,11 @@ internal fun RouteDetailScreen(
             // itself, rather than saved again under this direction's pole ids.
             // Looked up, not scanned: worked out with the page's journeys on the worker.
             fun journeyTo(stop: RouteStop): FavoriteJourney =
-                journeysHere.here.byStop[stop.id] ?: routeJourneyTo(row, stops as? RouteStopsUi.Loaded, stop, rowMode)
+                journeysHere.here.byStop[stop.id] ?: routeJourneyTo(
+                    row, stops as? RouteStopsUi.Loaded, stop,
+                    // Not yet worked out for this stop: the page's line alone, the list adding the rest it finds.
+                    journeysHere.here.linesTo[stop.id] ?: listOfNotNull(LineRef(row.lineId, row.lineName, rowMode).takeIf { row.lineId.isNotBlank() }),
+                )
             // The line's map, open from here to where the soonest train terminates and folded beyond (SPEC *Route
             // detail*), once the train's stops are in; until then, and where no route data is wired, the list's notes.
             val railLoaded = railState as? RouteStopsUi.Loaded

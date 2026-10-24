@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyEnd
@@ -27,8 +28,8 @@ import org.junit.Test
  */
 class SetRideLineHiddenTest {
     // Public TfL interchanges only (SPEC *Privacy*).
-    private val kingsCross = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUVIC", "Victoria"), "victoria")
-    private val euston = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern")
+    private val kingsCross = FavoriteJourney(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), JourneyEnd("940GZZLUVIC", "Victoria"), listOf(LineRef("victoria", "", "")))
+    private val euston = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "", "")))
     private val piccadilly = HiddenModes.lineKey("piccadilly", "Piccadilly")
 
     private class FakeJourneys(initial: List<FavoriteJourney>?) : FavoriteJourneysStore {

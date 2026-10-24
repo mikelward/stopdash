@@ -47,16 +47,17 @@ internal fun journeyOriginsOf(
 ): List<StopRef> =
     journeys.mapNotNull { j ->
         val id = segments[j.key]?.originId ?: j.from.stopId.takeUnless { j.bus } ?: return@mapNotNull null
-        // The starred line, plus every line of its mode the route data lists at the origin (the
-        // 134 beside the 43), so one with no predictions still has its route loaded and its
+        // The lines found serving it, plus every line of its mode their route data lists at the origin
+        // (the 134 beside the 43), so one with no predictions still has its route loaded and its
         // status checked — a suspended route shows its warning, not "no buses".
         // Only lines of a known, matching mode: an interchange's lines come in with a blank mode
         // when it mixes modes (King's Cross's buses beside its tube), and loading every one
         // would spend the request budget on routes that don't serve this stop.
-        // A journey saved with no mode (TfL left it off) takes its line's known one.
-        val mode = j.mode.ifBlank { Connections.knownMode(j.lineId).orEmpty() }
+        // Lines found with no mode (TfL left it off) take their known one.
+        val mode = j.mode.ifBlank { j.lineIds.firstNotNullOfOrNull { Connections.knownMode(it) }.orEmpty() }
         // Never a line the rider hid from the ride (SPEC *Hiding a line from a ride*): nothing judges it.
-        val served = starSequences[j.lineId]?.stopLines?.get(id).orEmpty()
+        val own = j.lines.filter { it.id.isNotBlank() && !j.hides(it.id) }
+        val served = own.flatMap { starSequences[it.id]?.stopLines?.get(id).orEmpty() }
             .filter { it.mode.isNotBlank() && it.mode.equals(mode, ignoreCase = true) && !j.hides(it.id) }
         // Its pole letter and area, once looked up, so the card heads it like its neighbors.
         val pole = poles[j.key]?.firstOrNull { it.id == id }
@@ -64,12 +65,13 @@ internal fun journeyOriginsOf(
         // so its route and status are checked too (Codex, #691).
         val toward = farEnds[j.key]?.let { far -> pole?.lines.orEmpty().filter { it.id in far.lineIds && !j.hides(it.id) } }.orEmpty()
         StopRef(
-            id, j.from.name, lines = (listOf(j.line) + served + toward).distinctBy { it.id },
+            id, j.from.name, lines = (own + served + toward).distinctBy { it.id },
             clusterId = pole?.clusterId.orEmpty(), stopLetter = pole?.stopLetter.orEmpty(),
             bearing = pole?.bearing.orEmpty(), towards = pole?.towards.orEmpty(),
             // Its interchange, so a closure there folds and titles by the interchange (SPEC
             // *Disruptions*) when no nearby stop brought it in.
-            interchangeId = Journeys.originHub(id, starSequences[j.lineId], pole),
+            interchangeId = j.lineIds.asSequence().map { Journeys.originHub(id, starSequences[it], pole) }.firstOrNull { it.isNotBlank() }
+                ?: Journeys.originHub(id, null, pole),
         )
     }.let(::mergeJourneyOrigins)
 

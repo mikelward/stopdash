@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import app.stopdash.domain.Pick
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
@@ -29,13 +30,7 @@ import org.junit.Test
 
 /** Store mapping, toggle, versioning, and JSON round-trip. Example stations and synthetic positions. */
 class DataStoreFavoriteJourneysStoreTest {
-    private val journey = FavoriteJourney(
-        from = JourneyEnd("940GZZLUHGT", "Highgate", 51.5, -0.12),
-        to = JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras", 51.49, -0.12, areaId = "HUBKGX"),
-        lineId = "northern",
-        lineName = "Northern",
-        mode = "tube",
-    )
+    private val journey = FavoriteJourney(from = JourneyEnd("940GZZLUHGT", "Highgate", 51.5, -0.12), to = JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras", 51.49, -0.12, areaId = "HUBKGX"), lines = listOf(LineRef("northern", "Northern", "tube")))
 
     private class FakeDataStore(initial: PersistedFavoriteJourneys?) : DataStore<PersistedFavoriteJourneys?> {
         private val state = MutableStateFlow(initial)
@@ -112,7 +107,7 @@ class DataStoreFavoriteJourneysStoreTest {
 
     @Test
     fun `the same stations starred on two lines read as one journey`() = runTest {
-        val twice = listOf(journey, journey.copy(lineId = "other")).toPersisted()
+        val twice = listOf(journey, journey.copy(lines = listOf(app.stopdash.domain.LineRef("other", "", "")))).toPersisted()
         assertEquals(listOf(journey), twice.toDomain())
     }
 
@@ -142,8 +137,38 @@ class DataStoreFavoriteJourneysStoreTest {
     fun `a file of an older version than this build's still reads`() = runTest {
         val older = """{"version":0,"journeys":[{"from":{"stopId":"A","name":"A"},"to":{"stopId":"B","name":"B"},"lineId":"northern"}],"pending":[{"from":{"kind":"station","id":"C","name":"C"},"to":{"kind":"place","id":"p","name":"P"}}]}"""
         val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(older.toByteArray()))!!
-        assertEquals("northern", read.toDomain()!!.single().lineId)
+        assertEquals("northern", read.toDomain()!!.single().lineIds.single())
         assertEquals("station:C", read.pendingToDomain()!!.single().from.key)
+    }
+
+    @Test
+    fun `a ride saved on one line reads as that line among its lines, and is written with none of its own`() = runTest {
+        // Before version 3 a ride named the line it was saved from: read as one line serving it, no more.
+        val older = """{"version":2,"journeys":[{"from":{"stopId":"A","name":"A"},"to":{"stopId":"B","name":"B"},"lineId":"b2","lineName":"b2","mode":"bus"}]}"""
+        val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(older.toByteArray()))!!.toDomain()!!.single()
+        assertEquals(listOf(LineRef("b2", "b2", "bus")), read.lines)
+        // Written as version 3 with every line alike, and the first in the old fields: a synced ride carries no
+        // file version, so an older phone reads those and keeps a ride with a line.
+        val both = read.copy(lines = read.lines + LineRef("b1", "b1", "bus"))
+        val written = listOf(both).toPersisted()
+        assertEquals(3, written.version)
+        assertEquals(listOf("b2", "b2", "bus"), written.journeys.single().let { listOf(it.lineId, it.lineName, it.mode) })
+        val out = ByteArrayOutputStream()
+        FavoriteJourneysSerializer.writeTo(written, out)
+        assertEquals(listOf(both), FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))!!.toDomain())
+    }
+
+    @Test
+    fun `lines found serving a ride are added to it, and nothing is written when none is new`() = runTest {
+        val disk = FakeDataStore(null)
+        val store = DataStoreFavoriteJourneysStore(disk)
+        store.add(journey)
+        val before = disk.writes
+        store.addLines(mapOf(journey.key to listOf(LineRef("northern", "Northern", "tube"))))
+        assertEquals(before, disk.writes)
+        store.addLines(mapOf(journey.key to listOf(LineRef("victoria", "Victoria", "tube"))))
+        assertEquals(listOf("northern", "victoria"), store.journeys().first()!!.single().lineIds)
+        assertEquals(before + 1, disk.writes)
     }
 
     @Test
@@ -154,7 +179,7 @@ class DataStoreFavoriteJourneysStoreTest {
         assertEquals(listOf(hiding), FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))!!.toDomain())
         val older = """{"version":1,"journeys":[{"from":{"stopId":"A","name":"A"},"to":{"stopId":"B","name":"B"},"lineId":"northern"}]}"""
         val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(older.toByteArray()))!!.toDomain()!!
-        assertEquals("northern", read.single().lineId)
+        assertEquals("northern", read.single().lineIds.single())
         assertEquals(emptySet<String>(), read.single().hiddenLines)
         // An entry that's no line's, from a later build, is left out.
         val later = PersistedFavoriteJourneys(journeys = listOf(PersistedFavoriteJourney(PersistedJourneyEnd("A", "A"), PersistedJourneyEnd("B", "B"), "northern", hiddenLines = listOf("bus", "line:bus-x=X1"))))

@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.WidgetJourney
@@ -15,7 +16,7 @@ import org.junit.Test
 class JourneyLineLabelsTest {
     private val a = JourneyEnd("490000001S", "Park")
     private val b = JourneyEnd("490000002S", "Hill")
-    private val ride = FavoriteJourney(a, b, lineId = "134", lineName = "134", mode = "bus")
+    private val ride = FavoriteJourney(a, b, listOf(LineRef("134", "134", "bus")))
 
     private fun pin(from: String, vararg lines: String) =
         WidgetJourney(from, lines.mapTo(LinkedHashSet()) { JourneyCall(it, "", null) }, key = ride.key, shownFrom = from)

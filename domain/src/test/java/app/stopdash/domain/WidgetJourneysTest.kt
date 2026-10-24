@@ -79,9 +79,9 @@ class WidgetJourneysTest {
         val after = WidgetJourneys.apply(stored, WidgetJourneysReport(setOf("j"), emptyList(), hidden = mapOf("j" to setOf("b2"))), origins)!!
         // The ride's own pin keeps its other line; a pole's pin of only the hidden line goes.
         assertEquals(listOf(WidgetJourney("490000001A", setOf(hill), "j")), after.journeys)
-        val ride = FavoriteJourney(JourneyEnd("490000001A", "Park"), JourneyEnd("490000009Z", "Hill"), "b1", hiddenLines = setOf(HiddenModes.lineKey("B2", "2"), HiddenModes.lineKey("b1", "1")))
-        // Lowercased, and never the line it was saved on.
-        assertEquals(setOf("b2"), Journeys.hiddenLineIds(ride))
+        val ride = FavoriteJourney(JourneyEnd("490000001A", "Park"), JourneyEnd("490000009Z", "Hill"), listOf(LineRef("b1", "", "")), hiddenLines = setOf(HiddenModes.lineKey("B2", "2"), HiddenModes.lineKey("b1", "1")))
+        // Lowercased, any of its lines included: no line is the ride's own.
+        assertEquals(setOf("b2", "b1"), Journeys.hiddenLineIds(ride))
     }
 
     @Test

@@ -11,6 +11,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
@@ -265,7 +266,7 @@ internal fun rideViews(cards: List<JourneyCard>, from: ListRows, last: Map<Strin
         val destinationDisrupted = card.destinationIds.any { it in from.destinationsDisrupted }
         val planned = statuses[line.lineId]?.planned.orEmpty().map { it.startsOn }
             .let { days -> last?.get(card.journey.key)?.plannedFrom?.takeIf { it == days } ?: days }
-        card.journey.key to RideView(card, row, journeyRide(card.journey, line.stopId), live, destinationDisrupted, listed != null, planned)
+        card.journey.key to RideView(card, row, journeyRide(card.journey, line.stopId, LineRef(line.lineId, line.lineName, line.mode)), live, destinationDisrupted, listed != null, planned)
     }
 }
 

@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.JourneyChange
 import app.stopdash.domain.StopArrivals
@@ -45,7 +46,7 @@ class JourneyCardStateTest {
             now,
         )
         fun ride(from: String, to: String, rows: List<app.stopdash.domain.DepartureRow>) = JourneyCard(
-            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), "example"),
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), listOf(app.stopdash.domain.LineRef("example", "", ""))),
             JourneyCardState.Trains(rows, limit = JOURNEY_ROWS),
         )
         val near = ride("KING", "NORTH", rowsAt("KING", "North End"))
@@ -83,7 +84,7 @@ class JourneyCardStateTest {
             now,
         )
         fun ride(from: String, to: String, state: JourneyCardState.Trains) = JourneyCard(
-            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), "example"),
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), listOf(app.stopdash.domain.LineRef("example", "", ""))),
             state,
         )
         val near = ride("KING", "NORTH", JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS))
@@ -133,7 +134,7 @@ class JourneyCardStateTest {
         val ridden = DepartureRows.across(listOf(pole("PARK-K", "K", "Hill")), now)
         val nearMe = ListCards.of(DepartureRows.across(listOf(pole("PARK-L", "L", "Vale")), now), warningsLead = false, app.stopdash.domain.RouteTopology.EMPTY)
         val card = JourneyCard(
-            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("PARK-K", "Park"), app.stopdash.domain.JourneyEnd("HILL", "Hill"), "example"),
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("PARK-K", "Park"), app.stopdash.domain.JourneyEnd("HILL", "Hill"), listOf(app.stopdash.domain.LineRef("example", "", ""))),
             JourneyCardState.Trains(ridden),
         )
         val meters = mapOf("PARK-K" to 240.0, "PARK-L" to 120.0)
@@ -167,7 +168,7 @@ class JourneyCardStateTest {
 
     @Test
     fun `a ride's heading is as far as its origin, once placed, whatever the poles beside it`() {
-        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("PARK-K", "Park"), app.stopdash.domain.JourneyEnd("HILL", "Hill"), "example")
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("PARK-K", "Park"), app.stopdash.domain.JourneyEnd("HILL", "Hill"), listOf(app.stopdash.domain.LineRef("example", "", "")))
         val meters = mapOf("PARK-K" to 240.0, "PARK-L" to 120.0, "ELSE" to 10.0)
         // Its origin placed, the poles beside it not found yet; then found, one of them nearer: the same
         // number both times, so it never changes under the rider (Codex on #891). The checking state
@@ -189,7 +190,7 @@ class JourneyCardStateTest {
             listOf(StopArrivals(stop, stop, to.mapIndexed { i, dest -> departure(dest, 60L + i * 60) }, fetchedAt = now)),
             now,
         )
-        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"), "example")
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"), listOf(app.stopdash.domain.LineRef("example", "", "")))
         val drew = JourneyCard(ride, JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS, repeated = setOf(0)))
         val checking = JourneyCard(ride, JourneyCardState.Checking("example's route"))
         val held = heldWhileChecking(listOf(checking), listOf(drew), viewKey = null).single().state as JourneyCardState.Checking
@@ -222,7 +223,7 @@ class JourneyCardStateTest {
             now,
         )
         fun ride(from: String, to: String) =
-            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), "example")
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), listOf(app.stopdash.domain.LineRef("example", "", "")))
         val near = JourneyCard(
             ride("KING", "NORTH"),
             JourneyCardState.Checking("example's route", held = JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS)),
@@ -238,9 +239,7 @@ class JourneyCardStateTest {
 
     @Test
     fun `a card's own line is its one row while it has no train to show`() {
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"), "northern", "Northern", "tube",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"), listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
         val row = JourneyCard(ride, JourneyCardState.Trains(emptyList())).lineCard.group.rows.single()
         // The line's status row there, so a suspension's row gives way to it in place.
         assertEquals(listOf("KING", "northern", app.stopdash.domain.STATUS_DIRECTION_KEY, ""), listOf(row.stopId, row.lineId, row.directionKey, row.platform))
@@ -248,6 +247,17 @@ class JourneyCardStateTest {
         assertTrue(!row.hasTrains && row.status == null)
         // Once the ride is placed, at the stop it boards from.
         assertEquals("KING-2", JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("KING-2")).lineCard.group.rows.single().stopId)
+    }
+
+    @Test
+    fun `a ride whose every line is hidden shows none of them in its no-train row`() {
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"),
+            listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")), hiddenLines = setOf(app.stopdash.domain.HiddenModes.lineKey("northern", "Northern")),
+        )
+        val row = JourneyCard(ride, JourneyCardState.Trains(emptyList())).lineCard.group.rows.single()
+        assertEquals("" to "", row.lineId to row.lineName)
+        assertEquals("tube", row.mode)
     }
 
     @Test
@@ -262,7 +272,7 @@ class JourneyCardStateTest {
         val l = row("490000000L", "Pentonville Road", "L")
         val s = row("490000000S", "York Way", "S")
         val card = JourneyCard(
-            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("A", "A"), app.stopdash.domain.JourneyEnd("B", "B"), "example"),
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("A", "A"), app.stopdash.domain.JourneyEnd("B", "B"), listOf(app.stopdash.domain.LineRef("example", "", ""))),
             JourneyCardState.Checking("test"),
             closures = listOf(listOf(k), listOf(k, k), listOf(k, l), listOf(k, s)),
         )
@@ -312,7 +322,7 @@ class JourneyCardStateTest {
             direction = "", directionKey = "", destination = "", mode = "bus", upcoming = emptyList(), fetchedAt = now, stopDisruption = "Bus Stop Closed",
         )
         val card = JourneyCard(
-            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("A", "A"), app.stopdash.domain.JourneyEnd("B", "B"), "example"),
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("A", "A"), app.stopdash.domain.JourneyEnd("B", "B"), listOf(app.stopdash.domain.LineRef("example", "", ""))),
             JourneyCardState.Checking("test"),
             closures = listOf(listOf(closed)),
             headerWords = german,
@@ -323,11 +333,7 @@ class JourneyCardStateTest {
 
     @Test
     fun `a journey's far end is where its route gets off, not the interchange it was saved as`() {
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("940GZZLUHGT", "Highgate"),
-            app.stopdash.domain.JourneyEnd("HUBKGX", "King's X & St Pancras Intl"),
-            "northern",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("940GZZLUHGT", "Highgate"), app.stopdash.domain.JourneyEnd("HUBKGX", "King's X & St Pancras Intl"), listOf(app.stopdash.domain.LineRef("northern", "", "")))
         // Placed on its route: the station the train calls at, so the hub's bus stops' closures stay off it.
         assertEquals(setOf("940GZZLUKSX"), farEndIds(ride, app.stopdash.domain.JourneySegment("940GZZLUHGT", setOf("940GZZLUKSX"))))
         // Both directions: before its route is in, its own saved stop is all there is to check.
@@ -336,13 +342,7 @@ class JourneyCardStateTest {
 
     @Test
     fun `a ride's page is the list's own row for its line at its origin, with its stop's notice`() {
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("PARK-K", "Park", areaId = "PARK"),
-            app.stopdash.domain.JourneyEnd("HILL", "Hill", areaId = "HILL-AREA"),
-            "example",
-            lineName = "Example",
-            mode = "tube",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("PARK-K", "Park", areaId = "PARK"), app.stopdash.domain.JourneyEnd("HILL", "Hill", areaId = "HILL-AREA"), listOf(app.stopdash.domain.LineRef("example", "Example", "tube")))
         val card = JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("PARK-L", "PARK-K"))
         val fetched = now.minusSeconds(30)
         val example = app.stopdash.domain.LineRef("example", "Example", "tube")

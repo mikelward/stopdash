@@ -8,6 +8,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyEnd
 import java.time.LocalDateTime
@@ -31,7 +32,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class JourneyAlertAlarmTest {
     private val context: Application = ApplicationProvider.getApplicationContext()
-    private val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern", "Northern", "tube")
+    private val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "Northern", "tube")))
 
     // A Monday at 06:00, two hours before the saved way's default window opens.
     private val early = LocalDateTime.of(2026, 10, 5, 6, 0).atZone(ZoneId.systemDefault()).toInstant()

@@ -83,7 +83,7 @@ class StationJourneyState(
  * Keeps a tapped route stop across a rotation or process death, as the details it opened are; its [RouteStopOpen.go]
  * isn't kept. Saved as "v3", then its ids and names, its line (blank where none), where it is (null where
  * unknown), whether it's the boarding stop and whether the train calls there, then its journey's where it has
- * one. A "v2" save (no [RouteStopOpen.ridden]) restores as not ridden, claiming no ride there; one from before
+ * one (its lines, then its ends). A "v2" save (no [RouteStopOpen.ridden]) restores as not ridden, claiming no ride there; one from before
  * that (the station alone) restores as that.
  */
 internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
@@ -94,7 +94,9 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
                 o.fromName, o.towards, o.position?.latitude, o.position?.longitude, o.boarding, o.ridden,
             ).apply {
                 o.journey?.let { j ->
-                    addAll(listOf(j.lineId, j.lineName, j.mode))
+                    // Its lines as three newline-joined lists (ids, names, modes): one line, as a save from
+                    // before rides had several, reads back the same way.
+                    addAll(listOf(j.lines.joinToString("\n") { it.id }, j.lines.joinToString("\n") { it.name }, j.lines.joinToString("\n") { it.mode }))
                     for (end in listOf(j.from, j.to)) addAll(listOf(end.stopId, end.name, end.latitude, end.longitude, end.areaId))
                 }
             }
@@ -103,6 +105,12 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
     restore = { saved ->
         val v = saved as List<*>
         fun end(at: Int) = JourneyEnd(v[at] as String, v[at + 1] as String, v[at + 2] as Double?, v[at + 3] as Double?, v[at + 4] as String)
+        fun lines(at: Int): List<LineRef> {
+            val ids = (v[at] as String).split("\n")
+            val names = (v[at + 1] as String).split("\n")
+            val modes = (v[at + 2] as String).split("\n")
+            return ids.mapIndexedNotNull { i, id -> id.takeIf { it.isNotBlank() }?.let { LineRef(it, names.getOrElse(i) { "" }, modes.getOrElse(i) { "" }) } }
+        }
         val version = v.firstOrNull()
         if (version == "v2" || version == "v3") {
             val lat = v[10] as Double?
@@ -120,14 +128,14 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
                 position = if (lat != null && lon != null) Coordinates(lat, lon) else null,
                 boarding = v[12] as Boolean,
                 ridden = version == "v3" && v[13] as Boolean,
-                journey = if (v.size > j) FavoriteJourney(end(j + 3), end(j + 8), v[j] as String, v[j + 1] as String, v[j + 2] as String) else null,
+                journey = if (v.size > j) FavoriteJourney(end(j + 3), end(j + 8), lines(j)) else null,
             )
         } else {
             RouteStopOpen(
                 stationId = v[0] as String,
                 name = v[1] as String,
                 interchangeId = v[2] as String,
-                journey = if (v.size > 3) FavoriteJourney(end(6), end(11), v[3] as String, v[4] as String, v[5] as String) else null,
+                journey = if (v.size > 3) FavoriteJourney(end(6), end(11), lines(3)) else null,
             )
         }
     },

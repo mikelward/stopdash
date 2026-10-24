@@ -38,7 +38,9 @@ object JourneyPair {
         val (from, line) = shared.minByOrNull { (_, line) -> if (line.mode.equals("bus", ignoreCase = true)) 1 else 0 }
             ?: return Result.NoDirectLine
         val to = atTo.getValue(line.id)
-        return Result.Found(FavoriteJourney(end(from, fromName), end(to, toName), line.id, line.name, line.mode))
+        // Every line running between the two stops picked, all alike: a ride is its stops, not a line.
+        val lines = shared.filter { (stop, it) -> stop.id == from.id && atTo[it.id]?.id == to.id }.map { it.second }.distinctBy { it.id }
+        return Result.Found(FavoriteJourney(end(from, fromName), end(to, toName), lines))
     }
 
     /**

@@ -3,6 +3,7 @@ package app.stopdash.ui
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourneysReport
@@ -21,8 +22,8 @@ import org.junit.Test
 /** Settings' Remove unstars a journey and unpins it from the widget at once (SPEC *Journeys*). */
 class RemoveFavoriteJourneyTest {
     // Public TfL interchanges only (SPEC *Privacy*).
-    private val victoria = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "victoria")
-    private val northern = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern")
+    private val victoria = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), listOf(LineRef("victoria", "", "")))
+    private val northern = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "", "")))
 
     private class FakeJourneys(initial: List<FavoriteJourney>?) : FavoriteJourneysStore {
         val state = MutableStateFlow(initial)

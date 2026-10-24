@@ -19,12 +19,12 @@ import kotlinx.coroutines.launch
 
 /**
  * A favorite ride's "Hide ‹line› on this ride", for the rows of its card (SPEC *Hiding a line from a
- * ride*): every line but the one it was saved on ([FavoriteJourney.hides]), whose route places the
- * ride's stops. [onHide] hides the line named.
+ * ride*): any line, as none is the ride's own (maintainer, 2026-10-24: hiding is the rider's deliberate
+ * choice). [onHide] hides the line named.
  */
-internal class RideLineHide(private val savedLineId: String, val onHide: (LineRef) -> Unit) {
+internal class RideLineHide(val onHide: (LineRef) -> Unit) {
     /** Whether a row of line [lineId] offers the hide. */
-    fun offers(lineId: String): Boolean = lineId.isNotBlank() && !lineId.equals(savedLineId, ignoreCase = true)
+    fun offers(lineId: String): Boolean = lineId.isNotBlank()
 }
 
 /**
@@ -64,11 +64,11 @@ internal fun rememberRideLineHideWithUndo(
     return if (onSetHidden == null) null else hide
 }
 
-/** [journey]'s [RideLineHide], one for as long as its saved line and [onHide] stay; null when [onHide] is. */
+/** [journey]'s [RideLineHide], one for as long as the ride and [onHide] stay; null when [onHide] is. */
 @Composable
 internal fun rememberRideLineHide(journey: FavoriteJourney, onHide: ((FavoriteJourney, LineRef) -> Unit)?): RideLineHide? {
     val current by rememberUpdatedState(journey)
-    return remember(journey.lineId, onHide) {
-        onHide?.let { hide -> RideLineHide(journey.lineId) { line -> hide(current, line) } }
+    return remember(journey.key, onHide) {
+        onHide?.let { hide -> RideLineHide { line -> hide(current, line) } }
     }
 }

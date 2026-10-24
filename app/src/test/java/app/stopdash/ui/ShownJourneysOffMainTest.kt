@@ -10,6 +10,7 @@ import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -38,8 +39,8 @@ class ShownJourneysOffMainTest {
     private val here = Coordinates(0.0, 0.0)
 
     // From a stop beside the rider to one a little way off, and one well over a mile from both ends.
-    private val near = FavoriteJourney(JourneyEnd("A", "Aye", 0.001, 0.0), JourneyEnd("B", "Bee", 0.01, 0.0), "example")
-    private val far = FavoriteJourney(JourneyEnd("C", "Cee", 0.1, 0.0), JourneyEnd("D", "Dee", 0.11, 0.0), "example")
+    private val near = FavoriteJourney(JourneyEnd("A", "Aye", 0.001, 0.0), JourneyEnd("B", "Bee", 0.01, 0.0), listOf(LineRef("example", "", "")))
+    private val far = FavoriteJourney(JourneyEnd("C", "Cee", 0.1, 0.0), JourneyEnd("D", "Dee", 0.11, 0.0), listOf(LineRef("example", "", "")))
 
     @Test
     fun the_journeys_are_oriented_and_measured_on_the_worker() {

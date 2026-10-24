@@ -49,11 +49,7 @@ class StarredTest {
     @Test
     fun `the rider's stops are each starred row's and each journey's ends`() {
         // A journey's end recorded with its station keeps the station too; one without keeps the pole alone.
-        val journey = FavoriteJourney(
-            JourneyEnd("490000000A", "Stop A", areaId = "490G00000A"),
-            JourneyEnd("940GZZLUEUS", "Euston"),
-            "northern",
-        )
+        val journey = FavoriteJourney(JourneyEnd("490000000A", "Stop A", areaId = "490G00000A"), JourneyEnd("940GZZLUEUS", "Euston"), listOf(LineRef("northern", "", "")))
         assertEquals(
             setOf("940GZZLUKSX", "940GZZLUOXC", "490000000A", "490G00000A", "940GZZLUEUS"),
             riderStopIds(setOf(victoria, central), listOf(journey)),

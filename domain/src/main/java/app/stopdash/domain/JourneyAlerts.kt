@@ -354,17 +354,18 @@ object JourneyAlerts {
     @WorkerThread
     fun lines(journey: FavoriteJourney, pinnedByOrigin: Map<String, Set<String>>): Set<String> {
         val pinned = pinnedByOrigin[journey.from.stopId] ?: pinnedByOrigin.values.flatten()
-        return (setOf(journey.lineId) + pinned).filterTo(LinkedHashSet()) { it.isNotBlank() && !journey.hides(it) }
+        return (journey.lineIds + pinned).filterTo(LinkedHashSet()) { it.isNotBlank() && !journey.hides(it) }
     }
 
     /**
-     * Every line [journey] rides, either way round: the line it was saved on and every line the app last
-     * found running directly between its ends ([pinnedLines]), as a ride is its two stops, not a line
+     * Every line [journey] rides, either way round: the lines found serving it ([FavoriteJourney.lines]) and
+     * every line the app last found running directly between its ends ([pinnedLines]), as a ride is its two
+     * stops, not a line
      * (maintainer, 2026-10-24: the 43 beside the 134). Never one the rider hid from it.
      */
     @WorkerThread
     fun linesBetween(journey: FavoriteJourney, pinnedByOrigin: Map<String, Set<String>>): Set<String> =
-        (setOf(journey.lineId) + pinnedByOrigin.values.flatten()).filterTo(LinkedHashSet()) { it.isNotBlank() && !journey.hides(it) }
+        (journey.lineIds + pinnedByOrigin.values.flatten()).filterTo(LinkedHashSet()) { it.isNotBlank() && !journey.hides(it) }
 
     /**
      * What each journey's alert says, as far as a check can tell: the record ([announced]), overruled by
@@ -489,7 +490,7 @@ object JourneyAlerts {
             .sortedWith(compareBy<LineStatus> { it.severity }.thenBy { it.lineId })
             .map { status ->
                 val name = names[status.lineId]?.takeIf { it.isNotBlank() }
-                    ?: journey.lineName.takeIf { status.lineId == journey.lineId && it.isNotBlank() }
+                    ?: journey.lines.firstOrNull { it.id == status.lineId }?.name?.takeIf { it.isNotBlank() }
                     ?: status.lineId
                 JourneyLineAlert(status.lineId, name, status.description, status.fullText, status.detail)
             }
@@ -521,10 +522,10 @@ object JourneyAlerts {
             }
         }
 
-    // The mode [lineId] is ridden as on [journey]: the journey's own where it was saved on that line, else
-    // the line's as [modes] knows it (Codex on #866: a pin may be another mode's), blank where unknown.
+    // The mode [lineId] is ridden as on [journey]: as the journey found it serving there, else the line's as
+    // [modes] knows it (Codex on #866: a pin may be another mode's), blank where unknown.
     private fun modeOf(journey: FavoriteJourney, lineId: String, modes: Map<String, String>): String =
-        if (lineId == journey.lineId) journey.mode else modes[lineId].orEmpty()
+        journey.lines.firstOrNull { it.id == lineId }?.mode?.takeIf { it.isNotBlank() } ?: modes[lineId].orEmpty()
 
     /**
      * [status] as it bears on a favorite ride's [ways] (each open direction's rides on the line, each with
@@ -627,7 +628,7 @@ object JourneyAlerts {
     private fun rideOf(way: FavoriteJourney, lineId: String, mode: String): TripLeg = TripLeg(
         mode,
         lineId,
-        way.lineName.takeIf { lineId == way.lineId }.orEmpty(),
+        way.lines.firstOrNull { it.id == lineId }?.name.orEmpty(),
         way.from.stopId,
         way.from.name,
         way.to.stopId,

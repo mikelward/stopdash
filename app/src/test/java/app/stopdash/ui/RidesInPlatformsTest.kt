@@ -47,7 +47,7 @@ class RidesInPlatformsTest {
             journeyDestinationStops = emptyList(),
         )
         val victoria = built.forCards.single { it.lineId == "victoria" }
-        val journey = FavoriteJourney(JourneyEnd(stopId, "King's Cross St. Pancras"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "tube")
+        val journey = FavoriteJourney(JourneyEnd(stopId, "King's Cross St. Pancras"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "tube")))
         val card = JourneyCard(journey, JourneyCardState.Trains(listOf(victoria)), boardingIds = listOf(stopId), destinationIds = setOf("940GZZLUWRR"))
         val shown = shownRowsOf(
             built, built.marked.rows, listOf(victoria), starred = emptySet(), stopDistanceMeters = mapOf(stopId to 100.0),

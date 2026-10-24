@@ -143,7 +143,7 @@ class AddFavoriteJourneyPairTest {
         val to = StationMatch("490000020A", "Example Hill", listOf("bus"))
         val journeys = Journeys(emptyList())
         assertNull(addFavoriteJourneyPair(from, to, buses, noBuses, journeys, worker = StandardTestDispatcher(testScheduler), loadHubs = { hubs }))
-        assertEquals("1", journeys.state.value!!.single().lineId)
+        assertEquals("1", journeys.state.value!!.single().lineIds.single())
         assertEquals("every pole of each stop, by its areas", listOf("490G000007", "490G000008", "490G000020"), buses.asked)
         // Without the model, the picked pole alone, which no line joins to the other stop: saved grayed.
         val without = Journeys(emptyList())
@@ -156,7 +156,7 @@ class AddFavoriteJourneyPairTest {
         val journeys = Journeys(emptyList())
         assertNull(addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
         val saved = journeys.state.value!!.single()
-        assertEquals("northern", saved.lineId)
+        assertEquals("northern", saved.lineIds.single())
         assertEquals(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras", 51.5, -0.12, "940GZZLUKSX"), saved.from)
         assertEquals("Waterloo", saved.to.name)
     }
@@ -197,7 +197,7 @@ class AddFavoriteJourneyPairTest {
             ),
         )
         assertNull(addFavoriteJourneyPair(canadaWater, kingsCross, later, noBuses, journeys, worker = worker))
-        assertEquals("jubilee", journeys.state.value!!.single().lineId)
+        assertEquals("jubilee", journeys.state.value!!.single().lineIds.single())
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
     }
 
@@ -241,7 +241,7 @@ class AddFavoriteJourneyPairTest {
         val buses = Buses(listOf(pole("490EXAMPLEA", 51.5287, "X1")))
         assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, buses, journeys, worker = worker))
         val saved = journeys.state.value!!.single()
-        assertEquals("X1", saved.lineId)
+        assertEquals("X1", saved.lineIds.single())
         assertEquals("490EXAMPLEA", saved.to.stopId)
         assertEquals("Euston", saved.to.name)
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
@@ -260,7 +260,7 @@ class AddFavoriteJourneyPairTest {
         assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, noBuses, journeys, worker = worker))
         assertEquals(1, journeys.pending.value!!.size)
         assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, Buses(listOf(pole("490EXAMPLEA", 51.5287, "X1"))), journeys, worker = worker))
-        assertEquals("X1", journeys.state.value!!.single().lineId)
+        assertEquals("X1", journeys.state.value!!.single().lineIds.single())
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
     }
 
@@ -325,7 +325,7 @@ class AddFavoriteJourneyPairTest {
         val beside = Buses(emptyList(), stations = listOf(eustonStation))
         assertNull(addFavoriteJourneyPair(eustonRow, kingsCross, rowFinder, beside, journeys, worker = worker))
         val saved = journeys.state.value!!.single()
-        assertEquals("northern", saved.lineId)
+        assertEquals("northern", saved.lineIds.single())
         assertEquals(JourneyEnd("940GZZLUEUS", "Euston", 51.5282, -0.1337, "940GZZLUEUS"), saved.from)
         assertEquals("940GZZLUKSX", saved.to.stopId)
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
@@ -357,7 +357,7 @@ class AddFavoriteJourneyPairTest {
         val beside = Buses(emptyList(), stations = listOf(tramStop))
         val journeys = Journeys(emptyList())
         assertNull(addFavoriteJourneyPair(eustonRow, far, finder, beside, journeys, worker = StandardTestDispatcher(testScheduler)))
-        assertEquals("tram", journeys.state.value!!.single().lineId)
+        assertEquals("tram", journeys.state.value!!.single().lineIds.single())
         assertEquals("940GEXAMPLET", journeys.state.value!!.single().from.stopId)
         assertTrue(beside.stationTypes.single().containsAll(listOf("NaptanPublicBusCoachTram", "NaptanFerryPort")))
     }
@@ -446,7 +446,7 @@ class AddFavoriteJourneyPairTest {
         val picked = StationMatch("490012553B", "St Pancras Intern'l & King's X Stns")
         assertNull(addFavoriteJourneyPair(picked, waterloo, kxFinder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
         val saved = journeys.state.value!!.single()
-        assertEquals("northern", saved.lineId)
+        assertEquals("northern", saved.lineIds.single())
         assertEquals("940GZZLUKSX", saved.from.stopId)
         assertEquals(listOf("490012553B", "940GZZLUWLO", "HUBKGX"), kxFinder.asked)
     }
@@ -469,7 +469,7 @@ class AddFavoriteJourneyPairTest {
     fun `a station picked by its own id counts its interchange's others`() = runTest {
         val journeys = Journeys(emptyList())
         assertNull(addFavoriteJourneyPair(StationMatch("910GKNGX", "King's Cross"), waterloo, kxFinder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
-        assertEquals("northern", journeys.state.value!!.single().lineId)
+        assertEquals("northern", journeys.state.value!!.single().lineIds.single())
     }
 
     @Test
@@ -483,7 +483,7 @@ class AddFavoriteJourneyPairTest {
         val journeys = Journeys(emptyList())
         assertNull(addFavoriteJourneyPair(StationMatch("940GZZLUKSX", "King's Cross"), StationMatch("490EXAMPLEF", "Example Street"), finder, buses, journeys, worker = StandardTestDispatcher(testScheduler)))
         val saved = journeys.state.value!!.single()
-        assertEquals("X5", saved.lineId)
+        assertEquals("X5", saved.lineIds.single())
         assertEquals("490EXAMPLED", saved.from.stopId)
         // Looked for around the rail station too, not only the Underground picked.
         assertEquals(listOf(51.5 to -0.12, 51.531 to -0.123), buses.asked)
@@ -541,7 +541,7 @@ class AddFavoriteJourneyPairTest {
             ),
         )
         val saved = journeys.state.value!!.single()
-        assertEquals("X9", saved.lineId)
+        assertEquals("X9", saved.lineIds.single())
         assertEquals(setOf("490EXAMPLEJ", "490EXAMPLEK"), setOf(saved.from.stopId, saved.to.stopId))
     }
 

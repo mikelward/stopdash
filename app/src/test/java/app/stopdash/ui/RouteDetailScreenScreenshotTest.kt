@@ -1623,9 +1623,7 @@ class RouteDetailScreenScreenshotTest {
         )
         // Synthetic positions: the journey keeps them to pick its nearer end.
         val positions = mapOf("940GZZLUVIC" to (51.5 to -0.12), "940GZZLUOXC" to (51.51 to -0.12))
-        val starredToOxford = FavoriteJourney(
-            JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), "victoria",
-        )
+        val starredToOxford = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), listOf(LineRef("victoria", "", "")))
         val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
@@ -1659,13 +1657,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals(
-            FavoriteJourney(
-                JourneyEnd("940GZZLUVIC", "Victoria", 51.5, -0.12),
-                JourneyEnd("940GZZLUGPK", "Green Park"),
-                "victoria",
-                lineName = "Victoria",
-                mode = "tube",
-            ),
+            FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria", 51.5, -0.12), JourneyEnd("940GZZLUGPK", "Green Park"), listOf(LineRef("victoria", "Victoria", "tube"))),
             toggled.single(),
         )
         // The starred one toggles the saved journey itself (off).
@@ -1685,9 +1677,7 @@ class RouteDetailScreenScreenshotTest {
             RouteStop("940GZZLUGPK", "Green Park"),
             RouteStop("940GZZLUOXC", "Oxford Circus"),
         )
-        val savedToOxford = FavoriteJourney(
-            JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), "victoria",
-        )
+        val savedToOxford = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), listOf(LineRef("victoria", "", "")))
         val opened = mutableListOf<RouteStopOpen>()
         val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
@@ -1719,10 +1709,7 @@ class RouteDetailScreenScreenshotTest {
             RouteStopOpen(
                 "940GZZLUGPK",
                 "Green Park",
-                FavoriteJourney(
-                    JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUGPK", "Green Park"), "victoria",
-                    lineName = "Victoria", mode = "tube",
-                ),
+                FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUGPK", "Green Park"), listOf(LineRef("victoria", "Victoria", "tube"))),
                 stopId = "940GZZLUGPK",
                 line = LineRef("victoria", "Victoria", "tube"),
                 fromName = "Victoria",
@@ -1784,7 +1771,7 @@ class RouteDetailScreenScreenshotTest {
     fun tappingASavedJourneysEnd_offersItFromThisBoardingStop() {
         val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUOXC", "Oxford Circus"))
         // Saved the other way round: Oxford Circus to Victoria.
-        val savedBack = FavoriteJourney(JourneyEnd("940GZZLUOXC", "Oxford Circus"), JourneyEnd("940GZZLUVIC", "Victoria"), "victoria")
+        val savedBack = FavoriteJourney(JourneyEnd("940GZZLUOXC", "Oxford Circus"), JourneyEnd("940GZZLUVIC", "Victoria"), listOf(LineRef("victoria", "", "")))
         val opened = mutableListOf<RouteStopOpen>()
         setDetail {
             StopDashTheme {
@@ -2053,7 +2040,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        val starredOutbound = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+        val starredOutbound = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), listOf(LineRef("b1", "B1", "bus")))
         val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
@@ -2103,7 +2090,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        val saved = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002X", "Hill"), "b1", "B1", "bus")
+        val saved = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002X", "Hill"), listOf(LineRef("b1", "B1", "bus")))
         val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
@@ -2144,7 +2131,7 @@ class RouteDetailScreenScreenshotTest {
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
         // Starred from the b1's page; this is the b2's.
-        val starredOnB1 = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+        val starredOnB1 = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), listOf(LineRef("b1", "B1", "bus")))
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
