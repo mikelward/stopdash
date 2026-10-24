@@ -134,3 +134,12 @@ fun fontScaleAfterZoom(scale: Float, zoom: Float): Float {
 
 /** The percentage shown beside the slider — 100 is the system's own size. */
 fun fontScalePercent(scale: Float): Int = (clampFontScale(scale) * 100).roundToInt()
+
+/**
+ * The size one tap of the slider's minus or plus button lands on: [scale] rounded to the whole
+ * percent the slider shows, moved [deltaPercent] points, kept in the offered range. Rounded first
+ * so a size a drag or a pinch left between two percentages steps to the next one the rider reads,
+ * not to a fraction beside it.
+ */
+fun stepFontScale(scale: Float, deltaPercent: Int): Float =
+    clampFontScale((fontScalePercent(scale) + deltaPercent) / 100f)

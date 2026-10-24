@@ -1149,6 +1149,11 @@
     <string name="settings_text_size_value">%1$d%%</string>
     <string name="settings_text_size_reset">Reset</string>
     <string name="settings_text_size_content_description">Text size, %1$d percent</string>
+    <!-- TODO: translate -->
+    <!-- The buttons either side of the text size slider, as a screen reader names them: each moves the size one percent. -->
+    <string name="settings_text_size_smaller" tools:ignore="MissingTranslation">Smaller text</string>
+    <!-- TODO: translate -->
+    <string name="settings_text_size_larger" tools:ignore="MissingTranslation">Larger text</string>
     <string name="settings_telemetry_title">Help make StopDash better</string>
     <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, trips or precise location.</string>
     <!-- The same question put once atop the near-me list to an install that never answered it

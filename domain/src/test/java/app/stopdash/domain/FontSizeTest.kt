@@ -50,6 +50,31 @@ class FontSizeTest {
     }
 
     @Test
+    fun `a step moves one whole percent from the percent shown`() {
+        assertEquals(1.01f, stepFontScale(1.0f, 1), 0f)
+        assertEquals(0.99f, stepFontScale(1.0f, -1), 0f)
+        // A size between two percentages (a drag or a pinch left it there) steps from the one shown:
+        // 1.153 reads 115%, so plus lands on 116%, not 116.3%.
+        assertEquals(1.16f, stepFontScale(1.153f, 1), 0f)
+        assertEquals(1.14f, stepFontScale(1.153f, -1), 0f)
+        assertEquals(116, fontScalePercent(stepFontScale(1.153f, 1)))
+    }
+
+    @Test
+    fun `a step stays in the offered range`() {
+        assertEquals(MAX_FONT_SCALE, stepFontScale(MAX_FONT_SCALE, 1), 0f)
+        assertEquals(MIN_FONT_SCALE, stepFontScale(MIN_FONT_SCALE, -1), 0f)
+        assertEquals(MAX_FONT_SCALE, stepFontScale(1.595f, 1), 0f)
+        assertEquals(MIN_FONT_SCALE, stepFontScale(0.805f, -1), 0f)
+    }
+
+    @Test
+    fun `a step from a non-finite size starts at the default`() {
+        assertEquals(DEFAULT_FONT_SCALE + 0.01f, stepFontScale(Float.NaN, 1), 1e-6f)
+        assertEquals(DEFAULT_FONT_SCALE - 0.01f, stepFontScale(Float.POSITIVE_INFINITY, -1), 1e-6f)
+    }
+
+    @Test
     fun `slop is not passed until the fingers change separation by the slop distance`() {
         val slop = 24f
         assertFalse(pinchPassedSlop(startSpreadPx = 100f, spreadPx = 110f, slopPx = slop))
