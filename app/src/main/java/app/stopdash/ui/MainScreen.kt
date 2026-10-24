@@ -70,6 +70,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -132,6 +133,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -5117,7 +5119,7 @@ private fun StationHeader(
                                 painterResource(modeIcon(mode)),
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(20.dp.withText()),
                             )
                         }
                     }
@@ -5136,7 +5138,7 @@ private fun StationHeader(
                         Icons.Filled.Star,
                         contentDescription = null,
                         tint = LocalStarredBorderColor.current,
-                        modifier = Modifier.padding(start = 4.dp).size(16.dp).testTag("rideStar"),
+                        modifier = Modifier.padding(start = 4.dp).size(16.dp.withText()).testTag("rideStar"),
                     )
                 } else {
                     Text(
@@ -6188,10 +6190,8 @@ private fun RideStopHeader(
             distanceColor = MaterialTheme.colorScheme.onSurfaceVariant,
             // After where it goes, as on the ride's own title. Decorative: the heading is a favorite
             // ride's by construction, and says where it goes.
-            marker = {
-                Icon(Icons.Filled.Star, contentDescription = null, tint = starTint, modifier = Modifier.padding(start = 4.dp).size(16.dp))
-            },
-            markerWidth = 20.dp,
+            marker = { RideHeadingStar(starTint) },
+            markerWidth = rideHeadingStarWidth(),
         )
     }
 }
@@ -6246,7 +6246,7 @@ private fun JourneyHeader(
                 Icons.Filled.Star,
                 contentDescription = null,
                 tint = LocalStarredBorderColor.current,
-                modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                modifier = Modifier.padding(start = 4.dp).size(16.dp.withText()),
             )
         }
         if (distanceLabel != null) {
@@ -6564,7 +6564,7 @@ internal fun StopGroupCard(
                                                             Icons.Filled.Star,
                                                             contentDescription = rideStar,
                                                             tint = LocalStarredBorderColor.current,
-                                                            modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                                            modifier = Modifier.padding(start = 4.dp).size(16.dp.withText()),
                                                         )
                                                     }
                                                 } else {
@@ -7104,7 +7104,7 @@ private fun CollapsibleStatus(
                     modifier = Modifier.padding(start = 8.dp).height(48.dp).then(toggle),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(chevron, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Icon(chevron, contentDescription = null, modifier = Modifier.size(20.dp.withText()))
                 }
                 // The dismiss (×) keeps its default 48dp interactive target, flush against the chevron
                 // band so there is no dead gap between them: the visual separation from the chevron is
@@ -7122,7 +7122,7 @@ private fun CollapsibleStatus(
             } else {
                 // A status card without its own × (the route detail's line prose) keeps the top-aligned
                 // chevron beside its text — no × to align with.
-                Icon(chevron, contentDescription = null, modifier = Modifier.padding(start = 8.dp).then(toggle).size(20.dp))
+                Icon(chevron, contentDescription = null, modifier = Modifier.padding(start = 8.dp).then(toggle).size(20.dp.withText()))
             }
         }
     }
@@ -9112,3 +9112,14 @@ internal fun openAsRide(
     val ends = rideEnds[row]
     if (ends != null) onOpenCardDetail(row, focus, ends) else onOpenDetail(row, focus)
 }
+
+/** A favorite ride's star after its stop heading; [rideHeadingStarWidth] wide, growing with the text (Codex, #1197). */
+@Composable
+internal fun RideHeadingStar(tint: Color) {
+    Icon(Icons.Filled.Star, contentDescription = null, tint = tint, modifier = Modifier.padding(start = 4.dp).size(16.dp.withText()).testTag("rideHeadingStar"))
+}
+
+/** What [RideHeadingStar] takes beside its heading, reserved before the names are shortened. */
+@Composable
+@ReadOnlyComposable
+internal fun rideHeadingStarWidth(): Dp = 4.dp + 16.dp.withText()

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -23,7 +24,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.CARD_TEXT_SCALE
 import app.stopdash.domain.FONT_SCALE_PINCH_SLOP_DP
@@ -492,6 +495,16 @@ internal fun CardTextSize(content: @Composable () -> Unit) {
 
 // Whether the text here is already at [CARD_TEXT_SCALE], so a [CardTextSize] inside another applies nothing more.
 private val LocalCardTextSize = staticCompositionLocalOf { false }
+
+/**
+ * [this], an icon's size at the system's own text size, scaled with the text around it: a mode icon, a star or a
+ * chevron beside a name grows and shrinks with the chosen text size, the system's font scale, and a card's own
+ * size ([CardTextSize]), so it stays in proportion with its words (maintainer, 2026-10-24). Only glyphs read with
+ * text take it; paddings, spacing and touch targets keep the 4dp grid (SPEC *Display size*).
+ */
+@Composable
+@ReadOnlyComposable
+internal fun Dp.withText(): Dp = with(LocalDensity.current) { value.sp.toDp() }
 
 /**
  * Re-provides the chosen text size inside a window that does not inherit it (a popup or dialog).
