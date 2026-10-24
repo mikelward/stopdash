@@ -2268,6 +2268,25 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 seen past the calls), which underground rarely get a second fix.
           - [ ] **Between fixes with no train that agrees**: counted on by the Planner's time from the last placing,
                 as a rider on board by where they were seen is today.
+          - [x] **Use the vague fixes too** (maintainer, 2026-10-23): a network fix sure to 900 m comes every refresh
+                underground and was thrown away; it now bounds how far on the rider could be (`OnTheWay.outranVague`),
+                letting go of a train past the stop after the furthest stop in its reach, and counting down past the
+                stops before the nearest in its reach (`OnTheWay.vaguePastCalls`). Each fix on a ride is logged
+                against the train followed (`OnTheWay.fixAgainstTrainNote`).
+          - [ ] **Score fixes against where the rider really was**: an "I'm here" tap on a stop under Show stops,
+                logged, so each fix's source, accuracy and age can be judged right or wrong (maintainer, 2026-10-23:
+                network fixes have put the rider at East Finchley while at Archway); then set which fixes to trust,
+                and whether to reject one behind an earlier placing or further on than a train could have got.
+          - [ ] **Recognize tube station Wi-Fi**: learn each station's access points as saved places' are, so a
+                station is named with no GPS (the one sure fix at Camden Town was likely Wi-Fi). On the device only;
+                `docs/PRIVACY.md` names it before it ships.
+          - [ ] **Why the wrong train was picked at King's Cross**, and why a sure fix at Euston didn't mark the rider on
+                board (Show stops' dot stayed where they boarded): replay the bug report's King's Cross, Euston, Camden
+                Town sequence as a recorded test.
+          - [ ] **Count stops by motion** (prototype first): Android's activity recognition tells a train moving from
+                one standing at a platform, so stops can be counted with no location at all. State its battery cost.
+          - [ ] **Draw the rider between stops** on Show stops, from the placing, not only at one; a map is a bigger
+                feature, with most of its use already here.
         - [x] **Follow a National Rail train** (maintainer, 2026-10-15; SPEC *On the way*): with the
               rider's key, Start on a route with a National Rail train and Go on a National Rail line's
               route page. The train is known by where it was picked, when it was due to leave there and

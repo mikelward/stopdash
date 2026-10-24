@@ -206,11 +206,12 @@ class TripFixesTest {
         // A fresher one taken goes first.
         fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
         assertEquals(5f, refreshFix(fixes.latest.value, fixes, riding, t0) { fix(accuracy = 5f) }?.accuracyMeters)
-        // Not before boarding, nor a vague one, nor past two minutes.
+        // A vague one too: it bounds how far on they could be (maintainer, 2026-10-23).
+        fixes.offer(fix(accuracy = 900f, ageMillis = 36_000))
+        assertEquals(900f, refreshFix(fixes.latest.value, fixes, riding, t0) { null }?.accuracyMeters)
+        // Not before boarding, nor past two minutes.
         fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
         assertNull(refreshFix(fixes.latest.value, fixes, trip, t0) { null })
-        fixes.offer(fix(accuracy = 900f, ageMillis = 36_000))
-        assertNull(refreshFix(fixes.latest.value, fixes, riding, t0) { null })
         fixes.offer(fix(accuracy = 22f, ageMillis = 121_000))
         assertNull(refreshFix(fixes.latest.value, fixes, riding, t0) { null })
     }
