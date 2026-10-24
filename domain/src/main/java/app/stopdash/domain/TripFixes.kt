@@ -140,9 +140,10 @@ suspend fun watchTripFixes(
                 // isn't there now) are asked for again, so one allowed or switched on mid-trip is used.
                 askedAgainWhenEnded(WANTS_FIX_RECHECK, updates).collect { fix ->
                     // Judged for what the trip wants now: a fix too vague for it would only wake a
-                    // refresh that can't use it.
+                    // refresh that can't use it. On board the train followed, a vague one still bounds
+                    // where they could be ([OnTheWay.placingFix]), as the refresh's own does (Codex, #1204).
                     val current = trip.value ?: return@collect
-                    OnTheWay.usableFix(fix, current, now())?.let(fixes::offer)
+                    (OnTheWay.usableFix(fix, current, now()) ?: OnTheWay.placingFix(fix, current))?.let(fixes::offer)
                 }
             } finally {
                 // No longer watched (no fix wanted, or the app left): the last position goes with it.

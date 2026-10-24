@@ -170,6 +170,29 @@ class TripFixesTest {
     }
 
     @Test
+    fun `on board the bus followed, a vague fix the shown trip sees reaches the refresh`() = runTest {
+        // Due off in a minute: the shown trip watches location to see the bus followed is theirs before it ends the ride.
+        val riding = trip.copy(legIndex = 1, vehicleId = "7", boarded = true, dueOffAt = t0.plusSeconds(60))
+        val kept = MutableStateFlow<ActiveTrip?>(riding)
+        val fixes = fixes()
+        val updates = MutableSharedFlow<LocationFix>()
+        val job = launch { watchTripFixes(kept, fixes, { updates }, now = { t0.plusMillis(currentTime) }) }
+        runCurrent()
+        // Underground, a network fix sure to 900 m: it bounds how far on they could be (maintainer, 2026-10-23).
+        updates.emit(fix(accuracy = 900f))
+        runCurrent()
+        val seen = fixes.latest.value
+        assertEquals(1L, seen?.seq)
+        assertEquals(900f, refreshFix(seen, fixes, riding, t0.plusMillis(currentTime)) { null }?.accuracyMeters)
+        // Not before boarding: there it would only wake a refresh that can't use it.
+        kept.value = riding.copy(boarded = false, vehicleId = "")
+        updates.emit(fix(accuracy = 900f))
+        runCurrent()
+        assertNull(fixes.latest.value)
+        job.cancel()
+    }
+
+    @Test
     fun `a refresh woken by a fix acts on it, aged to now, and takes its own otherwise`() = runTest {
         val fixes = fixes()
         val taken = fix(accuracy = 5f)
@@ -206,11 +229,12 @@ class TripFixesTest {
         // A fresher one taken goes first.
         fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
         assertEquals(5f, refreshFix(fixes.latest.value, fixes, riding, t0) { fix(accuracy = 5f) }?.accuracyMeters)
-        // Not before boarding, nor a vague one, nor past two minutes.
+        // A vague one too: it bounds how far on they could be (maintainer, 2026-10-23).
+        fixes.offer(fix(accuracy = 900f, ageMillis = 36_000))
+        assertEquals(900f, refreshFix(fixes.latest.value, fixes, riding, t0) { null }?.accuracyMeters)
+        // Not before boarding, nor past two minutes.
         fixes.offer(fix(accuracy = 22f, ageMillis = 36_000))
         assertNull(refreshFix(fixes.latest.value, fixes, trip, t0) { null })
-        fixes.offer(fix(accuracy = 900f, ageMillis = 36_000))
-        assertNull(refreshFix(fixes.latest.value, fixes, riding, t0) { null })
         fixes.offer(fix(accuracy = 22f, ageMillis = 121_000))
         assertNull(refreshFix(fixes.latest.value, fixes, riding, t0) { null })
     }

@@ -3702,7 +3702,17 @@ is a rider one stop short of it (maintainer, 2026-10-19: a train a stop ahead wa
 the trip walking them on while they were still at Camden Town). A sure fix (within 50 m) too old for that, up to two
 minutes, still places them, as underground it may be the only one for minutes: that train isn't theirs once it's two or
 more stops past them and past a stop they couldn't have reached since, at a speed no TfL line runs (maintainer,
-2026-10-23: seen at Camden Town 36 s before, the train followed was past Tufnell Park). The trip lets it go, its "get off soon" taken back, and they're on
+2026-10-23: seen at Camden Town 36 s before, the train followed was past Tufnell Park). A vaguer fix (a network one,
+sure to 900 m, as underground comes every refresh) places no one, but bounds how far on they could be: twice its stated
+accuracy, as Android states a radius they're in about two times in three, plus slack for where a stop is placed and the
+same speed since. It's judged by the ride's track, stop to stop, not its stops alone, as a ride can cross itself. A train
+past the stop ending the last stretch in that reach isn't theirs (unless where they get off is in reach), and they're
+counted on board short of that stop, so "get off soon" comes early rather than late. The near end of the same reach
+counts down: the stretches before the first one in reach are behind them wherever they are in it, so the train's calls
+counting from there are counted on past them. Only ever on, never past the stop before where they get off, never ending the ride.
+Such a fix is used for nothing else. Each fix on a ride is logged against the train followed, by stop counts, so which
+fixes to trust can be told from bug reports (maintainer, 2026-10-23: network fixes have put the rider a few stations
+off). The trip lets it go, its "get off soon" taken back, and they're on
 board by where they were seen (below) until their own is found, so another vehicle's calls neither
 count their stops nor end their ride. It also **sees a
 rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a

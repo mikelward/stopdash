@@ -1266,6 +1266,34 @@ object OnTheWay {
     }
 
     /**
+     * For the debug log: each fix taken on board against the train followed, by stop counts only, never a place: [fix]'s
+     * accuracy and age, where along [on] it puts the rider (at or short of a stop for a sure one, the furthest stop in
+     * reach for a vague one, [stretchesInReach]), and the stop the train is next due at ([followedAt]'s [trainNext]). So
+     * which fixes were right, and which wrong by how far, can be told from a bug report (maintainer, 2026-10-23).
+     */
+    @WorkerThread
+    fun fixAgainstTrainNote(on: TripLeg, fix: LocationFix, positions: Map<String, Coordinates>, trainNext: Int?): String {
+        val stops = on.path.size
+        val accuracy = fix.accuracyMeters?.let { "${it.roundToInt()} m" } ?: "unknown"
+        val age = fix.ageMillis?.let { "${it / 1000} s old" } ?: "age unknown"
+        val where = if (placesOnRide(fix)) {
+            placeAlong(on, fix, positions)?.let { along ->
+                when {
+                    along.atEnd -> "at where they get off"
+                    along.atStop -> "at stop ${along.from + 1}"
+                    else -> "short of stop ${along.from + 1}"
+                }
+            } ?: "not placed"
+        } else {
+            stretchesInReach(on, fix, positions)?.let { reach ->
+                if (reach.end) "reaching where they get off" else reach.stretches.lastOrNull()?.let { "short of stop ${it + 1} at most" } ?: "reaching none of the ride"
+            } ?: "stops not placed"
+        }
+        val train = trainNext?.let { if (it >= stops) "past every stop" else "next due at stop ${it + 1}" } ?: "not placed"
+        return "on the way: fix $accuracy, $age, $where of $stops on line ${on.lineId}; train followed $train"
+    }
+
+    /**
      * When [trip]'s rider gets where they're going, as its screen shows it with the time left
      * (maintainer, 2026-10-01): [arrival], and [live] when it's TfL's prediction for where they get off
      * the ride they're on, with only walks after. Otherwise it's estimated: from the train's time (due at
@@ -1797,13 +1825,89 @@ object OnTheWay {
         !fix.isFallback && !fix.isCoarse && fix.accuracyMeters.let { it != null && it <= FIX_WITHIN_METERS }
 
     /**
-     * [fix] when it's too old for [usableFix] but still places a rider taken to be on board [trip]'s train, within
-     * [RIDE_FIX_WITHIN_MILLIS]: handed to the refresh only to check that train against ([outranFix]), which a fix
-     * older than [FIX_FRESH_WITHIN_MILLIS] is used for alone. Null otherwise.
+     * [fix] when it's too old or too vague for [usableFix] but still says where a rider taken to be on board [trip]'s
+     * train could be, within [RIDE_FIX_WITHIN_MILLIS]: handed to the refresh only to check that train against
+     * ([outranFix], [outranVague]), which such a fix is used for alone. Null otherwise.
      */
     fun placingFix(fix: LocationFix, trip: ActiveTrip): LocationFix? {
         val age = fix.ageMillis ?: return null
-        return fix.takeIf { placesOnRide(it) && age <= RIDE_FIX_WITHIN_MILLIS && trip.boarded && trip.vehicleId.isNotBlank() }
+        return fix.takeIf { boundsRide(it) && age <= RIDE_FIX_WITHIN_MILLIS && trip.boarded && trip.vehicleId.isNotBlank() }
+    }
+
+    /**
+     * Whether [fix] says anything of where a rider on board could be, however vague: a real fix of stated accuracy.
+     * A sure one ([placesOnRide]) places them; a vaguer one only bounds where they could be ([outranVague]).
+     */
+    fun boundsRide(fix: LocationFix): Boolean = !fix.isFallback && !fix.isCoarse && fix.accuracyMeters != null
+
+    /** Whether [fix] is too vague for anything a fix is acted on for but bounding a rider on board ([outranVague]). */
+    fun tooVagueToAct(fix: LocationFix): Boolean = fix.accuracyMeters.let { it == null || it > AT_STOP_WITHIN_METERS }
+
+    /**
+     * How far past its stated accuracy a vague fix is taken to reach: Android states a radius the rider is in about two
+     * times in three, and a network fix's misses run wide, so twice it.
+     */
+    const val VAGUE_FIX_REACH = 2.0
+
+    /** Slack, against a vague fix, for where a stop is placed: a station's point can sit well off its platforms. */
+    const val VAGUE_FIX_SLACK_METERS = 200.0
+
+    /**
+     * Where a rider on board could be at the furthest, by a vague [fix] (aged to now), when the train followed, next due
+     * at stop [at] of [on]'s path ([followedAt]), has passed the stop that's as far as they could be short of: that train
+     * isn't theirs (maintainer, 2026-10-23: a network fix sure to 900 m put the rider by Camden Town while the train
+     * followed neared Highgate, and fixes like it come every refresh underground, where a sure one may not for minutes).
+     * That stop ends the last stretch of track within the fix's reach ([stretchesInReach]: [VAGUE_FIX_REACH],
+     * [VAGUE_FIX_SLACK_METERS], and how far [RIDE_SPEED_METERS_PER_SECOND] takes them since), and they're placed short of
+     * it ([Along]): as far on as they could be, so "get off soon" comes early rather than late. Null where the train
+     * hasn't passed it on every way [sequence] runs ([passes]), where they get off is in reach, the fix reaches only the
+     * stretch from where it boards, or a stop of the ride isn't placed.
+     */
+    @WorkerThread
+    fun outranVague(
+        on: TripLeg,
+        at: Int,
+        fix: LocationFix,
+        positions: Map<String, Coordinates>,
+        sequence: LineSequence,
+        // The train's calls, as [followedAt] read them: with none left, at the path's end it's past every stop.
+        calls: List<VehicleCall>,
+    ): Along? {
+        val passed = at - 1
+        if (passed > on.path.lastIndex) return null
+        // Over the whole ride, not only up to the train: one curving back near an earlier stop can bring a stretch at or past
+        // the train within reach, and then the train may be theirs (Codex, #1204).
+        val reach = stretchesInReach(on, fix, positions) ?: return null
+        // Where they get off in reach, they may be there: a train past it may have taken them.
+        if (reach.end) return null
+        // The last stretch of track in reach: they're short of the stop it ends at, at most. Only the first, from where it
+        // boards, leaves them maybe not on board, which the left-behind check is for.
+        val furthest = reach.stretches.lastOrNull()?.takeIf { it > 0 } ?: return null
+        if (passed < furthest) return null
+        // A train with no calls left once due off has passed every stop of the ride: [passes] can't say so, its end being
+        // the ride's last stop again, as in [followedAhead] (Codex, #1204).
+        val pastAll = at >= on.path.size && calls.isEmpty()
+        if (!pastAll && !passes(on, sequence, furthest, at)) return null
+        return Along(furthest, atStop = false)
+    }
+
+    /**
+     * The stretches of [on]'s track a vague [fix] (aged to now) reaches ([VAGUE_FIX_REACH] and the rest), each by the index
+     * into its path of the stop it ends at (0 for the one from where it boards), straight from stop to stop: a rider could
+     * be anywhere along one in reach, between its stops, though neither is (Codex, #1204: a ride crossing itself). [end]
+     * when where they get off is in reach itself. Null where a stop of the ride isn't placed, as a stretch in reach could
+     * go unseen.
+     */
+    class Reach(val stretches: List<Int>, val end: Boolean)
+
+    @WorkerThread
+    fun stretchesInReach(on: TripLeg, fix: LocationFix, positions: Map<String, Coordinates>): Reach? {
+        val accuracy = fix.accuracyMeters?.toDouble() ?: return null
+        val age = fix.ageMillis ?: return null
+        val reach = accuracy * VAGUE_FIX_REACH + VAGUE_FIX_SLACK_METERS + RIDE_SPEED_METERS_PER_SECOND * age / 1000.0
+        val stops = (listOf(on.fromId) + on.path).map { positions[it] ?: return null }
+        val stretches = on.path.indices.filter { k -> fromLine(fix.coordinates, stops[k], stops[k + 1]) <= reach }
+        return Reach(stretches, end = distance(fix.coordinates, stops.last()) <= reach)
     }
 
     /** How fast a rider on a ride is taken to travel at most, as the crow flies: faster than any TfL line runs. */
@@ -2074,6 +2178,30 @@ object OnTheWay {
         if (next !in leg.path.indices) return null
         // Only where both name it: an unnamed stop can't show the count isn't off by a stop the train skips (Codex, #993).
         return next.takeIf { sameStopName(leg.pathNames.getOrNull(next)?.takeIf { it.isNotBlank() }, riding.nextStop) }
+    }
+
+    /**
+     * [trip] counted on past the stop the calls of the train it follows count to next, where a vague [fix] (aged to now,
+     * taken at [takenAt]) can't reach that stop or any before it: wherever in its reach the rider is, they're past them
+     * (maintainer, 2026-10-23: a network fix far along the ride is evidence for counting down). Only the near end of its
+     * reach counts (the first of [stretchesInReach]), so a fix put a few stations ahead moves the count only as far as its
+     * width allows, and only ever on: never back, never past the stop before where they get off, never ending the ride.
+     * Kept as [ActiveTrip.seenAlongStop] ([countedOn]), as [seenPastCalls] keeps a sure fix's. Null when nothing moves on.
+     */
+    @WorkerThread
+    fun vaguePastCalls(trip: ActiveTrip, progress: TripProgress, fix: LocationFix, positions: Map<String, Coordinates>, takenAt: Instant): ActiveTrip? {
+        val riding = progress as? TripProgress.Riding ?: return null
+        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank()) return null
+        if (placesOnRide(fix) || !boundsRide(fix)) return null
+        val leg = ridden(trip) ?: return null
+        if (riding.leg != trip.leg || leg.path.isEmpty()) return null
+        val next = callsNext(leg, riding) ?: return null
+        // The first stretch of track in reach: they're on it at the earliest, so the stop it ends at is the nearest their
+        // next stop can be. A stretch, not a stop: a ride crossing itself can bring track between two stops out of reach
+        // into reach though neither stop is (Codex, #1204).
+        val nearest = stretchesInReach(leg, fix, positions)?.stretches?.firstOrNull() ?: return null
+        if (nearest <= next || nearest >= leg.path.lastIndex || nearest <= trip.seenAlongStop) return null
+        return trip.copy(seenAlongStop = nearest, seenAlongAt = takenAt)
     }
 
     /**
