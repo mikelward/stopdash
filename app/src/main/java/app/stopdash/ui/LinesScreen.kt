@@ -575,17 +575,27 @@ internal fun LineStopPage(
                                 contentDescription = stringResource(if (saved) R.string.action_unstar_journey else R.string.station_journey_add),
                             )
                         }
-                    } else if (route == null && onFavorite != null) {
-                        IconButton(onClick = onFavorite, enabled = actionsReady, modifier = Modifier.testTag("lineStopFavorite")) {
-                            Icon(StarBorderIcon, contentDescription = stringResource(R.string.line_stop_favorite))
-                        }
                     }
                     if (onShowOnMap != null) {
                         IconButton(onClick = onShowOnMap, enabled = mapReady, modifier = Modifier.testTag("lineStopMap")) {
                             Icon(Icons.Filled.Place, contentDescription = stringResource(R.string.action_show_on_map))
                         }
                     }
-                    AppMenuOverflow()
+                    // The star is only ever the ride (maintainer, 2026-10-24): the place is saved from ⋮, on a route
+                    // page's stop as on one from Lines….
+                    AppMenuOverflow { close ->
+                        if (onFavorite != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.line_stop_favorite)) },
+                                onClick = {
+                                    close()
+                                    onFavorite()
+                                },
+                                enabled = actionsReady,
+                                modifier = Modifier.testTag("lineStopFavorite"),
+                            )
+                        }
+                    }
                 },
             )
         },

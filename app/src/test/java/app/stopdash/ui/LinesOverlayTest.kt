@@ -530,7 +530,7 @@ class LinesOverlayTest {
         var favorited: Coordinates? = null
         composeRule.setContent {
             StopDashTheme {
-                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined, LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
                     LinesOverlay(
                         model, open = line, onOpen = {}, onBack = {},
                         stop = LineStopRef("490X", "Somewhere Road", position = placed),
@@ -540,6 +540,8 @@ class LinesOverlayTest {
             }
         }
         composeRule.waitForIdle()
+        // The stop's own ⋮, over the line page's.
+        composeRule.onAllNodesWithContentDescription("More options").onLast().performClick()
         composeRule.onNodeWithTag("lineStopFavorite").performClick()
         // The map's position, so no lookup is needed (Codex on #670).
         assertEquals(placed, favorited)
