@@ -65,6 +65,7 @@ import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -132,6 +133,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
@@ -322,6 +324,17 @@ internal fun OnTheWayScreen(
             // Cleared, then shown, so a second failure while this one shows is said too.
             lineDismissal?.onFailureShown?.invoke()
             snackbars.showSnackbar(dismissFailedMessage)
+        }
+    }
+    // A ride saved from a train's route page ("Add favorite ride…"): said here once the page has closed, as a trip
+    // says it, on a scope of its own since clearing it re-keys the effect.
+    val rideAdded by RideAdds.added.collectAsStateWithLifecycle()
+    val rideAddedMessage = rideAdded?.let { rideAddedText(it) }
+    val rideAddedScope = rememberCoroutineScope()
+    OnTopEffect(rideAddedMessage, routeClosed) {
+        if (rideAddedMessage != null && routeClosed) {
+            RideAdds.shown()
+            rideAddedScope.launch { snackbars.showSnackbar(rideAddedMessage) }
         }
     }
     val destination = trip?.destinationName
@@ -1411,6 +1424,10 @@ private fun BoardRoutePage(
                 BoardRoutePending(lineId, lineName, mode, onClose)
             } else {
                 val checking = status.checking || statusPending
+                // "Add favorite ride…" from its menu, as on a trip's route page (maintainer, 2026-10-24): the page asks
+                // "To…", Back only stops it, and a pick saves the ride and closes to On the way, which says how it went.
+                var picking by rememberSaveable(lineId) { mutableStateOf(false) }
+                val addRouteRide = LocalAddRouteRide.current
                 RouteDetailScreen(
                     lineOpen = lineOpen,
                     row = row,
@@ -1428,7 +1445,16 @@ private fun BoardRoutePage(
                     stale = boardStale || Staleness.isStale(row.fetchedAt, now),
                     now = now,
                     onToggleStar = {},
-                    onBack = onClose,
+                    onBack = { if (picking) picking = false else onClose() },
+                    picking = picking,
+                    onPickTo = addRouteRide?.let { add ->
+                        { loaded, stop ->
+                            add(row, loaded, stop)
+                            picking = false
+                            onClose()
+                        }
+                    },
+                    onStartPicking = { picking = true },
                     focus = focus,
                     onDismissAlert = dismissal?.let { d -> row.status?.let { s -> { d.dismiss(s) } } },
                     onDismissPlanned = dismissal?.dismissPlanned?.let { d -> { planned -> d(row.lineId, planned) } },
