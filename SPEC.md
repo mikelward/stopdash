@@ -4602,8 +4602,10 @@ The user can make StopDash's text bigger or smaller than everything else on the 
 glance surface is read at arm's length and from a pocket. The size is a **factor on top of the
 system's own font scale**, not a replacement for it, so an accessibility setting made in
 Android is still respected and StopDash only says how much larger or smaller it should be than
-the rest of the device. It multiplies only text: paddings, icons, and touch targets keep the
-4dp-grid layout, so larger text grows what is read without breaking what is tapped. The
+the rest of the device. It multiplies text and the glyphs read with it (a mode icon, a star or a
+chevron beside a name, maintainer, 2026-10-24), so a line keeps its proportions; paddings,
+spacing and touch targets keep the 4dp-grid layout, so larger text grows what is read without
+breaking what is tapped. The
 offered range is 80%–160% of the system size — wide enough to help a low-vision reader,
 bounded so a departure card's one-line countdown still lays out beside its line pill at the
 top of the range (D8). The default is a little over the system's own size, **105%**

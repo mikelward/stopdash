@@ -47,10 +47,10 @@ internal fun RowTag(
             Text("·", style = MaterialTheme.typography.bodyMedium, color = color)
         }
         if (icon != null) {
-            Icon(painterResource(icon), contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            Icon(painterResource(icon), contentDescription = null, tint = color, modifier = Modifier.size(20.dp.withText()))
         }
         for (mode in modes) {
-            Icon(painterResource(modeIcon(mode)), contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            Icon(painterResource(modeIcon(mode)), contentDescription = null, tint = color, modifier = Modifier.size(20.dp.withText()))
         }
         if (extra != null) {
             Text(extra, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -2971,7 +2971,7 @@ private fun RideStops(
                         painter = painterResource(R.drawable.ic_walk),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(20.dp.withText()),
                     )
                 }
                 ShortenedText(startForms ?: listOf(start.fromName), MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
@@ -3129,7 +3129,7 @@ private fun CardHeader(
                         painterResource(modeIcon(mode)),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp).testTag("tripMode"),
+                        modifier = Modifier.size(20.dp.withText()).testTag("tripMode"),
                     )
                 }
             }
