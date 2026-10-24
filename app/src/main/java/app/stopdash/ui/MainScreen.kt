@@ -3252,16 +3252,18 @@ private fun DepartureList(
     // Kept above the list where it's given one, so a return to the list draws its stations at once: worked out
     // again from none, the list came back empty for a frame and lost its scroll position (bug report, 2026-10-23).
     val stationSlot = listWork?.stations ?: remember { mutableStateOf<Worked<Inputs, StationLayout>?>(null) }
+    val stationTopology = LocalRouteTopology.current
     val stationLayout = if (byStation) {
         rememberWorked(
             stationSlot,
-            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters),
+            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters, stationTopology),
             keep = { kept, wanted -> (wanted.parts[0] as ListCards).grownFrom(kept.parts[0] as ListCards) },
         ) {
             StationLayout.of(
                 listCards.groups, listCards::of, journeyCards, starred, placeDistanceMeters, stopClusterIds, farther, held.values, stopDistanceMeters,
                 rideGrouping ?: RideGrouping.RIDE,
                 rideMeters,
+                stationTopology,
             )
         }
     } else {
@@ -4659,6 +4661,31 @@ internal fun stationRideRows(rides: Map<String?, List<JourneyCard>>, stationOf: 
 }
 
 /**
+ * [group] without the trains [rideTrains] (a station's joining rides' rows, by stop and line) show, a row left with
+ * none dropped; null when it has none of them, so its card is the list's own.
+ */
+@WorkerThread
+internal fun withoutRideTrains(group: StopGroup, rideTrains: Map<Pair<String, String>, List<DepartureRow>>): StopGroup? {
+    if (rideTrains.isEmpty()) return null
+    var changed = false
+    val rows = group.rows.mapNotNull { row ->
+        val ride = rideTrains[row.stopId to row.lineId]
+        if (ride == null || !row.hasTrains) return@mapNotNull row
+        val timed = ride.flatMapTo(HashSet()) { it.upcoming }
+        val untimed = ride.flatMapTo(HashSet()) { it.untimed }
+        val upcoming = row.upcoming.filterNot { it in timed }
+        val left = row.untimed.filterNot { it in untimed }
+        when {
+            upcoming.size == row.upcoming.size && left.size == row.untimed.size -> row
+            upcoming.isEmpty() && left.isEmpty() -> null.also { changed = true }
+            else -> row.copy(upcoming = upcoming, untimed = left, destination = upcoming.firstOrNull()?.destination ?: row.destination)
+                .also { changed = true }
+        }
+    }
+    return if (changed) group.copy(rows = rows) else null
+}
+
+/**
  * A list grouped by station as worked out on the worker ([of]), for the list to read: each group's [rank] in the
  * stations' order ([stationOrdered]), each ride's station by journey key ([rideStation]), each station's
  * nearest stop's [meters], its one [cards] ([stationCard]) with the trains of the rides that join it
@@ -4722,6 +4749,8 @@ internal class StationLayout(
             rideGrouping: RideGrouping = RideGrouping.RIDE,
             // How far the stop each ride boards from is, by journey key ([rideMeters]), for [ridesBefore].
             rideMeters: Map<String, Double> = emptyMap(),
+            // How a platform's card draws a branching line's trains, for one a ride takes some of ([withoutRideTrains]).
+            topology: RouteTopology = RouteTopology.EMPTY,
         ): StationLayout {
             fun metersOf(group: StopGroup): Double? =
                 group.rows.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull() ?: placeDistanceMeters[group.placeKey]
@@ -4757,8 +4786,13 @@ internal class StationLayout(
                 val stationRides = if (inCard) rides.rides[station].orEmpty() else emptyList()
                 val rideRows = stationRides.flatMap { it.rows }
                 val rideCards = if (rideRows.isEmpty()) emptyList() else listOf(rideCard(station, "ride|$station", rideRows, stationGroups.first().stopName))
-                // The platforms' own rows are already without the rides' trains, as the list leaves out what a ride shows.
-                val platformCards = stationGroups.map(cardOf)
+                // The list leaves out a platform's row a ride shows in full; one it shows only some of (the Bank branch of a
+                // row with Charing Cross trains too) stays, so its trains the ride shows come out here, or the card drew
+                // each twice: starred in the ride's rows and again in the platform's (bug report, 2026-10-24).
+                val rideTrains = rideRows.groupBy({ it.first.stopId to it.first.lineId }, { it.first })
+                val platformCards = stationGroups.map { group ->
+                    withoutRideTrains(group, rideTrains)?.let { stopCard(it, topology) } ?: cardOf(group)
+                }
                 stationCard(rideCards, platformCards, starred)
             }
             val rideGroups = if (inCard) emptyMap() else rides.rides.mapValues { (station, stationRides) ->
