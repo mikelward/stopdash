@@ -52,6 +52,7 @@ import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.Journeys
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.JourneyPair
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PendingEnd
@@ -330,6 +331,28 @@ internal suspend fun addRouteJourney(
     )
     saveFoundJourney(journey.from.name, journey.to.name, journeys, grayed, warn) { saved ->
         journey.takeIf { journeysHere(saved, loaded, row.stopId, row.lineId).byStop[stop.id] == null && saved.none { it.key == journey.key } }
+    }
+}
+
+/**
+ * A trip card's "Add favorite": the direct ride [journey] the card rides ([Journeys.ofLeg]), saved as a route page's
+ * "Add favorite…" saves one, a copy Settings' Add had saved grayed going in the same write. Null once added; else why
+ * it wasn't. Off the main thread, the hop first (AGENTS.md *Main thread*).
+ */
+internal suspend fun addLegJourney(
+    journey: FavoriteJourney,
+    // The ride's line's route, both ways, where loaded: a bus ride's way back is the ride saved already.
+    route: LineSequence?,
+    journeys: FavoriteJourneysStore,
+    warn: (String) -> Unit = {},
+    worker: CoroutineDispatcher = Dispatchers.Default,
+): JourneyAddNote? = withContext(worker) {
+    val grayed = PendingJourney(
+        PendingEnd.Station(journey.from.areaId.ifBlank { journey.from.stopId }, journey.from.name),
+        PendingEnd.Station(journey.to.areaId.ifBlank { journey.to.stopId }, journey.to.name),
+    )
+    saveFoundJourney(journey.from.name, journey.to.name, journeys, grayed, warn) { saved ->
+        journey.takeUnless { Journeys.savedAlready(saved, journey, route) }
     }
 }
 

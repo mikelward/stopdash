@@ -24,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import app.stopdash.domain.CollapsedPlaces
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.HeldTrains
 import app.stopdash.domain.NewestArrivals
@@ -40,7 +41,6 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.DestinationViaChoice
-import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoriteShortcuts
@@ -50,6 +50,7 @@ import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LauncherShortcuts
 import app.stopdash.domain.LiftOutages
 import app.stopdash.domain.LineRef
@@ -121,6 +122,8 @@ import app.stopdash.domain.widgetQuestionsSettled
 import app.stopdash.domain.widgetUpdateCardGone
 import app.stopdash.domain.widgetUpdateCardShown
 import app.stopdash.sync.rememberDriveSyncSwitch
+import app.stopdash.ui.LocalAddTripRide
+import app.stopdash.ui.addLegJourney
 import app.stopdash.ui.fartherStationId
 import app.stopdash.ui.LineStopWindow
 import app.stopdash.ui.LocalWorker
@@ -2004,6 +2007,7 @@ class MainActivity : ComponentActivity() {
                         removePlace = ::removeFavoritePlace,
                     ),
                     LocalOpenRouteStop provides openRouteStop,
+                    LocalAddTripRide provides ::addTripRide,
                     LocalPlanFromStop provides planFromStop,
                     LocalHideUndoCarrier provides hideUndoCarrier,
                     // The saved places' own icons, for a From/To bar naming one of them.
@@ -6450,6 +6454,15 @@ class MainActivity : ComponentActivity() {
      * A favorite ride picked on a route page ("Add favorite…", SPEC *Journeys*): saved on the process's scope, so the
      * page closing at once, or a rotation, doesn't cancel it, its outcome said on the list ([RideAdds]).
      */
+    // A trip card's "Add favorite": its direct ride, saved and said as a route page's is.
+    private fun addTripRide(journey: FavoriteJourney, route: LineSequence?) {
+        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STAR))
+        val store = DataStoreFavoriteJourneysStore.from(applicationContext, warn = ::logStarWarning)
+        RideAdds.attempt((application as? StopdashApp)?.applicationScope ?: lifecycleScope, journey.from.name, journey.to.name) {
+            addLegJourney(journey, route, store, warn = ::logStarWarning)
+        }
+    }
+
     private fun addRide(row: DepartureRow, loaded: RouteStopsUi.Loaded, stop: RouteStop) {
         UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STAR))
         val store = DataStoreFavoriteJourneysStore.from(applicationContext, warn = ::logStarWarning)

@@ -120,6 +120,43 @@ data class JourneyTrains(
 data class JourneyChange(val stopId: String, val stopName: String, val row: DepartureRow)
 
 object Journeys {
+    /**
+     * A planned trip's direct ride [leg] as a favorite ride (SPEC *Journeys*), from where it boards to where it gets
+     * off, on its line, each end placed where the Planner placed it and in the stop area it named; null for a walk or
+     * a leg on a line a ride can't follow (neither rail nor bus) or with an end it gave no stop for.
+     */
+    fun ofLeg(leg: TripLeg): FavoriteJourney? {
+        if (leg.isWalk || leg.lineId.isBlank() || leg.fromId.isBlank() || leg.toId.isBlank() || leg.fromId == leg.toId) return null
+        if (!leg.isBus && !Connections.isRail(leg.mode, leg.lineId)) return null
+        fun end(id: String, name: String, at: Coordinates?, area: String) = JourneyEnd(id, name.ifBlank { id }, at?.latitude, at?.longitude, area)
+        return FavoriteJourney(
+            end(leg.fromId, leg.fromName, leg.fromAt, leg.fromArea),
+            end(leg.toId, leg.toName, leg.toAt, leg.toArea),
+            leg.lineId,
+            leg.lineName,
+            leg.mode,
+        )
+    }
+
+    /**
+     * Whether [ride] is one of [saved] already: the same two stops either way round, or a saved ride [sequence] (the
+     * ride's line's route, both directions) places on the same stops, as a route page's stop list places it ([segment]),
+     * so a bus ride's way back, boarding across the road from where it was saved, is the same ride. With no route,
+     * only the same stops count.
+     */
+    @WorkerThread
+    fun savedAlready(saved: List<FavoriteJourney>, ride: FavoriteJourney, sequence: LineSequence?): Boolean =
+        saved.any { s ->
+            s.key == ride.key || sequence != null && (
+                placesAs(s, ride, sequence) || placesAs(s.reversed(), ride, sequence)
+            )
+        }
+
+    private fun placesAs(saved: FavoriteJourney, ride: FavoriteJourney, sequence: LineSequence): Boolean {
+        val placed = segment(saved, sequence, ride.lineId) ?: return false
+        return placed.originId == ride.from.stopId && ride.to.stopId in placed.destinationIds
+    }
+
     /** How far a way-back stop may be from the end it stands in for, when nothing else matches. */
     const val WAY_BACK_RADIUS_METERS = 400.0
 

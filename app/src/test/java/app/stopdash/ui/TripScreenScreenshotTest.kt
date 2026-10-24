@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteractionCollection
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.assert
@@ -77,6 +78,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceDirect
@@ -2697,6 +2699,55 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("Hide Jubilee line").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("tube", HiddenModes.lineKey("jubilee", "Jubilee line")), hidden)
+    }
+
+    @Test
+    fun a_direct_cards_long_press_adds_its_ride_as_a_favorite() {
+        // A route with no change is a ride the rider can keep (maintainer, 2026-10-24): its long press offers it, from
+        // where it boards to where it gets off on its line.
+        val direct = TripRoute(listOf(leg("overground", "windrush", "Windrush", highbury, whitechapel, 3, 16, 6)))
+        val added = mutableListOf<FavoriteJourney>()
+        showForRide(planned.copy(routes = listOf(direct), closures = checkedOpen(direct))) { added += it }
+        cardMenus().onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripAddFavorite").performClick()
+        composeRule.waitForIdle()
+        val ride = added.single()
+        assertEquals("910GHGHI", ride.from.stopId)
+        assertEquals("910GWCHAPEL", ride.to.stopId)
+        assertEquals("windrush", ride.lineId)
+    }
+
+    @Test
+    fun a_card_that_changes_offers_no_ride_to_add() {
+        showForRide(planned) {}
+        val menus = cardMenus()
+        assertEquals(3, menus.fetchSemanticsNodes().size)
+        menus.onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Hide Windrush line").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("tripAddFavorite").assertCountEquals(0)
+    }
+
+    private fun showForRide(state: TripViewModel.State, add: (FavoriteJourney) -> Unit) {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalAddTripRide provides { ride, _ -> add(ride) }) {
+                    TripScreen(
+                        title = "To Whitechapel", state = state, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, onHideMode = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun cardMenus(): SemanticsNodeInteractionCollection {
+        val more = composeRule.activity.getString(R.string.more_actions)
+        return composeRule.onAllNodes(
+            SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
+        )
     }
 
     @Test

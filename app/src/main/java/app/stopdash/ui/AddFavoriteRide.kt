@@ -6,6 +6,8 @@ import androidx.compose.ui.res.stringResource
 import app.stopdash.R
 import app.stopdash.domain.Connections
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineSequence
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -27,6 +29,12 @@ internal const val PICK_FROM_PAGE = 2
  * [MainScreen] over its lists; null (a trip's board, a screen with no rides to save) offers none.
  */
 internal val LocalAddFavoriteRide = staticCompositionLocalOf<((open: () -> Unit) -> Unit)?> { null }
+
+/**
+ * A trip card's long press, "Add favorite": saves the direct ride the card rides ([Journeys.ofLeg]), said as a route
+ * page's is ([RideAdds]). Provided by the activity; null (a test) offers none.
+ */
+internal val LocalAddTripRide = staticCompositionLocalOf<((FavoriteJourney, LineSequence?) -> Unit)?> { null }
 
 /**
  * Whether [row] can be a favorite ride's start: a line to ride, rail or bus (the lines a ride follows), and a train

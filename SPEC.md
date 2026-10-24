@@ -1581,7 +1581,10 @@ saves it, saved as Settings' Add saves one — then closes the page to where the
 the list says how it went (added, already a favorite, couldn't save). The boarding stop picks nothing,
 and while it picks, a long press on a stop picks it as a tap does (never toggling a ride behind the pick). The route page's menu offers the same
 "Add favorite…", putting the page into it (Back then only stops picking). Outside it the page is as
-ever. The ride then shows, edits and is removed as any other (Settings → Favorite rides), far ones held
+ever. **A trip's direct route** (one ride, no change) offers **"Add favorite"** in its card's long press, beside
+its hides and avoids (maintainer, 2026-10-24): it saves that ride from where it boards to where it gets off, on its
+line, as Settings' Add saves one, and the trip says how it went. A card that changes offers none.
+The ride then shows, edits and is removed as any other (Settings → Favorite rides), far ones held
 back under Faraway favorites, and a ride to a stop only one branch reaches counts only the trains that
 call there.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
