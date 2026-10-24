@@ -191,6 +191,41 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `by station, a train a ride takes from a platform's row is drawn once, in the ride's rows`() {
+        // A platform's row of two branches: the ride takes one branch's trains, the list keeps the row for the other's.
+        fun train(minutes: Long, destination: String) =
+            app.stopdash.domain.Departure("line", "Line", "", destination, null, Instant.EPOCH.plusSeconds(minutes * 60), "tube")
+        val bank = listOf(train(0, "Far end"), train(3, "Far end"))
+        val other = train(2, "Elsewhere")
+        val platform = row("N1", "N").copy(upcoming = (bank + other).sortedBy { it.expectedArrival }, platform = "Platform 2")
+        val group = StopGroup(stopName = "Place", key = "n1", showHeader = true, rows = listOf(platform), placeKey = "N")
+        val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), listOf(app.stopdash.domain.LineRef("line", "Line", "tube")))
+        val ride = JourneyCard(
+            journey,
+            JourneyCardState.Trains(listOf(platform.copy(upcoming = bank, destination = "Far end"))),
+            boardingIds = listOf("N1"),
+            destinationIds = setOf("Z"),
+        )
+        val layout = StationLayout.of(
+            groups = listOf(group),
+            cardOf = { stopCard(it, RouteTopology.EMPTY) },
+            journeyCards = listOf(ride),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = app.stopdash.domain.RideGrouping.STATION,
+        )
+        val trains = layout.cards.getValue("N|TUBE").group.rows.flatMap { it.upcoming }
+        // Each train once: the ride's two, then the platform's other branch.
+        assertEquals(bank + other, trains)
+        // A platform with none of a ride's trains is the list's own card, untouched.
+        assertNull(withoutRideTrains(group, emptyMap()))
+        assertNull(withoutRideTrains(group, mapOf(("N1" to "other") to listOf(platform))))
+        // And a row the ride takes every train of goes.
+        assertEquals(emptyList<DepartureRow>(), withoutRideTrains(group, mapOf(("N1" to "line") to listOf(platform)))?.rows)
+    }
+
+    @Test
     fun `grouped by platform, a ride stays in its platforms only where the list shows every train of it`() {
         val journey = FavoriteJourney(JourneyEnd("N1", "Near"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", "")))
         // Rows with trains: a line's status alone shows none of a ride's.
