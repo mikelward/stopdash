@@ -125,6 +125,22 @@ val anyReleaseKeystoreVarSet = releaseKeystorePath != null || releaseKeystorePas
 val releaseSigningConfigured = releaseKeystorePath != null && releaseKeystorePassword != null &&
     releaseKeyAlias != null && releaseKeyPassword != null
 
+// Where the bundled places, streets and postcodes are from, and when: the place index's header
+// (scripts/build_place_index.py) dates each source, so a rebuilt index carries its own dates and
+// the About screen's Crown and Royal Mail copyright year moves with Code-Point Open's release. An
+// index built before the header named that release falls back to the year it was built.
+val placeIndexSources: String =
+    file("src/main/assets/places/place_index.tsv").bufferedReader().use { it.readLine().orEmpty() }
+
+fun placeIndexDate(source: String, pattern: String): String? =
+    Regex("""${Regex.escape(source)} ($pattern) \(""").find(placeIndexSources)?.groupValues?.get(1)
+
+val placeDataOsm: String = placeIndexDate("OpenStreetMap", """\d{4}-\d{2}-\d{2}""")
+    ?: error("place_index.tsv's header dates no OpenStreetMap extract: $placeIndexSources")
+val placeDataCodePoint: String = placeIndexDate("OS Code-Point Open", """\d{4}-\d{2}""") ?: ""
+val placeDataWikidata: String = placeIndexDate("Wikidata", """\d{4}-\d{2}-\d{2}""") ?: ""
+val placeDataCopyrightYear: String = (placeDataCodePoint.ifEmpty { placeDataOsm }).take(4)
+
 // Which launcher icon and name each build wears, so a phone carrying both the
 // Play build and a debug build says which is which from the home screen and the
 // app list (the debug build co-installs as `.debug`). Keyed on the build type
@@ -159,6 +175,11 @@ android {
         val proxyUrl = providers.gradleProperty("stopdash.proxyUrl").getOrElse("").trim()
         require(proxyUrl.isEmpty() || proxyUrl.startsWith("https://")) { "stopdash.proxyUrl must be an https:// address" }
         buildConfigField("String", "PROXY_URL", "\"$proxyUrl\"")
+        // The bundled place data's sources, dated (empty where an older index didn't say).
+        buildConfigField("String", "PLACE_DATA_OSM_DATE", "\"$placeDataOsm\"")
+        buildConfigField("String", "PLACE_DATA_CODE_POINT_RELEASE", "\"$placeDataCodePoint\"")
+        buildConfigField("String", "PLACE_DATA_WIKIDATA_DATE", "\"$placeDataWikidata\"")
+        buildConfigField("String", "PLACE_DATA_COPYRIGHT_YEAR", "\"$placeDataCopyrightYear\"")
     }
 
     signingConfigs {

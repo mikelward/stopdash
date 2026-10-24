@@ -201,7 +201,7 @@
     <string name="settings_api_key_save">Salvar</string>
     <string name="menu_about">Sobre</string>
     <string name="about_title">Sobre</string>
-    <string name="about_data_sources">Horários em tempo real da TfL e da National Rail. Locais e ruas © colaboradores do OpenStreetMap, sob a ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">Horários em tempo real da TfL e da National Rail. Locais e ruas © colaboradores do OpenStreetMap, sob a ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right %1$s. Contains Royal Mail data © Royal Mail copyright and database right %1$s. Contains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="action_show_platform">Mostrar só esta parada</string>
     <string name="action_all_stops">Todas as paradas</string>
     <string name="action_show_stop">Mostrar parada</string>

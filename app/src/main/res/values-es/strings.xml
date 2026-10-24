@@ -709,7 +709,7 @@
     <string name="menu_about">Acerca de</string>
     <string name="about_title">Acerca de</string>
     <string name="settings_version">Versión %1$s</string>
-    <string name="about_data_sources">Horarios en tiempo real de TfL y National Rail. Lugares y calles © colaboradores de OpenStreetMap, con licencia ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">Horarios en tiempo real de TfL y National Rail. Lugares y calles © colaboradores de OpenStreetMap, con licencia ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right %1$s. Contains Royal Mail data © Royal Mail copyright and database right %1$s. Contains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="settings_licenses_title">Licencias de código abierto</string>
     <string name="settings_licenses_authors">Por %1$s</string>
     <string name="action_back">Atrás</string>

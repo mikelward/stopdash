@@ -19,7 +19,8 @@ anywhere. Each line is one destination:
   row shows (PlaceIndex.districtNear), so a name and the district on its row find it; empty for a
   postcode, or with no postcode within about 1.1 km (format 2; format 1 had no such column).
 
-The first line is a `#` header naming the format version and the sources. Lines are sorted, so a
+The first line is a `#` header naming the format version and the sources, each with the date its data
+is from (the app's build reads Code-Point Open's release from it for the About screen's copyright year). Lines are sorted, so a
 refresh's diff shows what moved.
 
 Sources, all open data:
@@ -46,6 +47,7 @@ import csv
 import hashlib
 import http.client
 import io
+import json
 import math
 import os
 import re
@@ -68,6 +70,9 @@ WEST, EAST, SOUTH, NORTH = -0.51, 0.34, 51.28, 51.70
 GEOFABRIK = "https://download.geofabrik.de/europe/united-kingdom/england"
 OSM_EXTRACTS = ("greater-london", "surrey", "kent", "essex", "hertfordshire", "buckinghamshire", "berkshire")
 CODEPOINT_URL = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
+# Code-Point Open's product record, whose "version" ("2026-08") is the release downloaded: the year its
+# Crown and Royal Mail copyright statements carry in the app's About screen.
+CODEPOINT_PRODUCT_URL = "https://api.os.uk/downloads/v1/products/CodePointOpen"
 # The places and streets are a derivative of OpenStreetMap's database, so they ship under ODbL 1.0
 # (section 4.2: the license URI with the database; 4.4: the same license for the derivative).
 ODBL_FILE = "OPENSTREETMAP_ODBL_NOTICE.txt"
@@ -589,6 +594,12 @@ def district_near(grid, lat, lon):
     return best
 
 
+def sources_header(osm, codepoint, wikidata):
+    """The header's sources, each with the date its data is from: the OpenStreetMap extracts', Code-Point
+    Open's release, and the day Wikidata was asked. The app's build reads the dates from it."""
+    return f"OpenStreetMap {osm} (ODbL); OS Code-Point Open {codepoint} (OGL v3.0); Wikidata {wikidata} (CC0)"
+
+
 def render(places, streets, postcodes, sources):
     """The index file's text: the header, then every entry, sorted."""
     def clean(text):
@@ -834,6 +845,24 @@ def fetch_editions(items):
     return wikipedia_editions(items, count)
 
 
+RELEASE = re.compile(r"\d{4}-\d{2}")
+
+
+def codepoint_release(text):
+    """The release ("2026-08") Code-Point Open's product record (JSON [text]) names."""
+    try:
+        version = json.loads(text).get("version")
+    except (ValueError, AttributeError) as e:
+        raise SystemExit(f"Code-Point Open's product record isn't the JSON expected ({type(e).__name__}); not dating the index")
+    if not isinstance(version, str) or not RELEASE.fullmatch(version):
+        raise SystemExit(f"Code-Point Open's product record names no YYYY-MM release ({version!r}); not dating the index")
+    return version
+
+
+def fetch_codepoint_release():
+    return codepoint_release(fetched(CODEPOINT_PRODUCT_URL).decode("utf-8"))
+
+
 def fetch_postcode_rows(zip_path=None):
     data = open(zip_path, "rb").read() if zip_path else urllib.request.urlopen(CODEPOINT_URL, timeout=300).read()
     z = zipfile.ZipFile(io.BytesIO(data))
@@ -846,8 +875,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
     parser.add_argument("--codepoint-zip", help="read Code-Point Open from this zip instead of downloading it")
+    parser.add_argument("--codepoint-release", help="the zip's release (YYYY-MM), with --codepoint-zip")
     parser.add_argument("--osm", nargs="+", help="read OpenStreetMap from these .osm.pbf files instead of downloading Geofabrik's")
     args = parser.parse_args()
+    if args.codepoint_zip and not (args.codepoint_release and RELEASE.fullmatch(args.codepoint_release)):
+        parser.error("--codepoint-zip needs --codepoint-release YYYY-MM, the year its copyright statements carry")
     from pyproj import Transformer
     bng = Transformer.from_crs("EPSG:27700", "EPSG:4326", always_xy=True)
 
@@ -869,7 +901,9 @@ def main():
     areas = area_grid(require("neighborhoods", neighborhoods, MIN_AREAS))
     streets = require("streets", select_streets(street_points, areas), MIN_STREETS)
     postcodes = require("postcodes", select_postcodes(fetch_postcode_rows(args.codepoint_zip), to_wgs84), MIN_POSTCODES)
-    sources = f"OpenStreetMap {dated} (ODbL); OS Code-Point Open (OGL v3.0); Wikidata (CC0)"
+    release = args.codepoint_release or fetch_codepoint_release()
+    asked = time.strftime("%Y-%m-%d", time.gmtime())
+    sources = sources_header(dated, release, asked)
     out_dir = os.path.dirname(os.path.abspath(args.out))
     os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:

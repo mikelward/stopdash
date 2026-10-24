@@ -11,7 +11,7 @@ from build_place_index import (  # noqa: E402
     TYPES, place_type,
     AREA_RADIUS_METERS, DUPLICATE_METERS, ODBL_NOTICE, area_grid, cell_of, display_name, geofabrik_md5, is_street,
     district_grid, district_near, match_key, meters_apart, near_cells, truncating_division, parse_wikipedia_counts, place_item, place_of, polygon_centroid, postcode_text,
-    query_service, render, fetched, fetch_extract, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
+    query_service, render, fetched, fetch_extract, codepoint_release, sources_header, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
 )
 
 AT = (51.5, -0.12)
@@ -383,6 +383,16 @@ class NotableTest(unittest.TestCase):
             return FakeResponse(b"bad", {})
         with tempfile.TemporaryDirectory() as d, self.assertRaises(SystemExit):
             fetch_extract("https://example.com/a.osm.pbf", os.path.join(d, "a.osm.pbf"), urlopen, lambda _: None)
+
+    def test_code_point_opens_release_is_read_from_its_product_record(self):
+        self.assertEqual("2026-08", codepoint_release('{"id": "CodePointOpen", "version": "2026-08"}'))
+        for text in ('{"id": "CodePointOpen"}', '{"version": "August 2026"}', '{"version": 202608}', "[]", "<html>"):
+            with self.assertRaises(SystemExit, msg=text):
+                codepoint_release(text)
+
+    def test_the_header_dates_each_source(self):
+        self.assertEqual("OpenStreetMap 2026-10-12 (ODbL); OS Code-Point Open 2026-08 (OGL v3.0); Wikidata 2026-10-24 (CC0)",
+                         sources_header("2026-10-12", "2026-08", "2026-10-24"))
 
     def test_the_query_service_is_retried_when_it_asks_us_to_slow_down(self):
         import io as _io, urllib.error

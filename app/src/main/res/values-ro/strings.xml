@@ -709,7 +709,7 @@
     <string name="menu_about">Despre</string>
     <string name="about_title">Despre</string>
     <string name="settings_version">Versiunea %1$s</string>
-    <string name="about_data_sources">Ore în timp real de la TfL și National Rail. Locuri și străzi © contribuitorii OpenStreetMap, sub licența ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">Ore în timp real de la TfL și National Rail. Locuri și străzi © contribuitorii OpenStreetMap, sub licența ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right %1$s. Contains Royal Mail data © Royal Mail copyright and database right %1$s. Contains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="settings_licenses_title">Licențe open source</string>
     <string name="settings_licenses_authors">Autori: %1$s</string>
     <string name="action_back">Înapoi</string>
