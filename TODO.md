@@ -1653,6 +1653,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [ ] **A ride's no-trains row names all its lines**: while a ride has no train to show, its card's one
         row carries the first line found serving it (its pill, spinner or dash); a shared pill of every line
         (as a trip's shared leg draws two bus numbers in one) would name them all, as the ride now holds them all alike.
+  - [ ] **The list's ride lines and bus areas off composition**: `MainScreen`'s `cardJourneys`, `journeyStarLines`
+        and `journeyAreas` are `remember` blocks that walk the rides on the main thread (as they did before a ride
+        held several lines; Codex on #1205). Work them out with the list's worker state and test that they run off it.
   - [ ] **A dismissed pole closure says nothing**: By stop/platform keeps a "Closed" chip on the pole's heading
         while its buses are listed; By station has no pole heading, so once the notice is dismissed nothing
         says that pole is closed.
