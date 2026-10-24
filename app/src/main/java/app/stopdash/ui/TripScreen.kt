@@ -1803,6 +1803,17 @@ private fun TripContent(
             snackbarHostState.showSnackbar(maxWalkWriteFailedMessage)
         }
     }
+    // A card's ride saved from its long press ("Add favorite"): added, already one, or not saved, said here, where it
+    // was asked (SPEC principle 2), on a scope of its own as the list's is, since clearing it re-keys the effect.
+    val rideAdded by RideAdds.added.collectAsStateWithLifecycle()
+    val rideAddedMessage = rideAdded?.let { rideAddedText(it) }
+    val rideAddedScope = rememberCoroutineScope()
+    OnTopEffect(rideAddedMessage) {
+        if (rideAddedMessage != null) {
+            RideAdds.shown()
+            rideAddedScope.launch { snackbarHostState.showSnackbar(rideAddedMessage) }
+        }
+    }
     // A step-free level picked here that didn't save, likewise.
     val stepFreeWriteFailedMessage = stringResource(R.string.step_free_write_failed)
     OnTopEffect(stepFreeWriteFailed) {
@@ -2551,7 +2562,11 @@ private fun RouteList(
                 if (shown != null) {
                     val card = shown.card
                     var menuOpen by remember { mutableStateOf(false) }
-                    val onLongPress = if (onHideMode != null && shown.modes.isNotEmpty()) ({ menuOpen = true }) else null
+                    // A direct card's ride, saved from its long press as a near-me row's is (maintainer, 2026-10-24).
+                    val addRide = LocalAddTripRide.current
+                    val ride = shown.ride.takeIf { addRide != null }
+                    val hides = onHideMode != null && shown.modes.isNotEmpty()
+                    val onLongPress = if (hides || ride != null) ({ menuOpen = true }) else null
                     val moreLabel = stringResource(R.string.more_actions)
                     CardHeader(header)
                     Box {
@@ -2590,14 +2605,26 @@ private fun RouteList(
                                 RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.startForms, shown.stopForms, shown.rideStepFree)
                             }
                         }
-                        if (onHideMode != null) {
+                        if (onLongPress != null) {
                             HideModeMenu(
                                 expanded = menuOpen,
                                 onDismiss = { menuOpen = false },
-                                modes = shown.modes,
-                                onHideMode = onHideMode,
-                                lines = shown.lines,
-                                onAvoidLine = onAvoidLine,
+                                modes = if (hides) shown.modes else emptyList(),
+                                onHideMode = onHideMode ?: {},
+                                leading = ride?.let { r ->
+                                    {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.station_search_add_favorite)) },
+                                            onClick = {
+                                                menuOpen = false
+                                                addRide?.invoke(r, shown.rideRoute)
+                                            },
+                                            modifier = Modifier.testTag("tripAddFavorite"),
+                                        )
+                                    }
+                                },
+                                lines = if (hides) shown.lines else emptyList(),
+                                onAvoidLine = onAvoidLine.takeIf { hides },
                             )
                         }
                     }

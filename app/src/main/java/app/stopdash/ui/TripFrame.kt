@@ -8,6 +8,8 @@ import app.stopdash.domain.ClosedNotice
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.Journeys
 import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
@@ -105,6 +107,12 @@ internal class TripCardView(
     val stopForms: List<List<String>>,
     val rideStepFree: List<String?> = emptyList(),
     val rideModes: List<ModeIcon> = emptyList(),
+    // A direct card's ride as a favorite ride, for its long press's "Add favorite" ([Journeys.ofLeg]): its best
+    // route's one ride. Null for a card that changes, or a ride that can't be one.
+    val ride: FavoriteJourney? = null,
+    // [ride]'s line's route, both ways, where it has loaded: what tells a bus ride's way back, from across the road, for
+    // the ride saved already ([Journeys.savedAlready]).
+    val rideRoute: LineSequence? = null,
 )
 
 /**
@@ -257,6 +265,8 @@ private fun listView(
             // Every route's on the card: another line's ride may have lost its way on where this one's hasn't.
             rideStepFree = rideStepFree(card.map { it.route }, notStepFree, notStepFreeText),
             rideModes = card.first().route.rides.mapNotNull { ModeIcon.of(it.mode) },
+            ride = card.first().route.rides.singleOrNull()?.let(Journeys::ofLeg),
+            rideRoute = card.first().route.rides.singleOrNull()?.let { sequences[it.lineId] },
         )
     }
     // The list takes every route's warnings.

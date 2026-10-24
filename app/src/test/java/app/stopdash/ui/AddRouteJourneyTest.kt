@@ -156,4 +156,26 @@ class AddRouteJourneyTest {
             worker.shutdown()
         }
     }
+
+    // A trip card's "Add favorite": its direct ride, saved through the same save.
+    private val tripRide = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", "Victoria", "tube")
+
+    @Test
+    fun `a trip's ride saves once, then says it's a favorite already`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        assertNull(addLegJourney(tripRide, null, journeys, worker = worker))
+        assertEquals(listOf(tripRide), journeys.state.value)
+        assertEquals(JourneyAddNote.AlreadySaved("Victoria", "Warren Street"), addLegJourney(tripRide, null, journeys, worker = worker))
+        assertEquals(JourneyAddNote.AlreadySaved("Victoria", "Warren Street"), addLegJourney(tripRide, null, Journeys(listOf(tripRide.reversed())), worker = worker))
+        assertEquals(1, journeys.state.value!!.size)
+    }
+
+    @Test
+    fun `a trip's ride that fails to save says it wasn't saved`() = runTest {
+        assertEquals(
+            JourneyAddNote.NotSaved("Victoria", "Warren Street"),
+            addLegJourney(tripRide, null, Journeys(emptyList(), failAdd = true), worker = StandardTestDispatcher(testScheduler)),
+        )
+    }
 }

@@ -834,4 +834,42 @@ class JourneysTest {
         assertEquals("HUBPOL", Journeys.originHub("STN", sequence, pole))
         assertEquals("", Journeys.originHub("STN", null, null))
     }
+
+    @Test
+    fun `a trip's ride is the favorite ride between where it boards and gets off`() {
+        val leg = TripLeg(
+            "tube", "victoria", "Victoria", "940GZZLUEUS", "Euston", "940GZZLUKSX", "King's Cross St. Pancras",
+            now, now.plusSeconds(120), fromAt = Coordinates(51.5, -0.12),
+        )
+        val ride = Journeys.ofLeg(leg)!!
+        assertEquals(JourneyEnd("940GZZLUEUS", "Euston", 51.5, -0.12), ride.from)
+        assertEquals(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), ride.to)
+        assertEquals(LineRef("victoria", "Victoria", "tube"), ride.line)
+        // A bus's ends keep the stop pair the Planner named them in, as a route page's do.
+        val bus = Journeys.ofLeg(leg.copy(mode = "bus", lineId = "73", lineName = "73", fromId = "490A", toId = "490B", fromArea = "490G1", toArea = "490G2"))!!
+        assertEquals("490G1", bus.from.areaId)
+        assertEquals("490G2", bus.to.areaId)
+        // Nothing for a walk, a line a ride can't follow, or an end with no stop.
+        assertNull(Journeys.ofLeg(leg.copy(mode = TripLeg.WALKING, lineId = "")))
+        assertNull(Journeys.ofLeg(leg.copy(mode = "cable-car", lineId = "london-cable-car")))
+        assertNull(Journeys.ofLeg(leg.copy(toId = "")))
+    }
+
+    @Test
+    fun `a bus ride's way back from across the road is the ride saved already`() {
+        // Synthetic poles: each end's two poles share a stop area, one served each way.
+        val route = LineSequence(
+            routes = listOf(LineRoute("Out", listOf("A1", "M1", "B1")), LineRoute("Back", listOf("B2", "M2", "A2"))),
+            stopNames = mapOf("A1" to "Alpha", "A2" to "Alpha", "B1" to "Beta", "B2" to "Beta", "M1" to "Mid", "M2" to "Mid"),
+            stopAreas = mapOf("A1" to "AREA_A", "A2" to "AREA_A", "B1" to "AREA_B", "B2" to "AREA_B"),
+        )
+        val out = FavoriteJourney(JourneyEnd("A1", "Alpha", areaId = "AREA_A"), JourneyEnd("B1", "Beta", areaId = "AREA_B"), "1", "1", "bus")
+        val back = FavoriteJourney(JourneyEnd("B2", "Beta", areaId = "AREA_B"), JourneyEnd("A2", "Alpha", areaId = "AREA_A"), "1", "1", "bus")
+        assertTrue(Journeys.savedAlready(listOf(out), back, route))
+        assertTrue(Journeys.savedAlready(listOf(out), out.reversed(), null))
+        // Without the route only the same stops count; another stretch of the route is another ride.
+        assertFalse(Journeys.savedAlready(listOf(out), back, null))
+        val shorter = FavoriteJourney(JourneyEnd("A1", "Alpha", areaId = "AREA_A"), JourneyEnd("M1", "Mid"), "1", "1", "bus")
+        assertFalse(Journeys.savedAlready(listOf(out), shorter, route))
+    }
 }
