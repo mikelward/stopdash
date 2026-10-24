@@ -1640,6 +1640,10 @@ fun MainScreen(
                 }
             },
             onStartPicking = { detailPicking = PICK_FROM_PAGE },
+            // From the row's own stop; a status row about no stop has nowhere to start.
+            onPlanFrom = LocalPlanFromStop.current?.takeIf { detailRow.stopId.isNotBlank() }?.let { plan ->
+                { plan(detailRow.stopId, detailRow.stopName) }
+            },
             focus = detailDestination?.let { RouteFocus(it, detailBranch, detailTrainWay) },
             onDismissAlert = if (detailRow.status != null) {
                 { onDismissAlert(detailRow) }
@@ -7372,6 +7376,8 @@ internal fun RouteDetailScreen(
     picking: Boolean = false,
     onPickTo: ((RouteStopsUi.Loaded, RouteStop) -> Unit)? = null,
     onStartPicking: (() -> Unit)? = null,
+    // Directions: a trip from the stop this page was opened at, its To… search up (SPEC *Route detail*). Null shows none.
+    onPlanFrom: (() -> Unit)? = null,
     // The trip's ride this page is for: its line's page ("View line") keeps where it boards and gets off,
     // and shows an alert on its stretch in full. Null keeps the row's own stop alone.
     ride: TripLeg? = null,
@@ -7789,6 +7795,13 @@ internal fun RouteDetailScreen(
                                 contentDescription = stringResource(R.string.unstar),
                                 tint = LocalStarredBorderColor.current,
                             )
+                        }
+                    }
+                    // Directions from this stop, as the near-me list's plans from where the rider is: the glyph,
+                    // To… for a screen reader.
+                    if (onPlanFrom != null) {
+                        IconButton(onClick = onPlanFrom, modifier = Modifier.testTag("routePlanFrom")) {
+                            Icon(DirectionsIcon, contentDescription = stringResource(R.string.menu_to))
                         }
                     }
                     if (timetableOffered) {
