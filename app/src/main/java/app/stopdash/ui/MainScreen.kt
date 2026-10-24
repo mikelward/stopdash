@@ -4976,19 +4976,47 @@ internal fun checkingStations(groups: List<StopGroup>, pending: Set<String>): Se
 private val FoldedStationsSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })
 
 /**
- * A station drawn as one card (maintainer, 2026-10-23): its [starred] rows first, then its [rides]' trains,
- * then each of its platforms' or poles' [cards] in turn, by number or letter ([platformOrder]), each block
- * of rows marked off from the next ([StopCard.breaks]).
+ * A station drawn as one card (maintainer, 2026-10-23): each platform or pole with a [starred] row or one of its
+ * [rides]' trains first, its starred rows and the rides' trains leading its own other trains, so what else leaves
+ * from where the rider stands follows straight on (the Charing Cross trains under a Bank ride's); then the platforms
+ * or poles with none (maintainer, 2026-10-24). Each tier in turn by number or letter ([platformOrder]), each
+ * platform's rows a block marked off from the next ([StopCard.breaks]). A ride's train boarding no platform listed
+ * here leads them all, as its own block.
  */
 @WorkerThread
 internal fun stationCard(rides: List<StopCard>, cards: List<StopCard>, starred: Set<StarredRow>): StopCard {
     if (rides.isEmpty() && cards.size == 1) return cards.single()
     fun rowsOf(card: StopCard) = card.group.rows.zip(card.lines)
-    val blocks = buildList {
-        add((rides + cards).flatMap(::rowsOf).filter { (row, _) -> StarredRow.of(row) in starred })
-        add(rides.flatMap(::rowsOf).filter { (row, _) -> StarredRow.of(row) !in starred })
-        cards.sortedWith(platformOrder).forEach { card -> add(rowsOf(card).filter { (row, _) -> StarredRow.of(row) !in starred }) }
-    }.filter { it.isNotEmpty() }
+    val sorted = cards.sortedWith(platformOrder)
+    // Each ride's train to the platform it leaves from: by stop and platform, else the one platform of its stop where
+    // neither names a platform; a train from a platform no card is left for (the ride takes all its trains) is its own
+    // block, never another platform's (Codex on #1216). A key naming more than one card (Northbound and Southbound
+    // groups, neither with a numbered platform) places nothing: guessing would file a train with the other direction.
+    val byPlatform = HashMap<Pair<String, String>, MutableSet<StopCard>>()
+    val byStop = HashMap<String, MutableSet<StopCard>>()
+    sorted.forEach { card ->
+        card.group.rows.forEach { row ->
+            byPlatform.getOrPut(row.stopId to row.platform) { LinkedHashSet() } += card
+            byStop.getOrPut(row.stopId) { LinkedHashSet() } += card
+        }
+    }
+    val unplaced = ArrayList<Pair<DepartureRow, List<DestinationGroup>>>()
+    val rideRows = IdentityHashMap<StopCard, MutableList<Pair<DepartureRow, List<DestinationGroup>>>>()
+    rides.flatMap(::rowsOf).forEach { pair ->
+        val (row, _) = pair
+        val onPlatform = byPlatform[row.stopId to row.platform]
+        val card = if (onPlatform != null) onPlatform.singleOrNull() else byStop[row.stopId]?.singleOrNull()
+            ?.takeIf { only -> row.platform.isBlank() || only.group.rows.all { it.platform.isBlank() } }
+        if (card == null) unplaced += pair else rideRows.getOrPut(card) { ArrayList() } += pair
+    }
+    fun blockOf(card: StopCard): List<Pair<DepartureRow, List<DestinationGroup>>> {
+        val (lead, rest) = rowsOf(card).partition { (row, _) -> StarredRow.of(row) in starred }
+        return lead + rideRows[card].orEmpty() + rest
+    }
+    val (leading, others) = sorted.partition { card ->
+        card in rideRows || card.group.rows.any { StarredRow.of(it) in starred }
+    }
+    val blocks = (listOf(unplaced) + leading.map(::blockOf) + others.map(::blockOf)).filter { it.isNotEmpty() }
     val rows = blocks.flatten()
     val breaks = blocks.runningFold(0) { at, block -> at + block.size }.drop(1).dropLast(1).toSet()
     val first = cards.first().group

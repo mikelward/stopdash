@@ -181,13 +181,13 @@ class StationGroupsTest {
         )
         assertTrue(layout.rideGroups.isEmpty())
         val card = layout.cards.getValue("N|TUBE")
-        // The ride's train first, then the platforms by number, each block marked off.
+        // The ride's train first, the rest of its platform (2) straight after, then platform 1, each platform marked off.
         assertEquals(listOf("Far end", "Somewhere", "Somewhere"), card.group.rows.map { it.destination })
-        assertEquals(listOf("N2", "N1", "N2"), card.group.rows.map { it.stopId })
-        assertEquals(setOf(1, 2), card.breaks)
+        assertEquals(listOf("N2", "N2", "N1"), card.group.rows.map { it.stopId })
+        assertEquals(setOf(2), card.breaks)
         // Known as the ride's, to wear its star and open as its card would.
         assertTrue(card.group.rows.first() in layout.rideEnds.keys)
-        assertFalse(card.group.rows[2] in layout.rideEnds.keys)
+        assertFalse(card.group.rows[1] in layout.rideEnds.keys)
     }
 
     @Test
@@ -502,7 +502,7 @@ class StationGroupsTest {
     }
 
     @Test
-    fun `a station's card leads with its starred rows and its rides' trains, then its platforms by number`() {
+    fun `a station's card leads with the platforms of its starred rows and rides' trains, then the others by number`() {
         val platform5 = StopGroup(
             stopName = "Place", key = "p5", showHeader = true, rows = listOf(row("S5", "S")), placeKey = "S",
             qualifier = StopQualifier.Platform("5", null),
@@ -518,10 +518,35 @@ class StationGroupsTest {
         assertEquals(listOf("S1a", "S1b", "S5"), plain.group.rows.map { it.stopId })
         assertEquals(3, plain.lines.size)
         assertEquals(setOf(2), plain.breaks)
-        // A starred row leads, then the ride's train, then the platforms, each a block of its own.
+        // A ride's train boarding no platform here leads; then a starred row's platform, its starred row first and its
+        // other trains straight after; then the rest, each a block of its own.
         val led = stationCard(listOf(card(ride)), listOf(card(platform5), card(platform1)), starred = setOf(StarredRow.of(platform1.rows[1])))
-        assertEquals(listOf("S1b", "R", "S1a", "S5"), led.group.rows.map { it.stopId })
-        assertEquals(setOf(1, 2, 3), led.breaks)
+        assertEquals(listOf("R", "S1b", "S1a", "S5"), led.group.rows.map { it.stopId })
+        assertEquals(setOf(1, 3), led.breaks)
+        // A ride's train leaving from platform 5 brings platform 5 to the top, its other trains under the ride's, then 1.
+        val fromFive = StopGroup(stopName = "Place", key = "ride", showHeader = false, rows = listOf(row("S5", "S").copy(destination = "Far")), placeKey = "S")
+        val floated = stationCard(listOf(card(fromFive)), listOf(card(platform5), card(platform1)), starred = emptySet())
+        assertEquals(listOf("Far", "Somewhere", "Somewhere", "Somewhere"), floated.group.rows.map { it.destination })
+        assertEquals(listOf("S5", "S5", "S1a", "S1b"), floated.group.rows.map { it.stopId })
+        assertEquals(setOf(2), floated.breaks)
+        // A ride taking every train from platform 2 of a stop whose platform 1 is still listed: its own block, never
+        // platform 1's, which isn't a favorite's.
+        val stopPlatform1 = StopGroup(
+            stopName = "Place", key = "q1", showHeader = true, rows = listOf(row("Q", "S").copy(platform = "Platform 1")), placeKey = "S",
+            qualifier = StopQualifier.Platform("1", null),
+        )
+        val fromTwo = StopGroup(stopName = "Place", key = "ride", showHeader = false, rows = listOf(row("Q", "S").copy(platform = "Platform 2", destination = "Far")), placeKey = "S")
+        val apart = stationCard(listOf(card(fromTwo)), listOf(card(stopPlatform1), card(platform5)), starred = emptySet())
+        assertEquals(listOf("Platform 2", "Platform 1", ""), apart.group.rows.map { it.platform })
+        assertEquals(setOf(1, 2), apart.breaks)
+        // Northbound and Southbound groups of one stop, neither naming a platform: a ride's train matches neither by
+        // guess, so it stays its own block rather than join the other direction's trains.
+        val north = StopGroup(stopName = "Place", key = "n", showHeader = true, rows = listOf(row("D", "S").copy(destination = "North")), placeKey = "S")
+        val south = StopGroup(stopName = "Place", key = "s", showHeader = true, rows = listOf(row("D", "S").copy(destination = "South")), placeKey = "S")
+        val southRide = StopGroup(stopName = "Place", key = "ride", showHeader = false, rows = listOf(row("D", "S").copy(destination = "Far")), placeKey = "S")
+        val compass = stationCard(listOf(card(southRide)), listOf(card(north), card(south)), starred = emptySet())
+        assertEquals("Far", compass.group.rows.first().destination)
+        assertEquals(setOf(1, 2), compass.breaks)
         // A lone platform is its own card.
         val lone = card(platform5)
         assertTrue(stationCard(emptyList(), listOf(lone), starred = emptySet()) === lone)

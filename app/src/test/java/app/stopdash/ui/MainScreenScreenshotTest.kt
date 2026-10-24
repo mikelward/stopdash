@@ -6291,13 +6291,14 @@ class MainScreenScreenshotTest {
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
     fun `grouped by station with rides By station, a ride's train leads its station's card, starred, with no heading`() {
         // Group favorite rides By station (maintainer, 2026-10-23): King's Cross to Warren Street's Brixton train in King's
-        // Cross's own card, after its starred row, a star after where it goes, and no ride heading.
+        // Cross's own card, a star after where it goes, and no ride heading. Its platform and the starred row's lead the
+        // card, by number, ahead of the platforms with neither (maintainer, 2026-10-24).
         groupedByStationOn(RideGrouping.STATION)
         composeRule.onAllNodes(hasContentDescription("➔ Warren Street", substring = true)).assertCountEquals(0)
         composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
         composeRule.onAllNodesWithText("120 m").assertCountEquals(1)
         fun top(text: String) = composeRule.onNodeWithText(text).getUnclippedBoundsInRoot().top
-        val order = listOf("King's Cross St. Pancras", "High Barnet", "Brixton", "Walthamstow Central", "Cockfosters")
+        val order = listOf("King's Cross St. Pancras", "Brixton", "High Barnet", "Walthamstow Central", "Cockfosters")
         assertEquals(order, order.sortedBy { top(it) })
         captureSnapshot("main-station-groups-ride-in-station.png", heightPx = 4200)
         // A long press on the ride's train offers what its own card does, never hiding the line everywhere.
