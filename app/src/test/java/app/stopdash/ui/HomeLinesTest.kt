@@ -104,11 +104,7 @@ class HomeLinesTest {
     fun `the rider's starred stops ride with the row, for a line's map to keep`() {
         // Big interchanges stand in for the rider's own.
         val starred = setOf(app.stopdash.domain.StarredRow("940GZZLUKSX", "victoria", "outbound"))
-        val journey = app.stopdash.domain.FavoriteJourney(
-            from = app.stopdash.domain.JourneyEnd("940GZZLUBNK", "Bank", areaId = "HUBBAN"),
-            to = app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"),
-            lineId = "northern",
-        )
+        val journey = app.stopdash.domain.FavoriteJourney(from = app.stopdash.domain.JourneyEnd("940GZZLUBNK", "Bank", areaId = "HUBBAN"), to = app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"), lines = listOf(app.stopdash.domain.LineRef("northern", "", "")))
         val row = HomeLines.row(null, emptyMap(), tube(good), emptySet(), now, networks = setOf("tube"), starred = starred, journeys = listOf(journey))
         assertEquals(setOf("940GZZLUKSX", "940GZZLUBNK", "HUBBAN", "940GZZLUWLO"), row.starredStops)
     }
@@ -370,9 +366,7 @@ class HomeLinesTest {
             lineStatuses = mapOf("victoria" to victoria),
             determinedLineIds = setOf("victoria", "38", "73"),
         )
-        val journey = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("origin", "Origin"), app.stopdash.domain.JourneyEnd("end", "End"), "victoria", "Victoria", "tube",
-        )
+        val journey = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("origin", "Origin"), app.stopdash.domain.JourneyEnd("end", "End"), listOf(app.stopdash.domain.LineRef("victoria", "Victoria", "tube")))
         val starred = setOf(app.stopdash.domain.StarredRow("pole", "38", "outbound"))
         val far = mapOf("origin" to 3000.0, "pole" to 2000.0, "other" to 2500.0)
         val row = HomeLines.row(loaded, far, null, emptySet(), now, starred = starred, journeyLines = setOf("victoria"), journeys = listOf(journey))
@@ -394,9 +388,7 @@ class HomeLinesTest {
         // name or mode, and ranks only within the list (Codex, #640).
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
         val starred = setOf(app.stopdash.domain.StarredRow("gone", "38", "outbound"))
-        val journey = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("far", "Far"), app.stopdash.domain.JourneyEnd("end", "End"), "elizabeth", "Elizabeth line", "elizabeth-line",
-        )
+        val journey = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("far", "Far"), app.stopdash.domain.JourneyEnd("end", "End"), listOf(app.stopdash.domain.LineRef("elizabeth", "Elizabeth line", "elizabeth-line")))
         val near = mapOf("near" to 50.0)
         val waiting = HomeLines.row(loaded, near, null, emptySet(), now, starred = starred, journeyLines = setOf("elizabeth"), journeys = listOf(journey))
         assertEquals(setOf("73", "elizabeth"), waiting.watchedIds.toSet())
@@ -419,9 +411,7 @@ class HomeLinesTest {
             lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"), disruptionUnknown = true,
         )
         val distances = mapOf("near" to 50.0, "far" to 900.0)
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
         val waiting = HomeLines.row(loaded, distances, null, emptySet(), now, journeyLines = setOf("northern"), journeys = listOf(ride))
         assertTrue(row(waiting, "northern").checking)
         assertEquals(true, row(waiting, "northern").watched)
@@ -452,9 +442,7 @@ class HomeLinesTest {
             listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
             lineStatuses = mapOf("73" to minor), determinedLineIds = setOf("73"), disruptionUnknown = true,
         )
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
         val statuses = mapOf("northern" to LineStatus("northern", 6, "Severe Delays"), "central" to LineStatus("central", 2, "Suspended"))
         val judged = HomeLines.row(
             loaded, mapOf("near" to 50.0, "far" to 900.0), HomeLines.Always(statuses, now), emptySet(), now,
@@ -546,9 +534,7 @@ class HomeLinesTest {
             farIds = setOf("elizabeth"),
         )
         val starred = setOf(app.stopdash.domain.StarredRow("near", "38", "outbound"))
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
         fun watched(nearby: Boolean, loaded: DeparturesUiState.Loaded) = HomeLines.row(
             loaded, distances, null, emptySet(), now, networks = setOf("central"), starred = starred,
             journeyLines = setOf("northern"), journeys = listOf(ride), tripLines = listOf(LineRef("victoria", "Victoria", "tube")),
@@ -608,9 +594,7 @@ class HomeLinesTest {
         )
         val distances = mapOf("near" to 50.0)
         val starred = setOf(app.stopdash.domain.StarredRow("near", "38", "outbound"))
-        val ride = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
-        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), listOf(app.stopdash.domain.LineRef("northern", "Northern", "tube")))
         fun watched(rides: Boolean, nearby: Boolean = true, checked: HomeLines.Always? = HomeLines.Always(mapOf("northern" to northern), now)) = HomeLines.row(
             loaded, distances, checked, emptySet(), now, networks = setOf("central"), starred = starred,
             journeyLines = setOf("northern"), journeys = listOf(ride), tripLines = listOf(LineRef("victoria", "Victoria", "tube")),
@@ -812,9 +796,7 @@ class HomeLinesTest {
     fun `the journeys' lines are walked on the worker, never the collector's thread`() {
         // AGENTS.md *Main thread*: the screen collects this from a LaunchedEffect; the walk over every saved
         // journey runs on the worker (Codex, #640). The list notes the thread each journey is read on.
-        val journey = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "elizabeth", "Elizabeth line", "elizabeth-line",
-        )
+        val journey = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), listOf(app.stopdash.domain.LineRef("elizabeth", "Elizabeth line", "elizabeth-line")))
         val readOn = ThreadRecorder()
         val journeys = object : AbstractList<app.stopdash.domain.FavoriteJourney>() {
             override val size get() = 2
@@ -842,9 +824,7 @@ class HomeLinesTest {
             override val size get() = 1
             override fun iterator(): Iterator<app.stopdash.domain.StarredRow> = listOf(row).iterator().also { readOn.note() }
         }
-        val journey = app.stopdash.domain.FavoriteJourney(
-            app.stopdash.domain.JourneyEnd("940GZZLUEUS", "Euston"), app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"), "northern",
-        )
+        val journey = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("940GZZLUEUS", "Euston"), app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(app.stopdash.domain.LineRef("northern", "", "")))
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
         try {
             fun stopsOf(set: app.stopdash.domain.StarredRowSet) = kotlinx.coroutines.runBlocking {

@@ -627,9 +627,8 @@ The app finds stops two ways:
   Train" read as hiding that one train); a long press on a place's header offers it for each group
   it serves. Starring a near-me row therefore takes the
   menu's first item. Journey cards keep these hides out, since a favorite journey is the user's
-  explicit choice and hiding doesn't reach it: a long press on the line it was saved on pins
-  directly, and one on another of its lines offers only the ride's own hide (*Journeys → Hiding a
-  line from a ride*).
+  explicit choice and hiding doesn't reach it: a long press on one of its lines offers only the
+  ride's own hide (*Journeys → Hiding a line from a ride*).
   A hidden mode's stops aren't picked for the near-me set, so they cost no request; a place that also
   serves other modes keeps them, with the hidden mode's rows left out, and the widget leaves them
   out too. With National Rail hidden, such a place's National Rail board isn't asked for either,
@@ -1641,13 +1640,12 @@ stop's platform shortens with them ("Platform 7" → "Plat 7"); a pole's letter 
 
 **Hiding a line from a ride** (maintainer, 2026-10-15). A ride counts every line between its hubs, which
 can offer one a better line beats: a slow bus between two stations a train links too. The rider decides,
-ride by ride: no one distance for every ride told them apart (2026-10-15). A distance of each ride's own is an open question (`TODO.md`). A long press on a row of a ride's card, on any line but the one it was saved on, opens a menu: pin the
+ride by ride: no one distance for every ride told them apart (2026-10-15). A distance of each ride's own is an open question (`TODO.md`). A long press on a row of a ride's card, on any line, opens a menu: pin the
 row, or **Hide ‹line› on this ride**. That leaves the line off the ride both ways, on its card in the
 list, in its own view, in the widget's pins for it and in its alerts, and offers Undo for a moment
 ("‹line› hidden on this ride"). The ride's own view lists its hidden lines under **Hidden on this
-ride**, each with a **Show**. The line it was saved on can't be hidden: its route places the ride's
-stops, and its status and alerts are the ride's own, so a long press there pins at once, as it always
-did. The hides are saved with the ride, on the device and in its backup, and reach nothing else: the
+ride**, each with a **Show**. Any line can be hidden, the one the ride was first saved from included:
+no line is the ride's own (maintainer, 2026-10-24), and hiding is the rider's deliberate choice. The hides are saved with the ride, on the device and in its backup, and reach nothing else: the
 near-me list, trips and the hidden lines of *Hiding a mode* are untouched. A hide or Show that can't
 be saved says so. Choosing a ride's lines when it's added, and the same choice for a trip's *Direct*
 section, are to come (`TODO.md`).
@@ -1941,19 +1939,25 @@ changing mostly lands the rider on that same train at the fork. It names only wh
 the connecting train's time, which isn't known. Rail only: a bus's path is often the route's end,
 too loose to send a rider to change on. The widget keeps showing direct trains only.
 
-**Direct only, for now.** A favorite journey is saved on one line between two stops (its route
-places the ends) and shows every direct line between them; a starred trip with a change
+**Direct only, for now.** A favorite journey is **its two stops, never a line** (maintainer,
+2026-10-24: "Rides are between stops. Period."). It keeps, as a cache, the lines found serving both
+stops, none above another: seeded when it's saved (every line the page's route data, or each end's
+lookup, lists at both) and widened whenever its card finds another line reaching the far end. Any of
+their routes places its ends (a bus stop's way-back pole across the road), all of them are checked for
+status and asked about by its alerts, and a ride is a bus ride when they're all buses (or, before any
+is known, when both its ends are bus stops). It shows every direct line between its stops; a starred trip with a change
 (the eventual goal behind starring home and work) builds on *Trips with a change* below. The long-press entry point has no
 cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to favorite the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
 settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), second, under the
-favorite places (maintainer, 2026-10-10): each by its two stops and every line it rides, by name, a route by its number ("43, 134"; maintainer, 2026-10-24: a ride is its two stops, not the line it was saved from), as the list last found them, with **Remove**, so one starred by mistake can be
+favorite places (maintainer, 2026-10-10): each by its two stops and every line it rides, by name, a route by its number ("43, 134"; maintainer, 2026-10-24: a ride is its two stops), as found serving it and as the list last found them, with **Remove**, so one starred by mistake can be
 found and dropped without riding past its card; Remove only ever removes the favorite. Its **Add**
 (maintainer, 2026-10-07) picks the journey's two stations over the list: the station search asks
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
 start, and Back from the end drops back to it. Both searches lead with the rider's **favorite places**
 as chips (maintainer, 2026-10-10), so Home, Work or a place of their own can be either end. The pair is
-saved on a line both stations serve (rail before bus), as a long press saves one; where none does, the
+saved between the stops of a line both stations serve (rail before bus), with every line running between
+those two stops; where none does, the
 rest of each end's **place** counts too (maintainer, 2026-10-14 and 2026-10-15). Two stops are one place
 when TfL files them under **one interchange** and one of them is a station (the bus stops it lists under
 King's Cross St Pancras are that station's, whatever they're called, and King's Cross's rail station is

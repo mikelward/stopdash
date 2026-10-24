@@ -33,6 +33,7 @@ import app.stopdash.domain.TimeWindow
 import java.time.LocalTime
 import java.time.DayOfWeek
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -62,25 +63,18 @@ class FavoriteJourneysScreenshotTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    private val victoriaLine = FavoriteJourney(
-        JourneyEnd("940GZZLUVIC", "Victoria"),
-        JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"),
-        "victoria",
-        lineName = "Victoria",
-        mode = "tube",
-    )
-    private val northern = FavoriteJourney(
-        JourneyEnd("940GZZLUEUS", "Euston"),
-        JourneyEnd("940GZZLUWLO", "Waterloo"),
-        "northern",
-        lineName = "Northern",
-        mode = "tube",
-    )
+    private val victoriaLine = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), listOf(LineRef("victoria", "Victoria", "tube")))
+    private val northern = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "Northern", "tube")))
 
     // A direction's alert line as the list says it: to [to], on [times].
     private fun line(to: String, times: String) = alertLine(to) { "Alerts to $it: $times" }
 
+    // Each row's lines as the app works them out with the list ([journeyLineLabels]), from the rides' own.
+    private fun labeled(state: FavoriteJourneysUi) =
+        if (state.lineLabels.isNotEmpty()) state else state.copy(lineLabels = journeyLineLabels(state.journeys.orEmpty(), null))
+
     private fun show(state: FavoriteJourneysUi, onRemove: (FavoriteJourney) -> Unit = {}) {
+        val state = labeled(state)
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 FavoriteJourneysScreen(state = state, onBack = {}, onRemove = onRemove)
@@ -102,6 +96,7 @@ class FavoriteJourneysScreenshotTest {
     }
 
     private fun showWithMenu(state: FavoriteJourneysUi, paused: Boolean?, onPause: (Boolean) -> Unit) {
+        val state = labeled(state)
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
@@ -508,13 +503,7 @@ class FavoriteJourneysScreenshotTest {
     fun a_long_destination_shortens_so_its_alert_times_still_show() {
         // King's Cross's long hub name, as a ride's end can carry it: the line names it as far as the row
         // allows, and the days and times are never what's cut.
-        val toHub = FavoriteJourney(
-            JourneyEnd("940GZZLUVIC", "Victoria"),
-            JourneyEnd("HUBKGX", "King's Cross & St Pancras International"),
-            "victoria",
-            lineName = "Victoria",
-            mode = "tube",
-        )
+        val toHub = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("HUBKGX", "King's Cross & St Pancras International"), listOf(LineRef("victoria", "Victoria", "tube")))
         val alerts = mapOf(
             JourneyAlerts.directionKey(toHub, toHub.from.stopId) to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1)),
         )
@@ -536,13 +525,7 @@ class FavoriteJourneysScreenshotTest {
     fun a_destination_of_two_places_keeps_both_when_cut() {
         // Each place is cut on its own, as a departure's destination is, so the second isn't lost behind the first
         // (Codex on #862). A made-up stop of two places, as no real one is needed (SPEC *Privacy*).
-        val toPair = FavoriteJourney(
-            JourneyEnd("P1", "Victoria Station"),
-            JourneyEnd("P2", "Example Street Market/Alpha Lane"),
-            "99",
-            lineName = "99",
-            mode = "bus",
-        )
+        val toPair = FavoriteJourney(JourneyEnd("P1", "Victoria Station"), JourneyEnd("P2", "Example Street Market/Alpha Lane"), listOf(LineRef("99", "99", "bus")))
         val alerts = mapOf(
             JourneyAlerts.directionKey(toPair, toPair.from.stopId) to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1)),
         )
@@ -565,13 +548,7 @@ class FavoriteJourneysScreenshotTest {
     @Test
     fun an_alert_line_too_long_even_without_its_destination_keeps_its_times() {
         // Four windows don't fit the row even with no name at all: the line loses its start, not its times (Codex on #862).
-        val toHub = FavoriteJourney(
-            JourneyEnd("940GZZLUVIC", "Victoria"),
-            JourneyEnd("HUBKGX", "King's Cross & St Pancras International"),
-            "victoria",
-            lineName = "Victoria",
-            mode = "tube",
-        )
+        val toHub = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("HUBKGX", "King's Cross & St Pancras International"), listOf(LineRef("victoria", "Victoria", "tube")))
         val windows = listOf(6 to 7, 8 to 10, 16 to 18, 20 to 21).map { (from, to) -> TimeWindow(LocalTime.of(from, 0), LocalTime.of(to, 0)) }
         val alerts = mapOf(JourneyAlerts.directionKey(toHub, toHub.from.stopId) to JourneyAlertSchedule(windows = windows))
         val summaries = journeyAlertSummaries(composeRule.activity, listOf(toHub), alerts)

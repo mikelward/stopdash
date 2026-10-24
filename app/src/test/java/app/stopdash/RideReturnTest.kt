@@ -1,6 +1,7 @@
 package app.stopdash
 
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyEnd
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -10,8 +11,8 @@ class RideReturnTest {
     // Public station ids, as examples.
     private val victoria = JourneyEnd("940GZZLUVIC", "Victoria")
     private val warren = JourneyEnd("940GZZLUWRR", "Warren Street")
-    private val fromVictoria = FavoriteJourney(victoria, warren, "victoria")
-    private val fromWarren = FavoriteJourney(warren, victoria, "victoria")
+    private val fromVictoria = FavoriteJourney(victoria, warren, listOf(LineRef("victoria", "", "")))
+    private val fromWarren = FavoriteJourney(warren, victoria, listOf(LineRef("victoria", "", "")))
 
     @Test
     fun `back from a ride's station reopens it from the stop it was shown boarding from`() {

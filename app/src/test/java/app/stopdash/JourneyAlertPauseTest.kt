@@ -5,6 +5,7 @@ import android.app.Application
 import android.app.NotificationManager
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyAlertResult
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.JourneyLineAlert
@@ -30,7 +31,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class JourneyAlertPauseTest {
     private val context: Application = ApplicationProvider.getApplicationContext()
-    private val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern", "Northern", "tube")
+    private val journey = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), listOf(LineRef("northern", "Northern", "tube")))
     private val result = JourneyAlertResult(journey.key, listOf(JourneyLineAlert("northern", "Northern", "Severe Delays", "Northern line: severe delays.")))
 
     @Before

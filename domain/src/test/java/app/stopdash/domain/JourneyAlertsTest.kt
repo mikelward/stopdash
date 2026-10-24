@@ -19,8 +19,8 @@ class JourneyAlertsTest {
     private fun at(day: Int, hour: Int, minute: Int = 0): ZonedDateTime =
         ZonedDateTime.of(LocalDateTime.of(2026, 10, day, hour, minute), zone)
 
-    private val journey = FavoriteJourney(JourneyEnd("A", "Alpha"), JourneyEnd("B", "Beta"), "victoria", "Victoria", "tube")
-    private val other = FavoriteJourney(JourneyEnd("C", "Gamma"), JourneyEnd("D", "Delta"), "northern", "Northern", "tube")
+    private val journey = FavoriteJourney(JourneyEnd("A", "Alpha"), JourneyEnd("B", "Beta"), listOf(LineRef("victoria", "Victoria", "tube")))
+    private val other = FavoriteJourney(JourneyEnd("C", "Gamma"), JourneyEnd("D", "Delta"), listOf(LineRef("northern", "Northern", "tube")))
 
     @Test
     fun `the default is weekdays from 8 to 10 and 16 to 18`() {
@@ -172,9 +172,12 @@ class JourneyAlertsTest {
         assertEquals(setOf("victoria", "bus-2"), JourneyAlerts.lines(journey.reversed(), both))
         assertEquals(setOf("victoria"), JourneyAlerts.lines(journey, emptyMap()))
         assertEquals(emptyMap<String, Map<String, Set<String>>>(), JourneyAlerts.pinnedLines(null))
-        // A line hidden from the ride isn't asked about, though a pin from before still names it; its own line always is.
-        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-1", "1"), HiddenModes.lineKey("victoria", "Victoria")))
+        // A line hidden from the ride isn't asked about, though a pin from before still names it: any line, the one
+        // it was first found on too, as no line is the ride's own.
+        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-1", "1")))
         assertEquals(setOf("victoria"), JourneyAlerts.lines(hiding, pinned.getValue(journey.key)))
+        val hidingBoth = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-1", "1"), HiddenModes.lineKey("victoria", "Victoria")))
+        assertEquals(emptySet<String>(), JourneyAlerts.lines(hidingBoth, pinned.getValue(journey.key)))
     }
 
     private val suspended = LineStatus("victoria", 6, "Severe Delays", fullText = "Victoria line: severe delays.")
@@ -538,7 +541,7 @@ class JourneyAlertsTest {
         "serving stops between 'Bank Station/King William Street' and 'Moorgate Station'. Please allow extra time."
     private val diverted = LineStatus("99", 6, "Diversion", southEnd, soleAlert = true)
     private fun busRide(from: String, to: String, mode: String = "bus") =
-        FavoriteJourney(JourneyEnd(from, busRoute.stopNames.getValue(from)), JourneyEnd(to, busRoute.stopNames.getValue(to)), "99", "99", mode)
+        FavoriteJourney(JourneyEnd(from, busRoute.stopNames.getValue(from)), JourneyEnd(to, busRoute.stopNames.getValue(to)), listOf(LineRef("99", "99", mode)))
     private fun alertsFor(
         ride: FavoriteJourney,
         status: LineStatus,
@@ -625,7 +628,7 @@ class JourneyAlertsTest {
             routes = listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "p4", "b5", "p6"))),
             stopNames = busRoute.stopNames + mapOf("p4" to "Alpha Road Stand", "p6" to "North End Stand"),
         )
-        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), "99", "99", "bus")
+        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), listOf(LineRef("99", "99", "bus")))
         val pinned = diverted.copy(lineId = "98")
         fun alerts(pins: List<WidgetJourney>) = JourneyAlerts.results(
             listOf(ride), mapOf(ride.key to setOf("98")), mapOf("98" to pinned),
@@ -662,7 +665,7 @@ class JourneyAlertsTest {
             ),
             stopAreas = mapOf("b4" to "A4", "n4" to "A4", "b6" to "A6", "n6" to "A6"),
         )
-        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), "99", "99", "bus")
+        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), listOf(LineRef("99", "99", "bus")))
         val diversionBothWays = diverted.copy(fullText = southEnd.replace("northbound", "in both directions"))
         // Watched both ways: the way back (n6 to n4) is found by its areas, and is off the stretch too.
         assertTrue(alertsFor(ride, diversionBothWays, routes = mapOf("99" to bothWays), origins = setOf("b4", "b6")).isEmpty())
@@ -743,7 +746,7 @@ class JourneyAlertsTest {
             ),
             mapOf("t1" to "North End", "t2" to "Alpha", "t3" to "Beta", "t4" to "South End"),
         )
-        val south = FavoriteJourney(JourneyEnd("t1", "North End"), JourneyEnd("t3", "Beta"), "tl", "Tube Line", "tube")
+        val south = FavoriteJourney(JourneyEnd("t1", "North End"), JourneyEnd("t3", "Beta"), listOf(LineRef("tl", "Tube Line", "tube")))
         val words = "Tube Line: No service between Beta and South End northbound only. GOOD SERVICE on the rest of the line."
         val alert = LineAlert(4, "Part Suspended", words, setOf("inbound"))
         val good = LineStatus("tl", LineStatus.GOOD_SERVICE, "Good Service")
@@ -782,7 +785,7 @@ class JourneyAlertsTest {
         underWay = listOf(LineAlert(5, "Part Closure", closedWords)),
     )
     private fun tubeRide(from: String, to: String) =
-        FavoriteJourney(JourneyEnd(from, tubeLine.stopNames.getValue(from)), JourneyEnd(to, tubeLine.stopNames.getValue(to)), "tl", "Tube Line", "tube")
+        FavoriteJourney(JourneyEnd(from, tubeLine.stopNames.getValue(from)), JourneyEnd(to, tubeLine.stopNames.getValue(to)), listOf(LineRef("tl", "Tube Line", "tube")))
 
     @Test
     fun `a tube part closure at the far end of the line doesn't alert a ride that never reaches it`() {
@@ -836,7 +839,7 @@ class JourneyAlertsTest {
         // Not where it gave none, nor for a bus line, whose alerts are placed by their words.
         val unplaced = closedSouth.copy(closures = listOf(southClosure.copy(sections = emptyList())))
         assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("tl" to unplaced)))
-        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride.copy(mode = "bus")), lines, mapOf("tl" to closedSouth.copy(fullText = null))))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride.copy(lines = ride.lines.map { it.copy(mode = "bus") })), lines, mapOf("tl" to closedSouth.copy(fullText = null))))
     }
 
     @Test
@@ -851,7 +854,7 @@ class JourneyAlertsTest {
             stopNames = busRoute.stopNames + mapOf("n4" to "Alpha Rd", "n6" to "North End Stand"),
             stopAreas = mapOf("b4" to "A4", "n4" to "A4", "b6" to "A6", "n6" to "A6"),
         )
-        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), "99", "99", "bus")
+        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), listOf(LineRef("99", "99", "bus")))
         val delays = "Route 99: minor delays southbound due to roadworks."
         val out = LineAlert(6, "Diversion", southEnd, setOf("outbound"))
         val back = LineAlert(9, "Minor Delays", delays, setOf("inbound"))

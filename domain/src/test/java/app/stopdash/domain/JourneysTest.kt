@@ -24,11 +24,7 @@ class JourneysTest {
         stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOTA" to "Bottom A", "SIDE" to "Side", "BOTB" to "Bottom B"),
     )
 
-    private val journey = FavoriteJourney(
-        from = JourneyEnd("TOP", "Top", 51.51, -0.12),
-        to = JourneyEnd("MID", "Mid", 51.49, -0.12),
-        lineId = "example",
-    )
+    private val journey = FavoriteJourney(from = JourneyEnd("TOP", "Top", 51.51, -0.12), to = JourneyEnd("MID", "Mid", 51.49, -0.12), lines = listOf(LineRef("example", "", "")))
 
     // A station model ([Hubs]) of [stations] (a record to its hub, each record its own station) and bus
     // [poles] (a pole to its hub, each pole its own stop), as the bundle groups them.
@@ -69,9 +65,7 @@ class JourneysTest {
         },
     )
 
-    private val parkToHill = FavoriteJourney(
-        JourneyEnd("PARKN", "Park", 51.500, -0.12), JourneyEnd("HILLN", "Hill", 51.510, -0.12), "b1", "B1", "bus",
-    )
+    private val parkToHill = FavoriteJourney(JourneyEnd("PARKN", "Park", 51.500, -0.12), JourneyEnd("HILLN", "Hill", 51.510, -0.12), listOf(LineRef("b1", "B1", "bus")))
 
     private fun departure(destination: String, inSeconds: Long, lineId: String = "example", mode: String = "tube") =
         Departure(
@@ -115,11 +109,11 @@ class JourneysTest {
         ),
     )
 
-    private val kingToNorth = FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NORTH", "North End"), "example")
+    private val kingToNorth = FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NORTH", "North End"), listOf(LineRef("example", "", "")))
 
     @Test
     fun `a train on the other branch is offered with where to change, only when no direct one is due`() {
-        val segment = Journeys.segment(kingToNorth, forked)!!
+        val segment = Journeys.segment(kingToNorth, forked, kingToNorth.lineIds.first())!!
         val rows = rowsAt(
             "KING",
             departure("West End", 60), departure("North End", 300), departure("West End", 480),
@@ -145,7 +139,7 @@ class JourneysTest {
     @Test
     fun `a bus ending at the journey's origin goes nowhere, not unchecked`() {
         val parkToLane = parkToHill.copy(to = JourneyEnd("LANEN", "Lane", 51.505, -0.12))
-        val segment = Journeys.segment(parkToLane, bus())!!
+        val segment = Journeys.segment(parkToLane, bus(), parkToLane.lineIds.first())!!
         // Arriving at Park's northbound pole to end at its stop area, and one setting off north.
         val ending = departure("Park", 30, lineId = "b1", mode = "bus").copy(destinationId = "G-PARK")
         val trains = Journeys.trains(segment, rowsAt("PARKN", ending, departure("Hill", 60, lineId = "b1", mode = "bus")), mapOf("b1" to bus()), parkToLane)
@@ -157,22 +151,22 @@ class JourneysTest {
     @Test
     fun `a train sharing no stop past the origin, or a bus, isn't offered as a change`() {
         // From Top, a Bottom B train runs via Side: nothing shared with the way to Mid.
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         assertTrue(Journeys.trains(segment, rowsAt("TOP", departure("Bottom B", 60)), mapOf("example" to rail)).changes.isEmpty())
         // A bus on the other branch gets no change: its path is too loose to send a rider on.
-        val busSegment = Journeys.segment(kingToNorth, forked)!!
+        val busSegment = Journeys.segment(kingToNorth, forked, kingToNorth.lineIds.first())!!
         val bus = Journeys.trains(busSegment, rowsAt("KING", departure("West End", 60, mode = "bus")), mapOf("example" to forked), kingToNorth)
         assertTrue(bus.changes.isEmpty())
         // Nor on a bus journey whose predictions leave the mode off.
-        val busJourney = kingToNorth.copy(mode = "bus")
+        val busJourney = kingToNorth.copy(lines = kingToNorth.lines.map { it.copy(mode = "bus") })
         val noMode = Journeys.trains(busSegment, rowsAt("KING", departure("West End", 60, mode = "")), mapOf("example" to forked), busJourney)
         assertTrue(noMode.changes.isEmpty())
     }
 
     @Test
     fun `a station journey boards and alights at its own stops both ways`() {
-        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, rail))
-        assertEquals(JourneySegment("MID", setOf("TOP")), Journeys.segment(journey.reversed(), rail))
+        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, rail, journey.lineIds.first()))
+        assertEquals(JourneySegment("MID", setOf("TOP")), Journeys.segment(journey.reversed(), rail, journey.reversed().lineIds.first()))
     }
 
     @Test
@@ -184,19 +178,19 @@ class JourneysTest {
             stationCodes = mapOf("MID" to "1000003", "MID2" to "1000003", "TOP" to "1000004", "TOP2" to "1000004"),
         )
         val viaLow = coded("TOP", "MID2", "BOTA")
-        val segment = Journeys.segment(journey, viaLow)
+        val segment = Journeys.segment(journey, viaLow, journey.lineIds.first())
         assertEquals(JourneySegment("TOP", setOf("MID2")), segment)
         val trains = Journeys.trains(segment!!, rowsAt("TOP", departure("Bottom A", 60)), mapOf("example" to viaLow))
         assertEquals(listOf("Bottom A"), trains.rows.flatMap { it.upcoming }.map { it.destination })
         // A route calling at the far end itself gets off there, never at another id of its station first.
-        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP", "MID2", "MID", "BOTA")))
+        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP", "MID2", "MID", "BOTA"), journey.lineIds.first()))
         // The origin, where the journey's departures are listed, stands for its station's other id the route calls at.
-        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP2", "MID", "BOTA")))
+        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP2", "MID", "BOTA"), journey.lineIds.first()))
     }
 
     @Test
     fun `only trains that call at the other end are kept`() {
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         val rows = rowsAt("TOP", departure("Bottom A", 120), departure("Bottom B", 60), departure("Bottom A", 600))
         val trains = Journeys.trains(segment, rows, mapOf("example" to rail))
         assertEquals(listOf("Bottom A", "Bottom A"), trains.rows.flatMap { it.upcoming }.map { it.destination })
@@ -206,7 +200,7 @@ class JourneysTest {
 
     @Test
     fun `a journey's row keeps the trains with no time to where its kept trains go, and only those`() {
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         val toA = UntimedTrain(departure("Bottom A", 300), canceled = true)
         // Bottom B trains don't call at Mid, so neither does a canceled one: never a line of its own on the card.
         val toB = UntimedTrain(departure("Bottom B", 30), canceled = true)
@@ -230,7 +224,7 @@ class JourneysTest {
             routes = listOf(LineRoute("Top ↔ End by Mid", listOf("TOP", "MID", "END")), LineRoute("Top ↔ End by Side", listOf("TOP", "SIDE", "END"))),
             stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "SIDE" to "Side", "END" to "End"),
         )
-        val segment = Journeys.segment(journey, ways)!!
+        val segment = Journeys.segment(journey, ways, journey.lineIds.first())!!
         val byMid = UntimedTrain(departure("End", 300, mode = "national-rail").copy(via = "Mid"), canceled = true)
         val bySide = UntimedTrain(departure("End", 400, mode = "national-rail").copy(via = "Side"), canceled = true)
         val rows = DepartureRows.across(
@@ -248,7 +242,7 @@ class JourneysTest {
 
     @Test
     fun `a journey's warning row for a line whose every train has no time shows the warning alone`() {
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         val disrupted = LineStatus("example", 6, "Severe Delays")
         val rows = DepartureRows.across(
             listOf(
@@ -267,20 +261,20 @@ class JourneysTest {
 
     @Test
     fun `a bus journey's way back boards across the road, found by stop area`() {
-        assertEquals(JourneySegment("PARKN", setOf("HILLN")), Journeys.segment(parkToHill, bus()))
-        assertEquals(JourneySegment("HILLS", setOf("PARKS")), Journeys.segment(parkToHill.reversed(), bus()))
+        assertEquals(JourneySegment("PARKN", setOf("HILLN")), Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first()))
+        assertEquals(JourneySegment("HILLS", setOf("PARKS")), Journeys.segment(parkToHill.reversed(), bus(), parkToHill.reversed().lineIds.first()))
     }
 
     @Test
     fun `without stop areas the way back is found by name`() {
-        assertEquals(JourneySegment("HILLS", setOf("PARKS")), Journeys.segment(parkToHill.reversed(), bus(areas = false)))
+        assertEquals(JourneySegment("HILLS", setOf("PARKS")), Journeys.segment(parkToHill.reversed(), bus(areas = false), parkToHill.reversed().lineIds.first()))
     }
 
     @Test
     fun `a stop served one way only is stood in for by the nearest stop on the way back`() {
         val parkToLane = parkToHill.copy(to = JourneyEnd("LANEN", "Lane", 51.505, -0.12))
         // Southbound has no Lane: Loop, about 110 m away, stands in for it.
-        assertEquals(JourneySegment("LOOPS", setOf("PARKS")), Journeys.segment(parkToLane.reversed(), bus()))
+        assertEquals(JourneySegment("LOOPS", setOf("PARKS")), Journeys.segment(parkToLane.reversed(), bus(), parkToLane.reversed().lineIds.first()))
     }
 
     @Test
@@ -291,18 +285,18 @@ class JourneysTest {
             stopNames = mapOf("TOP" to "Top", "SIDE" to "Side", "BOTB" to "Bottom B"),
             stopPositions = mapOf("TOP" to (51.51 to -0.12), "SIDE" to (51.4909 to -0.12), "BOTB" to (51.48 to -0.12)),
         )
-        assertNull(Journeys.segment(journey.copy(mode = "tube"), closed))
+        assertNull(Journeys.segment(journey.copy(lines = journey.lines.map { it.copy(mode = "tube") }), closed, (journey.copy(lines = journey.lines.map { it.copy(mode = "tube") })).lineIds.first()))
     }
 
     @Test
     fun `with nothing to match the way back can't be placed`() {
         val far = parkToHill.copy(to = JourneyEnd("HILLN", "Hill", 52.0, -0.12))
-        assertNull(Journeys.segment(far.reversed(), bus(areas = false, names = false).copy(stopPositions = emptyMap())))
+        assertNull(Journeys.segment(far.reversed(), bus(areas = false, names = false).copy(stopPositions = emptyMap()), far.reversed().lineIds.first()))
     }
 
     @Test
     fun `every line serving the segment is shown, not just the starred one`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         val otherRoute = bus().copy(routes = listOf(LineRoute("Park ↔ Hill", listOf("PARKN", "HILLN"))))
         val elsewhere = LineSequence(listOf(LineRoute("Park ↔ Dale", listOf("PARKN", "DALEN"))), mapOf("DALEN" to "Dale"))
         val rows = rowsAt(
@@ -317,7 +311,7 @@ class JourneysTest {
 
     @Test
     fun `a line hidden from the ride is left off it, both ways, while the others stay`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         val otherRoute = bus().copy(routes = listOf(LineRoute("Park ↔ Hill", listOf("PARKN", "HILLN"))))
         val rows = rowsAt("PARKN", departure("Hill", 120, "b1", "bus"), departure("Hill", 60, "b2", "bus"))
         val sequences = mapOf("b1" to bus(), "b2" to otherRoute)
@@ -333,7 +327,7 @@ class JourneysTest {
     }
 
     @Test
-    fun `hiding and showing a ride's line keeps its other hides and never the line it was saved on`() {
+    fun `hiding and showing a ride's line keeps its other hides, any of its lines included`() {
         val other = journey.copy(to = JourneyEnd("BOTA", "Bottom A"))
         val saved = listOf(parkToHill, other)
         val b2 = HiddenModes.lineKey("b2", "B2")
@@ -352,9 +346,10 @@ class JourneysTest {
         // Shown again by its line, whatever label it was hidden under.
         val shown = Journeys.withLineHidden(hidden, parkToHill, HiddenModes.lineKey("B2", "Renamed"), false)
         assertEquals(setOf(b3), shown[0].hiddenLines)
-        // The line it was saved on stays: its route places the ride's stops.
-        assertEquals(hidden, Journeys.withLineHidden(hidden, parkToHill, HiddenModes.lineKey("b1", "B1"), true))
-        assertFalse(parkToHill.copy(hiddenLines = setOf(HiddenModes.lineKey("b1", "B1"))).hides("b1"))
+        // The line it was first found on can be hidden too: no line is the ride's own (maintainer, 2026-10-24).
+        val b1 = HiddenModes.lineKey("b1", "B1")
+        assertEquals(setOf(b2, b3, b1), Journeys.withLineHidden(hidden, parkToHill, b1, true)[0].hiddenLines)
+        assertTrue(parkToHill.copy(hiddenLines = setOf(b1)).hides("b1"))
         // A ride not saved, or an entry that's no line's, changes nothing.
         assertEquals(saved, Journeys.withLineHidden(saved, journey.copy(to = JourneyEnd("SIDE", "Side")), b2, true))
         assertEquals(saved, Journeys.withLineHidden(saved, parkToHill, "bus", true))
@@ -362,7 +357,7 @@ class JourneysTest {
 
     @Test
     fun `a bus whose soonest prediction has no mode still uses the bus route-end rule`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         // "Town" names no stop: only the bus rule (run to the route's end) places it.
         val rows = rowsAt("PARKN", departure("Town", 60, "b1", ""), departure("Town", 600, "b1", "bus"))
         val trains = Journeys.trains(segment, rows, mapOf("b1" to bus()))
@@ -372,7 +367,7 @@ class JourneysTest {
 
     @Test
     fun `another route reaching a different pole of the far end is shown too`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         // b2 boards at the same pole but stops at Hill's other northbound pole, HILLN2.
         val b2 = LineSequence(
             routes = listOf(LineRoute("Park ↔ Hill", listOf("PARKN", "HILLN2"))),
@@ -385,7 +380,7 @@ class JourneysTest {
 
     @Test
     fun `another route merely passing near the far end isn't taken to serve it`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         // b2 leaves Park but turns off at Ridge, about 110 m from Hill, and never calls there.
         val b2 = LineSequence(
             routes = listOf(LineRoute("Park ↔ Dale", listOf("PARKN", "RIDGEN", "DALEN"))),
@@ -401,7 +396,7 @@ class JourneysTest {
 
     @Test
     fun `another line stopping at the far end's place under another name is shown`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         // b2 stops at "Hill Station / High Road": another stop area and name, about 100 m from Hill.
         fun b2(at: Pair<Double, Double>, name: String = "Hill Station / High Road") = LineSequence(
             routes = listOf(LineRoute("Park ↔ Dale", listOf("PARKN", "HIGHN", "DALEN"))),
@@ -426,7 +421,7 @@ class JourneysTest {
 
     @Test
     fun `a route variant reaching the far end's other stop counts where another reaches its own`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         // b2's short variant stops at Hill itself; its long one at "Hill / High Road", 100 m off.
         val b2 = LineSequence(
             routes = listOf(
@@ -609,7 +604,7 @@ class JourneysTest {
 
     @Test
     fun `a suspended line kept for its warning reports the far-end stop it serves`() {
-        val segment = Journeys.segment(parkToHill, bus())!!
+        val segment = Journeys.segment(parkToHill, bus(), parkToHill.lineIds.first())!!
         val b2 = LineSequence(
             routes = listOf(LineRoute("Park ↔ Hill", listOf("PARKN", "HILLN2"))),
             stopNames = mapOf("PARKN" to "Park", "HILLN2" to "Hill"),
@@ -627,7 +622,7 @@ class JourneysTest {
 
     @Test
     fun `a departure with no line id isn't a definite no`() {
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         val trains = Journeys.trains(segment, rowsAt("TOP", departure("Bottom A", 60, lineId = "")), mapOf("example" to rail))
         assertTrue(trains.rows.isEmpty())
         assertTrue(trains.unresolved)
@@ -646,14 +641,14 @@ class JourneysTest {
         )
         val sequences = mapOf("example" to forked)
         // TfL's "Check Front of Train": either branch passes Mid, so it's a train to Mid.
-        val toMid = Journeys.trains(Journeys.segment(journey, forked)!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences)
+        val toMid = Journeys.trains(Journeys.segment(journey, forked, journey.lineIds.first())!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences)
         assertEquals(1, toMid.rows.single().upcoming.size)
         assertFalse(toMid.unresolved)
         assertTrue("MID" in toMid.reachedIds)
         // Only one branch reaches Side: it can't be vouched for either way, and says so.
-        val toSide = FavoriteJourney(JourneyEnd("TOP", "Top", 51.51, -0.12), JourneyEnd("SIDE", "Side", 51.48, -0.12), "example")
+        val toSide = FavoriteJourney(JourneyEnd("TOP", "Top", 51.51, -0.12), JourneyEnd("SIDE", "Side", 51.48, -0.12), listOf(LineRef("example", "", "")))
         val sideTrains = Journeys.trains(
-            Journeys.segment(toSide, forked)!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences, toSide,
+            Journeys.segment(toSide, forked, toSide.lineIds.first())!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences, toSide,
         )
         assertTrue(sideTrains.rows.isEmpty())
         assertTrue(sideTrains.unresolved)
@@ -662,7 +657,7 @@ class JourneysTest {
 
     @Test
     fun `a line whose route is loading or failed isn't a definite no`() {
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         val rows = rowsAt("TOP", departure("Bottom A", 120, "other"))
         val loading = Journeys.trains(segment, rows, mapOf("example" to rail))
         assertTrue(loading.pending)
@@ -679,13 +674,13 @@ class JourneysTest {
             now,
             mapOf("other" to suspended),
         )
-        val trains = Journeys.trains(Journeys.segment(journey, rail)!!, rows, mapOf("example" to rail, "other" to null))
+        val trains = Journeys.trains(Journeys.segment(journey, rail, journey.lineIds.first())!!, rows, mapOf("example" to rail, "other" to null))
         assertTrue(trains.unresolved)
     }
 
     @Test
     fun `a train whose path can't be resolved is unresolved, while another branch's is a definite no`() {
-        val segment = Journeys.segment(journey, rail)!!
+        val segment = Journeys.segment(journey, rail, journey.lineIds.first())!!
         val sequences = mapOf("example" to rail)
         val unknown = Journeys.trains(segment, rowsAt("TOP", departure("Nowhere", 120)), sequences)
         assertTrue(unknown.rows.isEmpty())
@@ -702,11 +697,11 @@ class JourneysTest {
     fun `a suspended line with no trains keeps its warning`() {
         val suspended = LineStatus("example", 6, "Suspended")
         val rows = DepartureRows.across(
-            listOf(StopArrivals("TOP", "Top", emptyList(), fetchedAt = now, lines = listOf(journey.line))),
+            listOf(StopArrivals("TOP", "Top", emptyList(), fetchedAt = now, lines = listOf(journey.lines.single()))),
             now,
             mapOf("example" to suspended),
         )
-        val trains = Journeys.trains(Journeys.segment(journey, rail)!!, rows, mapOf("example" to rail))
+        val trains = Journeys.trains(Journeys.segment(journey, rail, journey.lineIds.first())!!, rows, mapOf("example" to rail))
         assertEquals(listOf(suspended), trains.rows.map { it.status })
     }
 
@@ -715,14 +710,14 @@ class JourneysTest {
         val starred = Journeys.toggle(emptyList(), journey)
         assertEquals(1, starred.size)
         assertTrue(Journeys.toggle(starred, journey.reversed()).isEmpty())
-        assertTrue(Journeys.toggle(starred, journey.copy(lineId = "other")).isEmpty())
+        assertTrue(Journeys.toggle(starred, journey.copy(lines = listOf(app.stopdash.domain.LineRef("other", "", "")))).isEmpty())
     }
 
     @Test
     fun `the journey declares its line for the origin fetch`() {
-        val named = journey.copy(lineName = "Example", mode = "tube")
-        assertEquals(LineRef("example", "Example", "tube"), named.line)
-        assertEquals(named.line, named.reversed().line)
+        val named = journey.copy(lines = journey.lines.map { it.copy(name = "Example", mode = "tube") })
+        assertEquals(LineRef("example", "Example", "tube"), named.lines.single())
+        assertEquals(named.lines.single(), named.reversed().lines.single())
     }
 
     @Test
@@ -747,7 +742,7 @@ class JourneysTest {
     @Test
     fun `journeys go nearest first by their nearer end, the unmeasured last in saved order`() {
         // Synthetic ends on one meridian; the rider's position is synthetic too.
-        val south = FavoriteJourney(JourneyEnd("S1", "South 1", 51.45, -0.12), JourneyEnd("S2", "South 2", 51.44, -0.12), "example")
+        val south = FavoriteJourney(JourneyEnd("S1", "South 1", 51.45, -0.12), JourneyEnd("S2", "South 2", 51.44, -0.12), listOf(LineRef("example", "", "")))
         val unplaced = journey.copy(to = JourneyEnd("MID", "Mid"))
         val saved = listOf(journey, unplaced, south)
         // Near the south end: the south journey leads, the unmeasured one last.
@@ -844,7 +839,7 @@ class JourneysTest {
         val ride = Journeys.ofLeg(leg)!!
         assertEquals(JourneyEnd("940GZZLUEUS", "Euston", 51.5, -0.12), ride.from)
         assertEquals(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), ride.to)
-        assertEquals(LineRef("victoria", "Victoria", "tube"), ride.line)
+        assertEquals(listOf(LineRef("victoria", "Victoria", "tube")), ride.lines)
         // A bus's ends keep the stop pair the Planner named them in, as a route page's do.
         val bus = Journeys.ofLeg(leg.copy(mode = "bus", lineId = "73", lineName = "73", fromId = "490A", toId = "490B", fromArea = "490G1", toArea = "490G2"))!!
         assertEquals("490G1", bus.from.areaId)
@@ -863,13 +858,13 @@ class JourneysTest {
             stopNames = mapOf("A1" to "Alpha", "A2" to "Alpha", "B1" to "Beta", "B2" to "Beta", "M1" to "Mid", "M2" to "Mid"),
             stopAreas = mapOf("A1" to "AREA_A", "A2" to "AREA_A", "B1" to "AREA_B", "B2" to "AREA_B"),
         )
-        val out = FavoriteJourney(JourneyEnd("A1", "Alpha", areaId = "AREA_A"), JourneyEnd("B1", "Beta", areaId = "AREA_B"), "1", "1", "bus")
-        val back = FavoriteJourney(JourneyEnd("B2", "Beta", areaId = "AREA_B"), JourneyEnd("A2", "Alpha", areaId = "AREA_A"), "1", "1", "bus")
+        val out = FavoriteJourney(JourneyEnd("A1", "Alpha", areaId = "AREA_A"), JourneyEnd("B1", "Beta", areaId = "AREA_B"), listOf(LineRef("1", "1", "bus")))
+        val back = FavoriteJourney(JourneyEnd("B2", "Beta", areaId = "AREA_B"), JourneyEnd("A2", "Alpha", areaId = "AREA_A"), listOf(LineRef("1", "1", "bus")))
         assertTrue(Journeys.savedAlready(listOf(out), back, route))
         assertTrue(Journeys.savedAlready(listOf(out), out.reversed(), null))
         // Without the route only the same stops count; another stretch of the route is another ride.
         assertFalse(Journeys.savedAlready(listOf(out), back, null))
-        val shorter = FavoriteJourney(JourneyEnd("A1", "Alpha", areaId = "AREA_A"), JourneyEnd("M1", "Mid"), "1", "1", "bus")
+        val shorter = FavoriteJourney(JourneyEnd("A1", "Alpha", areaId = "AREA_A"), JourneyEnd("M1", "Mid"), listOf(LineRef("1", "1", "bus")))
         assertFalse(Journeys.savedAlready(listOf(out), shorter, route))
     }
 }

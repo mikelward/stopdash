@@ -4463,6 +4463,21 @@ class MainActivity : ComponentActivity() {
                             ) { journeyStore.toggle(journey) }
                         }
                     },
+                    // Kept with the rides on the application scope, as a hide is; a failed write is logged and
+                    // the next report tries again. Null while the saved journeys are unreadable.
+                    onRideLinesFound = if (savedJourneys == null) {
+                        null
+                    } else {
+                        { found ->
+                            ((application as? StopdashApp)?.applicationScope ?: journeyScope).launch {
+                                try {
+                                    journeyStore.addLines(found)
+                                } catch (e: IOException) {
+                                    logStarWarning("ride lines not saved: ${e::class.simpleName}${app.stopdash.sync.framesOf(e)}")
+                                }
+                            }
+                        }
+                    },
                     // Null while the saved journeys are unreadable, as starring is: the file is preserved untouched.
                     onSetRideLineHidden = if (savedJourneys == null) {
                         null
@@ -8215,7 +8230,10 @@ private suspend fun favoriteLineIds(context: Context): Set<String> {
         logStarWarning("disruptions row: favorite journeys unreadable (${e::class.simpleName})")
         emptyList()
     }
-    return journeys.mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) }
+    // Every line found serving each ride, but those the rider hid from it: walked on a worker (AGENTS.md *Main thread*).
+    return withContext(Workers.compute) {
+        journeys.flatMapTo(HashSet()) { journey -> journey.lineIds.filter { it.isNotBlank() && !journey.hides(it) } }
+    }
 }
 
 private inline fun <T> readOrNull(what: String, read: () -> T?): T? =
@@ -8257,18 +8275,22 @@ private class JourneysRead(val journeys: List<FavoriteJourney>?)
 
 // The journeys' alert schedules as read: wrapped like [JourneysRead], so "not read yet" is told from unreadable.
 /**
- * Keeps the open Alerts screen's journey over a recreation: its stops' ids and names and its line, all
+ * Keeps the open Alerts screen's journey over a recreation: its stops' ids and names and its lines, all
  * the screen draws from. Positions aren't kept; the store's copy replaces this one once read.
  */
 internal val AlertsJourneySaver = androidx.compose.runtime.saveable.listSaver<FavoriteJourney?, String>(
     save = { journey ->
-        journey?.let { listOf(it.from.stopId, it.from.name, it.from.areaId, it.to.stopId, it.to.name, it.to.areaId, it.lineId, it.lineName, it.mode) }.orEmpty()
+        journey?.let {
+            listOf(it.from.stopId, it.from.name, it.from.areaId, it.to.stopId, it.to.name, it.to.areaId) +
+                it.lines.flatMap { line -> listOf(line.id, line.name, line.mode) }
+        }.orEmpty()
     },
     restore = { saved ->
-        if (saved.size < 9) {
+        if (saved.size < 6) {
             null
         } else {
-            FavoriteJourney(JourneyEnd(saved[0], saved[1], areaId = saved[2]), JourneyEnd(saved[3], saved[4], areaId = saved[5]), saved[6], saved[7], saved[8])
+            val lines = saved.drop(6).chunked(3).filter { it.size == 3 }.map { LineRef(it[0], it[1], it[2]) }
+            FavoriteJourney(JourneyEnd(saved[0], saved[1], areaId = saved[2]), JourneyEnd(saved[3], saved[4], areaId = saved[5]), lines)
         }
     },
 )

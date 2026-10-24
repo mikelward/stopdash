@@ -5,12 +5,7 @@ import org.junit.Test
 
 /** Gathering the user's own stops for "Find a station", on example stop ids and public names. */
 class YourStopsTest {
-    private val journey = FavoriteJourney(
-        from = JourneyEnd("490000000001A", "Example Road"),
-        to = JourneyEnd("940GZZLUOXC", "Oxford Circus Underground Station"),
-        lineId = "example",
-        mode = "bus",
-    )
+    private val journey = FavoriteJourney(from = JourneyEnd("490000000001A", "Example Road"), to = JourneyEnd("940GZZLUOXC", "Oxford Circus Underground Station"), lines = listOf(LineRef("example", "", "bus")))
 
     @Test
     fun `favorites are the journey ends, then starred places by name, cleaned and once each`() {

@@ -26,7 +26,7 @@ import org.junit.Test
 class JourneyBoardingTest {
     private val top = JourneyEnd("TOP", "Top", 51.51, -0.12)
     private val mid = JourneyEnd("MID", "Mid", 51.49, -0.12)
-    private val journey = FavoriteJourney(top, mid, "example")
+    private val journey = FavoriteJourney(top, mid, listOf(LineRef("example", "", "")))
     // Each end's stops in its hub, by the station model: a ride runs between hubs (maintainer, 2026-10-21).
     // TOPX and MIDX, a bus stop just outside each, are each a hub of their own; so is TOPY, a pole TfL files
     // in Top's stop area.
@@ -117,7 +117,7 @@ class JourneyBoardingTest {
 
     @Test
     fun `a stop two journeys board from is fetched for both's lines`() {
-        val other = FavoriteJourney(top, JourneyEnd("LOW", "Low", 51.48, -0.12), "example")
+        val other = FavoriteJourney(top, JourneyEnd("LOW", "Low", 51.48, -0.12), listOf(LineRef("example", "", "")))
         val shared = StopLocation("TOPB", "Top Road", 51.5102, -0.12, listOf(LineRef("b7", "7", "bus"), LineRef("b9", "9", "bus")))
         val siblings = mapOf(
             journey.key to SiblingPoles(listOf(shared), emptySet()),
@@ -153,7 +153,7 @@ class JourneyBoardingTest {
         val departures = listOf(StopArrivals("TOP", "Top", listOf(Departure("b7", "7", "outbound", "Mid", null, Instant.EPOCH, "bus")), Instant.EPOCH))
         assertEquals(listOf("example"), journeyLineIdsOf(emptyList(), refs, departures, listOf(hiding), emptyMap(), emptyMap()))
         // Another ride boarding there that still shows it keeps its route loaded.
-        val other = FavoriteJourney(top, JourneyEnd("LOW", "Low", 51.48, -0.12), "example")
+        val other = FavoriteJourney(top, JourneyEnd("LOW", "Low", 51.48, -0.12), listOf(LineRef("example", "", "")))
         assertTrue("b7" in journeyLineIdsOf(emptyList(), refs, departures, listOf(hiding, other), emptyMap(), emptyMap()))
     }
 

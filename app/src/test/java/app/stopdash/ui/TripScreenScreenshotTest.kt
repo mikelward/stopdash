@@ -2715,7 +2715,7 @@ class TripScreenScreenshotTest {
         val ride = added.single()
         assertEquals("910GHGHI", ride.from.stopId)
         assertEquals("910GWCHAPEL", ride.to.stopId)
-        assertEquals("windrush", ride.lineId)
+        assertEquals(listOf("windrush"), ride.lineIds)
     }
 
     @Test

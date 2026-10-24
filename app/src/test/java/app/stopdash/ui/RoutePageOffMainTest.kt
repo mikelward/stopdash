@@ -12,6 +12,7 @@ import app.stopdash.ThreadRecorder
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StepFreePlatform
@@ -41,13 +42,39 @@ class RoutePageOffMainTest {
     private val here = RouteStop("940GZZEXMPA", "Example A")
     private val there = RouteStop("940GZZEXMPB", "Example B")
     private val page = RouteStopsUi.Loaded(listOf(here, there))
-    private val journey = FavoriteJourney(JourneyEnd(here.id, here.name), JourneyEnd(there.id, there.name), "victoria", "Victoria", "tube")
+    private val journey = FavoriteJourney(JourneyEnd(here.id, here.name), JourneyEnd(there.id, there.name), listOf(LineRef("victoria", "Victoria", "tube")))
     private val table = StepFreeAccess(
         mapOf(
             here.id to mapOf("victoria" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
             there.id to mapOf("victoria" to listOf(StepFreePlatform(StepFreeLevel.RAMP))),
         ),
     )
+
+    @Test
+    fun a_new_rides_lines_are_worked_out_on_the_worker_not_by_the_tap() {
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val victoria = LineRef("victoria", "Victoria", "tube")
+        val shared = LineRef("example", "Example", "tube")
+        val lined = RouteStopsUi.Loaded(
+            listOf(here, there),
+            sequence = app.stopdash.domain.LineSequence(
+                routes = emptyList(),
+                stopNames = emptyMap(),
+                stopLines = mapOf(here.id to listOf(victoria, shared), there.id to listOf(shared, victoria)),
+            ),
+        )
+        var result: JourneysShown? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides held) { result = rememberJourneysHere(emptyList(), lined, here.id, "victoria", victoria) }
+        }
+        composeRule.waitForIdle()
+        assertEquals("none until the worker has run", null, result?.here?.linesTo?.get(there.id))
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        // The page's line first, then every other line serving both stops, all alike.
+        assertEquals(listOf(victoria, shared), result?.here?.linesTo?.get(there.id))
+    }
 
     @Test
     fun the_stars_wait_for_the_worker_and_stand_in_for_the_same_row() {
@@ -69,7 +96,7 @@ class RoutePageOffMainTest {
 
         // Another journey saved on the same row: the stars stay while it's worked out, but a tap
         // waits for the new answer, which the stand-in may lack.
-        journeys = listOf(journey, journey.copy(lineName = "Victoria line"))
+        journeys = listOf(journey, journey.copy(lines = journey.lines.map { it.copy(name = "Victoria line") }))
         composeRule.waitForIdle()
         assertEquals(setOf(there.id), result?.here?.starredStopIds)
         assertEquals(false, result?.current)

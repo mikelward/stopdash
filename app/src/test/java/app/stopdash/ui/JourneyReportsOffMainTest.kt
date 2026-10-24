@@ -58,12 +58,8 @@ class JourneyReportsOffMainTest {
         routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
         stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
     )
-    private val victoriaToWarrenStreet = FavoriteJourney(
-        JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
-    )
-    private val victoriaToWalthamstow = FavoriteJourney(
-        JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWWL", "Walthamstow Central"), "victoria",
-    )
+    private val victoriaToWarrenStreet = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
+    private val victoriaToWalthamstow = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWWL", "Walthamstow Central"), listOf(LineRef("victoria", "", "")))
     private val victoria = StopArrivals(
         stopId = "940GZZLUVIC",
         stopName = "Victoria",
@@ -128,9 +124,7 @@ class JourneyReportsOffMainTest {
         val held = StandardTestDispatcher(scheduler)
         var journeys by mutableStateOf(listOf(victoriaToWarrenStreet))
         val events = mutableListOf<String>()
-        val warrenStreetToWalthamstow = FavoriteJourney(
-            JourneyEnd("940GZZLUWRR", "Warren Street"), JourneyEnd("940GZZLUWWL", "Walthamstow Central"), "victoria",
-        )
+        val warrenStreetToWalthamstow = FavoriteJourney(JourneyEnd("940GZZLUWRR", "Warren Street"), JourneyEnd("940GZZLUWWL", "Walthamstow Central"), listOf(LineRef("victoria", "", "")))
         composeRule.setContent {
             StopDashTheme {
                 CompositionLocalProvider(LocalWorker provides held, LocalRouteStops provides routes) {
@@ -222,9 +216,7 @@ class JourneyReportsOffMainTest {
             },
             io = Dispatchers.Unconfined,
         )
-        val warrenStreetToEuston = FavoriteJourney(
-            JourneyEnd("940GZZLUWRR", "Warren Street"), JourneyEnd("940GZZLUEUS", "Euston"), "northern",
-        )
+        val warrenStreetToEuston = FavoriteJourney(JourneyEnd("940GZZLUWRR", "Warren Street"), JourneyEnd("940GZZLUEUS", "Euston"), listOf(LineRef("northern", "", "")))
         // Warren Street with trains on two more lines, both of whose routes its card needs.
         val warrenStreet = StopArrivals(
             stopId = "940GZZLUWRR",

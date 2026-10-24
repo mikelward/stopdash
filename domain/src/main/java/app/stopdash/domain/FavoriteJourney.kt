@@ -22,23 +22,23 @@ data class JourneyEnd(
  * A favorite journey (SPEC *Journeys*): a segment the rider travels, both ways — "Highgate ↔ King's
  * Cross St. Pancras", or two bus stops shared by the 43 and the 134. Direct only: the card shows
  * every train or bus from one end whose route calls at the other, on any line; a journey needing a
- * change is routing, a non-goal for now. [from] → [to] is the saved orientation, starred from
- * [lineId]'s route page; the near-me list shows whichever end is nearer as the origin
- * ([Journeys.oriented]). Stored on the device like the starred rows and, like them, never logged (a
- * pair of stops can reveal home and work).
+ * change is routing, a non-goal for now. A ride is its two stops, never a line (maintainer,
+ * 2026-10-24: "Rides are between stops. Period."): [lines] only caches which lines serve both, all
+ * alike. [from] → [to] is the saved orientation; the near-me list shows whichever end is nearer as the
+ * origin ([Journeys.oriented]). Stored on the device like the starred rows and, like them, never logged
+ * (a pair of stops can reveal home and work).
  */
 data class FavoriteJourney(
     val from: JourneyEnd,
     val to: JourneyEnd,
-    // The line it was starred from. Its route places the segment's stops in each direction (a bus
-    // stop's way-back pole is across the road), and it is declared on the origin's fetch so its
-    // status is checked even when no trains are predicted (a suspension).
-    val lineId: String,
-    val lineName: String = "",
-    val mode: String = "",
+    // The lines found serving both ends, none above another: their routes place the segment's stops in
+    // each direction (a bus stop's way-back pole is across the road), they're declared on the origin's
+    // fetch so their status is checked even when no trains are predicted (a suspension), and a ride's
+    // alerts ask about them. Seeded when the ride is saved and widened as the list finds more
+    // ([Journeys.withLines]); one the rider hid stays here, hidden ([hides]).
+    val lines: List<LineRef> = emptyList(),
     // The lines the rider hid from this ride, both ways (SPEC *Hiding a line from a ride*): each a
     // [HiddenModes.lineKey], carrying its label so the ride's view can name it without line data.
-    // Never the line it was saved on ([hides]).
     val hiddenLines: Set<String> = emptySet(),
 ) {
     /**
@@ -48,20 +48,37 @@ data class FavoriteJourney(
     val key: String get() = listOf(from.stopId, to.stopId).sorted().joinToString("|")
 
     /**
-     * Whether the rider hid line [lineId] from this ride. The line it was saved on is never hidden: its
-     * route places the ride's stops, and its alerts and status are the ride's own. Worker-only: it scans
-     * the ride's hidden lines, and its callers run it once per row or line (Codex on #874).
+     * Whether the rider hid line [lineId] from this ride: any line can be, as no line is the ride's own.
+     * Worker-only: it scans the ride's hidden lines, and its callers run it once per row or line (Codex
+     * on #874).
      */
     @WorkerThread
-    fun hides(lineId: String): Boolean =
-        hiddenLines.isNotEmpty() && !lineId.equals(this.lineId, ignoreCase = true) && HiddenModes.isLineHidden(lineId, hiddenLines)
+    fun hides(lineId: String): Boolean = hiddenLines.isNotEmpty() && HiddenModes.isLineHidden(lineId, hiddenLines)
 
     fun reversed(): FavoriteJourney = copy(from = to, to = from)
 
-    /** The line as a stop declares it, for fetching the origin. */
-    val line: LineRef get() = LineRef(lineId, lineName, mode)
+    // Worked out once, as the ride is built (on the worker that reads or finds it), so a composable reading these
+    // scans nothing (AGENTS.md *Main thread*, Codex on #1205). Not part of equality: they follow from [lines].
 
-    val bus: Boolean get() = mode.equals("bus", ignoreCase = true)
+    /** The ids of [lines], for asking which serve the ride. */
+    val lineIds: List<String> = lines.map { it.id }
+
+    /** Whether it's a bus ride: every line found serving it a bus, or, with none found yet, both its ends bus poles. */
+    val bus: Boolean =
+        if (lines.any { it.mode.isNotBlank() }) {
+            lines.all { it.mode.isBlank() || it.mode.equals("bus", ignoreCase = true) }
+        } else {
+            isBusPole(from.stopId) && isBusPole(to.stopId)
+        }
+
+    /** How the ride is ridden: "bus" ([bus]), else the first other line's mode ("tube"), or blank when unknown. */
+    val mode: String =
+        if (bus) "bus" else lines.firstOrNull { it.mode.isNotBlank() && !it.mode.equals("bus", ignoreCase = true) }?.mode.orEmpty()
+
+    companion object {
+        /** A NaPTAN bus pole's id ("490…"), as TfL numbers them; a station's or hub's is otherwise. */
+        fun isBusPole(stopId: String): Boolean = stopId.startsWith("490")
+    }
 }
 
 /**
@@ -132,9 +149,8 @@ object Journeys {
         return FavoriteJourney(
             end(leg.fromId, leg.fromName, leg.fromAt, leg.fromArea),
             end(leg.toId, leg.toName, leg.toAt, leg.toArea),
-            leg.lineId,
-            leg.lineName,
-            leg.mode,
+            // The leg's line, alike with any the list later finds serving both stops ([withLines]).
+            listOf(LineRef(leg.lineId, leg.lineName, leg.mode)),
         )
     }
 
@@ -153,7 +169,7 @@ object Journeys {
         }
 
     private fun placesAs(saved: FavoriteJourney, ride: FavoriteJourney, sequence: LineSequence): Boolean {
-        val placed = segment(saved, sequence, ride.lineId) ?: return false
+        val placed = segment(saved, sequence, ride.lineIds.firstOrNull() ?: return false) ?: return false
         return placed.originId == ride.from.stopId && ride.to.stopId in placed.destinationIds
     }
 
@@ -175,8 +191,8 @@ object Journeys {
     /**
      * [starred] with line [entry] (a [HiddenModes.lineKey]) hidden from [journey] (by [FavoriteJourney.key]),
      * or shown again: a ride's long-press "Hide ‹line› on this ride", or its view's Show. Applied to the
-     * stored copy, so a hide never brings back another one undone since. One not saved, or the line it
-     * was saved on, leaves [starred] as it is. Worker-only, as the ride hides it checks are: the hide
+     * stored copy, so a hide never brings back another one undone since. One not saved leaves [starred]
+     * as it is. Worker-only, as the ride hides it checks are: the hide
      * hops to a worker before the store's edit runs it.
      */
     @WorkerThread
@@ -186,12 +202,33 @@ object Journeys {
         return starred.map { saved ->
             when {
                 saved.key != journey.key -> saved
-                hidden && lineId.equals(saved.lineId, ignoreCase = true) -> saved
                 hidden && saved.hides(lineId) -> saved
                 hidden -> saved.copy(hiddenLines = saved.hiddenLines + entry)
                 else -> saved.copy(hiddenLines = saved.hiddenLines.filterTo(LinkedHashSet()) { !lineIdOf(it).equals(lineId, ignoreCase = true) })
             }
         }
+    }
+
+    /**
+     * [journey] knowing [found] serve it too: each line not yet among its [FavoriteJourney.lines] added
+     * after them, and a known one's blank name or mode filled in. All alike, in the order found; none
+     * dropped, as a line that runs no trains tonight still serves the ride. [journey] itself when
+     * nothing changes, so a caller can skip writing it back.
+     */
+    @WorkerThread
+    fun withLines(journey: FavoriteJourney, found: Collection<LineRef>): FavoriteJourney {
+        val lines = journey.lines.toMutableList()
+        for (line in found) {
+            if (line.id.isBlank()) continue
+            val i = lines.indexOfFirst { it.id.equals(line.id, ignoreCase = true) }
+            if (i < 0) {
+                lines += line
+            } else {
+                val known = lines[i]
+                lines[i] = known.copy(name = known.name.ifBlank { line.name }, mode = known.mode.ifBlank { line.mode })
+            }
+        }
+        return if (lines == journey.lines) journey else journey.copy(lines = lines)
     }
 
     /**
@@ -363,11 +400,11 @@ object Journeys {
      * saved direction); a stop in the same stop area; a stop of the same name; and, for a stop served
      * one way only, the route's nearest stop within [WAY_BACK_RADIUS_METERS]. The first way that
      * finds the origin before the destination on some route wins; the origin must come out as one
-     * stop. The distance fallback applies only to a bus journey on its starred line's own route:
+     * stop. The distance fallback applies only to a bus journey on a route of its own [FavoriteJourney.lines]:
      * another line that merely passes near an end hasn't been shown to serve it.
      */
     @WorkerThread
-    fun segment(journey: FavoriteJourney, lineSequence: LineSequence, lineId: String = journey.lineId): JourneySegment? {
+    fun segment(journey: FavoriteJourney, lineSequence: LineSequence, lineId: String): JourneySegment? {
         val sequence = lineSequence.callingAtEnds(journey)
         for (tier in 0..maxTier(journey, lineId)) {
             val pairs = sequence.routes.flatMap { route ->
@@ -769,12 +806,20 @@ object Journeys {
         mode.isBlank() || line.mode.isBlank() || line.mode.equals(mode, ignoreCase = true)
 
     /**
-     * The loosest match [segment] may use on [lineId]'s route: by distance only for a bus journey on
-     * its starred line (a pole served one way only). A station missing from a rail route is a
-     * journey that can't be placed, not one a nearby station stands in for.
+     * The loosest match [segment] may use on [lineId]'s route: by distance only on a bus line found serving the
+     * journey (a pole served one way only), judged by that line, so a rail line learned at an end's hub doesn't take
+     * it from the ride's buses (Codex on #1205); a line whose mode isn't known is a bus where both ends are bus poles.
+     * A station missing from a rail route is a journey that can't be placed, not one a nearby station stands in for.
      */
-    private fun maxTier(journey: FavoriteJourney, lineId: String): Int =
-        if (journey.bus && lineId == journey.lineId) 3 else 2
+    private fun maxTier(journey: FavoriteJourney, lineId: String): Int {
+        val line = journey.lines.firstOrNull { it.id.equals(lineId, ignoreCase = true) } ?: return 2
+        val bus = if (line.mode.isNotBlank()) {
+            line.mode.equals("bus", ignoreCase = true)
+        } else {
+            FavoriteJourney.isBusPole(journey.from.stopId) && FavoriteJourney.isBusPole(journey.to.stopId)
+        }
+        return if (bus) 3 else 2
+    }
 
     /** Whether some route of [sequence] calls at [originId] and then one of [destinations]. */
     /** The stops of [destinations] some route of [sequence] calls at after [originId]. */
@@ -851,6 +896,13 @@ interface FavoriteJourneysStore {
      * saved. Off the main thread.
      */
     suspend fun setLineHidden(journey: FavoriteJourney, entry: String, hidden: Boolean) {}
+
+    /**
+     * Adds [found] (each saved journey's lines seen serving it, by [FavoriteJourney.key]) to the stored
+     * journeys' [FavoriteJourney.lines] ([Journeys.withLines]), applied to the latest stored copy; nothing
+     * is written when none is new. Off the main thread.
+     */
+    suspend fun addLines(found: Map<String, Collection<LineRef>>) {}
 
     /**
      * Each watched direction's alert schedule, by [JourneyAlerts.directionKey] (SPEC *Journeys →
