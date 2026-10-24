@@ -1942,7 +1942,7 @@ places the ends) and shows every direct line between them; a starred trip with a
 cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to favorite the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
 settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), second, under the
-favorite places (maintainer, 2026-10-10): each by its two stops and line, with **Remove**, so one starred by mistake can be
+favorite places (maintainer, 2026-10-10): each by its two stops and every line it rides, by name, a route by its number ("43, 134"; maintainer, 2026-10-24: a ride is its two stops, not the line it was saved from), as the list last found them, with **Remove**, so one starred by mistake can be
 found and dropped without riding past its card; Remove only ever removes the favorite. Its **Add**
 (maintainer, 2026-10-07) picks the journey's two stations over the list: the station search asks
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
