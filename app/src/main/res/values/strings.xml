@@ -66,6 +66,26 @@
     <string name="route_detail_next_trains_timetabled">Next trains %1$s (timetable)</string>
     <!-- The same for a bus ride. -->
     <string name="route_detail_next_buses_timetabled">Next buses %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a coach. -->
+    <string name="route_detail_next_coach_timetabled" tools:ignore="MissingTranslation">Next coach %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <string name="route_detail_next_coaches_timetabled" tools:ignore="MissingTranslation">Next coaches %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a tram. -->
+    <string name="route_detail_next_tram_timetabled" tools:ignore="MissingTranslation">Next tram %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <string name="route_detail_next_trams_timetabled" tools:ignore="MissingTranslation">Next trams %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a boat. -->
+    <string name="route_detail_next_boat_timetabled" tools:ignore="MissingTranslation">Next boat %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <string name="route_detail_next_boats_timetabled" tools:ignore="MissingTranslation">Next boats %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a cable car. -->
+    <string name="route_detail_next_cable_car_timetabled" tools:ignore="MissingTranslation">Next cable car %1$s (timetable)</string>
+    <!-- TODO: translate -->
+    <string name="route_detail_next_cable_cars_timetabled" tools:ignore="MissingTranslation">Next cable cars %1$s (timetable)</string>
     <!-- A route chip atop a route page, for one of two ways to one place that only a stop tells apart:
          %1$s is where it goes, %2$s the first stop it calls at that the other doesn't. -->
     <string name="route_choice_via">%1$s via %2$s</string>
@@ -1311,6 +1331,42 @@
     <!-- TODO: translate -->
     <!-- As journey_not_checked_named, for a bus ride. -->
     <string name="journey_not_checked_bus_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check buses</string>
+    <!-- TODO: translate -->
+    <!-- The journey-card notes for a coach ride, as for a bus ride. -->
+    <string name="journey_checking_coach" tools:ignore="MissingTranslation">Checking coaches…</string>
+    <!-- TODO: translate -->
+    <string name="journey_none_coach" tools:ignore="MissingTranslation">No coaches to %1$s soon</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_coach" tools:ignore="MissingTranslation">Couldn\'t check coaches</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_coach_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check coaches</string>
+    <!-- TODO: translate -->
+    <!-- The journey-card notes for a tram ride, as for a bus ride. -->
+    <string name="journey_checking_tram" tools:ignore="MissingTranslation">Checking trams…</string>
+    <!-- TODO: translate -->
+    <string name="journey_none_tram" tools:ignore="MissingTranslation">No trams to %1$s soon</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_tram" tools:ignore="MissingTranslation">Couldn\'t check trams</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_tram_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check trams</string>
+    <!-- TODO: translate -->
+    <!-- The journey-card notes for a boat ride, as for a bus ride. -->
+    <string name="journey_checking_boat" tools:ignore="MissingTranslation">Checking boats…</string>
+    <!-- TODO: translate -->
+    <string name="journey_none_boat" tools:ignore="MissingTranslation">No boats to %1$s soon</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_boat" tools:ignore="MissingTranslation">Couldn\'t check boats</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_boat_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check boats</string>
+    <!-- TODO: translate -->
+    <!-- The journey-card notes for a cable car ride, as for a bus ride. -->
+    <string name="journey_checking_cable_car" tools:ignore="MissingTranslation">Checking cable cars…</string>
+    <!-- TODO: translate -->
+    <string name="journey_none_cable_car" tools:ignore="MissingTranslation">No cable cars to %1$s soon</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_cable_car" tools:ignore="MissingTranslation">Couldn\'t check cable cars</string>
+    <!-- TODO: translate -->
+    <string name="journey_not_checked_cable_car_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check cable cars</string>
     <!-- TODO: translate -->
     <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, whose route couldn't be loaded. -->
     <string name="journey_route_failed_named" tools:ignore="MissingTranslation">%1$s: couldn\'t load the route</string>
