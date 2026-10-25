@@ -91,6 +91,29 @@ class WatchPublisherTest {
     }
 
     @Test
+    fun `changing the nearby grouping is a change`() = runTest {
+        val channel = FakeChannel()
+        val publisher = WatchPublisher(channel, FakeMarker(), logged::add) { now }
+        publisher.publish(snapshot(), emptySet())
+        assertEquals(WatchPublisher.Outcome.Published, publisher.publish(snapshot(), emptySet(), nearbyByStation = true))
+    }
+
+    @Test
+    fun `a change to the nearby grouping is a request, with nothing else moving`() = runTest {
+        val snapshots = MutableStateFlow<DeparturesSnapshot?>(snapshot(minutes = 1))
+        val stars = MutableStateFlow<Set<StarredRow>>(emptySet())
+        val grouping = MutableStateFlow(false)
+        val requests = mutableListOf<Pair<DeparturesSnapshot?, Set<StarredRow>>>()
+        val job = launch { WatchPublisher.requests(snapshots, stars, nearbyGrouping = grouping, window = 2.seconds).collect { requests += it } }
+        advanceTimeBy(2_001)
+        assertEquals(1, requests.size)
+        grouping.value = true
+        advanceTimeBy(2_001)
+        assertEquals(2, requests.size)
+        job.cancel()
+    }
+
+    @Test
     fun `a change to the refreshed route lines is a change, and they reach the watch`() = runTest {
         val channel = FakeChannel()
         val publisher = WatchPublisher(channel, FakeMarker(), logged::add) { now }

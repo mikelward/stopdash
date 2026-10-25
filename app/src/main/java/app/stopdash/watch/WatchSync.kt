@@ -11,9 +11,11 @@ import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchComplicationRows
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.HiddenModesSetting
+import app.stopdash.data.NearbyGroupingSetting
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.WatchPayload
 import app.stopdash.data.WatchSyncContract
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Dismissals
@@ -296,6 +298,7 @@ object WatchSync {
                 routeLines = routeLines,
                 force = force,
                 emptyIfNone = emptyIfNone,
+                nearbyByStation = NearbyGroupingSetting.loaded() == NearbyGrouping.STATION,
             )
         }
     }
@@ -391,6 +394,7 @@ object WatchSync {
                     dismissedChanges(appContext),
                     RouteTopologyStore.refreshedChanges,
                     alertsBehindChanges(appContext),
+                    nearbyGrouping = NearbyGroupingSetting.changes,
                 ).collect {
                     if (publishCurrent(appContext, force = false) == WatchPublisher.Outcome.Failed) {
                         WatchPublishWorker.enqueue(appContext, force = false)

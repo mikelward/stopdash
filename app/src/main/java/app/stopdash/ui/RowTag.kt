@@ -78,17 +78,6 @@ internal fun placeTypeLabel(place: PlaceHit): Int = when (place.kind) {
     PlaceKind.PLACE -> TYPE_ART.getValue(place.type).second
 }
 
-/** A mode icon's drawable. */
-@DrawableRes
-internal fun modeIcon(icon: ModeIcon): Int = when (icon) {
-    ModeIcon.TUBE -> R.drawable.ic_mode_tube
-    ModeIcon.RAIL -> R.drawable.ic_mode_rail
-    ModeIcon.TRAM -> R.drawable.ic_mode_tram
-    ModeIcon.RIVER -> R.drawable.ic_mode_river
-    ModeIcon.CABLE_CAR -> R.drawable.ic_mode_cable_car
-    ModeIcon.BUS -> R.drawable.ic_mode_bus
-}
-
 private val TYPE_ART: Map<PlaceType, Pair<Int, Int>> = mapOf(
     PlaceType.PLACE to (R.drawable.ic_place_pin to R.string.station_search_kind_place),
     PlaceType.RESTAURANT to (R.drawable.ic_place_restaurant to R.string.place_type_restaurant),

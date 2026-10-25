@@ -11,6 +11,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
@@ -206,6 +207,34 @@ class TileTimelineTest {
         val lines = (TileTimeline.frame(envelope(a, b), fetched) as TileFrame.Rows).lines
         assertEquals(listOf("Stop 940GA", "Stop 940GB"), lines.filterIsInstance<TileLine.Header>().map { it.text })
         assertTrue(lines.first() is TileLine.Header)
+    }
+
+    @Test
+    fun `grouped by station, a station's platforms share one heading led by its mode's icon`() {
+        val a = stop(
+            "940GA",
+            listOf(
+                departure(60).copy(platform = "Southbound - Platform 1"),
+                departure(120, destination = "Walthamstow Central").copy(direction = "outbound", platform = "Northbound - Platform 2"),
+            ),
+        )
+        val b = stop("940GB", listOf(departure(180, line = "central", destination = "Ealing")), line = "central")
+        fun headers(env: WatchEnvelope) = (TileTimeline.frame(env, fetched) as TileFrame.Rows).lines.filterIsInstance<TileLine.Header>()
+        // By stop/platform (the default, and what an older phone sends): each platform its own heading, no icons.
+        val byStop = headers(envelope(a, b))
+        assertEquals(listOf("Stop 940GA – Platform 1", "Stop 940GA – Platform 2"), byStop.map { it.text }.take(2))
+        assertTrue(byStop.all { it.modes.isEmpty() })
+        // By station: one heading for the station's platforms, led by the tube's icon, as the app and
+        // the widget draw it; still named when the tile's room leaves it the only station shown.
+        val byStation = headers(envelope(a, b).copy(nearbyByStation = true))
+        assertEquals("Stop 940GA", byStation.first().text)
+        assertEquals(listOf(ModeIcon.TUBE), byStation.first().modes)
+        assertTrue(byStation.none { it.text.contains("Platform") })
+        // A lone station keeps its name and icon, as the app's list always heads it, where By
+        // stop/platform named its platforms: grouping by station never leaves rows unlabeled.
+        val alone = headers(envelope(a).copy(nearbyByStation = true))
+        assertEquals(listOf("Stop 940GA"), alone.map { it.text })
+        assertEquals(listOf(ModeIcon.TUBE), alone.single().modes)
     }
 
     @Test

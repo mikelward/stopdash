@@ -48,6 +48,7 @@ import app.stopdash.domain.NoTimes
 import app.stopdash.domain.riderLineName
 import app.stopdash.shared.R as SharedR
 import app.stopdash.ui.PillColors
+import app.stopdash.ui.modeIcon
 import app.stopdash.ui.pillColors
 import java.time.Instant
 
@@ -142,16 +143,28 @@ private fun Stamp(frame: TileFrame.Rows) {
 @Composable
 private fun Line(line: TileLine) {
     when (line) {
-        is TileLine.Header -> Text(
-            text = line.text,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = Muted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).semantics { contentDescription = line.spoken },
-        )
+        // A station's heading leads with its mode's icon, as the app's (SPEC *One widget, many
+        // surfaces*); the icon is decoration, the heading's text is what's spoken.
+        is TileLine.Header -> Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).semantics(mergeDescendants = true) { contentDescription = line.spoken },
+        ) {
+            for (mode in line.modes) {
+                Icon(painterResource(modeIcon(mode)), contentDescription = null, tint = Muted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+            }
+            Text(
+                text = line.text,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
         is TileLine.Departure -> DepartureRow(line.row)
         is TileLine.Disruption -> DisruptionRow(line)
         TileLine.OnlyHidden -> Note(stringResource(R.string.tile_only_hidden))
