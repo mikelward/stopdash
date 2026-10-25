@@ -5109,6 +5109,11 @@ surface.)
 
 ## One widget, many surfaces
 
+**The widget and the watch look like the app's main view unless a difference was explicitly decided**
+(maintainer, 2026-10-25): the same groupings, headings, weights, icons and words, each difference written
+down here with its reason (the widget's merged rows per direction, its tight line budget). A heading in the
+app is bold and a station's leads with its mode's icon, so the widget's are too.
+
 There is one widget, in two layouts the launcher's widget picker lists separately. On Android 16 QPR and later, where the OS re-added widgets to the
 phone lock screen, it is eligible to sit there; everywhere else it is a home-screen
 widget. Both use the standard AppWidget/Glance API — a lock-screen widget is just a

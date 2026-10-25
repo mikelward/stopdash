@@ -82,6 +82,7 @@ import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.EvenShortening
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
@@ -99,6 +100,7 @@ import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.lineCode
 import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
+import app.stopdash.ui.modeIcon
 import app.stopdash.ui.countdownWords
 import app.stopdash.ui.HeaderWords
 import app.stopdash.ui.headerWords
@@ -632,7 +634,9 @@ internal data class WidgetGeometry(
  * shows ("King's Cross St Pancras – Platform 1", via [groupHeaderTitle]), so the widget tells the
  * rider where to board. [spoken] is what TalkBack reads, keeping the direction the visible text drops.
  */
-internal data class WidgetHeader(val text: String, val spoken: String)
+// [modes]: a station's heading leads with its mode's icon, as the app's does ([StationHeader]); a platform's or a
+// ride's has none.
+internal data class WidgetHeader(val text: String, val spoken: String, val modes: List<ModeIcon> = emptyList())
 
 internal fun widgetModel(
     snapshot: DeparturesSnapshot?,
@@ -932,7 +936,11 @@ internal fun widgetModel(
         WidgetRowModel(
             it.row,
             it.groups,
-            it.header?.takeIf { geometry?.bare != true }?.let { header -> WidgetHeader(header.text, header.spoken) },
+            it.header?.takeIf { geometry?.bare != true }?.let { header ->
+                // Grouped by station, the heading is a station's, so it leads with its mode's icon as the app's does.
+                val station = if (it.row in journeyBand) rides == null && ridesByStation else nearbyByStation
+                WidgetHeader(header.text, header.spoken, if (station) listOfNotNull(ModeIcon.of(it.row.mode)) else emptyList())
+            },
             noTimes = if (it.groups.isEmpty()) widgetNoTimes(it.row, current = it.row.stopId in currentStops) else null,
             stackedLines = it.groups.map { group -> stacked(it.row, group) },
             statusStacked = it.groups.isEmpty() && statusStacked(it.row),
@@ -1414,21 +1422,41 @@ private fun WidgetStatusLine(text: String) {
 }
 
 /** A stop or ride header above its rows, on one line, as the app's are: the destinations' own size
- *  and weight (maintainer, 2026-10-16). A long one clips at the end: Glance can't measure text, so it
- *  can't reserve the qualifier the way the in-app header does. */
+ *  (maintainer, 2026-10-16), bold as the app's headings are, and a station's led by its mode's icon
+ *  (maintainer, 2026-10-25). A long one clips at the end: Glance can't measure text, so it can't reserve
+ *  the qualifier the way the in-app header does. */
 @androidx.compose.runtime.Composable
 private fun WidgetStopHeader(header: WidgetHeader) {
-    Text(
-        text = header.text,
-        maxLines = 1,
-        modifier = GlanceModifier.semantics { contentDescription = header.spoken },
-        style = TextStyle(
-            color = GlanceTheme.colors.onBackground,
-            fontWeight = FontWeight.Medium,
-            fontSize = widgetSp(13f),
-        ),
-    )
+    Row(
+        modifier = GlanceModifier.fillMaxWidth().semantics { contentDescription = header.spoken },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        header.modes.forEachIndexed { i, mode ->
+            if (i > 0) Spacer(GlanceModifier.width(4.dp))
+            // Decorative: the heading's words say where it is, as the app's icons are.
+            Image(
+                provider = ImageProvider(modeIcon(mode)),
+                contentDescription = null,
+                modifier = GlanceModifier.size(WIDGET_HEADER_ICON_SIZE),
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+            )
+        }
+        if (header.modes.isNotEmpty()) Spacer(GlanceModifier.width(8.dp))
+        Text(
+            text = header.text,
+            maxLines = 1,
+            modifier = GlanceModifier.defaultWeight(),
+            style = TextStyle(
+                color = GlanceTheme.colors.onBackground,
+                fontWeight = FontWeight.Bold,
+                fontSize = widgetSp(13f),
+            ),
+        )
+    }
 }
+
+/** A station heading's mode icon: the 13sp heading's line height, on the 4dp grid, so it costs the heading no height. */
+private val WIDGET_HEADER_ICON_SIZE = 16.dp
 
 /** A single-line message row (empty / prompt states), styled like the stamp. */
 @androidx.compose.runtime.Composable

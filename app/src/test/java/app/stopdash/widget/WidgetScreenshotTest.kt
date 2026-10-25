@@ -157,6 +157,12 @@ class WidgetScreenshotTest {
     fun `full widget, two places`() = capture("widget-two-places.png", twoPlacesModel(bare = false))
 
     @Test
+    fun `full widget, grouped by station`() = capture(
+        "widget-by-station.png",
+        widgetModel(twoPlaces(), now, geometry = WidgetGeometry(240.dp, 180.dp), nearbyByStation = true),
+    )
+
+    @Test
     fun `compact widget, light`() = capture("widget-compact.png", twoPlacesModel(bare = true))
 
     @Test
