@@ -312,6 +312,10 @@ class StationGroupsTest {
         // And which rides it put in the station's card, so one standing in keeps a ride's placeholder it has no trains for.
         assertEquals(setOf(first.journey.key, second.journey.key), layout(app.stopdash.domain.RideGrouping.STATION).rideJoined)
         assertTrue(layout(app.stopdash.domain.RideGrouping.RIDE).rideJoined.isEmpty())
+        // And the cards it drew them from, which the list draws: every ride under its station's heading By station; By ride,
+        // only those not in a group of their own, here both, each with a notice to say beside its trains.
+        assertEquals(listOf(first, second), layout(app.stopdash.domain.RideGrouping.STATION).stationRides.values.single())
+        assertEquals(listOf(first, second), layout(app.stopdash.domain.RideGrouping.RIDE).stationRides.values.single())
     }
 
     @Test

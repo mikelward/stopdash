@@ -6501,6 +6501,52 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station with rides By station, a layout standing in draws its own rides until the next is in`() {
+        // Rides By station, King's Cross to Warren Street with no train due, then its Brixton train arriving: with the station
+        // worker held, the list still draws the ride as the layout drawn has it (its dash), never the newer card against a
+        // layout without its train, which left nothing for it (maintainer, 2026-10-25). Then, worked, its train in the card.
+        val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val worker = kotlinx.coroutines.test.StandardTestDispatcher(scheduler)
+        val all = kingsCrossStPancras().let { stop ->
+            stop.copy(departures = stop.departures.map { if (it.direction.isEmpty()) it.copy(direction = "inbound") else it })
+        }
+        val none = all.copy(departures = all.departures.filter { it.destination != "Brixton" })
+        var kingsCross by mutableStateOf(none)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        groupedByStation(
+                            starred = emptySet(),
+                            stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0),
+                            stops = listOf(kingsCross),
+                            rideGrouping = RideGrouping.STATION,
+                        )()
+                    }
+                }
+            }
+        }
+        fun settle() = repeat(12) {
+            scheduler.advanceUntilIdle()
+            composeRule.waitForIdle()
+        }
+        settle()
+        composeRule.onNodeWithContentDescription("No trains to Warren Street soon").assertExists()
+        composeRule.onNodeWithText("Brixton").assertDoesNotExist()
+
+        kingsCross = all
+        composeRule.waitForIdle()
+        // Held: the ride as the layout drawn has it, under King's Cross's heading.
+        composeRule.onNodeWithContentDescription("No trains to Warren Street soon").assertExists()
+
+        settle()
+        composeRule.onNodeWithContentDescription("No trains to Warren Street soon").assertDoesNotExist()
+        composeRule.onNodeWithText("Brixton").assertExists()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Warren Street, Tube")).assertDoesNotExist()
+    }
+
+    @Test
     fun `grouped by station, a searched station's page, which has no distances, is grouped too`() {
         capture("main-station-groups-searched.png") {
             MainScreen(

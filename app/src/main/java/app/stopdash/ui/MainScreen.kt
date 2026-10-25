@@ -3521,8 +3521,7 @@ private fun DepartureList(
                 // Its trains in its station's card, all else it says here: trains behind "+N more" and more stops than it
                 // fetched, both "More to …" (its own view), the rest of its trains staying in their platforms' rows; routes it
                 // couldn't check.
-                // Joined as the layout drawn has it ([StationLayout.rideJoined]): one standing in from before the ride had trains
-                // has none of them, so its placeholder stays until the layout that has them is in.
+                // Joined as the layout drawn has it ([StationLayout.rideJoined]), whose card this is ([StationLayout.stationRides]).
                 if (underStation && stationLayout?.rideJoined?.contains(card.journey.key) == true) {
                     val drawn = card.state.drawn ?: return@forEachIndexed
                     // Named by its far end, there being no heading of its own to say which ride.
@@ -3796,18 +3795,18 @@ private fun DepartureList(
             .let { if (stationLayout != null) it.sortedBy { group -> stationLayout.rank[group.key] ?: Int.MAX_VALUE } else it }
         // Grouped by station, each station's listed groups, by place ([groupPlace]).
         val stationMembers = if (byStation) listed.groupBy { groupStation(it) } else emptyMap()
-        // Grouped by station, each ride is drawn under the station it boards from, where that station is
-        // listed ([StationLayout.rideStations]); the rest lead the list as ever.
-        val rideStations: Map<String?, List<JourneyCard>> = when {
-            stationLayout != null -> journeyCards.groupBy { card -> stationLayout.rideStations[card.journey.key]?.takeIf { it in stationMembers } }
-            // Not worked out yet: no station, and no ride, drawn yet either, so neither moves when it is.
-            byStation -> emptyMap()
-            else -> mapOf(null to journeyCards)
-        }
-        // Of those, grouped by station, a ride with a distance is drawn among the stations by it, worked out with them
-        // ([StationLayout.ridesBefore]), and only one with none leads the list.
+        // Grouped by station, each ride is drawn under the station it boards from ([StationLayout.rideStations]), as the
+        // layout drawn has them: the cards it was worked out from ([StationLayout.stationRides]).
+        val stationRides = stationLayout?.stationRides.orEmpty()
+        // Of the rest, grouped by station, a ride with a distance is drawn among the stations by it, worked out with them
+        // ([StationLayout.ridesBefore]), and only one with none leads the list. Not worked out yet: no station, and no ride,
+        // drawn yet either, so neither moves when it is.
         val ridesBefore = stationLayout?.ridesBefore.orEmpty()
-        val leadingCards = if (stationLayout != null) stationLayout.ridesAtop else rideStations[null].orEmpty()
+        val leadingCards = when {
+            stationLayout != null -> stationLayout.ridesAtop
+            byStation -> emptyList()
+            else -> journeyCards
+        }
         val rideEnds: Map<DepartureRow, Set<String>> = stationLayout?.rideEnds.orEmpty()
         // Favorite journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
@@ -4093,7 +4092,7 @@ private fun DepartureList(
             }
         }
         // A station's heading, saying how far its nearest stop is, then, unless it's folded, the rides that board
-        // there with no trains yet to join its card ([rideStations], [joinsStationCard]).
+        // there with no trains yet to join its card ([StationLayout.stationRides]).
         fun stationItems(station: String, closed: Boolean) {
             val first = stationMembers[station]?.first() ?: stationLayout?.firstGroups?.get(station) ?: return
             headingLeads = false
@@ -4105,7 +4104,7 @@ private fun DepartureList(
             // trains), each a group just before the station's, as a ride with trains is ([rideGroupItems]); By station,
             // under its heading ([stationGroupItems]).
             if (stationLayout?.rideGrouping != RideGrouping.STATION) {
-                journeyItems(rideStations[station].orEmpty().filterNot { joinsStationCard(it) }, inStation = true, stationDistance = distanceLabel)
+                journeyItems(stationRides[station].orEmpty(), inStation = true, stationDistance = distanceLabel)
             }
             item(key = "station|$station") {
                 StationHeader(
@@ -4246,7 +4245,7 @@ private fun DepartureList(
             if (station in foldedStations) return
             stationNoticeItems(above)
             // Rides By station: their notes, and the own line of one with no train to show, under its heading ([journeyItems]).
-            if (stationLayout?.rideGrouping == RideGrouping.STATION) journeyItems(rideStations[station].orEmpty(), underStation = true)
+            if (stationLayout?.rideGrouping == RideGrouping.STATION) journeyItems(stationRides[station].orEmpty(), underStation = true)
             // One card for the whole station, its poles' own notices above it.
             stationCardItems(station, stationLayout?.members?.get(station).orEmpty())
         }
@@ -4890,6 +4889,11 @@ internal class StationLayout(
     // without a group of its own, as this layout has it, not as its newer card would, which a layout standing in has none
     // of the trains of.
     val rideJoined: Set<String> = emptySet(),
+    // Each station's rides the list draws apart from its card, by station, as the cards this was worked out from were: By
+    // station, every one boarding there, under its heading; else those whose trains aren't in a group of their own just before
+    // it ([rideGroups]). The list draws these, never the newer cards, so a layout standing in draws one snapshot throughout:
+    // each ride's trains, notices and notes as it had them (maintainer, 2026-10-25).
+    val stationRides: Map<String, List<JourneyCard>> = emptyMap(),
     // Each station's modes, an icon each before its name, as a search result shows a stop's (maintainer, 2026-10-23).
     val modes: Map<String, List<ModeIcon>> = emptyMap(),
     // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
@@ -5040,13 +5044,20 @@ internal class StationLayout(
                     }.map { i -> card.closures[i] to card.closureTitles[i] }
                 }
             }
+            val joined = rides.rides.values.flatMapTo(HashSet()) { stationRides -> stationRides.map { it.journey.key } }
+            val stationRides = HashMap<String, MutableList<JourneyCard>>()
+            journeyCards.forEach { card ->
+                val station = rideStations[card.journey.key] ?: return@forEach
+                if (inCard || card.journey.key !in joined) stationRides.getOrPut(station) { ArrayList() } += card
+            }
             return StationLayout(
                 ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rides.changeAt, rides.journeys, rideGroups,
                 modes = modes,
                 modeIds = modeIds,
                 rideNotices = rideNotices,
                 rideGrouping = rideGrouping,
-                rideJoined = if (inCard) rides.rides.values.flatMapTo(HashSet()) { stationRides -> stationRides.map { it.journey.key } } else emptySet(),
+                rideJoined = if (inCard) joined else emptySet(),
+                stationRides = stationRides,
                 firstGroups = members.mapValues { (_, stationGroups) -> stationGroups.first() },
                 members = members,
                 fartherGroups = fartherGroups,
