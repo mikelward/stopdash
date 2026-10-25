@@ -32,11 +32,13 @@ import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.TileService
 import app.stopdash.data.RouteTopologyStore
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.riderLineName
 import app.stopdash.shared.R as SharedR
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.headerWords
+import app.stopdash.ui.modeIcon
 import app.stopdash.ui.pillColors
 import com.google.common.util.concurrent.ListenableFuture
 import java.time.Duration
@@ -150,18 +152,17 @@ class StopDashTileService : TileService() {
             completer.set(
                 ResourceBuilders.Resources.Builder()
                     .setVersion(RESOURCES_VERSION)
-                    .addIdToImageMapping(
-                        TileLayout.CALENDAR_ID,
-                        ResourceBuilders.ImageResource.Builder()
-                            .setAndroidResourceByResId(
-                                ResourceBuilders.AndroidImageResourceByResId.Builder().setResourceId(SharedR.drawable.ic_calendar).build(),
-                            )
-                            .build(),
-                    )
+                    .addIdToImageMapping(TileLayout.CALENDAR_ID, image(SharedR.drawable.ic_calendar))
+                    .apply { ModeIcon.entries.forEach { addIdToImageMapping(TileLayout.modeId(it), image(modeIcon(it))) } }
                     .build(),
             )
             "stopdash-tile-resources"
         }
+
+    private fun image(resource: Int): ResourceBuilders.ImageResource =
+        ResourceBuilders.ImageResource.Builder()
+            .setAndroidResourceByResId(ResourceBuilders.AndroidImageResourceByResId.Builder().setResourceId(resource).build())
+            .build()
 
     override fun onDestroy() {
         worker.shutdown()
@@ -171,7 +172,7 @@ class StopDashTileService : TileService() {
 
     companion object {
         // Bumped with each image added, so a host holding the old set asks for the new one.
-        private const val RESOURCES_VERSION = "2"
+        private const val RESOURCES_VERSION = "3"
         private const val TAG = "StopDash.Tile"
 
         /** A floor on the re-render interval, so a cut a moment away can't ask for a tight loop. */
@@ -272,7 +273,7 @@ internal object TileLayout {
                     column.addContent(Spacer.Builder().setHeight(dp(4f)).build())
                     column.addContent(
                         when (line) {
-                            is TileLine.Header -> text(line.text, 12f, gray, bold = true, spoken = line.spoken)
+                            is TileLine.Header -> header(line)
                             is TileLine.Departure -> row(context, line.row)
                             else -> text("", 12f, gray)
                         },
@@ -299,7 +300,7 @@ internal object TileLayout {
                     column.addContent(Spacer.Builder().setHeight(dp(4f)).build())
                     column.addContent(
                         when (line) {
-                            is TileLine.Header -> text(line.text, 12f, gray, bold = true, spoken = line.spoken)
+                            is TileLine.Header -> header(line)
                             is TileLine.Departure -> row(context, line.row)
                             is TileLine.Disruption -> disruption(context, line)
                             TileLine.OnlyHidden -> text(context.getString(R.string.tile_only_hidden), 14f, white, maxLines = 2)
@@ -408,6 +409,37 @@ internal object TileLayout {
 
     /** The calendar's image resource, registered with the tile's resources ([StopDashTileService.onTileResourcesRequest]). */
     const val CALENDAR_ID = "calendar"
+
+    /** A mode icon's image resource, registered as [CALENDAR_ID] is. */
+    fun modeId(mode: ModeIcon): String = "mode_${mode.name.lowercase(java.util.Locale.ROOT)}"
+
+    /**
+     * A stop or station heading: bold and muted, as the app's, and a station's led by its mode's icon
+     * (SPEC *One widget, many surfaces*). The icon is decoration: the heading's text is what's spoken.
+     */
+    private fun header(line: TileLine.Header): LayoutElement {
+        if (line.modes.isEmpty()) return text(line.text, 12f, gray, bold = true, spoken = line.spoken)
+        return Row.Builder()
+            .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+            .apply {
+                for (mode in line.modes) {
+                    addContent(
+                        LayoutElementBuilders.Image.Builder()
+                            .setResourceId(modeId(mode))
+                            .setWidth(dp(MODE_SIZE))
+                            .setHeight(dp(MODE_SIZE))
+                            .setColorFilter(LayoutElementBuilders.ColorFilter.Builder().setTint(argb(gray)).build())
+                            .build(),
+                    )
+                    addContent(Spacer.Builder().setWidth(dp(4f)).build())
+                }
+            }
+            .addContent(text(line.text, 12f, gray, bold = true, spoken = line.spoken))
+            .build()
+    }
+
+    // The 12sp heading's line height, on the 4dp grid.
+    private const val MODE_SIZE = 16f
 
     // The 14sp countdown's line height, on the 4dp grid.
     private const val CALENDAR_SIZE = 16f

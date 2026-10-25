@@ -79,7 +79,9 @@ class WatchPublisher(
         routeLines: Map<String, List<RoutePattern>> = emptyMap(),
         force: Boolean = false,
         emptyIfNone: Boolean = false,
-    ): Outcome = attempt(snapshot, starred, hiddenModes, selected, routeLines, force, emptyIfNone).also(::report)
+        // Settings → Group nearby departures is By station, which the watch heads its rows by.
+        nearbyByStation: Boolean = false,
+    ): Outcome = attempt(snapshot, starred, hiddenModes, selected, routeLines, force, emptyIfNone, nearbyByStation).also(::report)
 
     /** The last link state [report] logged, so a state that holds isn't logged on every publish. */
     private var reported: String? = null
@@ -131,12 +133,13 @@ class WatchPublisher(
         routeLines: Map<String, List<RoutePattern>>,
         force: Boolean,
         emptyIfNone: Boolean,
+        nearbyByStation: Boolean,
     ): Outcome {
         val snapshot = snapshot ?: if (emptyIfNone) DeparturesSnapshot(emptyList(), SteadyClock.stamp(now())) else return Outcome.NothingStored
         return try {
             // Asked first, so a phone with no watch app never builds or hashes an envelope.
             if (!channel.watchInstalled()) return Outcome.NoWatch
-            val payload = WatchEnvelopes.build(snapshot, starred, selected = selected, hiddenModes = hiddenModes, routeLines = routeLines, now = now())
+            val payload = WatchEnvelopes.build(snapshot, starred, selected = selected, hiddenModes = hiddenModes, nearbyByStation = nearbyByStation, routeLines = routeLines, now = now())
             val hash = sha256(payload.bytes)
             if (!force && hash == marker.get()) return Outcome.Unchanged
             channel.put(payload)
@@ -185,7 +188,7 @@ class WatchPublisher(
 
         /**
          * One publish request per settled change to the stored [snapshots], the [starred] rows, the
-         * [hiddenModes], the [dismissed] alerts, the refreshed [routeLines] or the app's verdicts on
+         * [hiddenModes], the [nearbyGrouping], the [dismissed] alerts, the refreshed [routeLines] or the app's verdicts on
          * alerts behind a stop ([alertsBehind]): every write, from any
          * writer, with bursts coalesced to the latest inside [window]. The first value is the state
          * at start, which the durable marker compares against.
@@ -204,9 +207,11 @@ class WatchPublisher(
             // The app's verdicts that a bus alert lies behind a stop: applied to the envelope as
             // dismissals are ([DeparturesSnapshot.withAlertsBehind]), so a change is a cue too.
             alertsBehind: Flow<Set<AlertBehind>> = flowOf(emptySet()),
+            // Settings → Group nearby departures: the envelope says it, so a change is a cue too.
+            nearbyGrouping: Flow<Any?> = flowOf(null),
             window: Duration = COALESCE,
         ): Flow<Pair<DeparturesSnapshot?, Set<StarredRow>>> =
-            combine(combine(snapshots, starred, ::Pair), hiddenModes, dismissed, routeLines, alertsBehind) { state, _, _, _, _ -> state }
+            combine(combine(snapshots, starred, ::Pair), combine(hiddenModes, nearbyGrouping, ::Pair), dismissed, routeLines, alertsBehind) { state, _, _, _, _ -> state }
                 .debounce(window)
     }
 }

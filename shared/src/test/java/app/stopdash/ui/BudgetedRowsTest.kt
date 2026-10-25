@@ -51,6 +51,21 @@ class BudgetedRowsTest {
         assertEquals("header and one row fit two lines", listOf("victoria"), tight.map { it.row.lineId })
     }
 
+    // Grouped by station, a station the cap leaves alone keeps its name: the rows that didn't fit are
+    // at another station, so the one shown isn't the only place, as grouped by stop already judges.
+    @Test
+    fun `grouped by station, a station the cap leaves alone is still named`() {
+        val here = row("victoria", "Brixton").copy(clusterId = "HUBA")
+        val there = row("central", "Ealing").copy(stopId = "490000002B", stopName = "Other Stop", clusterId = "HUBB")
+        val byStation: (List<DepartureRow>) -> List<app.stopdash.domain.StopGroup> =
+            { app.stopdash.domain.StopGrouping.groupByStation(it, warningsLead = false) }
+        val both = BudgetedRows.select(listOf(here, there), budget = 4, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = byStation)
+        assertEquals(listOf("Example Stop", "Other Stop"), both.mapNotNull { it.header?.text })
+        val capped = BudgetedRows.select(listOf(here, there), budget = 2, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = byStation)
+        assertEquals(listOf("victoria"), capped.map { it.row.lineId })
+        assertEquals("Example Stop", capped.single().header?.text)
+    }
+
     // A group running on into the next band is named once; two groups that share a title but are
     // different stops (same name and towards, another bearing) keep a header each (Codex on #760).
     // A header's platform and pole are in the words the surface passes (its language), seen and heard.

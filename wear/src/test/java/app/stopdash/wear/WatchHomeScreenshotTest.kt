@@ -4,6 +4,7 @@ import app.stopdash.data.WatchTrip
 import app.stopdash.domain.NoTimes
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import app.stopdash.domain.ModeIcon
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
 import java.time.LocalDate
@@ -110,6 +111,25 @@ class WatchHomeScreenshotTest {
         TileFrame.NeverSynced,
         refresh = true,
         trip = ShownTrip(trip.copy(departuresNote = "Couldn't update just now"), stale = false),
+    )
+
+    // Group nearby departures By station: each station once per mode, its heading led by the mode's icon.
+    @Test
+    fun byStation() = capture(
+        "by_station",
+        TileFrame.Rows(
+            listOf(
+                TileLine.Header("Oxford Circus", modes = listOf(ModeIcon.TUBE)),
+                row("victoria", "Victoria", "tube", "VIC", "Brixton", "1 · 4 min"),
+                row("central", "Central", "tube", "CEN", "Ealing Broadway", "3 min"),
+                TileLine.Header("Oxford Circus", modes = listOf(ModeIcon.BUS)),
+                row("73", "73", "bus", "73", "Stoke Newington", "5 · 12 min"),
+            ),
+            ageMinutes = 0,
+            stale = false,
+            partial = false,
+        ),
+        refresh = true,
     )
 
     @Test

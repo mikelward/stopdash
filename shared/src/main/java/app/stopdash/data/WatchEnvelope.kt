@@ -68,6 +68,10 @@ data class WatchEnvelope(
      *  stops sent, so the watch shows it from the same one. Stop ids, never distances. Additive like
      *  [nearestFirst]: without it the watch folds by the order alone. */
     val nearbyChoices: List<PersistedFoldChoice> = emptyList(),
+    /** Settings → Group nearby departures set to By station, so the watch heads its rows by station as
+     *  the app and the widget do (SPEC *One widget, many surfaces*). Additive: an older watch app ignores
+     *  it and heads by stop, and an older phone sends none, which is By stop/platform. */
+    val nearbyByStation: Boolean = false,
 ) {
     /** [nearbyChoices] as the fold reads them. */
     fun foldChoices(): List<FoldChoice> = nearbyChoices.map { it.toDomain() }
@@ -226,6 +230,8 @@ object WatchEnvelopes {
         starred: Set<StarredRow>,
         selected: Set<StarredRow> = emptySet(),
         hiddenModes: Set<String> = emptySet(),
+        // Settings → Group nearby departures is By station ([WatchEnvelope.nearbyByStation]).
+        nearbyByStation: Boolean = false,
         // The phone's refreshed route lines ([RouteTopologyStore.refreshedLines]).
         routeLines: Map<String, List<RoutePattern>> = emptyMap(),
         threshold: Duration = Staleness.THRESHOLD,
@@ -314,6 +320,7 @@ object WatchEnvelopes {
             routeLines = lines,
             nearestFirst = orderFor(stops),
             nearbyChoices = choicesFor(stops),
+            nearbyByStation = nearbyByStation,
         )
         var bytes = encode(envelope)
         if (bytes.size <= dataItemBudget) return WatchPayload(envelope, bytes, asAsset = false)
@@ -340,6 +347,7 @@ object WatchEnvelopes {
                 routeLines = lines,
                 nearestFirst = orderFor(kept),
                 nearbyChoices = choicesFor(kept),
+                nearbyByStation = nearbyByStation,
             )
             bytes = encode(envelope)
         }

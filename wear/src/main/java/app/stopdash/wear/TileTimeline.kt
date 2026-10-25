@@ -9,12 +9,14 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.lineCode
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
@@ -51,8 +53,9 @@ data class TilePlanned(val label: String, val startsOn: LocalDate)
 /** One line of the tile's list. */
 sealed interface TileLine {
     /** A stop header, as the widget draws above a place's rows when there's more than one place;
-     *  [spoken] keeps the direction or "towards" the short [text] drops, for a screen reader. */
-    data class Header(val text: String, val spoken: String = text) : TileLine
+     *  [spoken] keeps the direction or "towards" the short [text] drops, for a screen reader. A
+     *  station's heading (Group nearby departures: By station) leads with its mode's icon, in [modes]. */
+    data class Header(val text: String, val spoken: String = text, val modes: List<ModeIcon> = emptyList()) : TileLine
 
     data class Departure(val row: TileRow) : TileLine
 
@@ -238,16 +241,31 @@ object TileTimeline {
         fun uncheckedIn(selected: List<BudgetedRow>) = !withhold && !freshNote && selected.any { c ->
             c.groups.isNotEmpty() && staleStop[c.row.stopId] != true && !envelope.statusKnown(c.row.lineId, now)
         }
+        // Group nearby departures: By station heads a station's rows once per mode, as the app and
+        // the widget do, naming even a lone station as the app's list always does: the platform
+        // headings it replaces were the only word of where to board. By stop/platform is the default.
+        val byStation = envelope.nearbyByStation
+        fun select(budget: Int) = if (byStation) {
+            BudgetedRows.select(
+                pinned, budget, MAX_TIMES, topology,
+                grouped = { rows -> StopGrouping.groupByStation(rows, warningsLead = false).map { it.copy(showHeader = true) } },
+                words = headers,
+            )
+        } else {
+            BudgetedRows.select(pinned, budget, MAX_TIMES, topology, words = headers)
+        }
         var budget = budgetFor(baseNotes)
-        var selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology, words = headers)
+        var selected = select(budget)
         if (uncheckedIn(selected)) {
             budget = budgetFor(baseNotes + statusNote)
-            selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology, words = headers)
+            selected = select(budget)
         }
         val statusUnknown = uncheckedIn(selected)
         val lines = buildList {
             for (chosen in selected) {
-                chosen.header?.let { add(TileLine.Header(it.text, it.spoken)) }
+                chosen.header?.let {
+                    add(TileLine.Header(it.text, it.spoken, if (byStation) listOfNotNull(ModeIcon.of(chosen.row.mode)) else emptyList()))
+                }
                 val row = chosen.row
                 val stale = staleStop[row.stopId] == true
                 val star = StarredRow.of(row) in starred

@@ -5236,7 +5236,10 @@ disruptions", as the widget does, and the tile's foot offers Refresh; the compli
 for that note. As on the widget, a line two nearby stops both serve shows once, from the stop the
 phone's list shows it from, by the order and line choices the phone sends with the snapshot (never
 the distances), on the tile, the app and the complication's default row alike, through the
-widget's own fold.
+widget's own fold. The tile and the app head their rows as the phone's list does: by stop and
+platform, or, when Group nearby departures is By station, once per station and mode with the
+mode's icon before the name. The phone sends the setting with the snapshot, so changing it
+republishes. The watch shows no favorite rides, so Group favorite rides has nothing to group there.
 
 **The complication** puts one row's next departure on the watch face: the line and its countdown,
 with the destination when there's room. It shows the row the user picks for it in the watch

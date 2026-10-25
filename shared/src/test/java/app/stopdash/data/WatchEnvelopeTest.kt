@@ -406,6 +406,13 @@ class WatchEnvelopeTest {
         assertEquals(listOf("bus", "tube"), decoded(payload).hiddenModes)
     }
 
+    @Test
+    fun `the nearby grouping travels with it, By stop when unsaid`() {
+        val snapshot = DeparturesSnapshot(listOf(stop("940GEXAMPLE1", listOf(departure(2)))), now)
+        assertTrue(decoded(WatchEnvelopes.build(snapshot, emptySet(), nearbyByStation = true, now = now)).nearbyByStation)
+        assertFalse(decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now)).nearbyByStation)
+    }
+
     private val bank = RoutePattern("Bank", listOf("940GA", "940GB", "940GC"), "Edgware", "Morden")
     private val charingX = RoutePattern("Charing X", listOf("940GA", "940GX", "940GC"), "Edgware", "Morden")
 

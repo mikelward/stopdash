@@ -6367,7 +6367,7 @@ private fun ViewActionsRow(actions: ViewActions) {
         actions.onStation?.let { open ->
             OutlinedButton(onClick = open) {
                 Icon(
-                    painterResource(if (actions.bus) R.drawable.ic_mode_bus else R.drawable.ic_mode_rail),
+                    painterResource(modeIcon(if (actions.bus) ModeIcon.BUS else ModeIcon.RAIL)),
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
@@ -6440,7 +6440,7 @@ private fun JourneyActions(
                 val bus = journey.bus
                 OutlinedButton(onClick = onStation, modifier = Modifier.testTag("rideStation")) {
                     Icon(
-                        painterResource(if (bus) R.drawable.ic_mode_bus else R.drawable.ic_mode_rail),
+                        painterResource(modeIcon(if (bus) ModeIcon.BUS else ModeIcon.RAIL)),
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                     )

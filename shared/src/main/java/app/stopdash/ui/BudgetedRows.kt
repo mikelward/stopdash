@@ -100,7 +100,10 @@ object BudgetedRows {
         // upcoming departures", a claim the data doesn't make.
         val nextLeast = pinned.indices.firstNotNullOfOrNull { least(pinned[it], allLines[it], costs) }
         val headersOn = nextLeast == null || budget >= costs.header + nextLeast
-        val fullGroups = StopGrouping.groupByStop(candidates, warningsLead = false).associateBy { it.key }
+        // The caller's own grouping over them all too, for a key only it makes (a station, grouped By
+        // station): without it, a station left alone by the cap would lose the name it needs.
+        val fullGroups = grouped(candidates).associateBy { it.key } +
+            StopGrouping.groupByStop(candidates, warningsLead = false).associateBy { it.key }
         fun context(group: StopGroup): StopGroup = fullGroups[group.key] ?: group
         // A header the caller's [grouped] turns on shows too (the full widget names even a single
         // station). The default grouping never shows one its full context doesn't: a place group
