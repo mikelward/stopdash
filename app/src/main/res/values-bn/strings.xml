@@ -29,9 +29,6 @@
     <string name="branch_spoken">ভায়া %1$s</string>
     <string name="branch_spoken_with_terminus">%1$s ভায়া %2$s</string>
     <string name="route_detail_no_live_times">লাইভ সময় নেই</string>
-    <string name="route_detail_quiet_why">এখানে TfL-এর লাইভ সময় নেই, যদিও সময়সূচিতে ট্রেন আসার কথা আছে।</string>
-    <string name="route_detail_none_due_why">সময়সূচি অনুযায়ী আগামী ৩০ মিনিটে এখানে কোনো ট্রেন আসার কথা নেই।</string>
-    <string name="route_detail_no_times_why">এখানে TfL-এর লাইভ সময় নেই।</string>
     <string name="route_detail_timetable_heading">সময়সূচি</string>
     <string name="timetable_scheduled">নির্ধারিত</string>
     <string name="timetable_stretch">%1$s–%2$s</string>

@@ -241,7 +241,6 @@ class RouteChipsTest {
         composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
         composeRule.onAllNodesWithText("Mornington Crescent").assertCountEquals(1)
-        composeRule.onNodeWithText("TfL has no live times here.").assertDoesNotExist()
         composeRule.onNodeWithText("Status may be out of date").assertDoesNotExist()
         composeRule.onNodeWithText("Stops shown once departures refresh").assertDoesNotExist()
 
@@ -251,7 +250,6 @@ class RouteChipsTest {
         settle(scheduler, rounds = 10)
         composeRule.onNodeWithTag("routeChoice-1").assertIsSelected()
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
-        composeRule.onNodeWithText("TfL has no live times here.").assertDoesNotExist()
 
         // A train by Charing Cross comes: the page follows it, as from a tap on its row.
         val charingX = Departure("northern", "Northern", "outbound", "Morden", "Southbound - Platform 2", later.plusSeconds(240), "tube", "Charing X")
@@ -903,10 +901,9 @@ class RouteChipsTest {
     }
 
     @Test
-    fun a_quiet_rows_page_says_why_and_gives_each_ways_next_trains_by_the_timetable() {
+    fun a_quiet_rows_page_says_no_live_times_and_gives_each_ways_next_trains_by_the_timetable() {
         showQuietPage(TestCoroutineScheduler())
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
-        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
         composeRule.onNodeWithText("Timetable").assertIsDisplayed()
         // Each way its own trains, by its pattern: none of Bank's are Charing Cross's.
         composeRule.onNodeWithText("09:05").assertIsDisplayed()
@@ -917,10 +914,9 @@ class RouteChipsTest {
     }
 
     @Test
-    fun a_quiet_rows_page_whose_stop_couldnt_be_checked_says_why_but_gives_no_timetable() {
+    fun a_quiet_rows_page_whose_stop_couldnt_be_checked_says_no_live_times_but_gives_no_timetable() {
         showQuietPage(TestCoroutineScheduler(), disruptionUnknown = true)
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
-        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
         // A timetable knows nothing of a disruption it couldn't check for.
         composeRule.onNodeWithText("Timetable").assertDoesNotExist()
         composeRule.onNodeWithText("09:05").assertDoesNotExist()
@@ -938,7 +934,6 @@ class RouteChipsTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Timetable").assertDoesNotExist()
         composeRule.onNodeWithText("09:05").assertDoesNotExist()
-        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertIsDisplayed()
     }
 
     @Test
@@ -982,13 +977,11 @@ class RouteChipsTest {
 
     private fun assertNoTrainsClaimed() {
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
-        composeRule.onNodeWithText("TfL has no live times here.").assertIsDisplayed()
-        composeRule.onNodeWithText("TfL has no live times here, though its timetable has trains due.").assertDoesNotExist()
         composeRule.onNodeWithText("Timetable").assertDoesNotExist()
     }
 
     @Test
-    fun a_dash_rows_page_says_none_is_due_and_gives_each_ways_next_trains_by_the_timetable() {
+    fun a_dash_rows_page_says_no_live_times_and_gives_each_ways_next_trains_by_the_timetable() {
         // The line's row with no train, its timetable's first train an hour off: the list's dash.
         val dash = quietRow.copy(quiet = false)
         val later = app.stopdash.domain.StopTimetable(
@@ -1002,7 +995,8 @@ class RouteChipsTest {
         )
         showQuietPage(TestCoroutineScheduler(), row = dash, timetable = later)
         composeRule.onNodeWithText("No live times").assertIsDisplayed()
-        composeRule.onNodeWithText("No trains due here in the next 30 minutes, by the timetable.").assertIsDisplayed()
+        // Nothing more under it, which named trains on a bus route's page (maintainer, 2026-10-25).
+        composeRule.onAllNodesWithText("due", substring = true).assertCountEquals(0)
         composeRule.onNodeWithText("10:00").assertIsDisplayed()
         composeRule.onNodeWithText("10:05").assertIsDisplayed()
     }

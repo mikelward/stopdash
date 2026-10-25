@@ -9,8 +9,6 @@
     <string name="route_detail_next_bus_timetabled">Próximo ônibus: %1$s (horário)</string>
     <string name="route_detail_next_trains_timetabled">Próximos trens: %1$s (horário)</string>
     <string name="route_detail_next_buses_timetabled">Próximos ônibus: %1$s (horário)</string>
-    <string name="route_detail_quiet_why">A TfL não tem horários em tempo real aqui, embora o horário tenha trens previstos.</string>
-    <string name="route_detail_none_due_why">Segundo o horário, não há trens previstos aqui nos próximos 30 minutos.</string>
     <string name="timetable_loading">Carregando horário…</string>
     <string name="timetable_holiday">Pode ser diferente em feriados</string>
     <string name="route_stop_current">Sua parada</string>

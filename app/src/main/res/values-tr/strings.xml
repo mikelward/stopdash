@@ -29,9 +29,6 @@
     <string name="branch_spoken">%1$s üzerinden</string>
     <string name="branch_spoken_with_terminus">%2$s üzerinden %1$s</string>
     <string name="route_detail_no_live_times">Canlı saat yok</string>
-    <string name="route_detail_quiet_why">TfL burası için canlı saat vermiyor, ancak tarifede yaklaşan trenler var.</string>
-    <string name="route_detail_none_due_why">Tarifeye göre önümüzdeki 30 dakika içinde burada tren yok.</string>
-    <string name="route_detail_no_times_why">TfL burası için canlı saat vermiyor.</string>
     <string name="route_detail_timetable_heading">Tarife</string>
     <string name="timetable_scheduled">Planlanan</string>
     <string name="timetable_stretch">%1$s–%2$s</string>
