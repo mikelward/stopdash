@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-23
+last_modified: 2026-10-25
 ---
 
 # AGENTS.md
@@ -33,6 +33,8 @@ something bites, rewrite/trim rather than append, and delete rules that stopped 
 - Keep `TODO.md` current: check items off as they land, add new work to the right phase.
 - Developer detail (state models, refresh timing, diagrams) lives in `dev-docs/`; `docs/`
   is user/store-facing.
+- **The main view, widget and watch move together**: check any change to one for whether it
+  applies to the others; they differ only where SPEC *One widget, many surfaces* says why.
 
 ## Engineering quality bar
 
@@ -174,14 +176,11 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   sandbox-pinned), and announce the switch; if unable to fetch, say follow-up needs a
   synced checkout rather than branching off a stale `origin/main`.
 - **Committer line**: rebase/squash merges rewrite the committer to the merger — expected;
-  never re-author or amend merged commits to "fix" authorship or signing, or narrate it. It
-  is not a finding.
-- **Unshallow before history-depth queries** (`git rev-list --count`, versionCode):
-  `.claude/hooks/session-start.sh` runs `scripts/unshallow.sh`, but is best-effort and
-  Claude-only (not auto-run by Gemini / Antigravity or Codex). If `git rev-parse
-  --is-shallow-repository` is `true`, run `scripts/unshallow.sh` (or `git fetch --unshallow
-  origin +refs/heads/main:refs/remotes/origin/main`) and re-check; if still `true`, say
-  history is truncated rather than quote a versionCode.
+  never re-author or amend merged commits, or narrate it. It is not a finding.
+- **Unshallow before history-depth queries** (`git rev-list --count`, versionCode): the
+  session-start hook runs `scripts/unshallow.sh` in Claude Code only. If `git rev-parse
+  --is-shallow-repository` is `true`, run it and re-check; if still `true`, say history is
+  truncated rather than quote a versionCode.
 
 ## Commit messages
 
