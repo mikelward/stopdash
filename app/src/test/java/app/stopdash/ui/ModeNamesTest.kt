@@ -29,6 +29,21 @@ class ModeNamesTest {
     }
 
     @Test
+    fun `modes with no icon, which a search row names in words, read from the strings too`() {
+        assertEquals(
+            "Coach · International rail · Replacement bus",
+            modesSpoken(listOf("coach", "international-rail", "replacement-bus"), resources),
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "de")
+    fun `modes with no icon are named in the app's language`() {
+        val german = ApplicationProvider.getApplicationContext<Context>().resources
+        assertEquals("Fernbus · Internationaler Zug", modesSpoken(listOf("coach", "international-rail"), german))
+    }
+
+    @Test
     fun `a station's modes are said in TfL's order, each once, an unknown one by its tidied id`() {
         assertEquals("Tube · Elizabeth · National Rail", modesSpoken(listOf("tube", "elizabeth-line", "national-rail"), resources))
         assertEquals("Bus · Some mode", modesSpoken(listOf("bus", "", "some-mode", "bus"), resources))

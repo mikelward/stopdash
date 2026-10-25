@@ -572,7 +572,7 @@ internal fun LineStopPage(
                         ) {
                             Icon(
                                 if (saved) Icons.Filled.Star else StarBorderIcon,
-                                contentDescription = stringResource(if (saved) R.string.action_unstar_journey else R.string.station_journey_add),
+                                contentDescription = stringResource(if (saved) R.string.action_unstar_journey else R.string.action_star_journey),
                             )
                         }
                     }

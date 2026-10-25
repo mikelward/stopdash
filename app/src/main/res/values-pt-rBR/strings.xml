@@ -286,4 +286,24 @@
     <string name="route_disruption_none_direct">Nenhum direto para %1$s · Baldeação em %2$s</string>
     <string name="on_the_way_show_stops">Mostrar paradas</string>
     <string name="on_the_way_hide_stops">Ocultar paradas</string>
+    <string name="settings_text_size_smaller">Texto menor</string>
+    <string name="journey_not_checked_named">%1$s: não foi possível verificar os trens</string>
+    <string name="journey_not_checked_bus_named">%1$s: não foi possível verificar os ônibus</string>
+    <string name="journey_checking_coach">Verificando ônibus rodoviários…</string>
+    <string name="journey_none_coach">Nenhum ônibus rodoviário para %1$s em breve</string>
+    <string name="journey_not_checked_coach">Não foi possível verificar os ônibus rodoviários</string>
+    <string name="journey_not_checked_coach_named">%1$s: não foi possível verificar os ônibus rodoviários</string>
+    <string name="journey_checking_tram">Verificando bondes…</string>
+    <string name="journey_none_tram">Nenhum bonde para %1$s em breve</string>
+    <string name="journey_not_checked_tram">Não foi possível verificar os bondes</string>
+    <string name="journey_not_checked_tram_named">%1$s: não foi possível verificar os bondes</string>
+    <string name="journey_checking_boat">Verificando barcos…</string>
+    <string name="journey_checking_cable_car">Verificando teleféricos…</string>
+    <string name="route_detail_next_coach_timetabled">Próximo ônibus rodoviário: %1$s (horário)</string>
+    <string name="route_detail_next_coaches_timetabled">Próximos ônibus rodoviários: %1$s (horário)</string>
+    <string name="route_detail_next_tram_timetabled">Próximo bonde: %1$s (horário)</string>
+    <string name="route_detail_next_trams_timetabled">Próximos bondes: %1$s (horário)</string>
+    <string name="mode_name_coach">Ônibus rodoviário</string>
+    <string name="mode_name_international_rail">Trem internacional</string>
+    <string name="mode_name_replacement_bus">Ônibus substituto</string>
 </resources>

@@ -160,7 +160,7 @@ internal fun SearchRowMenu(
                 if (placesKnown && unsave != null && place != null) {
                     MenuItem(stringResource(R.string.station_search_remove_favorite), "rowMenuRemovePlace") { onDismiss(); unsave(place) }
                 } else if (placesKnown && add != null) {
-                    MenuItem(stringResource(R.string.station_search_add_favorite), "rowMenuAddPlace") { onDismiss(); add(entry.asPlacePick(coordinate), entry.placeIconOf()) }
+                    MenuItem(stringResource(R.string.line_stop_favorite), "rowMenuAddPlace") { onDismiss(); add(entry.asPlacePick(coordinate), entry.placeIconOf()) }
                 }
             }
         },

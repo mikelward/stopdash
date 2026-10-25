@@ -685,7 +685,7 @@ private fun MatchResultRow(
                             area,
                             Modifier.semantics { contentDescription = spoken },
                             modes = match.modeIcons,
-                            extra = match.otherModesLabel,
+                            extra = rememberModesSpoken(match.otherModes).ifEmpty { null },
                         )
                     }
                 }

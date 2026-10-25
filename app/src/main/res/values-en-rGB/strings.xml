@@ -35,7 +35,6 @@
     <string name="action_star_journey">Add favourite ride</string>
     <string name="action_unstar_journey">Remove favourite ride</string>
     <string name="route_stop_journey_starred">Favourite ride</string>
-    <string name="station_journey_add">Add favourite ride</string>
     <string name="station_journey_write_failed_away">Couldn\'t save your favourite ride</string>
     <!-- A station's facilities as they're signed in the UK. -->
     <string name="facility_toilets">Toilets</string>
@@ -48,7 +47,6 @@
     <string name="compass_se">south-east</string>
     <string name="compass_sw">south-west</string>
     <string name="compass_nw">north-west</string>
-    <string name="station_search_add_favorite">Add favourite place</string>
     <string name="station_search_remove_favorite">Remove favourite place</string>
     <!-- Place types (values/strings.xml). -->
     <string name="place_type_takeaway">Takeaway</string>

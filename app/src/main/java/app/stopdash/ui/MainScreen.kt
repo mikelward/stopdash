@@ -6926,7 +6926,7 @@ internal fun StopGroupCard(
                                                 val shownForms = if (changeAt == null) forms else forms.map { if (branch == null) "($it)" else "($it" }
                                                 val shownBranch = if (changeAt == null) branch else branch?.let { "$it)" }
                                                 val shownShortBranch = if (changeAt == null) label.shortBranch else label.shortBranch?.let { "$it)" }
-                                                val spoken = changeAt?.let { stringResource(R.string.ride_row_change_spoken, it) }
+                                                val spoken = changeAt?.let { stringResource(R.string.on_the_way_off_plan_change, it) }
                                                 val labelModifier = spoken?.let { Modifier.semantics { stateDescription = it } } ?: Modifier
                                                 if (rideRow) {
                                                     Row(modifier, verticalAlignment = Alignment.CenterVertically) {

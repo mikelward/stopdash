@@ -43,7 +43,7 @@ enum class ModeIcon {
 /**
  * A match's modes as a rider reads them, in TfL's order: "Tube · Bus". TfL's mode ids are lower-case
  * and hyphenated; the known ones get their proper names, any other is spaced and capitalized rather
- * than hidden. Work that grows with [modes]: a row reads [StationMatch.otherModesLabel] instead.
+ * than hidden. Work that grows with [modes]: a row reads [StationMatch.otherModes] instead.
  */
 @WorkerThread
 fun modesLabel(modes: List<String>): String =
