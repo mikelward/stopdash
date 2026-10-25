@@ -481,8 +481,8 @@ The app finds stops two ways:
   landmark, a venue, a business, a street, an address, a postcode) among the stop matches, each marked
   in the right column, where a stop shows its modes, by an icon for what it is: a place's type (a pub, a
   museum, a church…, about 44 types from its OpenStreetMap tags), a street or a postcode (maintainer,
-  2026-10-13). A stop's modes are icons too, one each, trains first: Tube, Rail (National Rail, the
-  Overground and the Elizabeth line share it), DLR, Tram, River, Cable car, Bus. Material's bus and train
+  2026-10-13). A stop's modes are icons too, one each, trains first: Tube (the DLR and the Elizabeth
+  line share it, maintainer, 2026-10-25), Rail (National Rail and the Overground share it), Tram, River, Cable car, Bus. Material's bus and train
   were near twins at row size, so Bus is drawn as London's own, a front-on double-decker with its
   destination board between its decks, and Rail is the Tube icon's train without its tunnel (maintainer, 2026-10-25).
   The postcode district
@@ -1446,7 +1446,7 @@ opens its station where it heads one, else shows it on the map.
 **Grouped by station** (maintainer, 2026-10-23), Settings → **Group nearby departures**: **By stop/platform**, the
 default, is the card per platform or pole above; **By station** heads each station once, in bold, a station being
 one place's stops of one mode (a place's Underground, rail and bus stops are three stations, each its own heading;
-National Rail, the Overground and the Elizabeth line, sharing an icon, are one). Everything the list keys by
+the Tube, the DLR and the Elizabeth line, sharing an icon, are one, as are National Rail and the Overground). Everything the list keys by
 station goes by its mode too: a departure, a ride and its trains, a notice (under its own stop's station) and
 the distance (its own mode's nearest stop), so nothing shows under another mode's heading. It shows how far
 its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**

@@ -7,10 +7,10 @@ import org.junit.Test
 
 class ModeIconTest {
     @Test
-    fun `a stops modes are an icon each, trains first, rail lines as one`() {
+    fun `a stops modes are an icon each, trains first, the DLR and Elizabeth with the tube, rail lines as one`() {
         // An interchange's modes in TfL's order (a big east London hub, say).
         val match = StationMatch("940GZZZETA", "Zeta", listOf("bus", "elizabeth-line", "dlr", "overground", "tube", "national-rail"))
-        assertEquals(listOf(ModeIcon.TUBE, ModeIcon.RAIL, ModeIcon.DLR, ModeIcon.BUS), match.modeIcons)
+        assertEquals(listOf(ModeIcon.TUBE, ModeIcon.RAIL, ModeIcon.BUS), match.modeIcons)
         assertNull(match.otherModesLabel)
         assertEquals("Bus · Elizabeth · DLR · Overground · Tube · National Rail", modesLabel(match.modes))
     }
@@ -39,8 +39,10 @@ class ModeIconTest {
 
     @Test
     fun `one mode's icon, any case, and none for a mode no icon stands for`() {
-        assertEquals(ModeIcon.RAIL, ModeIcon.of("Elizabeth-Line"))
+        assertEquals(ModeIcon.TUBE, ModeIcon.of("Elizabeth-Line"))
+        assertEquals(ModeIcon.RAIL, ModeIcon.of("overground"))
         assertEquals(ModeIcon.BUS, ModeIcon.of("bus"))
+        assertEquals(ModeIcon.TUBE, ModeIcon.of("dlr"))
         assertNull(ModeIcon.of("some-mode"))
     }
 }
