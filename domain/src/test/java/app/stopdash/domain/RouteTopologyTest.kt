@@ -29,6 +29,41 @@ class RouteTopologyTest {
         topology.grouping("northern", stopId, destination, branch).mergeKey
 
     @Test
+    fun `a ride is named by the branch its end lies on, where every route there runs by one`() {
+        // Highgate to Bank: only the Bank trunk runs there, so its ride with no train due says "Bank" (maintainer,
+        // 2026-10-25), never each terminus a direct train would have.
+        assertEquals("Bank", topology.rideBranch("northern", HGT, BNK))
+        // Charing Cross, by its trunk, the unlabeled Battersea pattern saying nothing either way.
+        assertEquals("Charing X", topology.rideBranch("northern", HGT, CHX))
+        // Kennington, Oval or High Barnet: both trunks run there, so no one branch names it.
+        assertNull(topology.rideBranch("northern", HGT, KNG))
+        assertNull(topology.rideBranch("northern", HGT, OVL))
+        assertNull(topology.rideBranch("northern", OVL, HBT))
+        // Battersea: only an unlabeled pattern runs there.
+        assertNull(topology.rideBranch("northern", HGT, BPS))
+        // From Bank, only the Bank trunk calls: the branch is behind the rider, so none names a ride from there,
+        // its terminus instead.
+        assertNull(topology.rideBranch("northern", BNK, HGT))
+        assertEquals("High Barnet", topology.rideTerminus("northern", BNK, HGT))
+        // A line the asset doesn't model, and stops no pattern runs between.
+        assertNull(topology.rideBranch("victoria", HGT, BNK))
+        assertNull(topology.rideBranch("northern", BNK, "940GZZLUXXX"))
+    }
+
+    @Test
+    fun `a ride past where the branches join again is named by the terminus they run toward`() {
+        // Highgate to Oval: both trunks run there, joined again south of Kennington, so its terminus names it.
+        assertEquals("Morden", topology.rideTerminus("northern", HGT, OVL))
+        // The other way, toward High Barnet.
+        assertEquals("High Barnet", topology.rideTerminus("northern", OVL, HGT))
+        // Kennington: the Battersea pattern runs there too, ending elsewhere, so no one terminus.
+        assertNull(topology.rideTerminus("northern", HGT, KNG))
+        // No pattern between them, or a line the asset doesn't model.
+        assertNull(topology.rideTerminus("northern", BNK, "940GZZLUXXX"))
+        assertNull(topology.rideTerminus("victoria", HGT, OVL))
+    }
+
+    @Test
     fun `branches merge and lose the label past the junction, on the shared track`() {
         // Highgate → High Barnet (north of Camden Town): the trunks have physically joined, so
         // the two are the same service from here — one merged line, no branch label.

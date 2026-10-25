@@ -1460,9 +1460,7 @@ heading for each. A favorite ride boarding at the station is **a group of its ow
 station's**, headed as a station is ("Highgate ➔ Bank ★": its mode's icon, its ends abbreviated evenly where the line is short,
 the gold star a ride's heading always carries so it doesn't read as a stop's (bug report, 2026-10-24), how far the station
 is, a chevron folding it apart from the station), over a card of its trains; a tap opens its train as the ride's card would (maintainer,
-2026-10-23). With no direct train due, its trains to change from fill that card, each destination in brackets
-at its size ("(Morden/Charing X)"; where to change is only heard, a second line being too small to read), with no
-dash for the direct train it hasn't got. A ride boarding at two places has each train in the group before the station it
+2026-10-23). With no direct train due, its own line with a dash, as everywhere on the list (*Change at a fork*). A ride boarding at two places has each train in the group before the station it
 leaves from (its own station's where that one is a loading or farther card, drawn under its own heading). **Group
 favorite rides** By stop/platform splits a ride boarding from several stops into a group per stop, each headed by the
 stop and its platform or pole ➔ where the ride goes ("King's X – Plat 5 ➔ Bank"), each just before its station's; By
@@ -1951,8 +1949,13 @@ journey's alerts are on, and **Unpause alerts** while paused, each saying so if 
 open. The pause is kept on the phone (not backed up) and leaves each journey's settings as they are. The
 debug log notes each pause and unpause, and a check skipped for it.
 
-**Change at a fork.** When a line runs only one branch from the origin (a Northern line train to
-Edgware from King's Cross, none to High Barnet) and no direct train is due, the card shows the
+**Change at a fork.** On the list, a ride with no direct train due says so, its own line with a dash, and
+offers no other branch's trains in its place (maintainer, 2026-10-25): they stay their platform's own rows.
+Where it has no heading of its own (under its station's), that row names the branch its end lies on when
+every route there runs by one ("Bank" to King's Cross from Highgate, not each terminus a direct train would
+have), the terminus they all run toward past where the branches join again ("Morden" to Oval), else its far
+end. Its own view still offers them: when a line runs only one branch from the origin (a Northern line train to
+Edgware from King's Cross, none to High Barnet) and no direct train is due, it shows the
 other branch's trains instead, under "King's Cross ➔ Camden Town (for High Barnet)", below the
 ride's own line with a dash, heard as "No direct trains to …" (maintainer, 2026-09-24; the dash
 replaced a "No direct trains" note, 2026-10-16). A suspended line's status row says the same, so no

@@ -4232,6 +4232,8 @@ class MainScreenScreenshotTest {
         journey: FavoriteJourney = victoriaToWarrenStreet,
         rideGrouping: RideGrouping? = RideGrouping.RIDE,
         stopDistanceMeters: Map<String, Double> = mapOf("940GZZLUMRH" to 300.0),
+        // Opened in the ride's own view, as from a tap on its heading.
+        ownView: Boolean = false,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -4244,6 +4246,7 @@ class MainScreenScreenshotTest {
                             stopDistanceMeters = stopDistanceMeters,
                             journeys = listOf(journey),
                             rideGrouping = rideGrouping,
+                            reopenJourneyKey = journey.key.takeIf { ownView },
                         )
                     }
                 }
@@ -4331,8 +4334,18 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `with no direct train soon the card says so above the trains to change from`() {
+    fun `with no direct train soon the list says so, its own line with a dash, offering no train to change from`() {
+        // Another branch's trains stood in for the ride once; on the list it just says there's none direct (maintainer,
+        // 2026-10-25).
         journeyScreen(forkedOrigin("West End" to 60, "West End" to 480), forkedSource, kingToNorthEnd)
+        composeRule.onNodeWithContentDescription("No trains to North Park soon").assertExists()
+        composeRule.onAllNodesWithText("(for North Park)", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("West End").assertCountEquals(0)
+    }
+
+    @Test
+    fun `with no direct train soon the ride's own view says so above the trains to change from`() {
+        journeyScreen(forkedOrigin("West End" to 60, "West End" to 480), forkedSource, kingToNorthEnd, ownView = true)
         composeRule.onNodeWithContentDescription("No direct trains to North Park soon").assertExists()
         // The journey's own end in the brackets, not the branch's terminus.
         composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
@@ -4344,7 +4357,7 @@ class MainScreenScreenshotTest {
 
     @Test
     fun `a tapped train to change from opens its own route`() {
-        journeyScreen(forkedOrigin("West End" to 60), forkedSource, kingToNorthEnd)
+        journeyScreen(forkedOrigin("West End" to 60), forkedSource, kingToNorthEnd, ownView = true)
         composeRule.onNodeWithText("West End").performClick()
         composeRule.waitForIdle()
         // The West End train's page: its stops run to West End, open, and the north branch it doesn't take is
@@ -4382,6 +4395,8 @@ class MainScreenScreenshotTest {
                             onToggleJourney = {},
                             onAddRide = { _, _, _ -> },
                             onSetRideLineHidden = { _, entry, hidden -> writes += entry to hidden },
+                            // In the ride's own view, where trains to change from are offered.
+                            reopenJourneyKey = kingToNorthEnd.key,
                         )
                     }
                 }
@@ -4400,8 +4415,15 @@ class MainScreenScreenshotTest {
 
     @Test
     fun `with a train that couldn't be checked the card doesn't claim there's no direct one`() {
-        // "Nowhere" matches no stop or route end, so that train might yet be a direct one.
+        // "Nowhere" matches no stop or route end, so that train might yet be a direct one: on the list, no claim of none.
         journeyScreen(forkedOrigin("West End" to 60, "Nowhere" to 120), forkedSource, kingToNorthEnd)
+        composeRule.onAllNodesWithContentDescription("No trains to North Park soon").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("No direct trains", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `with a train that couldn't be checked the ride's own view doesn't claim there's no direct one`() {
+        journeyScreen(forkedOrigin("West End" to 60, "Nowhere" to 120), forkedSource, kingToNorthEnd, ownView = true)
         composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
         composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
         composeRule.onAllNodesWithContentDescription("No direct trains", substring = true).assertCountEquals(0)
@@ -6350,7 +6372,7 @@ class MainScreenScreenshotTest {
 
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
-    fun `grouped by station, a ride with only trains to change from is its own group, saying where to change`() {
+    fun `grouped by station, a ride with only trains to change from is its own group, its dash saying there's none direct`() {
         // King's Cross to Edgware on the Northern line: its only northbound train goes to High Barnet, so the ride has
         // no direct train, only one to change from at Camden Town, where the branches part. Public names only.
         val repository = RouteStopsRepository(
@@ -6399,33 +6421,18 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // Its own group before the station's, with no dash for the direct train it hasn't got: its train to change from,
-        // its destination in brackets, where to change only heard.
+        // Its own group before the station's, its own line with a dash: no direct train, and no train to change from stood
+        // in for it (maintainer, 2026-10-25). The High Barnet train stays the station's own, in its platform, unstarred.
         fun top(text: String, substring: Boolean = false) =
             composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().minOf { it.boundsInRoot.top }
-        val rideHeading = composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Edgware, Tube"))
-        composeRule.onNodeWithText("(High Barnet", substring = true).assertExists()
-        composeRule.onNodeWithText("Bank)", substring = true).assertExists()
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Change at Camden Town")).assertExists()
-        assertTrue(rideHeading.fetchSemanticsNode().boundsInRoot.top < top("(High Barnet", substring = true))
-        assertTrue(top("(High Barnet", substring = true) < top("King's Cross St. Pancras"))
-        assertTrue(top("King's Cross St. Pancras") < top("Morden"))
+        // Its line saved with no mode, so its heading names none.
+        val rideHeading = composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Edgware"))
+        composeRule.onNodeWithContentDescription("No trains to Edgware soon").assertExists()
+        composeRule.onAllNodesWithText("(High Barnet", substring = true).assertCountEquals(0)
+        composeRule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Change at Camden Town")).assertCountEquals(0)
+        assertTrue(rideHeading.fetchSemanticsNode().boundsInRoot.top < top("King's Cross St. Pancras"))
+        assertTrue(top("King's Cross St. Pancras") < top("High Barnet", substring = true))
         captureSnapshot("main-station-groups-ride-change.png", heightPx = 2400)
-        // A long press on the ride's train does what its own card does, never hiding the mode everywhere: it offers
-        // the ride's own hide, as on any of its lines.
-        composeRule.onNodeWithText("(High Barnet", substring = true).performTouchInput { longClick() }
-        composeRule.waitForIdle()
-        composeRule.onAllNodesWithText("Hide all", substring = true).assertCountEquals(0)
-        composeRule.onNodeWithText("on this ride", substring = true).assertExists()
-        composeRule.onNodeWithText("Add favourite ride…").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("routePickTitle").assertExists()
-        composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule.waitForIdle()
-        // The station's own Northern line row still offers it.
-        composeRule.onNodeWithText("Morden").performTouchInput { longClick() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Hide all", substring = true).assertExists()
     }
 
     @Test
