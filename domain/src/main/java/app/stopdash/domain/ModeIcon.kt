@@ -5,19 +5,20 @@ import java.util.Locale
 
 /**
  * A stop's modes as its row shows them, an icon each (maintainer, 2026-10-13), in this order, trains
- * first: National Rail, the Overground and the Elizabeth line share [RAIL]. Worked out once, when a
+ * first: the DLR and the Elizabeth line share [TUBE], as hiding a mode groups them with the Underground
+ * (maintainer, 2026-10-25); National Rail and the Overground share [RAIL]. Worked out once, when a
  * [StationMatch] is made (off the main thread), so a row only reads it (AGENTS *Main thread*).
  */
 enum class ModeIcon {
-    TUBE, RAIL, DLR, TRAM, RIVER, CABLE_CAR, BUS;
+    TUBE, RAIL, TRAM, RIVER, CABLE_CAR, BUS;
 
     companion object {
         private val BY_MODE = mapOf(
             "tube" to TUBE,
             "national-rail" to RAIL,
             "overground" to RAIL,
-            "elizabeth-line" to RAIL,
-            "dlr" to DLR,
+            "elizabeth-line" to TUBE,
+            "dlr" to TUBE,
             "tram" to TRAM,
             "river-bus" to RIVER,
             "cable-car" to CABLE_CAR,

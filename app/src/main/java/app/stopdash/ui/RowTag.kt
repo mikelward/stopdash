@@ -83,7 +83,6 @@ internal fun placeTypeLabel(place: PlaceHit): Int = when (place.kind) {
 internal fun modeIcon(icon: ModeIcon): Int = when (icon) {
     ModeIcon.TUBE -> R.drawable.ic_mode_tube
     ModeIcon.RAIL -> R.drawable.ic_mode_rail
-    ModeIcon.DLR -> R.drawable.ic_mode_dlr
     ModeIcon.TRAM -> R.drawable.ic_mode_tram
     ModeIcon.RIVER -> R.drawable.ic_mode_river
     ModeIcon.CABLE_CAR -> R.drawable.ic_mode_cable_car

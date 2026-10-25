@@ -49,6 +49,15 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a place's Tube, DLR and Elizabeth stops are one station, its rail and buses others`() {
+        assertEquals(stationKey("A", "tube"), stationKey("A", "dlr"))
+        assertEquals(stationKey("A", "tube"), stationKey("A", "elizabeth-line"))
+        assertEquals(stationKey("A", "overground"), stationKey("A", "national-rail"))
+        assertFalse(stationKey("A", "elizabeth-line") == stationKey("A", "overground"))
+        assertFalse(stationKey("A", "dlr") == stationKey("A", "bus"))
+    }
+
+    @Test
     fun `an unmeasured station goes last, and stations as near keep their order`() {
         val unmeasured = group("c", "C1", "C")
         val first = group("a", "A1", "A")
@@ -485,7 +494,7 @@ class StationGroupsTest {
         val bus = StopGroup(stopName = "Place", key = "b", showHeader = true, rows = listOf(row("A3", "A").copy(mode = "bus")), placeKey = "A")
         val rail = StopGroup(
             stopName = "Place", key = "r", showHeader = true,
-            rows = listOf(row("A2", "A").copy(mode = "national-rail"), row("A2", "A").copy(mode = "elizabeth-line")), placeKey = "A",
+            rows = listOf(row("A2", "A").copy(mode = "national-rail"), row("A2", "A").copy(mode = "overground")), placeKey = "A",
         )
         val layout = StationLayout.of(
             groups = listOf(bus, group("t", "A1", "A"), rail, group("o", "B1", "B")),
@@ -503,7 +512,7 @@ class StationGroupsTest {
         assertEquals(listOf("b", "t", "r", "o"), layout.rank.entries.sortedBy { it.value }.map { it.key })
         assertEquals(listOf("A2", "A2"), layout.cards.getValue("A|RAIL").group.rows.map { it.stopId })
         // Its modes by name too, for a screen reader to tell the place's stations apart.
-        assertEquals(listOf("national-rail", "elizabeth-line"), layout.modeIds.getValue("A|RAIL"))
+        assertEquals(listOf("national-rail", "overground"), layout.modeIds.getValue("A|RAIL"))
     }
 
     @Test

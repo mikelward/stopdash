@@ -744,9 +744,9 @@ class StopGroupingTest {
         )
         // By stop/platform, as before: one card for the platform.
         assertEquals(listOf(listOf("T", "O", "E")), StopGrouping.groupByStop(rows).map { group -> group.rows.map { it.stopId } })
-        // Grouped by station: the Underground apart; the Overground and the Elizabeth line, sharing an icon, together.
+        // Grouped by station: the Overground apart; the Underground and the Elizabeth line, sharing an icon, together.
         val byMode = StopGrouping.groupByStop(rows, splitByMode = true)
-        assertEquals(listOf(listOf("T"), listOf("O", "E")), byMode.map { group -> group.rows.map { it.stopId } })
+        assertEquals(listOf(listOf("T", "E"), listOf("O")), byMode.map { group -> group.rows.map { it.stopId } })
         assertEquals(2, byMode.map { it.key }.distinct().size)
     }
 }
