@@ -482,9 +482,9 @@ The app finds stops two ways:
   in the right column, where a stop shows its modes, by an icon for what it is: a place's type (a pub, a
   museum, a church…, about 44 types from its OpenStreetMap tags), a street or a postcode (maintainer,
   2026-10-13). A stop's modes are icons too, one each, trains first: Tube, Rail (National Rail, the
-  Overground and the Elizabeth line share it), DLR, Tram, River, Cable car, Bus. Bus is drawn as London's
-  own, a front-on double-decker with its destination display, since Material's bus and train were near
-  twins at row size (maintainer, 2026-10-25).
+  Overground and the Elizabeth line share it), DLR, Tram, River, Cable car, Bus. Material's bus and train
+  were near twins at row size, so Bus is drawn as London's own, a front-on double-decker with its
+  destination board between its decks, and Rail is the Tube icon's train without its tunnel (maintainer, 2026-10-25).
   The postcode district
   stays as text ahead of them, and a screen reader says the words; tapping one plans
   to its **coordinate** (a final walk leg, D9), like a favorite. Its field reads "Station, stop, place
