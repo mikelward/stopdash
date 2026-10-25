@@ -9,6 +9,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
@@ -1039,6 +1040,7 @@ class WidgetModelTest {
         val byStation = widgetModel(snapshot, now, ridesByStation = true).rows
         assertEquals(listOf("victoria", "northern"), byStation.map { it.row.lineId })
         assertEquals(listOf("Park", null), byStation.map { it.header?.text })
+        assertEquals(listOf(ModeIcon.TUBE), byStation.first().header?.modes)
         // By ride still heads the ride, whatever the nearby grouping.
         assertEquals("Park ➔ Hill", widgetModel(snapshot, now, rideTitle = rideTitle, nearbyByStation = true).rows.first().header?.text)
     }
@@ -1061,6 +1063,9 @@ class WidgetModelTest {
         val byStation = widgetModel(snapshot, now, nearbyByStation = true).rows
         assertEquals(listOf("victoria", "northern", "jubilee"), byStation.map { it.row.lineId })
         assertEquals(listOf("Example Station", null, "Stop Two"), byStation.map { it.header?.text })
+        // A station's heading leads with its mode's icon, as the app's does; a platform's has none.
+        assertEquals(listOf(ModeIcon.TUBE), byStation.first().header?.modes)
+        assertEquals(emptyList<ModeIcon>(), widgetModel(snapshot, now).rows.first().header?.modes)
     }
 
     @Test
