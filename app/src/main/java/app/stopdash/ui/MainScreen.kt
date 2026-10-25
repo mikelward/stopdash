@@ -914,8 +914,14 @@ fun MainScreen(
                         misses = parts.flatMapTo(LinkedHashSet()) { it.misses },
                     )
                     misses = trains.misses
-                    // Trains on another branch, offered with where to change when no direct one is due.
-                    val changes = Journeys.changesWithoutDirect(trains.rows, parts.flatMap { it.changes })
+                    // Trains on another branch, offered with where to change when no direct one is due: in the ride's own
+                    // view only. On the list a ride with no direct train says so, its own line with a dash, rather than
+                    // stand another branch's trains in for it (maintainer, 2026-10-25).
+                    val changes = if (journey.key == journeyViewKey) {
+                        Journeys.changesWithoutDirect(trains.rows, parts.flatMap { it.changes })
+                    } else {
+                        emptyList()
+                    }
                     reached = parts.flatMapTo(HashSet()) { it.reachedIds }
                     // A neighboring pole whose fetch failed, whose lookup did, or whose line's route
                     // did, may have had a bus.
@@ -999,7 +1005,7 @@ fun MainScreen(
                 ?: origin?.let { stopPlace(it.stopId, it.stopName, it.clusterId, emptyList()).id.takeIf { id -> id != it.stopId } }.orEmpty()
             // And its published position from its lines' routes, for a ride saved before ends' positions were (Codex, #959).
             val originPosition = journey.lineIds.firstNotNullOfOrNull { journeySequences[it]?.stopPositions?.get(journey.from.stopId) }
-            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition, headerWords, lineWord)
+            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition, headerWords, lineWord, topology)
         }
     }
     val nearbyOrdered = listRows?.nearby.orEmpty()
@@ -3578,7 +3584,7 @@ private fun DepartureList(
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
                             noTrainsTimetabled = timetabled,
-                            rideDestination = card.journey.to.name.takeIf { named && stopCard === card.lineCard },
+                            rideDestination = card.lineLabel.takeIf { named && stopCard === card.lineCard },
                             rideRows = if (asStation) stationLayout?.loneRideRows.orEmpty() else emptyMap(),
                             rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                         )
@@ -5942,6 +5948,8 @@ internal data class JourneyCard(
     val headerWords: HeaderWords = HeaderWords.ENGLISH,
     // How its hidden lines are named ("Northern line"), in the app's language.
     val lineWord: (name: String) -> String = ENGLISH_LINE,
+    // Its line's branches, for the one its end lies on ([lineBranch]).
+    val topology: RouteTopology = RouteTopology.EMPTY,
 ) {
     /** Each of [closures]' titles ([closureTitleOf]), worked out with the card, off the main thread. */
     val closureTitles: List<String> = closures.map { closureTitleOf(it, headerWords) }
@@ -5981,6 +5989,19 @@ internal data class JourneyCard(
      * line's status row there, so a suspension's row gives way to it in place. Worked out with the card,
      * on the worker.
      */
+    /**
+     * What its [lineCard] row names where it has no heading of its own (maintainer, 2026-10-25): the branch its end lies
+     * on where every route of its line from its origin there runs by one ("Bank" to King's Cross from Highgate, never
+     * "Morden/Bank" and "Kennington/Bank" for each train that would be direct); past where the branches join again, the
+     * terminus they all run toward ("Morden" to Oval), as its trains' rows would; else its far end. Worked out with the
+     * card, on the worker.
+     */
+    val lineLabel: String = (boardingIds.firstOrNull() ?: journey.from.stopId).let { origin ->
+        val line = journey.lines.firstOrNull { !journey.hides(it.id) }
+        line?.let { topology.rideBranch(it.id, origin, journey.to.stopId) ?: topology.rideTerminus(it.id, origin, journey.to.stopId) }
+            ?: journey.to.name
+    }
+
     val lineCard: StopCard = (boardingIds.firstOrNull() ?: journey.from.stopId).let { origin ->
         // Every line hidden, or none known yet: a row with no line, never a hidden one back on the card (Codex on #1205).
         val line = journey.lines.firstOrNull { !journey.hides(it.id) } ?: LineRef("", "", journey.mode)

@@ -145,6 +145,51 @@ class RouteTopology(val patternsByLine: Map<String, List<RoutePattern>>) {
         return BranchGrouping(mergeKey = "ride:" + mine.joinToString(","), label = branch.takeIf { distinct.size >= 2 })
     }
 
+    /**
+     * The branch a ride on [lineId] from [from] to [to] runs by: the one every pattern running from
+     * one to the other carries, the common segment its end lies on ("Bank" for a ride to Moorgate),
+     * for a ride with no train due to be named by (maintainer, 2026-10-25), where more than one branch
+     * calls at [from], so the rider picks one there. A pattern TfL names no branch
+     * for says nothing either way (Battersea's, which runs the Charing Cross trunk). Null where the
+     * labeled ones carry more than one branch (an end either trunk reaches) or there are none (a line
+     * with no branches, or no pattern running between them).
+     */
+    fun rideBranch(lineId: String, from: String, to: String): String? {
+        val patterns = byLine[lineId] ?: return null
+        // Only where the branch is a choice at the stop boarded from: King's Cross is Bank-only, so from there the branch is
+        // behind the rider and the terminus names the ride instead ([rideTerminus]).
+        if (patterns.mapNotNullTo(HashSet()) { pattern -> pattern.branch?.takeIf { from in pattern.stops } }.size < 2) return null
+        var branch: String? = null
+        for (pattern in patterns) {
+            val its = pattern.branch ?: continue
+            if (ride(pattern, from, to) == null) continue
+            if (branch != null && branch != its) return null
+            branch = its
+        }
+        return branch
+    }
+
+    /**
+     * The terminus a ride on [lineId] from [from] to [to] runs toward, where every pattern running from
+     * one to the other ends at the same one that way ("Morden" for Highgate to Oval, past where the
+     * trunks join again), as TfL spells it, cleaned ([cleanStopName]); null where they end at more than
+     * one, or none runs between them. A ride with no train due, on no one branch ([rideBranch]), is
+     * named by it, as its trains' rows would be (maintainer, 2026-10-25).
+     */
+    fun rideTerminus(lineId: String, from: String, to: String): String? {
+        val patterns = patternsByLine[lineId] ?: return null
+        var terminus: String? = null
+        for (pattern in patterns) {
+            val i = pattern.stops.indexOf(from)
+            val j = pattern.stops.indexOf(to)
+            if (i < 0 || j < 0 || i == j) continue
+            val its = cleanStopName(if (j > i) pattern.endB else pattern.endA)
+            if (terminus != null && terminus != its) return null
+            terminus = its
+        }
+        return terminus
+    }
+
     // The stops [pattern] calls at from [from] to [to] inclusive, the way it runs, or null when it
     // doesn't run from one to the other.
     private fun ride(pattern: Pattern, from: String, to: String): List<String>? {
