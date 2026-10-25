@@ -1019,6 +1019,51 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `grouped by station, a ride's platforms go under the station's one heading`() {
+        fun on(platform: String, lineId: String, offset: Long) = toward(lineId, "Hill", offset).copy(platform = platform)
+        val pole = WidgetJourneys.poleKey("a", "490000001B")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(on("Southbound - Platform 1", "victoria", 60)), now.minusSeconds(30), name = "Park"),
+                stop("490000001B", listOf(on("Southbound - Platform 2", "northern", 120)), now.minusSeconds(30), name = "Park"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("victoria", "Hill", null)), "a", rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001B", setOf(JourneyCall("northern", "Hill", null)), pole, rank = 0, fromName = "Park", toName = "Hill"),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000001B"),
+        )
+        // By stop/platform, a heading per platform; by station, the station's one.
+        assertEquals(listOf("Park – Platform 1", "Park – Platform 2"), widgetModel(snapshot, now).rows.map { it.header?.text })
+        val byStation = widgetModel(snapshot, now, ridesByStation = true).rows
+        assertEquals(listOf("victoria", "northern"), byStation.map { it.row.lineId })
+        assertEquals(listOf("Park", null), byStation.map { it.header?.text })
+        // By ride still heads the ride, whatever the nearby grouping.
+        assertEquals("Park ➔ Hill", widgetModel(snapshot, now, rideTitle = rideTitle, nearbyByStation = true).rows.first().header?.text)
+    }
+
+    @Test
+    fun `grouped by station, nearby platforms go under the station's one heading`() {
+        fun on(platform: String, lineId: String, offset: Long) = departure(lineId, offset).copy(platform = platform)
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(on("Southbound - Platform 1", "victoria", 60)), now, name = "Example Station"),
+                stop("490000001B", listOf(on("Northbound - Platform 4", "northern", 120)), now, name = "Example Station"),
+                stop("490000002C", listOf(departure("jubilee", 180)), now, name = "Stop Two"),
+            ),
+            fetchedAt = now,
+        )
+        assertEquals(
+            listOf("Example Station – Platform 1", "Example Station – Platform 4", "Stop Two"),
+            widgetModel(snapshot, now).rows.map { it.header?.text },
+        )
+        val byStation = widgetModel(snapshot, now, nearbyByStation = true).rows
+        assertEquals(listOf("victoria", "northern", "jubilee"), byStation.map { it.row.lineId })
+        assertEquals(listOf("Example Station", null, "Stop Two"), byStation.map { it.header?.text })
+    }
+
+    @Test
     fun `a route a ride boards at several stops shows once, from its own stop`() {
         // One bus route past the ride's stop and two poles beside it: each a minute apart, as one bus
         // reaches each in turn.

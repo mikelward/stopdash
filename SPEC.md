@@ -840,7 +840,9 @@ next train is at is the point; a prediction in such a direction with no platform
 placed, so it sits under the bare compass rather than a platform it may not be at. The widget
 groups its rows under the **same place headers**, one per place, but keeps one merged row per
 direction: its line budget is tight, so a direction split across platforms is one row whose header
-drops to the bare compass (or place) rather than name a platform only some of its trains use. A
+drops to the bare compass (or place) rather than name a platform only some of its trains use. It
+follows **Group nearby departures** as the list does (maintainer, 2026-10-25): By station, a station's platforms and
+poles go under its one heading, its name alone, a place's modes apart (*Grouped by station*); a change redraws it at once. A
 header costs a line of that budget, and a place is shown only with at least one departure under it,
 and a header is judged against every departure the widget has, not only those that fit: a place
 keeps its name when the others didn't fit. Unlike the app's list, the widget names its station
@@ -1768,8 +1770,9 @@ ahead of a nearer one it couldn't refresh (principle 1: a guessed time is the on
 least), so a ride left with none has no heading; a suspended line's status, with no train to repeat, shows under every ride it
 holds up, as the list never leaves one out. The app saves each ride's ends, in the direction shown, with its pins, every ride's
 at once; until it has (an earlier build's pins, before the app next opens), the whole widget goes by
-stop, so no stop is headed twice (maintainer, 2026-10-15). By stop/platform, and By station, which the widget has no
-station groups for, the widget heads its rides' departures by the stop they board from, so it orders those stops: each in the place of the nearest
+stop, so no stop is headed twice (maintainer, 2026-10-15). By stop/platform the widget heads its rides' departures by the
+stop they board from, and By station by the station, one heading over its platforms and poles, a place's modes apart, as the list's
+station is (maintainer, 2026-10-25). Either way it orders those headings: each in the place of the nearest
 ride boarding there, its rows together and soonest first. Either way a ride or stop the app hasn't
 placed yet follows, soonest first, and the compact widget heads neither. A change to the setting
 redraws the widget at once. The widget can't load routes, so the app saves, with the widget's
