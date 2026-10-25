@@ -1476,7 +1476,10 @@ there shows), its own line with a spinner or dash while it has no train to show,
 ("Warren Street: some routes couldn't be checked", "Warren Street: couldn't check trains"), with "More to Warren Street"
 (its own view) for trains behind "+N more", which stay in their platforms' rows, or stops it didn't fetch. A ride boarding at a station the list hasn't loaded (a farther place) is headed the same way, with how far its own stop is, and
 drawn among the stations by that distance, just before the first one farther away (or after them all), rather than atop the
-list above nearer stations (bug report, 2026-10-24); one with no distance yet leads the list, headed the same way. A faraway
+list above nearer stations (bug report, 2026-10-24); one with no distance yet leads the list, headed the same way. Rides By
+station, such a ride is headed as a station of its own, by the stop it boards from alone, never "from ➔ to", its trains
+starred as a station card's ride's are and its notes naming where it goes, so every heading grouped by station names a
+station (maintainer, 2026-10-25). A faraway
 ride keeps its place at the foot of the list. With
 no platform headings there's one distance per station, so a bus stop says its nearest pole's. Stations go nearest
 first with **no starred band**: a starred row leads its own station rather than lifting it to the top. A station's

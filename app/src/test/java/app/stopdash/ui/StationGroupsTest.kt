@@ -419,6 +419,37 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `rides By station, a ride boarding at no listed station has its trains, to change from too, starred as its own station's`() {
+        // Headed by its station alone (maintainer, 2026-10-25), so its trains wear its star, and those to change from say
+        // where to change as a station card's ride's do, with no heading of their own.
+        val near = group("n", "N1", "N")
+        val change = app.stopdash.domain.JourneyChange("FORK", "Fork", row("M1", "M").copy(destination = "Fork end"))
+        val direct = JourneyCard(
+            FavoriteJourney(JourneyEnd("M1", "Middle"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", ""))),
+            JourneyCardState.Trains(listOf(row("M1", "M").copy(destination = "Far end")), changes = listOf(change)),
+            boardingIds = listOf("M1"),
+        )
+        fun layout(grouping: app.stopdash.domain.RideGrouping) = StationLayout.of(
+            groups = listOf(near),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(direct),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = grouping,
+        )
+        val byStation = layout(app.stopdash.domain.RideGrouping.STATION)
+        val trains = (direct.state as JourneyCardState.Trains)
+        val changeRow = trains.changeStops.single().cards.single().group.rows.single()
+        assertEquals(listOf(direct.journey.key), byStation.ridesAtop.map { it.journey.key })
+        assertEquals(direct.journey, byStation.loneRideRows[trains.rideCard.group.rows.single()])
+        assertEquals(direct.journey, byStation.loneRideRows[changeRow])
+        assertEquals("Fork", byStation.rideChangeAt[changeRow])
+        // By ride, its own heading says which ride: nothing starred here.
+        assertTrue(layout(app.stopdash.domain.RideGrouping.RIDE).loneRideRows.isEmpty())
+    }
+
+    @Test
     fun `a ride boarding at no listed station goes before the first station farther than it, not atop the list`() {
         // A ride whose stop is a farther place's was drawn atop the list, above nearer stations (bug report, 2026-10-24).
         val near = group("n", "N1", "N")

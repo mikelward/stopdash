@@ -6502,6 +6502,35 @@ class MainScreenScreenshotTest {
 
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station with rides By station, a ride boarding at no listed station is headed by its station alone`() {
+        // King's Cross fetched for the ride but not listed near: its ride has no station card to join, so it is headed as a
+        // station of its own, by King's Cross alone, never "King's Cross ➔ Warren Street", its train starred in its card
+        // (maintainer, 2026-10-25).
+        val kingsCross = kingsCrossStPancras().let { stop ->
+            stop.copy(departures = stop.departures.map { if (it.direction.isEmpty()) it.copy(direction = "inbound") else it })
+        }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    groupedByStation(
+                        starred = emptySet(),
+                        stopDistanceMeters = mapOf("490000001E" to 60.0),
+                        stops = listOf(kingsCross, eustonRoadPole("490000001E", "E", dep("18", "18", "outbound", "Sudbury", 240, "", mode = "bus"))),
+                        rideGrouping = RideGrouping.STATION,
+                    )()
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras ➔ Warren Street, Tube")).assertDoesNotExist()
+        composeRule.onNode(stationChevron("King's Cross St. Pancras, Tube")).assertExists()
+        composeRule.onNodeWithText("Brixton").assertExists()
+        composeRule.onNodeWithContentDescription("Favourite ride").assertExists()
+        captureSnapshot("main-station-groups-ride-lone.png", heightPx = 2400)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
     fun `grouped by station with rides By station, a layout standing in draws its own rides until the next is in`() {
         // Rides By station, King's Cross to Warren Street with no train due, then its Brixton train arriving: with the station
         // worker held, the list still draws the ride as the layout drawn has it (its dash), never the newer card against a

@@ -3425,7 +3425,13 @@ private fun DepartureList(
         // trains in the station's card ([joinsStationCard]) and what it says beside them here, under the station's
         // heading ([stationGroupItems]; maintainer, 2026-10-24).
         underStation: Boolean = false,
+        // Grouped by station, rides By station, a ride boarding at no station listed: headed as its own station, by the
+        // stop it boards from alone, its trains starred as a station's card has a ride's ([StationLayout.loneRideRows];
+        // maintainer, 2026-10-25).
+        asStation: Boolean = false,
     ) {
+            // With no heading of its own naming the ride, its notes name its far end.
+            val named = underStation || asStation
             cards.forEachIndexed { index, card ->
                 val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { distanceText(it, system, resources) } }
                 // How far the stop a near ride boards from is, for its heading ([rideMeters]).
@@ -3471,7 +3477,7 @@ private fun DepartureList(
                         // trains may not be in yet.
                         val mode = card.journey.mode
                         StationHeader(
-                            stringResource(R.string.journey_title, card.journey.from.name, card.journey.to.name),
+                            if (asStation) card.journey.from.name else stringResource(R.string.journey_title, card.journey.from.name, card.journey.to.name),
                             // A ride drawn among the stations by its own distance says that ([StationLayout.ridesBefore]).
                             stationDistance ?: distanceSystem?.let { system -> rideMeters[card.journey.key]?.let { distanceText(it, system, resources) } },
                             modes = listOfNotNull(ModeIcon.of(mode)),
@@ -3479,7 +3485,7 @@ private fun DepartureList(
                             folded = folded,
                             onToggle = { foldedStations = if (foldKey in foldedStations) foldedStations - foldKey else foldedStations + foldKey },
                             onOpen = onOpen,
-                            rideForms = card.fromForms to card.toForms,
+                            rideForms = (card.fromForms to card.toForms).takeIf { !asStation },
                         )
                     }
                     if (folded) return@forEachIndexed
@@ -3572,7 +3578,8 @@ private fun DepartureList(
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
                             noTrainsTimetabled = timetabled,
-                            rideDestination = card.journey.to.name.takeIf { underStation && stopCard === card.lineCard },
+                            rideDestination = card.journey.to.name.takeIf { named && stopCard === card.lineCard },
+                            rideRows = if (asStation) stationLayout?.loneRideRows.orEmpty() else emptyMap(),
                             rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                         )
                     }
@@ -3657,13 +3664,18 @@ private fun DepartureList(
                     }
                     // No note says there's no direct train above the trains to change from: the ride's own line
                     // with a dash says so, as a suspended line's status row does.
-                    journeyMore(card, state, named = underStation)
-                    journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onAddRailKey, checking = checking, onHideRideLine = onHideRideLine)
+                    journeyMore(card, state, named = named)
+                    journeyChanges(
+                        card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onAddRailKey, checking = checking,
+                        onHideRideLine = onHideRideLine,
+                        rideRows = if (asStation) stationLayout?.loneRideRows.orEmpty() else emptyMap(),
+                        rideChangeAt = if (asStation) stationLayout?.rideChangeAt.orEmpty() else emptyMap(),
+                    )
                     if (state.incomplete) {
                         item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
                                 // Under its station's heading, with no heading of its own to say which ride.
-                                if (underStation) {
+                                if (named) {
                                     stringResource(R.string.journey_incomplete_named, card.journey.to.name)
                                 } else {
                                     stringResource(R.string.journey_incomplete)
@@ -3694,8 +3706,8 @@ private fun DepartureList(
                             JourneyNote(
                                 // Under its station's heading, with no heading of its own, named by where it goes.
                                 when {
-                                    underStation && card.journey.bus -> stringResource(R.string.journey_not_checked_bus_named, card.journey.to.name)
-                                    underStation -> stringResource(R.string.journey_not_checked_named, card.journey.to.name)
+                                    named && card.journey.bus -> stringResource(R.string.journey_not_checked_bus_named, card.journey.to.name)
+                                    named -> stringResource(R.string.journey_not_checked_named, card.journey.to.name)
                                     card.journey.bus -> stringResource(R.string.journey_not_checked_bus)
                                     else -> stringResource(R.string.journey_not_checked)
                                 },
@@ -3705,7 +3717,7 @@ private fun DepartureList(
                     }
                     JourneyCardState.RouteFailed -> item(key = "journey-note|${card.journey.key}") {
                         JourneyNote(
-                            if (underStation) {
+                            if (named) {
                                 stringResource(R.string.journey_route_failed_named, card.journey.to.name)
                             } else {
                                 stringResource(R.string.journey_route_failed)
@@ -3802,6 +3814,8 @@ private fun DepartureList(
         // ([StationLayout.ridesBefore]), and only one with none leads the list. Not worked out yet: no station, and no ride,
         // drawn yet either, so neither moves when it is.
         val ridesBefore = stationLayout?.ridesBefore.orEmpty()
+        // Rides By station, each of those headed as a station of its own, by where it boards ([journeyItems]).
+        val ridesAsStations = stationLayout?.rideGrouping == RideGrouping.STATION
         val leadingCards = when {
             stationLayout != null -> stationLayout.ridesAtop
             byStation -> emptyList()
@@ -3811,7 +3825,7 @@ private fun DepartureList(
         // Favorite journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
         // Grouped by station, headed as the rest are, its mode's icon and star, even atop (bug report, 2026-10-24).
-        journeyItems(leadingCards, inStation = byStation)
+        journeyItems(leadingCards, inStation = byStation, asStation = ridesAsStations)
         nearbyEmptyNote?.let { note ->
             item(key = "nearby-empty") { JourneyNote(note) }
         }
@@ -4239,7 +4253,7 @@ private fun DepartureList(
                 return
             }
             val above = aboveAt(index)
-            journeyItems(ridesBefore[station].orEmpty(), inStation = true)
+            journeyItems(ridesBefore[station].orEmpty(), inStation = true, asStation = ridesAsStations)
             rideGroupItems(station)
             stationItems(station, closed = closesStation(above))
             if (station in foldedStations) return
@@ -4278,7 +4292,7 @@ private fun DepartureList(
             groupItems(index, group)
         }
         slotItems(listed.size)
-        journeyItems(ridesBefore[StationLayout.AFTER_STATIONS].orEmpty(), inStation = true)
+        journeyItems(ridesBefore[StationLayout.AFTER_STATIONS].orEmpty(), inStation = true, asStation = ridesAsStations)
         // Below the loaded places: the farther stations and bus places, each collapsed until tapped
         // (in [CollapsedPlaces.ordered]'s order).
         for (card in farther) {
@@ -4894,6 +4908,9 @@ internal class StationLayout(
     // it ([rideGroups]). The list draws these, never the newer cards, so a layout standing in draws one snapshot throughout:
     // each ride's trains, notices and notes as it had them (maintainer, 2026-10-25).
     val stationRides: Map<String, List<JourneyCard>> = emptyMap(),
+    // Rides By station, the trains of those boarding at no station drawn here ([ridesBefore], [ridesAtop]), by the row itself,
+    // each with its ride: each such ride is headed as a station of its own, its trains starred as a station card's ride's are.
+    val loneRideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
     // Each station's modes, an icon each before its name, as a search result shows a stop's (maintainer, 2026-10-23).
     val modes: Map<String, List<ModeIcon>> = emptyMap(),
     // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
@@ -5050,14 +5067,32 @@ internal class StationLayout(
                 val station = rideStations[card.journey.key] ?: return@forEach
                 if (inCard || card.journey.key !in joined) stationRides.getOrPut(station) { ArrayList() } += card
             }
+            // Its trains to change from too, each saying where to change as a station card's ride's does ([rideChangeAt]).
+            val loneRideRows = IdentityHashMap<DepartureRow, FavoriteJourney>()
+            val rideChangeAt = IdentityHashMap(rides.changeAt)
+            if (inCard) {
+                (ridesBefore.values.flatten() + ridesAtop).forEach { card ->
+                    val trains = card.state.drawn ?: return@forEach
+                    trains.rideCard.group.rows.forEach { loneRideRows[it] = card.journey }
+                    trains.changeStops.forEach { change ->
+                        change.cards.forEach { stopCard ->
+                            stopCard.group.rows.forEach { row ->
+                                loneRideRows[row] = card.journey
+                                rideChangeAt[row] = change.stopName
+                            }
+                        }
+                    }
+                }
+            }
             return StationLayout(
-                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rides.changeAt, rides.journeys, rideGroups,
+                ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rideChangeAt, rides.journeys, rideGroups,
                 modes = modes,
                 modeIds = modeIds,
                 rideNotices = rideNotices,
                 rideGrouping = rideGrouping,
                 rideJoined = if (inCard) joined else emptySet(),
                 stationRides = stationRides,
+                loneRideRows = if (loneRideRows.isEmpty()) emptyMap() else loneRideRows,
                 firstGroups = members.mapValues { (_, stationGroups) -> stationGroups.first() },
                 members = members,
                 fartherGroups = fartherGroups,
@@ -6215,10 +6250,14 @@ private fun LazyListScope.journeyChanges(
     // A change train's line can be hidden from the ride too: the ride's trains to change from are its own
     // trains, filtered the same way (SPEC *Hiding a line from a ride*; Codex on #874).
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)?,
+    // Headed as a station of its own ([StationLayout.loneRideRows]): no heading per stop to change at, each train starred and
+    // where it goes in brackets, as in a station's card, where to change heard ([StationLayout.rideChangeAt]).
+    rideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
+    rideChangeAt: Map<DepartureRow, String> = emptyMap(),
 ) {
     state.changeStops.forEach { change ->
         val stopId = change.stopId
-        item(key = "journey-change|${card.journey.key}|$stopId") {
+        if (rideRows.isEmpty()) item(key = "journey-change|${card.journey.key}|$stopId") {
             StopGroupHeader(
                 stringResource(R.string.journey_change_at, card.journey.from.name, change.stopName, card.journey.to.name),
                 qualifier = null,
@@ -6245,6 +6284,8 @@ private fun LazyListScope.journeyChanges(
                     onAddRailKey = onAddRailKey,
                     checking = journeyChecking(card.journey, checking),
                     rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
+                    rideRows = rideRows,
+                    rideChangeAt = rideChangeAt,
                 )
             }
         }
