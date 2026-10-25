@@ -256,4 +256,50 @@ class TapHoldsStillTest {
         }
         settle()
     }
+
+    // A ride the list is asked to draw twice, by whichever of its places, drew its heading twice under one key and the
+    // app crashed (bug report, 2026-10-25): it's drawn once, by each grouping. Two copies of it in, one either way round,
+    // stand in for whatever path asked twice.
+    private fun rideTwiceDrawnOnce(stationGroups: Boolean, rideGrouping: RideGrouping) {
+        val ride = FavoriteJourney(JourneyEnd("S1", "Stop 1"), JourneyEnd("D1", "Dest 1"), listOf(LineRef("l1", "", "bus")))
+        val turned = ride.copy(from = ride.to, to = ride.from)
+        composeRule.setContent {
+            listState = rememberListStateFor("set")
+            StopDashTheme(dynamicColor = false) {
+                Surface(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(stops, now.minusSeconds(60)), now, {},
+                            listKey = "set",
+                            listWork = remember { ListWork() },
+                            listState = listState,
+                            stopDistanceMeters = distances,
+                            stationGroups = stationGroups,
+                            journeys = listOf(ride, turned),
+                            onToggleJourney = {},
+                            rideGrouping = rideGrouping,
+                        )
+                    }
+                }
+            }
+        }
+        // Every frame, as each answer lands: a key drawn twice throws.
+        repeat(12) {
+            scheduler.runCurrent()
+            composeRule.waitForIdle()
+        }
+        settle()
+    }
+
+    @Test
+    fun `a ride reaching the list twice is drawn once, grouped by station`() =
+        rideTwiceDrawnOnce(stationGroups = true, rideGrouping = RideGrouping.RIDE)
+
+    @Test
+    fun `a ride reaching the list twice is drawn once, grouped by station with rides by station`() =
+        rideTwiceDrawnOnce(stationGroups = true, rideGrouping = RideGrouping.STATION)
+
+    @Test
+    fun `a ride reaching the list twice is drawn once, grouped by platform`() =
+        rideTwiceDrawnOnce(stationGroups = false, rideGrouping = RideGrouping.RIDE)
 }
