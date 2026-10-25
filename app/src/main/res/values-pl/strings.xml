@@ -30,9 +30,6 @@
     <string name="branch_spoken">przez %1$s</string>
     <string name="branch_spoken_with_terminus">%1$s przez %2$s</string>
     <string name="route_detail_no_live_times">Brak czasów na żywo</string>
-    <string name="route_detail_quiet_why">TfL nie podaje tu czasów na żywo, choć według rozkładu pociągi powinny przyjeżdżać.</string>
-    <string name="route_detail_none_due_why">Według rozkładu w najbliższych 30 minutach nie ma tu pociągów.</string>
-    <string name="route_detail_no_times_why">TfL nie podaje tu czasów na żywo.</string>
     <string name="route_detail_timetable_heading">Rozkład jazdy</string>
     <string name="timetable_scheduled">Według rozkładu</string>
     <string name="timetable_stretch">%1$s–%2$s</string>

@@ -29,9 +29,6 @@
     <string name="branch_spoken">via %1$s</string>
     <string name="branch_spoken_with_terminus">%1$s via %2$s</string>
     <string name="route_detail_no_live_times">Sem horários em tempo real</string>
-    <string name="route_detail_quiet_why">A TfL não tem horários em tempo real aqui, embora o horário tenha comboios previstos.</string>
-    <string name="route_detail_none_due_why">Segundo o horário, não há comboios previstos aqui nos próximos 30 minutos.</string>
-    <string name="route_detail_no_times_why">A TfL não tem horários em tempo real aqui.</string>
     <string name="route_detail_timetable_heading">Horário</string>
     <string name="timetable_scheduled">Programados</string>
     <string name="timetable_stretch">%1$s–%2$s</string>

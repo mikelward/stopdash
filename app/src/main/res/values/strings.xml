@@ -88,12 +88,6 @@
     <string name="branch_spoken_with_terminus">%1$s via %2$s</string>
     <!-- In a route page's countdown's place, on a route chosen from its chips with no train at the stop. -->
     <string name="route_detail_no_live_times">No live times</string>
-    <!-- Under "No live times" on a "?" row's route page: why its times are missing. -->
-    <string name="route_detail_quiet_why">TfL has no live times here, though its timetable has trains due.</string>
-    <!-- Under "No live times" on a dash row's route page: its timetable has nothing due in the next half hour. -->
-    <string name="route_detail_none_due_why">No trains due here in the next 30 minutes, by the timetable.</string>
-    <!-- Under "No live times" on the route page of a line TfL gave no times for, its timetable unsure. -->
-    <string name="route_detail_no_times_why">TfL has no live times here.</string>
     <!-- Heading over each way's next trains by the timetable, on a "?" row's route page. -->
     <string name="route_detail_timetable_heading">Timetable</string>
     <!-- On a route page's timetable, over the day's trains: they're the timetable's, not live. -->

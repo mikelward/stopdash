@@ -8312,29 +8312,15 @@ internal fun RouteDetailScreen(
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
             if (timesMissing && !stale) {
-                // No live times, and why, so a "?" row's page never reads as a clean line (Codex, PR #505). Said of the
-                // row itself, whichever way is chosen: TfL gave it none.
+                // No live times, so a "?" row's page never reads as a clean line (Codex, PR #505), and nothing more: the
+                // timetable below says what's due (maintainer, 2026-10-25). Said of the row itself, whichever way is
+                // chosen: TfL gave it none.
                 Text(
                     text = stringResource(R.string.route_detail_no_live_times),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
-                )
-                Text(
-                    text = stringResource(
-                        // Said by the timetable itself, not the row's mark: a "?" is a train due or a timetable that
-                        // couldn't say (Codex, #1044).
-                        when (quietTimetable?.dueSoon) {
-                            true -> R.string.route_detail_quiet_why
-                            // The dash's "none coming", by the timetable.
-                            false -> R.string.route_detail_none_due_why
-                            null -> R.string.route_detail_no_times_why
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
                 val ways = quietTimetable?.ways.orEmpty()
                 if (ways.isNotEmpty()) {
