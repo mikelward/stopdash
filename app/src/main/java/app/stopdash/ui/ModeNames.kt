@@ -45,3 +45,56 @@ private val MODE_NAMES: Map<String, Int> = mapOf(
     "river-bus" to R.string.mode_name_river_bus,
     "cable-car" to R.string.mode_name_cable_car,
 )
+
+/**
+ * The words a favorite ride's notes and a route page's timetable line name its vehicles by, by its mode's own
+ * name (maintainer, 2026-10-25), as a trip on the way does: a bus, a coach, a tram, a boat, a cable car; a train
+ * on every rail mode, and on one this build doesn't know.
+ */
+internal enum class ModeWords(
+    val checking: Int,
+    val none: Int,
+    val notChecked: Int,
+    val notCheckedNamed: Int,
+    val nextOne: Int,
+    val nextMany: Int,
+) {
+    TRAIN(
+        R.string.journey_checking, R.string.journey_none, R.string.journey_not_checked, R.string.journey_not_checked_named,
+        R.string.route_detail_next_timetabled, R.string.route_detail_next_trains_timetabled,
+    ),
+    BUS(
+        R.string.journey_checking_bus, R.string.journey_none_bus, R.string.journey_not_checked_bus, R.string.journey_not_checked_bus_named,
+        R.string.route_detail_next_bus_timetabled, R.string.route_detail_next_buses_timetabled,
+    ),
+    COACH(
+        R.string.journey_checking_coach, R.string.journey_none_coach, R.string.journey_not_checked_coach, R.string.journey_not_checked_coach_named,
+        R.string.route_detail_next_coach_timetabled, R.string.route_detail_next_coaches_timetabled,
+    ),
+    TRAM(
+        R.string.journey_checking_tram, R.string.journey_none_tram, R.string.journey_not_checked_tram, R.string.journey_not_checked_tram_named,
+        R.string.route_detail_next_tram_timetabled, R.string.route_detail_next_trams_timetabled,
+    ),
+    BOAT(
+        R.string.journey_checking_boat, R.string.journey_none_boat, R.string.journey_not_checked_boat, R.string.journey_not_checked_boat_named,
+        R.string.route_detail_next_boat_timetabled, R.string.route_detail_next_boats_timetabled,
+    ),
+    CABLE_CAR(
+        R.string.journey_checking_cable_car, R.string.journey_none_cable_car, R.string.journey_not_checked_cable_car,
+        R.string.journey_not_checked_cable_car_named, R.string.route_detail_next_cable_car_timetabled,
+        R.string.route_detail_next_cable_cars_timetabled,
+    ),
+    ;
+
+    companion object {
+        /** By TfL's mode id, as the trip on the way names a leg's vehicle. */
+        fun of(mode: String): ModeWords = when (mode.lowercase(Locale.ROOT)) {
+            "bus", "replacement-bus" -> BUS
+            "coach" -> COACH
+            "tram" -> TRAM
+            "river-bus", "river-tour" -> BOAT
+            "cable-car" -> CABLE_CAR
+            else -> TRAIN
+        }
+    }
+}

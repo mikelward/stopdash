@@ -3597,8 +3597,7 @@ private fun DepartureList(
                                 checking,
                                 noneRes = when {
                                     state.changes.isNotEmpty() -> R.string.journey_none_direct
-                                    card.journey.bus -> R.string.journey_none_bus
-                                    else -> R.string.journey_none
+                                    else -> ModeWords.of(card.journey.mode).none
                                 },
                             )
                         }
@@ -3705,11 +3704,9 @@ private fun DepartureList(
                         item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
                                 // Under its station's heading, with no heading of its own, named by where it goes.
-                                when {
-                                    named && card.journey.bus -> stringResource(R.string.journey_not_checked_bus_named, card.journey.to.name)
-                                    named -> stringResource(R.string.journey_not_checked_named, card.journey.to.name)
-                                    card.journey.bus -> stringResource(R.string.journey_not_checked_bus)
-                                    else -> stringResource(R.string.journey_not_checked)
+                                // By its mode's own name: "Couldn't check trams" (maintainer, 2026-10-25).
+                                ModeWords.of(card.journey.mode).let { words ->
+                                    if (named) stringResource(words.notCheckedNamed, card.journey.to.name) else stringResource(words.notChecked)
                                 },
                                 onRetry = onRetryJourneyRoutes.takeIf { state.retry },
                             )
@@ -6296,7 +6293,7 @@ private fun LazyListScope.journeyChanges(
 @Composable
 private fun journeyChecking(journey: FavoriteJourney, checking: Boolean, atOnce: Boolean = false): RowsChecking? =
     if (checking) {
-        RowsChecking(stringResource(if (journey.bus) R.string.journey_checking_bus else R.string.journey_checking), atOnce)
+        RowsChecking(stringResource(ModeWords.of(journey.mode).checking), atOnce)
     } else {
         null
     }
@@ -6686,8 +6683,6 @@ internal fun StopGroupCard(
     val checkingShown = settled(checking != null, at = checking == null || checking.atOnce)
     val staleCheckingShown = settled(checkingStale != null, at = checkingStale == null)
     val rideCheckingShown = settled(checkingRides.isNotEmpty(), at = checkingRides.isEmpty())
-    val rideCheckingSpoken = stringResource(R.string.journey_checking)
-    val rideCheckingBusSpoken = stringResource(R.string.journey_checking_bus)
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
     // (SPEC D8). Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
@@ -6719,7 +6714,7 @@ internal fun StopGroupCard(
                         val cardChecking = checking.takeIf { checkingShown }
                         val rowChecking = cardChecking
                             ?: rowRide?.takeIf { rideCheckingShown && it.key in checkingRides }
-                                ?.let { RowsChecking(if (it.bus) rideCheckingBusSpoken else rideCheckingSpoken) }
+                                ?.let { RowsChecking(stringResource(ModeWords.of(it.mode).checking)) }
                             ?: checkingStale?.takeIf { stale && staleCheckingShown && it.stopIds?.contains(row.stopId) != false }
                         val isStarred = StarredRow.of(row) in starred
                         if (!row.hasTrains) {
@@ -6781,7 +6776,7 @@ internal fun StopGroupCard(
                                         val timetabled = noTrainsTimetabled.text.takeIf { it.isNotEmpty() }
                                         val spoken = timetabled?.let {
                                             stringResource(
-                                                if (row.mode.equals("bus", ignoreCase = true)) R.string.route_detail_next_bus_timetabled else R.string.route_detail_next_timetabled,
+                                                ModeWords.of(row.mode).nextOne,
                                                 it,
                                             )
                                         } ?: noTrainsSpoken
@@ -8407,15 +8402,11 @@ internal fun RouteDetailScreen(
                 // Nothing live yet (a line not open for the morning): when the timetable runs the next few,
                 // said as the timetable's, never as a countdown (maintainer, 2026-10-21). Their text written on the
                 // worker with them ([TimetabledTimes]).
-                val bus = row.mode.equals("bus", ignoreCase = true)
+                // By its mode's own name: "Next tram 05:41 (timetable)" (maintainer, 2026-10-25).
+                val words = ModeWords.of(row.mode)
                 Text(
                     text = stringResource(
-                        when {
-                            nextTrains.times.size == 1 && bus -> R.string.route_detail_next_bus_timetabled
-                            nextTrains.times.size == 1 -> R.string.route_detail_next_timetabled
-                            bus -> R.string.route_detail_next_buses_timetabled
-                            else -> R.string.route_detail_next_trains_timetabled
-                        },
+                        if (nextTrains.times.size == 1) words.nextOne else words.nextMany,
                         nextTrains.text,
                     ),
                     style = MaterialTheme.typography.titleMedium,
