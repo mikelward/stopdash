@@ -3422,6 +3422,9 @@ private fun DepartureList(
     // the station is, and folding apart from it, as a ride with trains is ([rideGroupItems]; maintainer, 2026-10-23).
     // With no [stationDistance], a ride boarding at no listed station, drawn among them by how far it is
     // ([StationLayout.ridesBefore]), headed the same way with its own distance.
+    // The rides drawn so far in this pass over the list (cleared as each starts): each is drawn once, whichever of its
+    // places asks first, as its items are keyed by the ride and a key drawn twice crashes the list (bug report, 2026-10-25).
+    val drawnRides = HashSet<String>()
     fun LazyListScope.journeyItems(
         cards: List<JourneyCard>,
         farMeters: Map<String, Double>? = null,
@@ -3439,6 +3442,7 @@ private fun DepartureList(
             // With no heading of its own naming the ride, its notes name its far end.
             val named = underStation || asStation
             cards.forEachIndexed { index, card ->
+                if (!drawnRides.add(card.journey.key)) return@forEachIndexed
                 val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { distanceText(it, system, resources) } }
                 // How far the stop a near ride boards from is, for its heading ([rideMeters]).
                 val rideDistance = distanceSystem?.takeIf { !inStation || card.journey.bus }
@@ -3751,6 +3755,7 @@ private fun DepartureList(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = topInset),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        drawnRides.clear()
         // A platform or station view's buttons, above everything in it (maintainer, 2026-10-16).
         viewActions?.let { actions -> item(key = "view-actions") { ViewActionsRow(actions) } }
         // A closure alert keys on its stop and hub so a recycled row can't carry another
@@ -4233,6 +4238,9 @@ private fun DepartureList(
         // notices and one card, drawn with the station's first group.
         // The stations drawn from their own cards while the layout standing in was worked out before them.
         val standInStations = HashSet<String>()
+        // The laid-out stations drawn, each once, whichever of its groups reaches it first: its heading, card and rides are
+        // keyed by it, and a key drawn twice crashes the list (bug report, 2026-10-25).
+        val drawnStations = HashSet<String>()
         fun stationGroupItems(index: Int) {
             val station = groupStation(planned[index])
             if (index > 0 && groupStation(planned[index - 1]) == station) return
@@ -4255,6 +4263,7 @@ private fun DepartureList(
                 }
                 return
             }
+            if (!drawnStations.add(station)) return
             val above = aboveAt(index)
             journeyItems(ridesBefore[station].orEmpty(), inStation = true, asStation = ridesAsStations)
             rideGroupItems(station)
