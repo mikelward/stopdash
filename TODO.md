@@ -5527,6 +5527,11 @@ and these carry the rest as their own PRs:
       - [ ] **Device check:** the icon on a watch face and in the launcher, a tap opening the trip,
             the permission prompt, and the activity going when the trip ends or the phone stops.
 
+- [ ] **The watch follows the grouping settings, as the widget now does** (maintainer, 2026-10-25: the widget
+      and watch look like the main view unless decided otherwise). The watch's headings are already bold, but
+      it always groups by stop: sync Group nearby departures and Group favorite rides to it, group by station
+      there with `StopGrouping.groupByStation`, and lead a station's heading with its mode's icon.
+
 ### Sharing a place in — follow-ups
 
 - [x] **Follow a Google Maps share's link to its exact spot** (maintainer, 2026-10-13). A full link is
