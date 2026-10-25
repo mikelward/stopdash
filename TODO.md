@@ -5240,8 +5240,10 @@ and these carry the rest as their own PRs:
       (offline, or after a failed fetch), so the animation never stands for work that isn't happening.
 - [ ] **Translations pass** (standing): once the maintainer has confirmed them on a device,
       translate the strings marked `TODO: translate` into every language (terms from
-      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*). Last run 2026-10-23
-      (every string then marked, the shared module's first locale files included). Open choices
+      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*). Last run 2026-10-25
+      (every string then marked, and the reworded "Add favorite ride" / "Add favorite place"
+      rewritten to match; a coach is a long-distance coach in each language: Fernbus, car, pullman,
+      autocarro expresso, ônibus rodoviário, şehirlerarası otobüs). Open choices
       from it, for a native read: `line_label` is lowercase in Polish and Romanian, so a line
       named alone in Settings' lists starts lowercase, and capitalized in French, Spanish,
       Italian and Portuguese, so "Masquer Ligne Victoria" carries a capital after the verb;

@@ -32,17 +32,13 @@
     <!-- Takes a pin off a departure row pinned before pins went (maintainer, 2026-10-23: nothing new is
          pinned): its menu item, and the label of its route page's filled star. -->
     <string name="unstar">Unpin from top</string>
-    <!-- TODO: translate -->
     <!-- A departure row's long press and its route page's menu: the route page asking "To…", where a tap on a stop
          saves the favorite ride from the row's stop to it (SPEC *Journeys*); the long-press label a screen reader hears. -->
-    <!-- TODO: translate -->
-    <string name="add_favorite_ride" tools:ignore="MissingTranslation">Add favorite ride…</string>
+    <string name="add_favorite_ride">Add favorite ride…</string>
     <!-- The route page's title while picking where a favorite ride goes, its stops under "To…". -->
-    <!-- TODO: translate -->
-    <string name="route_pick_title" tools:ignore="MissingTranslation">Add favorite ride</string>
-    <!-- TODO: translate -->
+    <string name="route_pick_title">Add favorite ride</string>
     <!-- Said on the list once a ride picked that way is saved: %1$s and %2$s are its ends, as Add's notes name them. -->
-    <string name="ride_added" tools:ignore="MissingTranslation">Added %1$s ⇄ %2$s</string>
+    <string name="ride_added">Added %1$s ⇄ %2$s</string>
     <!-- Transient snackbar when saving a pin/unpin fails (storage full, an IO error), so a
          tap that didn't take isn't silent. -->
     <string name="star_write_failed">Couldn\'t save your pin</string>
@@ -66,26 +62,18 @@
     <string name="route_detail_next_trains_timetabled">Next trains %1$s (timetable)</string>
     <!-- The same for a bus ride. -->
     <string name="route_detail_next_buses_timetabled">Next buses %1$s (timetable)</string>
-    <!-- TODO: translate -->
     <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a coach. -->
-    <string name="route_detail_next_coach_timetabled" tools:ignore="MissingTranslation">Next coach %1$s (timetable)</string>
-    <!-- TODO: translate -->
-    <string name="route_detail_next_coaches_timetabled" tools:ignore="MissingTranslation">Next coaches %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_coach_timetabled">Next coach %1$s (timetable)</string>
+    <string name="route_detail_next_coaches_timetabled">Next coaches %1$s (timetable)</string>
     <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a tram. -->
-    <string name="route_detail_next_tram_timetabled" tools:ignore="MissingTranslation">Next tram %1$s (timetable)</string>
-    <!-- TODO: translate -->
-    <string name="route_detail_next_trams_timetabled" tools:ignore="MissingTranslation">Next trams %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_tram_timetabled">Next tram %1$s (timetable)</string>
+    <string name="route_detail_next_trams_timetabled">Next trams %1$s (timetable)</string>
     <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a boat. -->
-    <string name="route_detail_next_boat_timetabled" tools:ignore="MissingTranslation">Next boat %1$s (timetable)</string>
-    <!-- TODO: translate -->
-    <string name="route_detail_next_boats_timetabled" tools:ignore="MissingTranslation">Next boats %1$s (timetable)</string>
-    <!-- TODO: translate -->
+    <string name="route_detail_next_boat_timetabled">Next boat %1$s (timetable)</string>
+    <string name="route_detail_next_boats_timetabled">Next boats %1$s (timetable)</string>
     <!-- As route_detail_next_bus_timetabled and route_detail_next_buses_timetabled, for a cable car. -->
-    <string name="route_detail_next_cable_car_timetabled" tools:ignore="MissingTranslation">Next cable car %1$s (timetable)</string>
-    <!-- TODO: translate -->
-    <string name="route_detail_next_cable_cars_timetabled" tools:ignore="MissingTranslation">Next cable cars %1$s (timetable)</string>
+    <string name="route_detail_next_cable_car_timetabled">Next cable car %1$s (timetable)</string>
+    <string name="route_detail_next_cable_cars_timetabled">Next cable cars %1$s (timetable)</string>
     <!-- A route chip atop a route page, for one of two ways to one place that only a stop tells apart:
          %1$s is where it goes, %2$s the first stop it calls at that the other doesn't. -->
     <string name="route_choice_via">%1$s via %2$s</string>
@@ -343,9 +331,8 @@
     <string name="trip_lines_unknown_note">Some lines couldn\'t be checked, so their times may be wrong.</string>
     <!-- A disruption chip on the trip's lines page for an alert the rider dismissed; %1$s is TfL's status. -->
     <string name="trip_lines_dismissed">%1$s · dismissed</string>
-    <!-- TODO: translate -->
     <!-- Under the trip's lines: a stop's notice, led by the stop's name (1) as nothing else on the page names it; (2) is TfL's notice. -->
-    <string name="trip_lines_stop_notice" tools:ignore="MissingTranslation">%1$s: %2$s</string>
+    <string name="trip_lines_stop_notice">%1$s: %2$s</string>
     <!-- Under the trip's lines: the stops whose closures couldn't be checked, joined. -->
     <string name="trip_lines_stops_unknown">Stops not checked: %1$s</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->
@@ -394,6 +381,10 @@
     <string name="mode_name_tram">Tram</string>
     <string name="mode_name_river_bus">River Bus</string>
     <string name="mode_name_cable_car">Cable car</string>
+    <!-- Modes a search row names in words, having no icon of their own. -->
+    <string name="mode_name_coach">Coach</string>
+    <string name="mode_name_international_rail">International rail</string>
+    <string name="mode_name_replacement_bus">Replacement bus</string>
     <!-- A tube or named Overground line as it's named alone or mid-sentence: "Hide Northern line",
          "Northern line closed", the hidden lines' banner and Settings' lists. %1$s is TfL's name for
          the line, kept as TfL spells it and never translated: only "line" is, e.g. "Northern" →
@@ -596,7 +587,6 @@
     <!-- A stop's departures opened from its details: back to the details, in the bar where To… would be. -->
     <string name="station_browse_back">Back</string>
     <string name="line_stop_open_line">Open %1$s</string>
-    <!-- TODO: translate -->
     <string name="line_stop_favorite">Add favorite place</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
          places, streets and postcodes too. -->
@@ -811,10 +801,7 @@
     <!-- Under the Recent heading when a removal couldn't be saved on the device, so the row is still listed. -->
     <!-- A search row's long press: what it opens, for TalkBack, and its menu's favorite items. -->
     <string name="station_search_row_menu_action">More options</string>
-    <!-- TODO: translate -->
-    <string name="station_search_add_favorite" tools:ignore="MissingTranslation">Add favorite place</string>
-    <!-- TODO: translate -->
-    <string name="station_search_remove_favorite" tools:ignore="MissingTranslation">Remove favorite place</string>
+    <string name="station_search_remove_favorite">Remove favorite place</string>
     <string name="station_search_remove_recent_failed">Couldn\'t remove that from Recent</string>
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
@@ -1144,15 +1131,13 @@
          grouping settings share it: a bus boards at a stop, a train at a platform. -->
     <string name="settings_nearby_grouping_title">Group nearby departures</string>
     <string name="settings_nearby_grouping_platform">By stop/platform</string>
+    <!-- Also Group favorite rides' By station, which says the same. -->
     <string name="settings_nearby_grouping_station">By station</string>
     <!-- How the near-me list groups a favorite ride's departures: under the ride's own name (the default),
          or under each bus stop or platform the ride leaves from, starred and saying where it goes. -->
     <string name="settings_ride_grouping_title">Group favorite rides</string>
     <string name="settings_ride_grouping_ride">By ride</string>
     <string name="settings_ride_grouping_stop">By stop/platform</string>
-    <!-- TODO: translate -->
-    <!-- A favorite ride's trains in their station's own group, starred, with no ride heading (maintainer, 2026-10-23). -->
-    <string name="settings_ride_grouping_station" tools:ignore="MissingTranslation">By station</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
@@ -1167,11 +1152,9 @@
     <string name="settings_text_size_value">%1$d%%</string>
     <string name="settings_text_size_reset">Reset</string>
     <string name="settings_text_size_content_description">Text size, %1$d percent</string>
-    <!-- TODO: translate -->
     <!-- The buttons either side of the text size slider, as a screen reader names them: each moves the size one percent. -->
-    <string name="settings_text_size_smaller" tools:ignore="MissingTranslation">Smaller text</string>
-    <!-- TODO: translate -->
-    <string name="settings_text_size_larger" tools:ignore="MissingTranslation">Larger text</string>
+    <string name="settings_text_size_smaller">Smaller text</string>
+    <string name="settings_text_size_larger">Larger text</string>
     <string name="settings_telemetry_title">Help make StopDash better</string>
     <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, trips or precise location.</string>
     <!-- The same question put once atop the near-me list to an install that never answered it
@@ -1284,7 +1267,6 @@
          stop*), and that button as TalkBack reads it (%1$s is the stop's name). -->
     <string name="action_plan_via">Via</string>
     <string name="action_plan_via_spoken">Plan a trip via %1$s</string>
-    <!-- TODO: translate -->
     <string name="action_star_journey">Add favorite ride</string>
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->
@@ -1319,63 +1301,38 @@
     <!-- A journey's far end whose closure check failed: it may be closed. %1$s is the stop's name. -->
     <string name="journey_destination_unchecked">Couldn\'t check %1$s for closures</string>
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
-    <!-- TODO: translate -->
     <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, some of whose routes couldn't be checked. -->
-    <string name="journey_incomplete_named" tools:ignore="MissingTranslation">%1$s: some routes couldn\'t be checked</string>
-    <!-- TODO: translate -->
+    <string name="journey_incomplete_named">%1$s: some routes couldn\'t be checked</string>
     <!-- Under a station's heading, grouped by station: opens the own view of a favorite ride there, named by its far end, which boards at more stops than the list fetched. -->
-    <string name="journey_more_named" tools:ignore="MissingTranslation">More to %1$s</string>
-    <!-- TODO: translate -->
+    <string name="journey_more_named">More to %1$s</string>
     <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, whose trains couldn't be checked. -->
-    <string name="journey_not_checked_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check trains</string>
-    <!-- TODO: translate -->
+    <string name="journey_not_checked_named">%1$s: couldn\'t check trains</string>
     <!-- As journey_not_checked_named, for a bus ride. -->
-    <string name="journey_not_checked_bus_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check buses</string>
-    <!-- TODO: translate -->
+    <string name="journey_not_checked_bus_named">%1$s: couldn\'t check buses</string>
     <!-- The journey-card notes for a coach ride, as for a bus ride. -->
-    <string name="journey_checking_coach" tools:ignore="MissingTranslation">Checking coaches…</string>
-    <!-- TODO: translate -->
-    <string name="journey_none_coach" tools:ignore="MissingTranslation">No coaches to %1$s soon</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_coach" tools:ignore="MissingTranslation">Couldn\'t check coaches</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_coach_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check coaches</string>
-    <!-- TODO: translate -->
+    <string name="journey_checking_coach">Checking coaches…</string>
+    <string name="journey_none_coach">No coaches to %1$s soon</string>
+    <string name="journey_not_checked_coach">Couldn\'t check coaches</string>
+    <string name="journey_not_checked_coach_named">%1$s: couldn\'t check coaches</string>
     <!-- The journey-card notes for a tram ride, as for a bus ride. -->
-    <string name="journey_checking_tram" tools:ignore="MissingTranslation">Checking trams…</string>
-    <!-- TODO: translate -->
-    <string name="journey_none_tram" tools:ignore="MissingTranslation">No trams to %1$s soon</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_tram" tools:ignore="MissingTranslation">Couldn\'t check trams</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_tram_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check trams</string>
-    <!-- TODO: translate -->
+    <string name="journey_checking_tram">Checking trams…</string>
+    <string name="journey_none_tram">No trams to %1$s soon</string>
+    <string name="journey_not_checked_tram">Couldn\'t check trams</string>
+    <string name="journey_not_checked_tram_named">%1$s: couldn\'t check trams</string>
     <!-- The journey-card notes for a boat ride, as for a bus ride. -->
-    <string name="journey_checking_boat" tools:ignore="MissingTranslation">Checking boats…</string>
-    <!-- TODO: translate -->
-    <string name="journey_none_boat" tools:ignore="MissingTranslation">No boats to %1$s soon</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_boat" tools:ignore="MissingTranslation">Couldn\'t check boats</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_boat_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check boats</string>
-    <!-- TODO: translate -->
+    <string name="journey_checking_boat">Checking boats…</string>
+    <string name="journey_none_boat">No boats to %1$s soon</string>
+    <string name="journey_not_checked_boat">Couldn\'t check boats</string>
+    <string name="journey_not_checked_boat_named">%1$s: couldn\'t check boats</string>
     <!-- The journey-card notes for a cable car ride, as for a bus ride. -->
-    <string name="journey_checking_cable_car" tools:ignore="MissingTranslation">Checking cable cars…</string>
-    <!-- TODO: translate -->
-    <string name="journey_none_cable_car" tools:ignore="MissingTranslation">No cable cars to %1$s soon</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_cable_car" tools:ignore="MissingTranslation">Couldn\'t check cable cars</string>
-    <!-- TODO: translate -->
-    <string name="journey_not_checked_cable_car_named" tools:ignore="MissingTranslation">%1$s: couldn\'t check cable cars</string>
-    <!-- TODO: translate -->
+    <string name="journey_checking_cable_car">Checking cable cars…</string>
+    <string name="journey_none_cable_car">No cable cars to %1$s soon</string>
+    <string name="journey_not_checked_cable_car">Couldn\'t check cable cars</string>
+    <string name="journey_not_checked_cable_car_named">%1$s: couldn\'t check cable cars</string>
     <!-- Under a station's heading, grouped by station: a favorite ride there, named by its far end, whose route couldn't be loaded. -->
-    <string name="journey_route_failed_named" tools:ignore="MissingTranslation">%1$s: couldn\'t load the route</string>
-    <!-- TODO: translate -->
-    <string name="action_unstar_journey" tools:ignore="MissingTranslation">Remove favorite ride</string>
+    <string name="journey_route_failed_named">%1$s: couldn\'t load the route</string>
+    <string name="action_unstar_journey">Remove favorite ride</string>
     <string name="route_stop_journey_starred">Favorite ride</string>
-    <!-- A stop's details opened from a route page's stop: its star, saving the journey there as a favorite. -->
-    <!-- TODO: translate -->
-    <string name="station_journey_add" tools:ignore="MissingTranslation">Add favorite ride</string>
     <string name="station_journey_write_failed">Couldn\'t save that change</string>
     <!-- Said app-wide when that change failed after its stop's page was left. -->
     <string name="station_journey_write_failed_away">Couldn\'t save your favorite ride</string>
@@ -1407,10 +1364,6 @@
     <!-- A star after a row's destination on a station drawn as one card: its trains are a favorite ride's,
          for a screen reader. -->
     <string name="ride_row_star">Favorite ride</string>
-    <!-- TODO: translate -->
-    <!-- A favorite ride's train to change from, its destination in brackets in the ride's group grouped by station: %1$s
-         is the stop to change at, which only a screen reader hears (maintainer, 2026-10-23). -->
-    <string name="ride_row_change_spoken" tools:ignore="MissingTranslation">Change at %1$s</string>
 
     <!-- Bug report (SPEC Privacy). Overflow item, then the consent screen that spells out what
          leaves the device before anything is shared. The copy is deliberately plain that it
@@ -1452,7 +1405,8 @@
     <!-- A train on the trip's board that leaves the plan: its heading, in brackets, and its times. -->
     <string name="on_the_way_off_plan_heading">(%1$s)</string>
     <string name="on_the_way_off_plan_times">%1$s min</string>
-    <!-- Under an opened off-plan row: where the rider changes back onto their route. -->
+    <!-- Under an opened off-plan row: where the rider changes back onto their route. Also what a screen reader
+         hears for a favorite ride's train to change from, in its station's group. -->
     <string name="on_the_way_off_plan_change">Change at %1$s</string>
     <string name="on_the_way_take_this">Take this one</string>
     <!-- Shows the branches off the trip's ride: another way the rider may be taking. -->

@@ -835,7 +835,7 @@ internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (()
                     area,
                     Modifier.widthIn(max = modesMax),
                     modes = match.modeIcons,
-                    extra = match.otherModesLabel,
+                    extra = rememberModesSpoken(match.otherModes).ifEmpty { null },
                 )
             }
         }

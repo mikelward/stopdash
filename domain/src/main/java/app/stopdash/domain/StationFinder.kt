@@ -30,7 +30,8 @@ data class StationMatch(
     // no list work. A copy that changes [modes] goes through [withModes] instead. What a screen reader
     // hears for the modes is said by the row, in the app's language (`modesSpoken` in the app).
     val modeIcons: List<ModeIcon> = ModeIcon.of(modes),
-    val otherModesLabel: String? = ModeIcon.others(modes).takeIf { it.isNotEmpty() }?.let { modesLabel(it) },
+    // The modes no icon stands for, which the row names in the app's language (`modesSpoken` in the app).
+    val otherModes: List<String> = ModeIcon.others(modes),
 ) {
     /**
      * This row's identity in a list: the [id], or for an interchange's station name, the id and

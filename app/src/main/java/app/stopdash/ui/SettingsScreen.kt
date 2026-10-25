@@ -451,7 +451,7 @@ fun SettingsScreen(
                     options = listOf(
                         RideGrouping.RIDE to stringResource(R.string.settings_ride_grouping_ride),
                         RideGrouping.STOP to stringResource(R.string.settings_ride_grouping_stop),
-                        RideGrouping.STATION to stringResource(R.string.settings_ride_grouping_station),
+                        RideGrouping.STATION to stringResource(R.string.settings_nearby_grouping_station),
                     ),
                     selected = rideGrouping,
                     onSelect = onRideGroupingChange,

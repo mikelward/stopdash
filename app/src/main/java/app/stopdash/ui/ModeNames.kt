@@ -44,6 +44,9 @@ private val MODE_NAMES: Map<String, Int> = mapOf(
     "tram" to R.string.mode_name_tram,
     "river-bus" to R.string.mode_name_river_bus,
     "cable-car" to R.string.mode_name_cable_car,
+    "coach" to R.string.mode_name_coach,
+    "international-rail" to R.string.mode_name_international_rail,
+    "replacement-bus" to R.string.mode_name_replacement_bus,
 )
 
 /**

@@ -11,7 +11,7 @@ class ModeIconTest {
         // An interchange's modes in TfL's order (a big east London hub, say).
         val match = StationMatch("940GZZZETA", "Zeta", listOf("bus", "elizabeth-line", "dlr", "overground", "tube", "national-rail"))
         assertEquals(listOf(ModeIcon.TUBE, ModeIcon.RAIL, ModeIcon.BUS), match.modeIcons)
-        assertNull(match.otherModesLabel)
+        assertEquals(emptyList<String>(), match.otherModes)
         assertEquals("Bus · Elizabeth · DLR · Overground · Tube · National Rail", modesLabel(match.modes))
     }
 
@@ -19,7 +19,7 @@ class ModeIconTest {
     fun `a mode with no icon is named, and a blank one is dropped`() {
         val match = StationMatch("940GZZZETA", "Zeta", listOf("tube", "some-mode", ""))
         assertEquals(listOf(ModeIcon.TUBE), match.modeIcons)
-        assertEquals("Some mode", match.otherModesLabel)
+        assertEquals(listOf("some-mode"), match.otherModes)
         assertEquals("Tube · Some mode", modesLabel(match.modes))
     }
 
@@ -29,11 +29,11 @@ class ModeIconTest {
         // A copy for a position (a click handler's "Add favorite") reuses the very lists: no list work.
         val placed = match.copy(latitude = 51.5, longitude = -0.12)
         assertSame(match.modeIcons, placed.modeIcons)
-        assertSame(match.otherModesLabel, placed.otherModesLabel)
+        assertSame(match.otherModes, placed.otherModes)
         // New modes are worked out afresh.
         val tram = match.withModes(listOf("tram"))
         assertEquals(listOf(ModeIcon.TRAM), tram.modeIcons)
-        assertNull(tram.otherModesLabel)
+        assertEquals(emptyList<String>(), tram.otherModes)
         assertEquals(StationMatch("490000001A", "Zeta Church", listOf("tram")), tram)
     }
 
