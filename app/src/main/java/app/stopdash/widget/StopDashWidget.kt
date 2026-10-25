@@ -66,6 +66,7 @@ import app.stopdash.domain.Dismissals
 import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredRowsStore
+import app.stopdash.data.NearbyGroupingSetting
 import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.domain.Countdown
@@ -81,6 +82,7 @@ import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.EvenShortening
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.NearbyGrouping
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.WidgetJourney
@@ -252,9 +254,13 @@ open class StopDashWidget internal constructor(
         // same in-process setting the list uses, so the widget leaves out exactly what the list
         // does, even a change that failed to save and holds only until restart. Its read waits for
         // the stored set on a cold start and is bounded, so it can delay this render but never hang it.
-        // Settings → Group favorite rides is read the same way, and alongside it, so a stalled store holds
-        // the render for one bounded wait, not one per setting.
-        val (hiddenModes, grouping) = loadedTogether({ HiddenModesSetting.loaded() }, { RideGroupingSetting.loaded() })
+        // Settings → Group favorite rides and Group nearby departures are read the same way, and alongside it,
+        // so a stalled store holds the render for one bounded wait, not one per setting.
+        val (hiddenModes, groupings) = loadedTogether(
+            { HiddenModesSetting.loaded() },
+            { loadedTogether({ RideGroupingSetting.loaded() }, { NearbyGroupingSetting.loaded() }) },
+        )
+        val (grouping, nearbyGrouping) = groupings
         // By ride, each ride is headed as the app heads it ("From ➔ To", spoken "From to To"); by stop,
         // its rows go under the stop they board from.
         val rideTitle: ((String, String) -> GroupHeader)? = if (grouping == RideGrouping.RIDE) {
@@ -345,6 +351,8 @@ open class StopDashWidget internal constructor(
         }
         val models = widgetModels(
             shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle, locale = widgetLocale(context),
+            ridesByStation = grouping == RideGrouping.STATION,
+            nearbyByStation = nearbyGrouping == NearbyGrouping.STATION,
             hiddenLabel = { hiddenGroupsLabel(it, context.resources) },
             countdownWords = countdownWords(context.resources),
             headerWords = headerWords(context.resources),
@@ -428,6 +436,9 @@ internal suspend fun widgetModels(
     bare: Boolean = false,
     // How a ride is headed when the rides are grouped by ride ([widgetModel]); null groups them by stop.
     rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
+    // Grouped by station rather than by stop ([widgetModel]): the rides' and the nearby departures'.
+    ridesByStation: Boolean = false,
+    nearbyByStation: Boolean = false,
     // The language the stamp's weekday is said in ([widgetStamp]): the app's.
     locale: Locale = Locale.UK,
     // Names hidden modes for the empty widget ([widgetModel]), on the worker with the rest.
@@ -448,6 +459,8 @@ internal suspend fun widgetModels(
             hiddenLabel = hiddenLabel,
             tap = tap,
             rideTitle = rideTitle,
+            ridesByStation = ridesByStation,
+            nearbyByStation = nearbyByStation,
             locale = locale,
             countdownWords = countdownWords,
             headerWords = headerWords,
@@ -648,6 +661,12 @@ internal fun widgetModel(
     // "From ➔ To", and what a screen reader says for it) over its own trains, in the app's order
     // ([pinRides]); null groups the rides' rows by the stop they board from ([pinJourneys]).
     rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
+    // Settings → Group favorite rides set to By station: with no ride title, the rides' rows go under the
+    // station they board at, one heading per station rather than per platform or pole
+    // ([StopGrouping.groupByStation]).
+    ridesByStation: Boolean = false,
+    // Settings → Group nearby departures set to By station: the nearby rows likewise.
+    nearbyByStation: Boolean = false,
     // The language the stamp's weekday is said in ([widgetStamp]): the app's.
     locale: Locale = Locale.UK,
     // The countdowns' words, in the app's language: a line's stacking is decided from the countdown it draws.
@@ -776,8 +795,17 @@ internal fun widgetModel(
         }
     fun grouped(rows: List<DepartureRow>): List<StopGroup> {
         val (band, rest) = rows.partition { it in journeyBand }
-        val bandGroups = if (rides != null) byRide(band) else StopGrouping.groupByStop(band, warningsLead = false)
-        val groups = bandGroups + StopGrouping.groupByStop(rest, warningsLead = false)
+        val bandGroups = when {
+            rides != null -> byRide(band)
+            ridesByStation -> StopGrouping.groupByStation(band, warningsLead = false)
+            else -> StopGrouping.groupByStop(band, warningsLead = false)
+        }
+        val restGroups = if (nearbyByStation) {
+            StopGrouping.groupByStation(rest, warningsLead = false)
+        } else {
+            StopGrouping.groupByStop(rest, warningsLead = false)
+        }
+        val groups = bandGroups + restGroups
         // The full widget always names its station, even when it shows only one (maintainer,
         // 2026-10-11): unlike the app, it has no other cue to where its departures are. The compact
         // widget names none ([WidgetGeometry.bare]). A place running on from the journey band into the
@@ -895,7 +923,7 @@ internal fun widgetModel(
     // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
     // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
     if (twoColumns && columnBreak == null) {
-        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, locale = locale, countdownWords = countdownWords, headerWords = headerWords)
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, hiddenLabel, tap, columns = false, rideTitle = rideTitle, ridesByStation = ridesByStation, nearbyByStation = nearbyByStation, locale = locale, countdownWords = countdownWords, headerWords = headerWords)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.

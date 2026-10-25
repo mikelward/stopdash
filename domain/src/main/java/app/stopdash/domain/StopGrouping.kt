@@ -209,6 +209,29 @@ object StopGrouping {
     }
 
     /**
+     * [rows] grouped by station, as the widget shows them where the rider groups nearby departures
+     * or favorite rides by station (SPEC *Grouped by station*): one group per place and mode ([ModeIcon]),
+     * its platforms' and poles' groups from [groupByStop] run together under the place's name alone, in
+     * [groupByStop]'s order, a place's stations together. A header is drawn where there's more than one station to tell
+     * apart (counting a closure's stop, as [groupByStop] does) or where the station is split by mode.
+     */
+    @WorkerThread
+    fun groupByStation(rows: List<DepartureRow>, warningsLead: Boolean = true): List<StopGroup> {
+        val groups = groupByStop(rows, warningsLead = warningsLead, splitByMode = true)
+        val merged = LinkedHashMap<String, StopGroup>()
+        for (group in groups) {
+            val mode = group.rows.first().mode.let { ModeIcon.of(it)?.name ?: it }
+            val key = "${group.placeKey}\u0001$mode"
+            merged[key] = merged[key]?.let { it.copy(rows = it.rows + group.rows) }
+                ?: group.copy(key = "station\u0001$key", qualifier = null, splitKey = "")
+        }
+        val closurePlaces = rows.filter { it.stopDisruption != null }.mapTo(HashSet()) { clusterKeyOf(it, emptySet()) }
+        val places = merged.values.mapTo(HashSet()) { it.placeKey } + closurePlaces
+        val showHeader = merged.size > 1 || places.size > 1
+        return merged.values.map { it.copy(showHeader = showHeader) }
+    }
+
+    /**
      * The stops that head their own group because they carry a row with no countdown (a line-status
      * warning): see [groupByStop]. Shared with [DepartureRows.nearbyDeduped], which must key places
      * exactly as the headers do.

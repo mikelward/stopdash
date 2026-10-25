@@ -58,6 +58,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 private const val LOGCAT_TAG = "StopDash"
@@ -405,10 +406,9 @@ open class StopdashApp : Application() {
                     }
                 }
         }
-        // Likewise when Group favorite rides changes, which the widget follows too.
+        // Likewise when Group favorite rides or Group nearby departures changes, which the widget follows too.
         applicationScope.launch {
-            RideGroupingSetting.changes
-                .drop(1)
+            merge(RideGroupingSetting.changes.drop(1), NearbyGroupingSetting.changes.drop(1))
                 .collect {
                     try {
                         redrawWidgets(this@StopdashApp)

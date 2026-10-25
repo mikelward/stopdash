@@ -749,4 +749,32 @@ class StopGroupingTest {
         assertEquals(listOf(listOf("T", "E"), listOf("O")), byMode.map { group -> group.rows.map { it.stopId } })
         assertEquals(2, byMode.map { it.key }.distinct().size)
     }
+    @Test
+    fun `grouped by station, a place's platforms run together under its name, each mode apart`() {
+        val rows = listOf(
+            row("T1", "Highbury", clusterId = "HIG", lineId = "victoria", direction = "outbound", platform = "Southbound - Platform 3", mode = "tube"),
+            row("B", "Upper Street", clusterId = "UPS", lineId = "19", mode = "bus", stopLetter = "K"),
+            row("T2", "Highbury", clusterId = "HIG", lineId = "victoria", direction = "inbound", platform = "Northbound - Platform 4", mode = "tube"),
+            row("O", "Highbury", clusterId = "HIG", lineId = "mildmay", platform = "Platform 2", mode = "overground"),
+        )
+        // By stop/platform, as a check that the fixture splits: each platform its own group.
+        assertTrue(StopGrouping.groupByStop(rows).size >= 4)
+        val stations = StopGrouping.groupByStation(rows)
+        assertEquals(listOf(listOf("T1", "T2"), listOf("O"), listOf("B")), stations.map { group -> group.rows.map { it.stopId } })
+        // A place's stations stay together, as groupByStop keeps a place's groups.
+        assertEquals(listOf("Highbury", "Highbury", "Upper Street"), stations.map { it.stopName })
+        assertTrue(stations.all { it.qualifier == null && it.showHeader })
+        assertEquals(3, stations.map { it.key }.distinct().size)
+    }
+
+    @Test
+    fun `grouped by station, one station alone needs no header`() {
+        val rows = listOf(
+            row("T1", "Highbury", clusterId = "HIG", lineId = "victoria", platform = "Southbound - Platform 3"),
+            row("T2", "Highbury", clusterId = "HIG", lineId = "victoria", platform = "Northbound - Platform 4"),
+        )
+        val stations = StopGrouping.groupByStation(rows)
+        assertEquals(listOf(listOf("T1", "T2")), stations.map { group -> group.rows.map { it.stopId } })
+        assertFalse(stations.single().showHeader)
+    }
 }
