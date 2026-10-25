@@ -312,6 +312,8 @@ fun SettingsScreen(
             // a large Android font scale can't push the lower controls off a short screen where
             // they'd be unreachable (Codex).
             val scrollState = rememberScrollState()
+            // Keeps the text-size minus, plus and slider under the finger as each change resizes the rows.
+            val textSizeHold = rememberScrollHold(scrollState)
             // Opened for the widget rows or the National Rail key: scrolled to it as soon as it's laid out, and
             // the rows drawn only from then, so the top of Settings is never shown before the jump. Once, so a
             // return from a page over Settings keeps the rider's place.
@@ -329,7 +331,8 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.surface))
                     .graphicsLayer { alpha = if (scrolledToStart) 1f else 0f }
-                    .verticalScroll(scrollState),
+                    .verticalScroll(scrollState)
+                    .holdSlack(textSizeHold),
             ) {
                 // Text size (display scaling, SPEC *Display size*): a slider that mirrors — and
                 // moves — the same size a two-finger pinch changes, plus the switch that gates the
@@ -466,7 +469,7 @@ fun SettingsScreen(
                 }
                 val fontSize = LocalFontSizeState.current
                 if (fontSize != null) {
-                    TextSizeRow(fontSize)
+                    TextSizeRow(fontSize, textSizeHold)
                     SettingSwitchRow(
                         title = stringResource(R.string.settings_pinch_title),
                         summary = stringResource(R.string.settings_pinch_summary),
@@ -955,7 +958,7 @@ private fun SettingErrorRow(text: String, onDismiss: () -> Unit, modifier: Modif
  * it changes, so a slider under the scaled density would die on its first resizing movement.
  */
 @Composable
-private fun TextSizeRow(fontSize: FontSizeState) {
+private fun TextSizeRow(fontSize: FontSizeState, hold: ScrollHold? = null) {
     val scale = fontSize.scale
     val percent = fontScalePercent(scale)
     val sliderDescription = stringResource(R.string.settings_text_size_content_description, percent)
@@ -996,9 +999,14 @@ private fun TextSizeRow(fontSize: FontSizeState) {
         }
         // A minus and a plus either side of the slider, one whole percent a tap, applied and saved
         // at once like Reset: the exact size a drag can make hard to land on.
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Held still as the size changes ([ScrollHold]), so the next tap or the rest of a drag lands
+        // where the last one did, however much the rows above grow or shrink.
+        Row(modifier = Modifier.fillMaxWidth().holding(hold), verticalAlignment = Alignment.CenterVertically) {
             IconButton(
-                onClick = { fontSize.chooseScale(stepFontScale(fontSize.scale, -1)) },
+                onClick = {
+                    hold?.hold()
+                    fontSize.chooseScale(stepFontScale(fontSize.scale, -1))
+                },
                 enabled = percent > fontScalePercent(MIN_FONT_SCALE),
                 modifier = Modifier.testTag("textSizeSmaller"),
             ) {
@@ -1009,6 +1017,7 @@ private fun TextSizeRow(fontSize: FontSizeState) {
                     value = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE),
                     onValueChange = {
                         dragging = true
+                        hold?.hold()
                         fontSize.preview(it)
                     },
                     onValueChangeFinished = {
@@ -1023,7 +1032,10 @@ private fun TextSizeRow(fontSize: FontSizeState) {
                 )
             }
             IconButton(
-                onClick = { fontSize.chooseScale(stepFontScale(fontSize.scale, 1)) },
+                onClick = {
+                    hold?.hold()
+                    fontSize.chooseScale(stepFontScale(fontSize.scale, 1))
+                },
                 enabled = percent < fontScalePercent(MAX_FONT_SCALE),
                 modifier = Modifier.testTag("textSizeLarger"),
             ) {

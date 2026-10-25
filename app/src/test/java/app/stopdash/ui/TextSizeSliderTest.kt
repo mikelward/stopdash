@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -113,6 +114,53 @@ class TextSizeSliderTest {
             // Each tap is saved, not only previewed.
             assertEquals(listOf(1.01f, 1.02f, 1.01f, 1.0f), settled)
         }
+    }
+
+    /** Where [tag] sits on screen, in root pixels. */
+    private fun top(tag: String): Float = composeRule.onNodeWithTag(tag).fetchSemanticsNode().positionInRoot.y
+
+    /** Taps [tag] [times] times, checking after each that it and its partner haven't moved. */
+    private fun tapHoldsStill(tag: String, times: Int) {
+        val larger = top("textSizeLarger")
+        val smaller = top("textSizeSmaller")
+        repeat(times) {
+            composeRule.onNodeWithTag(tag).performClick()
+            composeRule.waitForIdle()
+            assertEquals("plus after tap ${it + 1}", larger, top("textSizeLarger"), 1f)
+            assertEquals("minus after tap ${it + 1}", smaller, top("textSizeSmaller"), 1f)
+        }
+    }
+
+    @Test
+    fun tappingPlusAgainAndAgainLeavesTheButtonsWhereTheyWere() {
+        show()
+        tapHoldsStill("textSizeLarger", 30)
+        composeRule.runOnIdle { assertEquals(1.3f, state.scale, 0.001f) }
+    }
+
+    @Test
+    fun tappingMinusFromTheTopOfSettingsLeavesTheButtonsWhereTheyWere() {
+        // Unscrolled, so the rows above shrinking can't be met by scrolling back: room is added at the top.
+        show(FontSizeState(FontSizeSettings(scale = 1.5f), onScaleSettled = {}, onPinchEnabledChange = {}))
+        tapHoldsStill("textSizeSmaller", 30)
+    }
+
+    @Test
+    fun theButtonsStayPutWhenSettingsIsRecreatedAfterShrinkingFromTheTop() {
+        // Shrinking from the unscrolled top adds room above the rows; recreated (a rotation, a page over
+        // Settings and back), the page keeps that room along with its scroll position.
+        val restore = StateRestorationTester(composeRule)
+        val fontSize = FontSizeState(FontSizeSettings(scale = 1.5f), onScaleSettled = {}, onPinchEnabledChange = {})
+        restore.setContent {
+            StopDashTheme(fontSize = fontSize) {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {})
+            }
+        }
+        tapHoldsStill("textSizeSmaller", 20)
+        val larger = top("textSizeLarger")
+        restore.emulateSavedInstanceStateRestore()
+        composeRule.waitForIdle()
+        assertEquals(larger, top("textSizeLarger"), 1f)
     }
 
     @Test

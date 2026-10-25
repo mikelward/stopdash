@@ -4672,7 +4672,10 @@ Two controls change the one stored size, kept in sync because they write the sam
 **slider** on Settings and a **two-finger pinch anywhere in the app** (a pinch resizes the
 *app*, not the page it happened on). The slider has a minus and a plus at either end that move
 the size one whole percent of the shown percentage a tap, saved at once, for an exact size a
-drag can make hard to land on; each is disabled at its end of the range. A switch on Settings
+drag can make hard to land on; each is disabled at its end of the range. The minus, plus and
+slider hold still on screen while they resize Settings: the page scrolls by however much the rows
+above grow or shrink, so tap after tap (or the rest of a drag) lands on the same control, until the
+user scrolls the page themselves (maintainer, 2026-10-25). A switch on Settings
 gates the pinch, for a user who would rather not resize by accident. Two fingers down are a
 pinch, never a long press: once a second finger lands, a long press the first one started opens
 no menu (favorite, hide, more), so resizing never pops one up mid-gesture (maintainer,
