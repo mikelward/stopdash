@@ -571,6 +571,8 @@ class LineMap internal constructor(
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
         }
 
+        // A route page's train runs down the page from where it's boarded, whichever way that is on a map
+        // (maintainer, 2026-10-26): laid out north to south, then turned over where the train runs up it.
         private fun laidOut(
             sequence: LineSequence,
             way: OneWay,
@@ -586,6 +588,34 @@ class LineMap internal constructor(
             ridesOpen: Boolean,
             wholeLine: Boolean,
         ): LineMap? {
+            val map = laidOut(sequence, way, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen, wholeLine, turned = false)
+            if (!ridesOpen || map == null || !map.ridesUp()) return map
+            return laidOut(sequence, way, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen, wholeLine, turned = true) ?: map
+        }
+
+        // Whether the train's own route runs up the map from where it's boarded.
+        private fun LineMap.ridesUp(): Boolean {
+            val board = rows.indexOfFirst { it.riding && it.onPath }.takeIf { it >= 0 } ?: return false
+            val ahead = rows.indices.filter { it != board && rows[it].onPath }
+            return ahead.isNotEmpty() && ahead.all { it < board }
+        }
+
+        private fun laidOut(
+            sequence: LineSequence,
+            way: OneWay,
+            closures: List<List<String>>,
+            alertText: String?,
+            placed: List<PartClosure>,
+            starred: Set<String>,
+            riding: Set<String>,
+            rides: List<List<String>>,
+            nearby: Set<String>,
+            here: Coordinates?,
+            upcoming: List<PlannedAlert>,
+            ridesOpen: Boolean,
+            wholeLine: Boolean,
+            turned: Boolean,
+        ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
             // A section's stops as the map has them: the way back's poles as the outbound stops, and a hop
             // the map draws through stops the way back passes ([OneWay.through]) given those stops, so a
@@ -600,7 +630,7 @@ class LineMap internal constructor(
                 }
                 return out
             }
-            val routes = northUp(way.routes, sequence)
+            val routes = northUp(way.routes, sequence).let { up -> if (turned) up.map { it.asReversed().toList() } else up }
             if (routes.isEmpty()) return null
             val nodeRoutes = splitStations(routes)
             val graph = Graph(nodeRoutes)

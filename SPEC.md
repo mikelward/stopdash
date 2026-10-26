@@ -4294,7 +4294,9 @@ trip's lines page.
 line's color, curving into another where branches meet and out where they part, as TfL's own line
 diagrams draw a branching line. It's laid out from the line's TfL routes, never from a picture of
 the line, so whatever TfL runs is what's drawn, a new station or branch included, and it reads north
-to south where TfL gives stations' positions. A bus calls at a different pole each way (across the
+to south where TfL gives stations' positions. A route page's map instead runs the way its train goes,
+down the page from where it's boarded, whichever way that is on a map (maintainer, 2026-10-26), the line
+behind it folded above. A bus calls at a different pole each way (across the
 road, or round a one-way street): the way back is drawn too where it runs elsewhere, each of its
 poles taken as the stop across the road where TfL puts both in one stop area, or names both alike
 in one interchange or a short walk apart, so one place is one row, never a fork; two of an

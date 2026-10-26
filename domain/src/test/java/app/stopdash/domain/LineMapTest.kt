@@ -1387,13 +1387,20 @@ class LineMapTest {
     }
 
     @Test
-    fun `a train running up the map folds what's below it, and a page with no train ahead folds nothing so`() {
-        // North from Highgate: the trains come from Morden and Battersea Power Station.
+    fun `a train running north still runs down the page, the line behind it folded above`() {
+        // North from Highgate: the map turns over so the train runs down it (maintainer, 2026-10-26), its trains
+        // coming from Morden and Battersea Power Station folded above it, High Barnet below.
         val rides = listOf(ids("Highgate", "East Finchley", "Finchley Central", "West Finchley", "Woodside Park", "Totteridge & Whetstone", "High Barnet"))
         val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
         val held = map.folded(emptySet()).labels()
-        assertEquals("Highgate", held[held.size - 2])
-        assertEquals(setOf("Morden", "Battersea Power Station"), (map.folded(emptySet()).last() as LineMap.Item.Fold).ends.toSet())
+        assertEquals("Highgate", held[1])
+        assertEquals(setOf("Morden", "Battersea Power Station"), (map.folded(emptySet()).first() as LineMap.Item.Fold).ends.toSet())
+        val onPath = map.rows.filter { it.onPath }.map { it.name }
+        assertEquals("Highgate", onPath.first())
+        assertEquals("High Barnet", onPath.last())
+        // The line's own page, with no train, still reads north to south.
+        val line = LineMap.of(northern())!!.rows.map { it.name }
+        assertTrue(line.indexOf("High Barnet") < line.indexOf("Morden"))
         // No train ahead (one ending here), or not a route page: no such fold.
         assertNull(LineMap.of(northern(), riding = setOf(ids.getValue("Morden")), rides = listOf(ids("Morden")), ridesOpen = true)!!.behind)
         assertNull(LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides)!!.behind)
@@ -1451,11 +1458,12 @@ class LineMapTest {
 
     @Test
     fun `one station behind the train stays a station, not a fold of one`() {
-        // North from South Wimbledon: only Morden is behind it, and a fold would take more room than it.
+        // North from South Wimbledon, run down the page: only Morden is behind it, above, and a fold would take
+        // more room than it.
         val rides = listOf(ids("South Wimbledon", "Colliers Wood", "Tooting Broadway"))
         val map = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!
         assertNull(map.behind)
-        assertEquals(listOf("South Wimbledon", "Morden"), map.folded(emptySet()).labels().takeLast(2))
+        assertEquals(listOf("Morden", "South Wimbledon"), map.folded(emptySet()).labels().take(2))
     }
 
     @Test
