@@ -4920,7 +4920,13 @@ surface.)
   National Rail line is often only a link to National Rail's disruption page, so the notices Darwin's
   board carries for the station (`nrccMessages`, "Disruption between X and Y…") join the stop's notice,
   after TfL's own, as plain text with a link kept as its words and its address, tappable as an alert's
-  are. They come with the stop's departures, from the board those read, so they ask for nothing more,
+  are. A route message that is a line's alert shown elsewhere is left off the station's card (maintainer,
+  2026-10-26): one linking only to disruption pages a disrupted line's TfL status links to, and not naming
+  the station. The board repeats its operators' route disruptions across their network ("Trains running
+  between Oxted and East Croydon…" at St Pancras), which that line's ⚠ and page already carry, so the
+  card keeps what is about the station: its facilities (a lift, a toilet), its own closures, a route
+  message naming it, and one no line's status covers, so nothing is lost while TfL lags National Rail.
+  They come with the stop's departures, from the board those read, so they ask for nothing more,
   are as fresh as the board, and go with it: with no key, with National Rail hidden there, or once the
   departures fetch fails, the stop has TfL's notices alone. A board Darwin has suppressed still fails
   for its trains ("No data"), but its notices, which often say why, still show. A stop whose notices

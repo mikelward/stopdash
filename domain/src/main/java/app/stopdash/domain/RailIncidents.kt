@@ -31,6 +31,13 @@ object RailIncidents {
     // TfL's whole reason, nothing but one disruption page's address.
     private val BARE_LINK = Regex("""^https?://(?:www\.)?nationalrail\.co\.uk/service-disruptions/[^\s]+$""", RegexOption.IGNORE_CASE)
 
+    // A disruption page's address anywhere in a text, as a station notice carries it ("… (https://…/)").
+    private val PAGE = Regex("""https?://(?:www\.)?nationalrail\.co\.uk/service-disruptions/[^\s)]+""", RegexOption.IGNORE_CASE)
+
+    /** Every disruption page [text] links to, keyed as [key] keys one, in order. */
+    fun pagesIn(text: String?): List<String> =
+        text?.let { PAGE.findAll(it).map { match -> key(match.value.trimEnd('.', ',', ';')) }.toList() }.orEmpty()
+
     /** [text]'s disruption page, keyed as [key] keys one, when [text] is nothing but that page's address; else null. */
     fun linkOf(text: String?): String? {
         val trimmed = text?.trim() ?: return null
