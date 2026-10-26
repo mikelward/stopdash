@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-25
+last_modified: 2026-10-26
 ---
 
 # AGENTS.md
@@ -306,7 +306,9 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   feature data through existing caches without asking. Check a question's premise in code
   first.
 - **Answer a mid-turn message first**, before any further tool call (except merge cues,
-  whose hygiene runs first).
+  whose hygiene runs first). **Claude Code only** (maintainer, 2026-10-25): its app reliably
+  shows just a turn's last message, so reply only there, answering a mid-turn message at a
+  stopping point soon.
 - **Message only when the user needs to see it** (maintainer, 2026-10-15): each notifies
   their phone. Work in silence; speak up for a question/blocker, something to merge or act
   on, a merge, an autopilot decision (to review when seen, never waited on), or a change
