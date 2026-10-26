@@ -1,10 +1,13 @@
 package app.stopdash.ui
 
 import app.stopdash.ThreadRecorder
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.LineAlert
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopDisruption
 import java.time.Instant
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -208,6 +211,19 @@ class DismissedAlertsTest {
         second.join()
         assertEquals(emptySet<DismissedAlert>(), into.value)
         assertTrue(failed.value)
+    }
+
+    @Test
+    fun `a closure check keeps a dismissal made on a ride's card as live`() {
+        // Codex on #1233: a Northern ride's card shows the stop's notices less a Circle one; a trip's check
+        // of the same stop mustn't let that dismissal go while both notices still stand.
+        val circle = StopDisruption("Circle Line: No service between Aldgate and Edgware Road.")
+        val northern = StopDisruption("Northern line: lifts out of order.")
+        val ride = StopArrivals("940GZZLUKSX", "", emptyList(), now, disruptions = listOf(northern))
+        val dismissed = DismissedAlert.ofStopNotices(DepartureRows.across(listOf(ride), now).single { it.stopDisruption != null }).single()
+        val (live, checked) = stopDismissalCheck(mapOf("940GZZLUKSX" to listOf(circle, northern)), now)
+        assertTrue(dismissed in live)
+        assertEquals(setOf("940GZZLUKSX"), checked)
     }
 }
 

@@ -1817,7 +1817,10 @@ shows a closure or move at its **far end**, so a trip can't end somewhere shut (
 2026-09-24). Only the destination's stop-level disruption is checked, not its departures: with each
 refresh, reusing the same few-minute cache as every stop's closure check (bus poles batched), so a
 destination costs a request only every few minutes. A failed check keeps the last known notice and
-claims nothing new. Alerts on lines with no favorite journey (a separate favorite-lines list) stay a
+claims nothing new. TfL files a station's notices for every line there, so the far end shows only those its
+ride could meet: a notice opening with lines ("Circle Line: …"), none of them the ride's, is left out of the
+card and its page; one opening with no line (a closed station, a lift out, "Station closed. Use the Circle line
+…") stays (maintainer, 2026-10-26). Dismissing what a ride shows lasts until that text changes (*Disruptions*: a dismissal is per notice). Alerts on lines with no favorite journey (a separate favorite-lines list) stay a
 `TODO.md` idea.
 
 **Alerts** (maintainer, 2026-10-08). A favorite journey can post a **silent notification** when one
@@ -4074,13 +4077,15 @@ in the body, never mangles the notice.
 
 A stop-closure card carries a **dismiss (×)**: these notices are the "acknowledge and clear" kind
 (planned works, a moved stop, "Bus Stop Closed — use the next stop", a step-free-access outage),
-so once read the user can tap them away to declutter. A dismissal is keyed on `(place, notice
-text, TfL window)` and **reappears the moment the content changes** — a reworded or replaced notice no longer
+so once read the user can tap them away to declutter. A dismissal is **per notice**, keyed on `(place,
+notice text, TfL window)`: a card's × dismisses each notice it shows, a card loses the notices dismissed
+and goes once none is left, so a notice dismissed on one card (a ride's, which leaves out other lines'
+notices) stays dismissed on every card at that place (maintainer, 2026-10-26). It **reappears the moment the content changes** — a reworded or replaced notice no longer
 matches, so a dismiss never buries a new or escalated closure (maintainer, 2026-09-22). The window
 is part of that identity, so a dismiss lasts only until the stated end: when TfL extends or moves
 the window the card is back at once, not after the original end (maintainer, 2026-09-23). It is
 persisted (survives restart, rides Android backup like the rest of the config — SPEC *Privacy*),
-one entry per place so the set stays bounded, and **fails safe**: a stored set this build can't read
+one entry per notice at a place, so the set stays bounded, and **fails safe**: a stored set this build can't read
 reads back empty, so the worst case is a dismissed card returning, never a warning hidden. The
 stop's departures still show. A dismissed closure at a place with nothing else to show keeps its
 heading and "Closed" chip: dismissing hides the prose, not the fact that it's shut. A closed

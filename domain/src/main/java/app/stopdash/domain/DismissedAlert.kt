@@ -33,9 +33,10 @@ data class DismissedAlert(
 ) {
     companion object {
         /**
-         * The dismissal identity of a **stop-closure row** — its place key and the normalized
-         * notice text. Only meaningful for a stop-status row (a non-null [DepartureRow.stopDisruption]);
-         * a caller filters to those first.
+         * A **stop-closure card**'s identity as a whole — its place key and every notice it shows, with
+         * their windows: what tells one card from another (a trip's signal for it, a page's copies of it).
+         * What a dismiss of it saves is each of its notices ([ofStopNotices]). Only meaningful for a
+         * stop-status row (a non-null [DepartureRow.stopDisruption]); a caller filters to those first.
          */
         fun ofStopClosure(row: DepartureRow): DismissedAlert =
             DismissedAlert(
@@ -43,6 +44,26 @@ data class DismissedAlert(
                 contentSignature = row.stopDisruption.orEmpty() +
                     row.stopDisruptionWindows.takeIf { it.isNotEmpty() }?.let { "$WINDOW_SEPARATOR$it" }.orEmpty(),
             )
+
+        /**
+         * The dismissal identities of a **stop-closure row**'s notices, one each, in order: its place key
+         * and the notice's normalized text, with the windows TfL gives that text. Dismissing a card hides
+         * each notice it shows, wherever at that place it shows: a ride's card that leaves out another
+         * line's notice (SPEC *Alerts for the journey shown*) dismisses the very notices the place's own
+         * card shows, so no check of the place's whole set of notices lets it go (Codex on #1233). A card
+         * of one notice is keyed as a whole card was, so a dismissal stored before stays. Empty for a row
+         * with no notice.
+         */
+        fun ofStopNotices(row: DepartureRow): List<DismissedAlert> {
+            if (row.stopDisruption == null) return emptyList()
+            if (row.stopNotices.isEmpty()) return listOf(ofStopClosure(row))
+            val key = stopPlaceKey(row)
+            return row.stopNotices.map { notice -> DismissedAlert(key, noticeSignature(notice, DepartureRows.windowsOf(row, notice))) }
+        }
+
+        /** The signature of a stop notice reading [text] in the TfL windows [entries] ([ofStopNotices]). */
+        internal fun noticeSignature(text: String, entries: List<String>): String =
+            text + entries.takeIf { it.isNotEmpty() }?.let { "$WINDOW_SEPARATOR${it.joinToString(DepartureRows.WINDOW_ENTRY_SEPARATOR)}" }.orEmpty()
 
         /**
          * The dismissal identity of a **line's status** — the line and its severity, label and prose.
@@ -69,15 +90,16 @@ data class DismissedAlert(
             )
 
         /**
-         * The dismissal identity of whatever alert [row] carries — its stop closure, else its line's
-         * status — or null when the row carries none (nothing to dismiss).
+         * The dismissal identities of whatever alert [row] carries — each notice of its stop closure
+         * ([ofStopNotices]), else its line's status — or none when the row carries none (nothing to
+         * dismiss).
          */
-        fun of(row: DepartureRow): DismissedAlert? = when {
-            row.stopDisruption != null -> ofStopClosure(row)
-            row.status != null -> ofLineStatus(row.status)
+        fun of(row: DepartureRow): List<DismissedAlert> = when {
+            row.stopDisruption != null -> ofStopNotices(row)
+            row.status != null -> listOf(ofLineStatus(row.status))
             // A row standing for one planned alert (the page's dismiss passes one): that alert.
-            row.plannedAlerts.isNotEmpty() -> ofPlanned(row.lineId, row.plannedAlerts.first())
-            else -> null
+            row.plannedAlerts.isNotEmpty() -> listOf(ofPlanned(row.lineId, row.plannedAlerts.first()))
+            else -> emptyList()
         }
 
         // Appended only for a dated notice, so an undated one keeps its bare-text signature (and a

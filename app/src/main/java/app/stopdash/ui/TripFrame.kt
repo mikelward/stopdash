@@ -355,16 +355,16 @@ internal class TripClosureCard(
     val text = cleanDisruptionBody(row.stopDisruption.orEmpty(), stopName = row.stopName, hubName = row.hubName, aliases = row.placeAliases)
     val closed = ClosedNotice.saysClosed(row.stopDisruption.orEmpty())
 
-    // What a dismiss of it saves ([DismissedAlert.ofStopClosure]), copy by copy: its place and windows as well
-    // as its words.
-    private val dismissals = rows.mapTo(LinkedHashSet()) { DismissedAlert.ofStopClosure(it) }
+    // What a dismiss of it saves ([DismissedAlert.ofStopNotices]), copy by copy and notice by notice: its place
+    // and windows as well as its words.
+    private val dismissals = rows.flatMapTo(LinkedHashSet()) { DismissedAlert.ofStopNotices(it) }
 
     /**
      * This card also standing for [other]'s copies, kept once each by what dismisses them, and covering its
      * poles: two poles of one place share a dismissal but not a title.
      */
     fun with(other: TripClosureCard): TripClosureCard {
-        val more = other.rows.filter { DismissedAlert.ofStopClosure(it) !in dismissals }
+        val more = other.rows.filter { row -> DismissedAlert.ofStopNotices(row).any { it !in dismissals } }
         val morePoles = other.poles.filter { pole -> poles.none { it.stopId == pole.stopId } }
         return if (more.isEmpty() && morePoles.isEmpty()) this else TripClosureCard(row, title, rows + more, poles + morePoles)
     }

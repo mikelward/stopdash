@@ -989,7 +989,10 @@ fun MainScreen(
             // And the far end's (closed or moved), from its own check, for every stop the card's departures
             // reach there: a journey can't end as shown. One card per notice, however many poles carry it.
             val destinationIds = journeyDestinationIds[journey.key].orEmpty() + reached
-            val destinationClosures = rows.destinationClosures
+            // Only a notice the ride's own lines could meet: TfL files a station's notices for every line
+            // there, so a Circle line closure at the far end of a Northern line ride is no part of it.
+            val rideLines = journey.lineIds.filterNot(journey::hides)
+            val destinationClosures = rows.destinationClosuresFor(rideLines)
                 .filter { it.stopId in destinationIds }.groupBy { it.stopDisruption }.values.toList()
             // Its boarding stops' likewise: one card for a notice on several poles of one place.
             val closures = boardingStops.mapNotNull { id -> across.firstOrNull { it.stopId == id && it.stopDisruption != null } }
@@ -7553,6 +7556,7 @@ internal fun DepartureRow.standingOnWay(line: DepartureRow): DepartureRow = copy
     plannedAlerts = line.plannedAlerts,
     stopDisruption = line.stopDisruption,
     stopDisruptionWindows = line.stopDisruptionWindows,
+    stopNotices = line.stopNotices,
 )
 
 /**

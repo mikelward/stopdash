@@ -1055,10 +1055,10 @@ class DepartureRowsTest {
         val rows = DepartureRows.forStop(
             "940GZZLUVIC", "Victoria", listOf(departure("victoria", "Victoria", "outbound", "Brixton", 120)), now, statuses,
         )
-        val dismissal = DismissedAlert.of(rows.single().copy(plannedAlerts = listOf(first)))
+        val dismissal = DismissedAlert.of(rows.single().copy(plannedAlerts = listOf(first))).single()
         assertEquals(DismissedAlert.ofPlanned("victoria", first), dismissal)
 
-        val kept = DepartureRows.withoutDismissed(rows, setOf(checkNotNull(dismissal)))
+        val kept = DepartureRows.withoutDismissed(rows, setOf(dismissal))
         assertEquals(listOf(second), kept.single().plannedAlerts)
         assertTrue(dismissal in DepartureRows.liveLineStatusAlerts(statuses))
 
