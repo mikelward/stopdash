@@ -1737,25 +1737,21 @@ private fun NoteText(text: String) {
 }
 
 /**
- * [eta] as its screen says it at [now], longest first: the minutes left, counted as the boards count,
- * and the clock time, then, for an estimate, the same without its "est.", the first thing the card
- * drops when the row is short (maintainer, 2026-10-04).
+ * [eta] as its screen says it at [now]: the minutes left, counted as the boards count, and the clock
+ * time, led by a "~" when partly from the plan ([ESTIMATE_MARK]; maintainer, 2026-10-26).
  */
 @Composable
 internal fun etaForms(eta: OnTheWay.Eta, now: Instant): List<String> {
     LocalConfiguration.current // Read again on a configuration change (locale, font scale).
-    val resources = LocalContext.current.resources
-    val full = etaText(resources, eta, now)
-    if (eta.live) return listOf(full)
-    val minutes = Countdown.minutes(eta.arrival, now).toInt()
-    return listOf(full, resources.getString(R.string.on_the_way_step_time, CLOCK.format(eta.arrival.atZone(LONDON)), minutes))
+    return listOf(etaText(LocalContext.current.resources, eta, now))
 }
 
 /** [etaText] from [resources]. */
 internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): String {
     val minutes = Countdown.minutes(eta.arrival, now).toInt()
     val clock = CLOCK.format(eta.arrival.atZone(LONDON))
-    return resources.getString(if (eta.live) R.string.on_the_way_trip_eta else R.string.on_the_way_trip_eta_estimated, clock, minutes)
+    val text = resources.getString(R.string.on_the_way_trip_eta, clock, minutes)
+    return if (eta.live) text else ESTIMATE_MARK + text
 }
 
 /**
@@ -1918,7 +1914,7 @@ internal fun compassLetters(point: Compass.Point): Int = when (point) {
 
 // A row of the card: the first of [start]'s forms (longest first) that fits on the left, and [ends]'
 // first form (a time) whole at the right. Where both don't fit, the time drops to its last form first
-// (an estimate's "est."; maintainer, 2026-10-04); where they still don't (a narrow window, large text) the text yields,
+// (maintainer, 2026-10-04); where they still don't (a narrow window, large text) the text yields,
 // shortened before it's cut with a single "…" ([ShortenedText]); the time keeps its one line wherever
 // it fits beside the text's last stub (its first word and the next letter, then "…"), and wraps only past that
 // (maintainer, 2026-10-03; Codex, PR #518).
@@ -2005,8 +2001,7 @@ private fun CardRow(start: List<String>, ends: List<String>, endTag: String? = n
                 Spacer(Modifier.weight(1f))
             }
             if (end.isNotEmpty()) {
-                // Read in full however it's drawn: a dropped "est." still tells a screen reader it's an
-                // estimate, as a shortened place reads in full (Codex, #526).
+                // Read in full however it's drawn, as a shortened place reads in full (Codex, #526).
                 val full = ends.first()
                 Text(
                     end,

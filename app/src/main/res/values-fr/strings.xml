@@ -321,9 +321,8 @@
     <string name="trip_avoiding">Évitées</string>
     <string name="trip_stop_avoiding">Ne plus éviter %1$s</string>
     <string name="trip_duration_arrival">%1$d min · %2$s</string>
-    <string name="trip_duration_arrival_estimated">estim. %1$d min · %2$s</string>
-    <string name="trip_duration_arrival_range">estim. %1$d–%2$d min · %3$s–%4$s</string>
-    <string name="trip_duration_arrival_open">estim. %1$d+ min · %2$s+</string>
+    <string name="trip_duration_arrival_range">%1$d–%2$d min · %3$s–%4$s</string>
+    <string name="trip_duration_arrival_open">%1$d+ min · %2$s+</string>
     <string name="trip_arrival_unknown">Arrivée inconnue</string>
     <plurals name="trip_stops_to">
         <item quantity="one">%1$d arrêt jusqu’à %2$s</item>
@@ -785,7 +784,6 @@
     <string name="on_the_way_other_routes">Autres parcours</string>
     <string name="on_the_way_done">OK</string>
     <string name="on_the_way_trip_eta">%2$d min · %1$s</string>
-    <string name="on_the_way_trip_eta_estimated">estim. %2$d min · %1$s</string>
     <string name="on_the_way_step_time">%2$d min · %1$s</string>
     <string name="on_the_way_go_next">Suivant</string>
     <string name="on_the_way_go_back">Précédent</string>

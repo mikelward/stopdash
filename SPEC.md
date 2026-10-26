@@ -2042,7 +2042,7 @@ station does — the near-me list as if the rider stood at the place's coordinat
 own, and *To…* from it plans from the place's coordinate as *To…* from "Here" does from the rider's,
 even with no stop in range (it then opens straight on its *To…* search) — so setting out from Home is
 one tap. The trip opens on a **list of routes, best first**: ordered first by how far StopDash
-stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
+stands behind each route (tiers, below — usable before not, fully live before estimated), and within a
 tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below); an estimate
 goes ahead of a live route only when it is sooner even at the latest end of its range (below). The
 first route is therefore the fastest one StopDash can vouch for, never an estimate that could turn
@@ -2051,7 +2051,7 @@ so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fe
 earliest shown on a tie), or **Fastest · Simplest** heads one card that is both (maintainer,
 2026-09-30), so the trade between them reads at a glance. Neither heads a lone card, Fastest never a
 card whose arrival is withheld, nor one a card below gets there before, in an earlier minute
-(maintainer, 2026-10-16: an "est." route ranked below a live bus for want of a live train read sooner
+(maintainer, 2026-10-16: an estimated route ranked below a live bus for want of a live train read sooner
 than the bus headed Fastest; it's by arrival time, not the minutes shown from now, so midnight or the
 clock change never make a later route read as sooner), and Simplest only when the cards don't all
 ride as often. The cards headed so come first, Fastest then Simplest — the first card kept first
@@ -2136,11 +2136,11 @@ route is expanded — as a card whose top row is its **duration · arrival** ("2
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
 for a frequent line past its predictions (below) could make it later, by a minute or more, both
 show as a **range** (maintainer, 2026-09-30: once a route can rank above a live one on its latest, a
-single estimated time hid why it sorted where it did) ("est. 41–49 min · 11:26–11:34", both ends full clock times,
+single estimated time hid why it sorted where it did) ("~41–49 min · 11:26–11:34", both ends full clock times,
 maintainer, 2026-10-19): from no wait up to the line's longer typical gap, the route timed again with each such
 wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
-("est. 41+ min · 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
+("41+ min · 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
 2026-09-27), except that an estimate is set against a live route by the latest end of its range
 (below). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
 pills' room, so the stop starts where a ride's does beside its pill (every row's pill column as wide as
@@ -2428,8 +2428,9 @@ take (maintainer, 2026-09-27). A train the list wouldn't count down — canceled
 stands behind (*Disruptions*) — is never a reachable train: it is skipped for the arrival and the
 ordering, and shown as the list shows it.
 Run and change times are the Planner's, but a live arrival carries no mark of its own: only an estimate
-does, "est." (maintainer, 2026-10-16: a live "~11:26" beside an "est. 11:18" read as two ways of saying
-"maybe", the live one the more doubtful-looking). The same end-to-end arrival
+does: it leads with "~", about ("~44 min · 10:29", "~41–49 min · …"), which says why it may sort below a
+live route it could beat; an open-ended "+" needs no "~" (maintainer, 2026-10-26: "est." didn't say what it meant; "~" left live arrivals on 2026-10-16,
+when a live "~11:26" beside an "est. 11:18" read as two ways of saying "maybe"). The same end-to-end arrival
 orders the routes within a tier, so "fastest" never assumes a connection the rider can't make. A leg with no live
 train in reach yet (none predicted that far ahead, its arrivals failed, or they have gone stale under
 D4) falls back to the
@@ -2469,7 +2470,7 @@ leg. Since the Planner's timetable does say when the next one leaves, a withheld
 least 5 minutes old plans the trip again at once rather than wait out the 15-minute reuse (maintainer,
 2026-09-27): once per plan, so it asks at most every 5 minutes, and each time the log says which leg
 withheld the arrival and why. A re-locate in flight (a return to the app) is waited for first, as the
-minute tick waits for it, so the routes change once, for where the rider is now. Otherwise its arrival reads **"est."**, and within
+minute tick waits for it, so the routes change once, for where the rider is now. Otherwise its arrival is an estimate, led by **"~"**, and within
 its tier it sorts **after every route whose legs are all live** — unless it is timed from at least one
 live train, or rides a line live trains show running at the stop it boards, and gets there before
 that route **even at the latest end of its range** (maintainer, 2026-09-30: a live ride then a
@@ -2525,7 +2526,7 @@ open route, stay as drawn for that moment, as for any refresh (maintainer, 2026-
 opened route has no pull: its times keep the minute tick. While a re-locate is in flight, or after
 one that fails (which keeps the old stop, as on the list, and shows the list's location banner over
 the trip), the origin is unconfirmed: until a fix is confirmed again, the walk is
-from the last confirmed position and every route's arrival reads "est." at best, never live-confirmed. A plan older than that is re-planned, on open
+from the last confirmed position and every route's arrival is an estimate at best, never live-confirmed. A plan older than that is re-planned, on open
 or when it expires while the screen is visible, showing the older plan stamped with its age meanwhile,
 so a route that has since become viable can appear. An opened route is matched across a re-plan by its lines and
 stops in order, never by its place in the list; if the new plan no longer has it, the trip goes back
@@ -2539,7 +2540,7 @@ no longer offers it (a new plan without it) or its mode is hidden, it's closed f
 reopening unbidden when it comes back; a plan still landing keeps it. The live times refresh with the list's refresh cycle
 while the screen is visible, and follow the list's staleness rule (D4): a stale leg withholds its
 countdowns rather than show them as live, and stops feeding the route's arrival and ordering: it falls
-back as above ("est.", or "arrival unknown" when the Planner's departure is no longer reachable). If planning fails, the screen says why with a **Retry**
+back as above (an estimate, or "arrival unknown" when the Planner's departure is no longer reachable). If planning fails, the screen says why with a **Retry**
 ("Couldn't plan the trip: you're offline", as the list words its errors), over the last plan for the
 trip if one is held, never a blank. Retry is disabled while its call is in flight. A change station whose arrivals fail withholds that leg's times
 and falls back the same way; it is retried on the next refresh. Nothing retries in a loop:
@@ -3262,9 +3263,8 @@ as it was.
   Back returns to the trip. A stop the Planner gave no id (the bus stop named for a station) opens none.
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
   left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · 08:31", unmarked when it's TfL's prediction for where
-  the rider gets off the ride they're on, with only walks after (it read "~08:31" until 2026-10-16). It's "est." when any of it is the
-  Planner's ("est. 37 min · 08:39": the "est." leads, before the minutes, and it's the first thing the
-  card drops when the row is too short for the trip's name beside it; maintainer, 2026-10-04): a train still to come (its time at the boarding stop, then the time on board), or a ride
+  the rider gets off the ride they're on, with only walks after (it read "~08:31" until 2026-10-16). It leads with "~" when any of it is the
+  Planner's ("~37 min · 08:39"; "est." until 2026-10-26): a train still to come (its time at the boarding stop, then the time on board), or a ride
   or change still ahead. Still to board, with the train followed gone by (TfL can list a bus past its
   time, or drop it without a word), not yet found, or lost, it's timed from the next train the boarding
   stop's board lists that the rider can catch (maintainer, 2026-10-03), rather than leave the card
