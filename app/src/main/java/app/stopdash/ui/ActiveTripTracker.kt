@@ -141,6 +141,8 @@ class ActiveTripTracker(
     private val forgetting: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     // Coarse facts only — a line id, an error kind, never a stop or where the rider is going.
     private val warn: (String) -> Unit = {},
+    // The same, with the exception behind it: logged with its type and stack, never its message.
+    private val warnFailure: (Throwable, String) -> Unit = { e, message -> warn("$message: ${e::class.simpleName}") },
     // "Get off soon", once per leg ([OnTheWay.shouldWarn]): whether it was said, so one that
     // couldn't be (notifications off) is tried again on the next refresh.
     private val onGetOffSoon: (ActiveTrip, TripProgress.Riding) -> Boolean = { _, _ -> true },
@@ -1170,7 +1172,12 @@ class ActiveTripTracker(
         // rider could be, below: only there does a vague fix reach a refresh ([OnTheWay.placingFix]).
         val onBoard = _trip.value?.let { it.boarded && it.vehicleId.isNotBlank() } == true
         val boundsOnly = rider != null && onBoard && OnTheWay.tooVagueToAct(rider)
-        val fresh = rider?.takeIf { allowed && !boundsOnly }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+        // Not yet seen on board, the train awaited or only taken to have them ([OnTheWay.watchesWait]), one too vague for
+        // anything else also sees them gone from where the ride boards ([OnTheWay.leavingFix], [vaguelyAlong]); the wait
+        // and the left-behind check never get it (Codex, #1235).
+        val leavingToo = rider != null && OnTheWay.tooVagueToAct(rider) && _trip.value?.let { OnTheWay.watchesWait(it, clock()) } == true
+        val fresh = rider?.takeIf { allowed && !boundsOnly && !leavingToo }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+        val leaving = rider?.takeIf { allowed && leavingToo }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
         // Too old or too vague for that, a fix still says where a rider on board could be, to check the train followed
         // against ([behindFollowed]): underground it may be the only one for minutes (maintainer, 2026-10-23).
         val placing = rider?.takeIf { allowed && fresh == null && OnTheWay.boundsRide(it) }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked), OnTheWay.RIDE_FIX_WITHIN_MILLIS) }
@@ -1185,7 +1192,7 @@ class ActiveTripTracker(
             // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
             expireFix()
             try {
-                if (step(fresh, boards, placing)) step(null, boards)
+                if (step(fresh, boards, placing, leaving)) step(null, boards)
             } finally {
                 expireFix()
             }
@@ -1628,7 +1635,8 @@ class ActiveTripTracker(
     // One step of [refresh]: at most one leg change. True when it left a ride with no train yet,
     // reached by that change or its train dropped, so another step picks one.
     // [placing] is a sure fix too old to be [rider], which only checks the train followed ([behindFollowed]).
-    private suspend fun step(rider: LocationFix?, boards: MutableMap<TripLeg, Result<NextBoard>>, placing: LocationFix? = null): Boolean {
+    // [leaving] is a fix too vague for [rider], which only sees a rider still to board gone along the ride ([vaguelyAlong]).
+    private suspend fun step(rider: LocationFix?, boards: MutableMap<TripLeg, Result<NextBoard>>, placing: LocationFix? = null, leaving: LocationFix? = null): Boolean {
         if (_trip.value == null) return false
         if (_progress.value == TripProgress.Arrived) {
             // Arrived, but not yet forgotten on the device: only that's tried again, not the ride,
@@ -1699,7 +1707,7 @@ class ActiveTripTracker(
             boardedAlong(trip, rider, seenAt, now) ?: OnTheWay.pastWalkOnFoot(trip, rider, now)?.let { walked ->
                 boardedAlong(walked, rider, seenAt, now)?.takeIf { it.trip.legIndex > trip.legIndex }
             }
-        }
+        } ?: leaving?.let { vaguelyAlong(trip, it, seenAt, now) }
         if (along != null) {
             trip = along.trip
             calls = along.calls
@@ -2149,6 +2157,28 @@ class ActiveTripTracker(
         val moved = withContext(compute) { OnTheWay.vaguePastCalls(trip, progress, fix, OnTheWay.ridePositions(leg, sequence), takenAt) } ?: return null
         warn("on the way: a fix sure to ${fix.accuracyMeters?.roundToInt()} m reaches no stop before ${moved.seenAlongStop + 1} of ${leg.path.size} on line ${leg.lineId}, counted on from there")
         return moved
+    }
+
+    /**
+     * [trip] on board its ride by where a vague [rider] places them ([OnTheWay.vagueAlong]) while its train is still
+     * awaited: gone from where it boards and on along it, as a network fix may say underground where no sure one comes
+     * (maintainer, 2026-10-26). On board by position only, counted on by the Planner's time from there: a fix this vague
+     * matches no train. Null where it doesn't place them, or the route can't be had.
+     */
+    private suspend fun vaguelyAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): SeenAlong? {
+        val leg = OnTheWay.waitingToBoard(trip, now) ?: return null
+        val sequence = try {
+            lineSequence(leg.lineId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warnFailure(e, "on the way: route lookup failed for line ${leg.lineId}")
+            return null
+        } ?: return null
+        val seen = aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
+        val along = OnTheWay.vagueAlong(leg, seen, OnTheWay.ridePositions(leg, sequence))
+        warn("on the way: vague fix, " + OnTheWay.seenAlongNote(trip, leg, along, seen.accuracyMeters).removePrefix("on the way: "))
+        return along?.let { SeenAlong(OnTheWay.onBoardAlong(trip, it, now, on = leg)) }
     }
 
     private suspend fun boardedAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): SeenAlong? {

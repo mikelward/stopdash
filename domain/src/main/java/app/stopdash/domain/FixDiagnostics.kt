@@ -22,6 +22,8 @@ object FixDiagnostics {
         PRECISE("precise follow-up"),
         /** A remembered precise fix used in place of a coarse one that agreed with it ([PreciseFixMemory]). */
         REMEMBERED("remembered precise"),
+        /** The network provider alone, asked for a trip on the way when no precise fix came. */
+        APPROXIMATE("approximate"),
     }
 
     /**

@@ -2293,6 +2293,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 letting go of a train past the stop after the furthest stop in its reach, and counting down past the
                 stops before the nearest in its reach (`OnTheWay.vaguePastCalls`). Each fix on a ride is logged
                 against the train followed (`OnTheWay.fixAgainstTrainNote`).
+          - [x] **Out of a tunnel, ask at once** (bug report, 2026-10-26: still shown at Finsbury Park nearly at King's
+                Cross): the connection's return starts a 10 s refresh hunt for a sure fix (`SignalReturns`, two minutes at
+                most), a network fix is asked for when GPS and fused give none, and a vague fix clear of the boarding stop's
+                track sees a rider still to board on along the ride (`OnTheWay.vagueAlong`). Device check owed: whether
+                Android drops the default network in a tube tunnel, which the hunt waits on.
           - [ ] **Score fixes against where the rider really was**: an "I'm here" tap on a stop under Show stops,
                 logged, so each fix's source, accuracy and age can be judged right or wrong (maintainer, 2026-10-23:
                 network fixes have put the rider at East Finchley while at Archway); then set which fixes to trust,

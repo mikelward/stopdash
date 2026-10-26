@@ -520,4 +520,24 @@ class AndroidLocationProviderTest {
         // Ends at once, with nothing: GPS can't be asked for without precise location.
         assertEquals(emptyList<LocationFix>(), AndroidLocationProvider(app).preciseUpdates(Duration.ofSeconds(5), 10f).toList())
     }
+
+    @Test
+    fun `the approximate fix asks Android on the io dispatcher, not the caller's thread`() = runTest {
+        // A trip on the way asks from the main thread (Codex, #1235): the provider check hops to the io dispatcher.
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
+        val io = CountingDispatcher(StandardTestDispatcher(testScheduler))
+        assertNull(AndroidLocationProvider(app, remembers = false, io = io).approximateFix())
+        assertTrue(io.dispatched > 0)
+    }
+
+    private class CountingDispatcher(private val inner: kotlinx.coroutines.CoroutineDispatcher) : kotlinx.coroutines.CoroutineDispatcher() {
+        var dispatched = 0
+
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+            dispatched++
+            inner.dispatch(context, block)
+        }
+    }
+
 }

@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The device's position via the framework [LocationManager] — no Play Services dependency,
@@ -62,6 +64,9 @@ class AndroidLocationProvider(
     private val wifiPlaces: WifiPlaceSource = WifiPlaceSource.NONE,
     // Where [preciseUpdates] hands each update to [position]: its listener runs on the main thread.
     private val recordOn: CoroutineDispatcher = Dispatchers.Default,
+    // Where [approximateFix] asks Android which providers are on and for its fix: binder calls, never on the
+    // caller's thread, which for a trip on the way is the main one (Codex, #1235).
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : LocationProvider {
     // Whether [preciseUpdates] last found no accurate provider, so a caller asking again doesn't log
     // it each time (main thread only).
@@ -309,6 +314,30 @@ class AndroidLocationProvider(
         position("${FixDiagnostics.Source.PRECISE.label} ${fix.provider} fix", fix.coordinates)
         if (remembers) remember(fix)
         observe(fix.toFix())
+        return fix.toFix()
+    }
+
+    /**
+     * A fresh fix from the network provider alone (Wi-Fi and cell, no GPS), waited for up to
+     * [FixSelection.FRESH_FIX_PER_PROVIDER_TIMEOUT_MILLIS]: for a trip on the way when [preciseFix]
+     * found none, as underground, where a station's Wi-Fi or a cell may still place the rider roughly
+     * (maintainer, 2026-10-26). Vague by nature; the caller decides what it can be used for. Nothing
+     * remembered or logged but the provider and how sure it was.
+     */
+    suspend fun approximateFix(): LocationFix? {
+        if (!hasLocationPermission()) return null
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        if (withContext(io) { LocationManager.NETWORK_PROVIDER !in enabledProviders(manager) }) return null
+        val fix = withTimeoutOrNull(FixSelection.FRESH_FIX_PER_PROVIDER_TIMEOUT_MILLIS) {
+            withContext(io) { requestFreshFixFrom(manager, LocationManager.NETWORK_PROVIDER) }
+        }
+        if (fix == null) {
+            warn("approximate fix: none arrived")
+            return null
+        }
+        val ageMillis = (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos) / 1_000_000
+        warn(FixDiagnostics.describe(FixDiagnostics.Source.APPROXIMATE, fix.provider, fix.accuracyMeters, ageMillis))
+        position("${FixDiagnostics.Source.APPROXIMATE.label} ${fix.provider} fix", fix.coordinates)
         return fix.toFix()
     }
 

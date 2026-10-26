@@ -16,10 +16,12 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import app.stopdash.data.AndroidLocationProvider
+import app.stopdash.data.watchSignal
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.ON_THE_WAY_MIN_GAP
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.SignalReturns
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.awaitRefresh
@@ -120,6 +122,9 @@ class OnTheWayService : Service() {
                 }
                 // The trip on a paired watch with the app, for as long as it's followed here.
                 val onWatch = launch { WatchTripSync.follow(this@OnTheWayService, tracker) }
+                // The connection's comings and goings, so the trip hunts for a sure fix once it's back ([SignalReturns]).
+                val signal = MainActivity.signalReturns
+                val onSignal = launch { watchSignal(this@OnTheWayService, signal) { e, what -> StopdashDebugLog.failure(e, "on the way: %s", what) } }
                 // Arrived, ended, past the cap, or failed: nothing left to follow here.
                 followThenStop(
                     warn = { StopdashDebugLog.warning("on the way: %s", it) },
@@ -127,6 +132,7 @@ class OnTheWayService : Service() {
                     stop = {
                         shown.cancel()
                         onWatch.cancel()
+                        onSignal.cancel()
                         // Its alerts go with it: nothing left to say them in.
                         TripAlerts.clearAll()
                         // Off the watch too: a trip no longer followed isn't shown there as current.
@@ -142,9 +148,9 @@ class OnTheWayService : Service() {
                     val fixes = MainActivity.tripFixes
                     followTrip(tracker.trip, tracker.starting, ON_THE_WAY_REFRESH, OnTheWayWakeLock.LIMIT, restore = tracker::restore,
                         startedFor = { Duration.between(it.startedAt, Instant.now()) },
-                        keepAwake = { awake?.let(OnTheWayWakeLock::renew) }, fixes = fixes.latest) { seen ->
+                        keepAwake = { awake?.let(OnTheWayWakeLock::renew) }, fixes = fixes.latest, signal = signal) { seen ->
                         // A fix the open app saw is used whether or not this service may take its own.
-                        tracker.refresh(refreshFix(seen, fixes, tracker.trip.value, Instant.now(), mayTake = located && locationAllowed(), ::riderIfWanted))
+                        tracker.refresh(refreshFix(seen, fixes, tracker.trip.value, Instant.now(), mayTake = located && locationAllowed(), signal = signal, take = ::riderIfWanted))
                     }
                 }
             }
@@ -286,6 +292,8 @@ internal suspend fun followTrip(
     keepAwake: () -> Unit = {},
     fixes: StateFlow<TripFixes.Seen?> = MutableStateFlow(null),
     minGap: Duration = ON_THE_WAY_MIN_GAP,
+    // Hunting for a sure fix since the connection came back: a refresh each [minGap] meanwhile ([awaitRefresh]).
+    signal: SignalReturns? = null,
     refresh: suspend (TripFixes.Seen?) -> Unit,
 ) {
     // Started from the Start tap, the trip may not be kept yet: a start in flight is waited for.
@@ -331,7 +339,7 @@ internal suspend fun followTrip(
                 // its place (null), whose next ride's board is read now rather than a wait later.
                 woke = merge(
                     trip.filter { it == null }.map<ActiveTrip?, TripFixes.Seen?> { null },
-                    flow { emit(awaitRefresh(fixes, every, minGap, trip, from = following.startedAt, handled = handled)) },
+                    flow { emit(awaitRefresh(fixes, every, minGap, trip, from = following.startedAt, handled = handled, signal = signal)) },
                 ).first()
             }
         } == null
@@ -518,9 +526,14 @@ internal suspend fun onTheWayFix(location: AndroidLocationProvider, trip: Active
     // GPS/fused, waited for: a quick coarse fix could never settle it, so it isn't asked for. How
     // sure it must be depends on what it's for ([OnTheWay.sureEnoughFor]); one surer still is waited
     // for where it could tell more ([OnTheWay.preferredFor]), the vaguer one kept if none comes.
-    val fix = location.preciseFix(sureEnough = OnTheWay.preferredFor(trip, now)) ?: return null
-    // Too old for that, one may still place a rider on board, against the train followed (maintainer, 2026-10-23).
-    return OnTheWay.usableFix(fix, trip, now) ?: OnTheWay.placingFix(fix, trip)
+    // None at all (underground, GPS and fused hunting their whole bound): a network fix, where a vague one is of use
+    // ([OnTheWay.takesApproximate]), as a station's Wi-Fi or a cell may still place the rider (maintainer, 2026-10-26).
+    val fix = location.preciseFix(sureEnough = OnTheWay.preferredFor(trip, now))
+        ?: (if (OnTheWay.takesApproximate(trip, Instant.now())) location.approximateFix() else null)
+        ?: return null
+    // Too old for that, one may still place a rider on board, against the train followed (maintainer, 2026-10-23);
+    // too vague, it may still see a rider awaiting a train gone from where it boards (maintainer, 2026-10-26).
+    return OnTheWay.fixOfUse(fix, trip, now)
 }
 
 /** Hears the trip's ongoing notification swiped away (its delete intent), so it isn't posted again for that trip. */

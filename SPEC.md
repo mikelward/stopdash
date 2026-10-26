@@ -3288,7 +3288,9 @@ as it was.
   underground with no GPS. **Taken to be is not seen to be** (maintainer, 2026-09-29): a rider still on
   the platform underground looks the same, so until they're **seen on board** — by location (at a
   later stop of the ride, or well on along it, as *sees a rider already on their way* below; the
-  checks carry on after the train leaves, within the same ten minutes of the wait) or by their word
+  checks carry on after the train leaves, within the same ten minutes of the wait; a vague fix, as a network one
+  underground, counts once none of the track from the boarding stop to the next is within its reach and some of the
+  ride's further on is, placing them short of the nearest stop in reach, never off: maintainer, 2026-10-26) or by their word
   (Next, or a tap on "Ride to …") — the step stays the ride's: **"Take the train to …"** (by its
   mode, as "Finding your bus…" is), its board of departures still under it. Seen on board, the step
   becomes "Ride to …" with the stops left and the board goes. "Get off soon" is still said on the
@@ -3803,7 +3805,11 @@ stands on TfL. The ride's stops are placed from its line's route, and each train
 line's, which the trip's cards already hold. Underground, where no
 fix comes, it can't tell. The stop's position is the Planner's (or its line's route's); the fix is
 only compared with it, on the device, and never logged, kept or sent.
-Underground, where no fix comes, nothing is guessed. Each refresh takes one fix for the whole trip,
+Underground, where no fix comes, nothing is guessed. When neither GPS nor fused answers, a refresh asks the network
+provider (Wi-Fi and cell, about 4 s more) wherever a vague fix is of use: on board a train followed, or awaiting one.
+**Once the connection comes back** after it was lost, the trip refreshes every 10 s, acting on any fix, vague ones
+included, until a sure one comes, the connection goes again, or two minutes pass (maintainer, 2026-10-26: out of a
+tunnel the next fix waited out the timer, and on a marginal signal the first try may fail). Each refresh takes one fix for the whole trip,
 start to arrival (walks, waits, changes and rides; maintainer, 2026-10-09), so a ride is checked
 against the train followed all the way, not only near its ends: about two fixes a minute, sixty on a
 half-hour trip. Above ground each is a second or two of GPS; underground GPS hunts for its whole
