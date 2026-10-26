@@ -2346,8 +2346,7 @@ class TripScreenScreenshotTest {
         val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         composeRule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
         val layout = results.single()
-        // One line, nothing cut: clipped at a word, "Arrival unknown" read as "Arrival" (and
-        // "est. 44 min · 10:29" as "est. 44 min").
+        // One line, nothing cut: clipped at a word, "Arrival unknown" read as "Arrival".
         assertEquals(1, layout.lineCount)
         assertEquals(text.length, layout.getLineEnd(0))
         assertTrue("arrival ellipsized", !layout.isLineEllipsized(0))

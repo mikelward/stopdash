@@ -316,9 +316,8 @@
     <string name="trip_avoiding">Kaçınılan</string>
     <string name="trip_stop_avoiding">Kaçınmayı bırak: %1$s</string>
     <string name="trip_duration_arrival">%1$d dk · %2$s</string>
-    <string name="trip_duration_arrival_estimated">tahmini %1$d dk · %2$s</string>
-    <string name="trip_duration_arrival_range">tahmini %1$d–%2$d dk · %3$s–%4$s</string>
-    <string name="trip_duration_arrival_open">tahmini %1$d+ dk · %2$s+</string>
+    <string name="trip_duration_arrival_range">%1$d–%2$d dk · %3$s–%4$s</string>
+    <string name="trip_duration_arrival_open">%1$d+ dk · %2$s+</string>
     <string name="trip_arrival_unknown">Varış bilinmiyor</string>
     <plurals name="trip_stops_to">
         <item quantity="one">%2$s durağına %1$d durak</item>
@@ -779,7 +778,6 @@
     <string name="on_the_way_other_routes">Diğer güzergâhlar</string>
     <string name="on_the_way_done">Bitti</string>
     <string name="on_the_way_trip_eta">%2$d dk · %1$s</string>
-    <string name="on_the_way_trip_eta_estimated">tahmini %2$d dk · %1$s</string>
     <string name="on_the_way_step_time">%2$d dk · %1$s</string>
     <string name="on_the_way_go_next">İleri</string>
     <string name="on_the_way_go_back">Geri</string>

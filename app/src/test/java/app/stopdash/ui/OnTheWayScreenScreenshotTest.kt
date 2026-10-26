@@ -2718,7 +2718,8 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun the_trip_says_its_time_left_and_when_it_gets_there() {
         val resources = composeRule.activity.resources
-        assertEquals("est. 14 min · 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
+        // Partly from the plan, it leads with "~"; live, it's unmarked (maintainer, 2026-10-26).
+        assertEquals("~14 min · 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
         assertEquals("14 min · 08:16", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
         // On the last ride, TfL's time where they get off; not from an answer too old to stand behind.
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
@@ -2734,7 +2735,7 @@ class OnTheWayScreenScreenshotTest {
         // The train followed past its time, the board's next due in 10 min: timed from it (maintainer, 2026-10-03).
         val gone = TripProgress.Waiting(mildmay, at(-1))
         show(trip, gone, nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now))
-        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("est. 37 min · 08:39")
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("~37 min · 08:39")
     }
 
     @Test
@@ -2745,30 +2746,6 @@ class OnTheWayScreenScreenshotTest {
         show(trip, gone, current = false, asOf = at(-3), nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now))
         composeRule.onNodeWithTag("onTheWayEta").assertDoesNotExist()
         onCard("Checking…").assertIsDisplayed()
-    }
-
-    @Test
-    fun an_estimates_est_goes_before_the_place_shortens() {
-        // At large text the trip's name and its estimated time can't both fit: the time drops its "est."
-        // first, before the name gives up any of its words (maintainer, 2026-10-04).
-        val gone = TripProgress.Waiting(mildmay, at(-1))
-        composeRule.setContent {
-            val base = androidx.compose.ui.platform.LocalDensity.current
-            androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density, fontScale = 2f),
-            ) {
-                StopDashTheme(dynamicColor = false) {
-                    OnTheWayScreen(
-                        trip, gone, false, now, {}, {},
-                        nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now),
-                        onGoTo = { _, _ -> },
-                    )
-                }
-            }
-        }
-        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("37 min · 08:39")
-        // A screen reader still hears it's an estimate (Codex, #526).
-        composeRule.onNodeWithTag("onTheWayEta").assertContentDescriptionEquals("est. 37 min · 08:39")
     }
 
     @Test

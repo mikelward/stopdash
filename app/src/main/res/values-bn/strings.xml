@@ -316,9 +316,8 @@
     <string name="trip_avoiding">এড়ানো হচ্ছে</string>
     <string name="trip_stop_avoiding">%1$s এড়ানো বন্ধ করুন</string>
     <string name="trip_duration_arrival">%1$d মি. · %2$s</string>
-    <string name="trip_duration_arrival_estimated">আনু. %1$d মি. · %2$s</string>
-    <string name="trip_duration_arrival_range">আনু. %1$d–%2$d মি. · %3$s–%4$s</string>
-    <string name="trip_duration_arrival_open">আনু. %1$d+ মি. · %2$s+</string>
+    <string name="trip_duration_arrival_range">%1$d–%2$d মি. · %3$s–%4$s</string>
+    <string name="trip_duration_arrival_open">%1$d+ মি. · %2$s+</string>
     <string name="trip_arrival_unknown">পৌঁছানোর সময় অজানা</string>
     <plurals name="trip_stops_to">
         <item quantity="one">%2$s পর্যন্ত %1$dটি স্টপ</item>
@@ -779,7 +778,6 @@
     <string name="on_the_way_other_routes">অন্য রুট</string>
     <string name="on_the_way_done">হয়ে গেছে</string>
     <string name="on_the_way_trip_eta">%2$d মি. · %1$s</string>
-    <string name="on_the_way_trip_eta_estimated">আনু. %2$d মি. · %1$s</string>
     <string name="on_the_way_step_time">%2$d মি. · %1$s</string>
     <string name="on_the_way_go_next">পরবর্তী</string>
     <string name="on_the_way_go_back">পিছনে</string>

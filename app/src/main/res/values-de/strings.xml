@@ -316,9 +316,8 @@
     <string name="trip_avoiding">Gemieden</string>
     <string name="trip_stop_avoiding">%1$s nicht mehr meiden</string>
     <string name="trip_duration_arrival">%1$d Min. · %2$s</string>
-    <string name="trip_duration_arrival_estimated">ca. %1$d Min. · %2$s</string>
-    <string name="trip_duration_arrival_range">ca. %1$d–%2$d Min. · %3$s–%4$s</string>
-    <string name="trip_duration_arrival_open">ca. %1$d+ Min. · %2$s+</string>
+    <string name="trip_duration_arrival_range">%1$d–%2$d Min. · %3$s–%4$s</string>
+    <string name="trip_duration_arrival_open">%1$d+ Min. · %2$s+</string>
     <string name="trip_arrival_unknown">Ankunft unbekannt</string>
     <plurals name="trip_stops_to">
         <item quantity="one">%1$d Station bis %2$s</item>
@@ -779,7 +778,6 @@
     <string name="on_the_way_other_routes">Andere Routen</string>
     <string name="on_the_way_done">Fertig</string>
     <string name="on_the_way_trip_eta">%2$d Min. · %1$s</string>
-    <string name="on_the_way_trip_eta_estimated">ca. %2$d Min. · %1$s</string>
     <string name="on_the_way_step_time">%2$d Min. · %1$s</string>
     <string name="on_the_way_go_next">Weiter</string>
     <string name="on_the_way_go_back">Zurück</string>

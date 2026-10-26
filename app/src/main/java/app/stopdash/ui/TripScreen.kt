@@ -3259,11 +3259,19 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
         // A longer wait could miss a connection nothing else times: no latest to give, so say it may be later.
         slack == null -> stringResource(R.string.trip_duration_arrival_open, minutes, clock)
         // A wait for a frequent line could make it a few minutes later: say how many, once they matter.
-        end != null -> stringResource(R.string.trip_duration_arrival_range, minutes, latestMinutes(estimate.duration, slack), clock, end)
+        // Marked as an estimate too, so it says why it sorts below a live route it may beat (maintainer, 2026-10-26).
+        end != null -> ESTIMATE_MARK + stringResource(R.string.trip_duration_arrival_range, minutes, latestMinutes(estimate.duration, slack), clock, end)
         estimate.basis == TripTiming.Basis.LIVE -> stringResource(R.string.trip_duration_arrival, minutes, clock)
-        else -> stringResource(R.string.trip_duration_arrival_estimated, minutes, clock)
+        else -> ESTIMATE_MARK + stringResource(R.string.trip_duration_arrival, minutes, clock)
     }
 }
+
+/**
+ * What leads an arrival partly timed from the Planner's timetable, a range included, where a live one has
+ * no mark: "~", about, as the trip's walk and ride times read (maintainer, 2026-10-26, in place of "est.",
+ * which didn't say what it meant). It says why the route sorts below a live one. An open-ended "+" says it.
+ */
+internal const val ESTIMATE_MARK = "~"
 
 /**
  * The end of an [arrival]'s range when its [slack] is enough to show ([SHOWN_SLACK_MINUTES]), as a
