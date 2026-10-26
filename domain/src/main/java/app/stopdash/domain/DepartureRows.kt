@@ -149,6 +149,7 @@ object DepartureRows {
     ): List<DepartureRow> {
         // Planned work whose day has come shows as under way, however long ago it was fetched.
         val lineStatuses = LineStatus.asOf(lineStatuses, now)
+        val linePages = linePages(lineStatuses)
         return stops.flatMap { stop ->
             // A service ending at this stop, or no farther from the rider than it, goes nowhere for
             // them ([Terminating.forStop]). Hidden here, as the rows are built, rather than dropped from the
@@ -198,9 +199,74 @@ object DepartureRows {
                 } else {
                     emptyList()
                 }
-            stopStatusRow(stop, now) + timed + status
+            stopStatusRow(stop.withoutLineCovered(linePages), now) + timed + status
         }.sortedWith(rowOrder)
     }
+
+    /**
+     * The National Rail disruption pages ([RailIncidents.pagesIn]) a disrupted line's status among
+     * [lineStatuses] links to: its own alert, each direction's, each placed closure's and each under way.
+     * A station's board message linking to one of these is that line's alert, which its ⚠ already
+     * carries ([withoutLineCovered]).
+     */
+    private fun linePages(lineStatuses: Map<String, LineStatus>): Set<String> {
+        val pages = HashSet<String>()
+        for (line in lineStatuses.values) {
+            for (status in line.allStatuses) {
+                if (!status.disrupted) continue
+                pages += RailIncidents.pagesIn(status.fullText)
+                pages += RailIncidents.pagesIn(status.description)
+                for (closure in status.closures) pages += RailIncidents.pagesIn(closure.fullText)
+                for (alert in status.underWay) pages += RailIncidents.pagesIn(alert.fullText)
+            }
+        }
+        return pages
+    }
+
+    /**
+     * This stop less its National Rail board messages ([StopArrivals.railNotices]) that are a line's alert
+     * shown elsewhere (maintainer, 2026-10-26): one linking only to disruption pages a disrupted line's
+     * status links to ([linePages]), and not naming this station. The board repeats its operators' route
+     * disruptions across their network ("Trains running between Oxted and East Croydon…"), which the
+     * line's ⚠ and page already carry, so the station's card keeps what is about the station: its
+     * facilities (a lift, a toilet, no link), its own closures, a route message naming it, and a route
+     * message no line's status covers, so nothing is lost while TfL lags National Rail.
+     */
+    private fun StopArrivals.withoutLineCovered(linePages: Set<String>): StopArrivals {
+        if (railNotices.isEmpty() || linePages.isEmpty()) return this
+        val names = (listOf(stopName, hubName) + placeAliases).map(::stationWords).filter { it.isNotEmpty() }.distinct()
+        val kept = railNotices.filterNot { message ->
+            val pages = RailIncidents.pagesIn(message)
+            pages.isNotEmpty() && pages.all { it in linePages } && names.isNotEmpty() && !namesAny(message, names)
+        }
+        return if (kept.size == railNotices.size) this else copy(railNotices = kept)
+    }
+
+    // Whether [message] names one of [names] ([stationWords]): its words run whole and in order somewhere
+    // in the message's, so "Lee" names Lee but not "Leeds" or "fleet" (Codex on #1237).
+    private fun namesAny(message: String, names: List<List<String>>): Boolean {
+        val said = spellingWords(message)
+        return names.any { name -> said.windowed(name.size).any { it == name } }
+    }
+
+    // [name] as a notice might spell it ([spellingWords]), without a platform level ("LL") or a leading
+    // "London", which a notice may leave off: "London St Pancras International LL" is `st pancras
+    // international`. A word fewer only keeps more notices, never fewer.
+    private fun stationWords(name: String): List<String> =
+        spellingWords(matchStopName(name).replace(LEVEL_SUFFIX, "").replace(LONDON_PREFIX, ""))
+
+    // [text]'s words, lower case, an apostrophe or a dot inside one dropped and "&" read as "and", less
+    // TfL's station-type words, so "King’s Cross St. Pancras station" and "Kings Cross St Pancras" read
+    // alike (Codex on #1237).
+    private fun spellingWords(text: String): List<String> =
+        text.lowercase().replace(INNER_MARK, "").replace("&", " and ")
+            .split(NOT_WORD).filter { it.isNotEmpty() && it !in TYPE_WORDS }
+
+    private val LEVEL_SUFFIX = Regex("""\s+(?:LL|HL)$""", RegexOption.IGNORE_CASE)
+    private val LONDON_PREFIX = Regex("""^London\s+""", RegexOption.IGNORE_CASE)
+    private val INNER_MARK = Regex("""(?<=\p{L})['’.](?=\p{L})|(?<=\b[Ss]t)\.""")
+    private val NOT_WORD = Regex("""[^\p{L}\p{N}]+""")
+    private val TYPE_WORDS = setOf("underground", "overground", "dlr", "rail", "station")
 
     /**
      * Split [row]'s upcoming departures into per-destination lines for rendering, soonest group
