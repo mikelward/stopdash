@@ -4,7 +4,9 @@ import java.time.Instant
 import kotlin.time.toJavaDuration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** [DismissedAlert], [Dismissed], and [stopPlaceKey]: the dismissal identity and toggle rule. */
@@ -88,11 +90,11 @@ class DismissedAlertTest {
     @Test
     fun `of picks the stop closure, else the line status, else nothing`() {
         val closure = closureRow("A", "Stop A", "Bus Stop Closed", clusterId = "490G000A")
-        assertEquals(DismissedAlert.ofStopClosure(closure), DismissedAlert.of(closure))
+        assertEquals(listOf(DismissedAlert.ofStopClosure(closure)), DismissedAlert.of(closure))
         val status = LineStatus("victoria", 6, "Severe Delays")
         val lineRow = closure.copy(stopDisruption = null, lineId = "victoria", status = status)
-        assertEquals(DismissedAlert.ofLineStatus(status), DismissedAlert.of(lineRow))
-        assertNull(DismissedAlert.of(lineRow.copy(status = null)))
+        assertEquals(listOf(DismissedAlert.ofLineStatus(status)), DismissedAlert.of(lineRow))
+        assertEquals(emptyList<DismissedAlert>(), DismissedAlert.of(lineRow.copy(status = null)))
     }
 
     @Test
@@ -183,5 +185,52 @@ class DismissedAlertTest {
         assertEquals(Dismissed.Kept(emptySet(), emptyMap()), Dismissed.keepingEnded(first.dismissed, first.ended, emptySet(), now.minusSeconds(3_600)))
         // An ordinary dismissal reconcile keeps is left as it is.
         assertEquals(Dismissed.Kept(setOf(dismissal), emptyMap()), Dismissed.keepingEnded(setOf(dismissal), emptyMap(), setOf(dismissal), now))
+    }
+
+    private val kxNow = Instant.parse("2026-10-26T08:00:00Z")
+    private val circle = StopDisruption("Circle Line: No service between Aldgate and Edgware Road.")
+    private val northern = StopDisruption(
+        "Northern line: lifts out of order.", Instant.parse("2026-10-26T06:00:00Z"), Instant.parse("2026-10-27T06:00:00Z"),
+    )
+
+    private fun kxCard(vararg notices: StopDisruption): DepartureRow =
+        DepartureRows.across(listOf(StopArrivals("940GZZLUKSX", "King's Cross St. Pancras", emptyList(), kxNow, disruptions = notices.toList())), kxNow)
+            .single { it.stopDisruption != null }
+
+    @Test
+    fun `a card's notices are dismissed one by one, each with its own window`() {
+        val both = DismissedAlert.ofStopNotices(kxCard(circle, northern))
+        assertEquals(2, both.size)
+        // Each notice is keyed as a card showing it alone, windows and all, so a dismissal stored before holds.
+        assertEquals(DismissedAlert.ofStopClosure(kxCard(circle)), both[0])
+        assertEquals(DismissedAlert.ofStopClosure(kxCard(northern)), both[1])
+        assertEquals(listOf(DismissedAlert.ofStopClosure(kxCard(northern))), DismissedAlert.ofStopNotices(kxCard(northern)))
+    }
+
+    @Test
+    fun `a dismissed notice leaves the card, which goes once none is left`() {
+        val card = kxCard(circle, northern)
+        val northernOnly = kxCard(northern)
+        val dismissed = DismissedAlert.ofStopNotices(northernOnly).toSet()
+        // Dismissed on a ride's card, which leaves out the Circle line's notice: the place's card shows only that.
+        val left = DepartureRows.withoutDismissed(listOf(card), dismissed).single()
+        assertEquals(kxCard(circle).stopDisruption, left.stopDisruption)
+        assertEquals(DismissedAlert.ofStopNotices(kxCard(circle)), DismissedAlert.ofStopNotices(left))
+        assertTrue(DepartureRows.withoutDismissed(listOf(card), DismissedAlert.ofStopNotices(card).toSet()).isEmpty())
+        // A reworded notice is a new one, and shows again.
+        val reworded = kxCard(circle, northern.copy(description = "Northern line: lift out of order."))
+        assertEquals(2, DismissedAlert.ofStopNotices(DepartureRows.withoutDismissed(listOf(reworded), dismissed).single()).size)
+    }
+
+    @Test
+    fun `a ride's card dismissal is live while the place's notices stand`() {
+        // Codex on #1233: the place's whole set of notices, checked, keeps a dismissal made on a card showing fewer.
+        val rideDismissal = DismissedAlert.ofStopNotices(kxCard(northern)).single()
+        val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(
+            listOf(StopArrivals("940GZZLUKSX", "King's Cross St. Pancras", emptyList(), kxNow, disruptions = listOf(circle, northern))), kxNow,
+        ))
+        assertTrue(rideDismissal in live)
+        // Gone from the place, it's let go of.
+        assertFalse(rideDismissal in DepartureRows.liveStopClosureAlerts(listOf(kxCard(circle))))
     }
 }

@@ -70,7 +70,8 @@ internal suspend fun followDismissed(
 }
 
 /**
- * Records [row]'s alert as dismissed in [store]; a row with no dismissable alert does nothing. A
+ * Records [row]'s alert as dismissed in [store], each notice of a stop's on its own
+ * ([DismissedAlert.ofStopNotices]); a row with no dismissable alert does nothing. A
  * write that didn't take sets [failed] — the store won't re-emit, so the card would silently stay —
  * for the screen to say so rather than let the dismiss tap look broken.
  */
@@ -85,7 +86,7 @@ internal suspend fun dismissAlert(
     // Added as the dismissal is counted, in one step with it, so no check's prune can land in between
     // ([DismissedAlertsStore.prune]).
     into: MutableStateFlow<Set<DismissedAlert>>? = null,
-) = dismissAlertOf(store, io, failed, warn, into) { DismissedAlert.of(row) }
+) = dismissAlertsOf(store, io, failed, warn, into) { DismissedAlert.of(row) }
 
 /**
  * Records the [alert] worked out on [io] as dismissed in [store], as [dismissAlert] does a row's; none
@@ -99,6 +100,16 @@ internal suspend fun dismissAlertOf(
     warn: (String) -> Unit,
     into: MutableStateFlow<Set<DismissedAlert>>? = null,
     alert: () -> DismissedAlert?,
+) = dismissAlertsOf(store, io, failed, warn, into) { listOfNotNull(alert()) }
+
+/** Records the [alerts] worked out on [io] as dismissed in [store], each as [dismissAlertOf] does one. */
+internal suspend fun dismissAlertsOf(
+    store: DismissedAlertsStore,
+    io: CoroutineDispatcher,
+    failed: MutableStateFlow<Boolean>,
+    warn: (String) -> Unit,
+    into: MutableStateFlow<Set<DismissedAlert>>? = null,
+    alerts: () -> List<DismissedAlert>,
 ) {
     try {
         // NonCancellable, like a star: a dismiss tapped just before leaving the page still lands.
@@ -108,12 +119,13 @@ internal suspend fun dismissAlertOf(
         // didn't take: once no other dismissal of it is written or still being written (the store's say,
         // told to the last of them to fail), as one of those keeps it.
         withContext(NonCancellable + io) {
-            val dismissed = alert() ?: return@withContext
-            store.dismiss(
-                dismissed,
-                counted = { into?.update { if (dismissed in it) it else it + dismissed } },
-                notWritten = { into?.update { it - dismissed } },
-            )
+            for (dismissed in alerts()) {
+                store.dismiss(
+                    dismissed,
+                    counted = { into?.update { if (dismissed in it) it else it + dismissed } },
+                    notWritten = { into?.update { it - dismissed } },
+                )
+            }
         }
     } catch (e: CancellationException) {
         throw e

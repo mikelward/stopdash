@@ -93,6 +93,10 @@ data class DepartureRow(
     // open bound), sorted and joined; blank when none is dated. Part of the dismissal identity, so a
     // dismissed closure whose window TfL extends or moves shows again (SPEC *Disruptions*).
     val stopDisruptionWindows: String = "",
+    // The notices behind [stopDisruption], each normalized, in the order it joins them. A dismissal is
+    // of a notice, not of a card ([DismissedAlert.ofStopNotices]); empty for a row whose [stopDisruption]
+    // was set whole, which is then dismissed whole.
+    val stopNotices: List<String> = emptyList(),
     // The interchange this stop belongs to, TfL's `hubNaptanCode` ([StopLocation.interchangeId]): `HUBKGX`
     // ties King's Cross and St Pancras together. Blank for a stop in no hub. A near-me stop-status
     // row folds by this so an interchange's shared disruption is one alert, and two genuinely

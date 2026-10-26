@@ -673,13 +673,13 @@ object DepartureRows {
      */
     @WorkerThread
     fun stopStatusFolded(rows: List<DepartureRow>): List<DepartureRow> {
-        val groups = rows.filter { it.stopDisruption != null }.groupBy { stopPlaceKey(it) to it.stopDisruption }
+        val placeWide = placeNoticeWindows(rows)
         val emitted = HashSet<Pair<String, String?>>()
         return rows.mapNotNull { row ->
             if (row.stopDisruption == null) return@mapNotNull row
             val key = stopPlaceKey(row) to row.stopDisruption
             if (!emitted.add(key)) return@mapNotNull null
-            val windows = foldedWindows(groups.getValue(key))
+            val windows = foldedWindows(row, placeWide)
             if (windows == row.stopDisruptionWindows) row else row.copy(stopDisruptionWindows = windows)
         }
     }
@@ -715,38 +715,70 @@ object DepartureRows {
             // Shared with the dismissal key so fold and dismiss agree on what "one place" is.
             statusByPlaceNotice.getOrPut(stopPlaceKey(row) to text) { mutableListOf() }.add(row)
         }
+        val placeWide = placeNoticeWindows(stopStatus)
         return statusByPlaceNotice.values.map { group ->
             val nearest = group.minWith(compareBy({ distanceOf(it.stopId) }, { tieOf(it.stopId) }, { it.stopId }))
-            // The folded card's dismissal windows are the whole group's, not the nearest member's:
+            // The folded card's dismissal windows are the whole place's, not the nearest member's:
             // members can carry slightly different windows for one notice, and which member is
             // nearest changes as the user moves — that alone must not undo a dismissal (Codex).
-            val windows = foldedWindows(group)
+            val windows = foldedWindows(nearest, placeWide)
             if (windows == nearest.stopDisruptionWindows) nearest else nearest.copy(stopDisruptionWindows = windows)
         }
     }
 
     /**
-     * The dismissal windows of one folded (place, notice) card: every member row's entries, distinct
-     * and sorted, so the card's identity doesn't depend on which member is nearest.
+     * The dismissal windows of a folded card for [row]'s notices: each notice's entries from every row at
+     * its place that shows it ([placeWide]), distinct and sorted, so the card's identity doesn't depend on
+     * which member is nearest, nor on which other notices share a card with it.
      */
-    private fun foldedWindows(group: List<DepartureRow>): String =
-        group.flatMap { it.stopDisruptionWindows.split(WINDOW_ENTRY_SEPARATOR) }
-            .filter { it.isNotEmpty() }.distinct().sorted().joinToString(WINDOW_ENTRY_SEPARATOR)
+    private fun foldedWindows(row: DepartureRow, placeWide: Map<Pair<String, String>, List<String>>): String {
+        val place = stopPlaceKey(row)
+        return noticesOf(row).flatMap { placeWide[place to it].orEmpty() }.distinct().sorted().joinToString(WINDOW_ENTRY_SEPARATOR)
+    }
 
     /**
-     * Every dismissal identity a stop-closure card built from [rows] can carry: each row's own, plus
-     * each (place, notice) group's folded one ([nearbyDeduped]). Reconciliation keeps a dismissal
-     * that matches any of these, so a folded near-me card's dismissal isn't pruned for being
-     * absent from the unfolded rows (Codex). Extra identities only retain, never hide, a card.
+     * Each (place, notice) among [rows]' stop-status rows, with the window entries every row there showing
+     * it gives it, distinct and sorted ([foldedWindows]).
      */
-    fun liveStopClosureAlerts(rows: List<DepartureRow>): Set<DismissedAlert> =
-        rows.filter { it.stopDisruption != null }
-            .groupBy { stopPlaceKey(it) to it.stopDisruption }
-            .values
-            .flatMapTo(mutableSetOf()) { group ->
-                group.map { DismissedAlert.ofStopClosure(it) } +
-                    DismissedAlert.ofStopClosure(group.first().copy(stopDisruptionWindows = foldedWindows(group)))
-            }
+    private fun placeNoticeWindows(rows: List<DepartureRow>): Map<Pair<String, String>, List<String>> {
+        val found = LinkedHashMap<Pair<String, String>, MutableSet<String>>()
+        for (row in rows) {
+            if (row.stopDisruption == null) continue
+            val place = stopPlaceKey(row)
+            for (notice in noticesOf(row)) found.getOrPut(place to notice) { mutableSetOf() } += windowsOf(row, notice)
+        }
+        return found.mapValues { (_, entries) -> entries.sorted() }
+    }
+
+    // [row]'s notices as a dismissal reads them: each one, or its whole text for a row set whole.
+    private fun noticesOf(row: DepartureRow): List<String> = row.stopNotices.ifEmpty { listOfNotNull(row.stopDisruption) }
+
+    /**
+     * The window entries [row] gives [notice] ([DepartureRow.stopDisruptionWindows]): those of its text,
+     * or every one for a row set whole ([DepartureRow.stopNotices] empty).
+     */
+    internal fun windowsOf(row: DepartureRow, notice: String): List<String> {
+        val entries = row.stopDisruptionWindows.split(WINDOW_ENTRY_SEPARATOR).filter { it.isNotEmpty() }
+        if (row.stopNotices.isEmpty()) return entries
+        // An entry is `text@from..to`, a bound blank when open, and holds no `@` after its text's.
+        return entries.filter { it.startsWith("$notice@") && '@' !in it.substring(notice.length + 1) }
+    }
+
+    /**
+     * Every dismissal identity a stop-closure card built from [rows] can carry, notice by notice
+     * ([DismissedAlert.ofStopNotices]): each row's own, plus each (place, notice)'s folded one
+     * ([foldedWindows]). Reconciliation keeps a dismissal that matches any of these, so a folded near-me
+     * card's dismissal isn't pruned for being absent from the unfolded rows (Codex). Extra identities only
+     * retain, never hide, a card. A card showing only some of a place's notices (a ride's, leaving out
+     * another line's) dismisses notices among these too, so no check lets it go while they stand (#1233).
+     */
+    fun liveStopClosureAlerts(rows: List<DepartureRow>): Set<DismissedAlert> {
+        val stops = rows.filter { it.stopDisruption != null }
+        val own = stops.flatMapTo(mutableSetOf()) { DismissedAlert.ofStopNotices(it) }
+        return placeNoticeWindows(stops).mapTo(own) { (key, entries) ->
+            DismissedAlert(key.first, DismissedAlert.noticeSignature(key.second, entries))
+        }
+    }
 
     /**
      * Reorder the "near me now" rows **closest stop first** — the nearest stop's services at
@@ -1132,9 +1164,9 @@ object DepartureRows {
     }
 
     /**
-     * Hide the **service alerts the user has dismissed** (SPEC *Disruptions*). A stop-status row is
-     * removed when its [DismissedAlert.ofStopClosure] identity — place key + the current notice text
-     * and window — is in [dismissed]. A timed row whose **line status** matches a
+     * Hide the **service alerts the user has dismissed** (SPEC *Disruptions*). A stop-status row loses
+     * each notice whose [DismissedAlert.ofStopNotices] identity — place key + the notice's current text
+     * and window — is in [dismissed], and is removed once none is left. A timed row whose **line status** matches a
      * [DismissedAlert.ofLineStatus] identity keeps its departures but drops the status (so no ⚠) and
      * is marked [DepartureRow.statusDismissed], so the detail never reads it as a clean line; a
      * no-prediction status row exists only to carry that alert, so it is removed outright. A row
@@ -1148,7 +1180,7 @@ object DepartureRows {
         return rows.mapNotNull { row ->
             val status = row.status
             when {
-                row.stopDisruption != null -> row.takeUnless { DismissedAlert.ofStopClosure(it) in dismissed }
+                row.stopDisruption != null -> row.withoutDismissedNotices(dismissed)
                 status != null -> when (val shown = status.remainingAfter(dismissed)) {
                     status -> row.withoutDismissedPlanned(dismissed)
                     // A no-prediction row goes with its alert, unless planned work it carries is still
@@ -1281,6 +1313,20 @@ object DepartureRows {
             }.keys
         }
         return buses + suspended
+    }
+
+    // [this] stop-status row less the notices the user dismissed, each its own alert ([DismissedAlert.ofStopNotices]):
+    // gone once none is left, else showing those that are, with their windows.
+    private fun DepartureRow.withoutDismissedNotices(dismissed: Set<DismissedAlert>): DepartureRow? {
+        val identities = DismissedAlert.ofStopNotices(this)
+        if (identities.none { it in dismissed }) return this
+        if (stopNotices.isEmpty() || identities.all { it in dismissed }) return null
+        val kept = stopNotices.filterIndexed { i, _ -> identities[i] !in dismissed }
+        return copy(
+            stopDisruption = kept.joinToString("\n\n"),
+            stopNotices = kept,
+            stopDisruptionWindows = kept.flatMap { windowsOf(this, it) }.sorted().joinToString(WINDOW_ENTRY_SEPARATOR),
+        )
     }
 
     // [this] less the planned alerts the user dismissed: each is its own alert, dismissed on its own. One read
@@ -1424,6 +1470,7 @@ object DepartureRows {
                 stopDisruption = active.joinToString("\n\n") {
                     normalizeDisruptionText(it.description)
                 },
+                stopNotices = active.map { normalizeDisruptionText(it.description) },
                 stopDisruptionWindows = stopDisruptionWindows(
                     all, active.mapTo(HashSet()) { normalizeDisruptionText(it.description) }, now,
                 ),
@@ -1457,7 +1504,7 @@ object DepartureRows {
 
     // Between [DepartureRow.stopDisruptionWindows] entries: a record separator, since the notice text
     // in each entry can itself hold line breaks.
-    private const val WINDOW_ENTRY_SEPARATOR = "\u001E"
+    internal const val WINDOW_ENTRY_SEPARATOR = "\u001E"
 
     /** The merged run of overlapping or touching [windows] that contains [now], or null if none does. */
     internal fun spanAt(windows: List<Pair<Instant, Instant>>, now: Instant): Pair<Instant, Instant>? {

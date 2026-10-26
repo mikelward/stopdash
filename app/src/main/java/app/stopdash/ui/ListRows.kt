@@ -8,6 +8,7 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.NoticeLines
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
@@ -91,7 +92,42 @@ internal class ListRows(
     // The stops whose departures are still loading ([DeparturesUiState.Loaded.pendingStops], an opened farther card's
     // [DeparturesUiState.Loaded.openedLoadingStopIds]): an open route page at one isn't judged gone until it's in.
     val loadingStopIds: Set<String> = emptySet(),
-)
+    // The journeys' far ends as checked, and the alerts dismissed, for a ride to read its far end's notices by its
+    // own lines ([destinationClosuresFor]).
+    val destinationStops: List<StopArrivals> = emptyList(),
+    val dismissed: Set<DismissedAlert> = emptySet(),
+) {
+    /**
+     * [destinationClosures] as a ride on [lineIds] reads them: less each notice about other lines only
+     * ([NoticeLines.aboutOtherLines]). TfL files a station's notices for every line there, so a Circle line
+     * closure at the far end of a Northern line ride is no part of it. [destinationClosures] itself while
+     * none is left out. On the worker.
+     */
+    @WorkerThread
+    fun destinationClosuresFor(lineIds: Collection<String>): List<DepartureRow> {
+        val stops = destinationStopsFor(lineIds) ?: return destinationClosures
+        return DepartureRows.withoutDismissed(DepartureRows.across(stops, now), dismissed).filter { it.stopDisruption != null }
+    }
+
+    /** Whether any of [stopIds] has a notice in force for a ride on [lineIds], dismissed or not ([destinationsDisrupted]). */
+    @WorkerThread
+    fun destinationDisruptedFor(stopIds: Collection<String>, lineIds: Collection<String>): Boolean {
+        val stops = destinationStopsFor(lineIds) ?: return stopIds.any { it in destinationsDisrupted }
+        return DepartureRows.across(stops, now).any { it.stopDisruption != null && it.stopId in stopIds }
+    }
+
+    // The far ends less the notices a ride on [lineIds] leaves out, or null when it leaves out none.
+    @WorkerThread
+    private fun destinationStopsFor(lineIds: Collection<String>): List<StopArrivals>? {
+        if (lineIds.isEmpty()) return null
+        var changed = false
+        val stops = destinationStops.map { stop ->
+            val kept = stop.disruptions.filterNot { NoticeLines.aboutOtherLines(it.description, lineIds, stop.stopName) }
+            if (kept.size == stop.disruptions.size) stop else stop.copy(disruptions = kept).also { changed = true }
+        }
+        return stops.takeIf { changed }
+    }
+}
 
 /**
  * Rows found by their identity ([DepartureRow.detailKey]), the first of each as the list has them, so an open
@@ -266,7 +302,7 @@ internal fun rideViews(cards: List<JourneyCard>, from: ListRows, last: Map<Strin
         val state = card.state
         // Every direct train it checked, those a nearer ride shows in its place included (Codex on #1036).
         val live = state !is JourneyCardState.Trains || state.incomplete || state.rows.any { it.hasTrains }
-        val destinationDisrupted = card.destinationIds.any { it in from.destinationsDisrupted }
+        val destinationDisrupted = from.destinationDisruptedFor(card.destinationIds, card.journey.lineIds.filterNot(card.journey::hides))
         val planned = statuses[line.lineId]?.planned.orEmpty().map { it.startsOn }
             .let { days -> last?.get(card.journey.key)?.plannedFrom?.takeIf { it == days } ?: days }
         card.journey.key to RideView(card, row, journeyRide(card.journey, line.stopId, LineRef(line.lineId, line.lineName, line.mode)), live, destinationDisrupted, listed != null, planned)
@@ -482,6 +518,8 @@ internal fun listRowsOf(
         cardsByKey = RowsByKey.of(forCards),
         byLine = byLineOf(stops, now, lineStatuses, dismissed, alertSequences),
         destinationsDisrupted = destinationNotices.filter { it.stopDisruption != null }.mapTo(HashSet()) { it.stopId },
+        destinationStops = journeyDestinationStops,
+        dismissed = dismissed,
         loadingStopIds = source.pendingStops.mapTo(HashSet()) { it.id } + source.openedLoadingStopIds,
     )
 }

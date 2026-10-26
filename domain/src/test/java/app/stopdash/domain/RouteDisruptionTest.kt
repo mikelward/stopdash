@@ -586,8 +586,12 @@ class RouteDisruptionTest {
         val cards = RouteDisruption.closureCards(trip, waiting, mapOf("C" to notices), emptyMap(), at(3))
         assertEquals(1, cards.size)
         assertEquals(1, signals(closures = mapOf("C" to notices)).size)
-        val dismissed = setOf(DismissedAlert.ofStopClosure(cards.single()))
+        // Dismissing the card dismisses each of its notices.
+        val dismissed = DismissedAlert.ofStopNotices(cards.single()).toSet()
         assertEquals(emptyList<Signal>(), signals(closures = mapOf("C" to notices), dismissed = dismissed))
+        // One of them dismissed, the card reads the other, and the closure still stands.
+        val liftOnly = setOf(DismissedAlert.ofStopNotices(cards.single())[1])
+        assertEquals(listOf(true), signals(closures = mapOf("C" to notices), dismissed = liftOnly).map { (it as Signal.Stop).closed })
     }
 
     @Test

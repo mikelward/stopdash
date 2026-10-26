@@ -4564,6 +4564,48 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a journey card leaves out a notice at its destination about another line`() {
+        val origin = StopArrivals(
+            "940GZZLUVIC", "Victoria",
+            listOf(Departure("victoria", "Victoria", "outbound", "Walthamstow Central", null, now.plusSeconds(120), "tube")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        // TfL files every line's notices against the station: the ride is on the Victoria line.
+        val farEnd = StopArrivals(
+            "940GZZLUWRR", "Warren Street", emptyList(), now.minusSeconds(60),
+            disruptions = listOf(
+                StopDisruption("Northern Line: No service between Camden Town and Kennington."),
+                StopDisruption("Victoria line: The southbound platform is closed."),
+            ),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), origin), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(victoriaToWarrenStreet),
+                            journeyDestinationStops = listOf(farEnd),
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("southbound platform is closed", substring = true).assertExists()
+        composeRule.onAllNodesWithText("No service between Camden Town", substring = true).assertCountEquals(0)
+    }
+
+    @Test
     fun `journey cards still show when nothing nearby has departures`() {
         val origin = StopArrivals(
             "940GZZLUVIC",
