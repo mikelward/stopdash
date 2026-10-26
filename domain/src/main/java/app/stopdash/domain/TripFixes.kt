@@ -101,15 +101,70 @@ suspend fun awaitRefresh(
     trip: StateFlow<ActiveTrip?>? = null,
     from: Instant? = null,
     handled: TripFixes.Seen? = null,
+    // Hunting for a sure fix since the signal came back ([SignalReturns.hunting]): each gap's end wakes a refresh, with
+    // null, so it takes a fix of its own (maintainer, 2026-10-26: out of a tunnel, the next fix waited out the timer while
+    // the rider rode on, still shown where they boarded; on a marginal signal the first try may fail too).
+    signal: SignalReturns? = null,
 ): TripFixes.Seen? = withTimeoutOrNull(every.toMillis()) {
     val fix = flow {
         delay(minGap.toMillis())
         val since = handled?.seq ?: 0
         emit(fixes.first { it != null && it.seq > since })
     }
-    if (trip == null) return@withTimeoutOrNull fix.first()
-    val replaced = trip.filter { it != null && it.startedAt != from }.map<ActiveTrip?, TripFixes.Seen?> { null }
-    merge(fix, replaced).first()
+    val back = signal?.let { returns ->
+        flow<TripFixes.Seen?> {
+            delay(minGap.toMillis())
+            returns.until.first { returns.hunting() }
+            emit(null)
+        }
+    }
+    val replaced = trip?.filter { it != null && it.startedAt != from }?.map<ActiveTrip?, TripFixes.Seen?> { null }
+    merge(*listOfNotNull(fix, back, replaced).toTypedArray()).first()
+}
+
+/**
+ * Whether a trip on the way is hunting for a sure fix since the phone's connection came back ([awaitRefresh]): out of a
+ * tunnel a fix and TfL are worth asking at once, and again each [ON_THE_WAY_MIN_GAP] while the signal is marginal,
+ * until a sure fix comes ([settled]), the connection goes again, or [HUNT_FOR] passes. Fed by the app's network watch;
+ * only whether there's a connection, never which network.
+ */
+class SignalReturns(private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 }) {
+    private val _until = MutableStateFlow<Long?>(null)
+
+    /** Until when (on [elapsed]'s clock) the hunt runs, or null with none. */
+    val until: StateFlow<Long?> = _until.asStateFlow()
+
+    // Whether the connection is down now: only a return from down starts a hunt, not each network the phone switches to.
+    private var lost = false
+
+    /** The connection gone: no network, or none that reaches the internet. No fix is hunted for offline. */
+    @Synchronized
+    fun lost() {
+        lost = true
+        _until.value = null
+    }
+
+    /** The connection reaching the internet again: a hunt starts if it was lost. */
+    @Synchronized
+    fun back() {
+        if (!lost) return
+        lost = false
+        _until.value = elapsed() + HUNT_FOR.toMillis()
+    }
+
+    /** A sure fix came: the hunt is over. */
+    @Synchronized
+    fun settled() {
+        _until.value = null
+    }
+
+    /** Whether the hunt runs now. */
+    fun hunting(): Boolean = _until.value?.let { elapsed() < it } == true
+
+    companion object {
+        /** How long a hunt runs at most: a dozen tries, each a GPS wait, before the trip's timer takes over again. */
+        val HUNT_FOR: Duration = Duration.ofMinutes(2)
+    }
 }
 
 /**
@@ -141,9 +196,10 @@ suspend fun watchTripFixes(
                 askedAgainWhenEnded(WANTS_FIX_RECHECK, updates).collect { fix ->
                     // Judged for what the trip wants now: a fix too vague for it would only wake a
                     // refresh that can't use it. On board the train followed, a vague one still bounds
-                    // where they could be ([OnTheWay.placingFix]), as the refresh's own does (Codex, #1204).
+                    // where they could be ([OnTheWay.placingFix]), as the refresh's own does (Codex, #1204), and awaiting
+                    // a train, one may see them gone from where it boards ([OnTheWay.leavingFix]).
                     val current = trip.value ?: return@collect
-                    (OnTheWay.usableFix(fix, current, now()) ?: OnTheWay.placingFix(fix, current))?.let(fixes::offer)
+                    OnTheWay.fixOfUse(fix, current, now())?.let(fixes::offer)
                 }
             } finally {
                 // No longer watched (no fix wanted, or the app left): the last position goes with it.
@@ -165,6 +221,20 @@ suspend fun refreshFix(
     trip: ActiveTrip?,
     now: Instant,
     mayTake: Boolean = true,
+    // Told when the fix handed on is sure and fresh ([OnTheWay.usableFix]), ending its hunt for one: an older one, kept
+    // only to check the train followed ([OnTheWay.placingFix]), places no one now (Codex, #1235).
+    signal: SignalReturns? = null,
+    take: suspend (ActiveTrip?) -> LocationFix?,
+): LocationFix? = chooseFix(seen, fixes, trip, now, mayTake, take).also { fix ->
+    if (fix != null && OnTheWay.usableFix(fix) != null) signal?.settled()
+}
+
+private suspend fun chooseFix(
+    seen: TripFixes.Seen?,
+    fixes: TripFixes,
+    trip: ActiveTrip?,
+    now: Instant,
+    mayTake: Boolean,
     take: suspend (ActiveTrip?) -> LocationFix?,
 ): LocationFix? {
     val pushed = seen?.let(fixes::aged)
@@ -179,5 +249,8 @@ suspend fun refreshFix(
     // underground the only one for minutes (maintainer, 2026-10-23). The younger of it and one taken. Aged again
     // after the take, which can wait on GPS for seconds: older by then, it lets fewer trains go (Codex, #1173).
     val placing = seen?.let(fixes::aged)?.let { fix -> trip?.let { OnTheWay.placingFix(fix, it) } }
+    // Too vague for either, one seen may still show a rider awaiting a train gone from where it boards
+    // ([OnTheWay.leavingFix]), while still fresh enough: only with nothing better (maintainer, 2026-10-26).
     return listOfNotNull(taken, placing).minByOrNull { it.ageMillis ?: 0 }
+        ?: seen?.let(fixes::aged)?.let { fix -> trip?.let { OnTheWay.leavingFix(fix, it, now) } }
 }

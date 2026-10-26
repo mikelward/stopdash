@@ -101,6 +101,7 @@ import app.stopdash.domain.TimetableRepository
 import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.SignalReturns
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripTime
@@ -257,6 +258,7 @@ import app.stopdash.data.DisruptionsRowSetting
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.FavoriteRidesSetting
 import app.stopdash.data.FileActiveTripStore
+import app.stopdash.data.watchSignal
 import app.stopdash.data.FileNearbyStopsStore
 import app.stopdash.data.FileRecentStationsStore
 import app.stopdash.data.FileRouteStopsStore
@@ -1665,6 +1667,8 @@ class MainActivity : ComponentActivity() {
                     tracker,
                     OnTheWayService.running,
                     fixes = tripFixes,
+                    signal = signalReturns,
+                    watchSignal = { watchSignal(applicationContext, signalReturns) { e, what -> StopdashDebugLog.failure(e, "on the way: %s", what) } },
                     updates = { onTheWayLocation.preciseUpdates(ON_THE_WAY_FIX_EVERY, ON_THE_WAY_FIX_DISTANCE_METERS) },
                 ) { trip -> onTheWayFix(onTheWayLocation, trip) }
                 // A trip End couldn't forget opens again to say so, in whichever composition is
@@ -6731,6 +6735,9 @@ class MainActivity : ComponentActivity() {
         // at once (SPEC *On the way*). In memory only, never kept or logged.
         internal val tripFixes = TripFixes()
 
+        // Whether the trip on the way hunts for a sure fix since the connection came back ([SignalReturns]).
+        internal val signalReturns = SignalReturns()
+
         internal fun activeTrip(context: Context): ActiveTripTracker = synchronized(activeTripLock) {
             activeTripInstance ?: run {
                 val planner = journeyPlanner(context)
@@ -6781,6 +6788,7 @@ class MainActivity : ComponentActivity() {
                     stepFreeAccess = { StepFreeStore.load(context.applicationContext) },
                     liftsOut = { liftOutages.current().ids },
                     warn = ::logDepartureWarning,
+                    warnFailure = { e, message -> StopdashDebugLog.failure(e, "departures: %s", message) },
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)
                     },

@@ -13,6 +13,7 @@ import app.stopdash.domain.LocationFix
 import app.stopdash.domain.Pick
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.SignalReturns
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.awaitRefresh
@@ -21,6 +22,7 @@ import app.stopdash.domain.watchTripFixes
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -82,6 +84,9 @@ internal fun FollowActiveTrip(
     tracker: ActiveTripTracker,
     serviceFollowing: StateFlow<Boolean>,
     fixes: TripFixes = TripFixes(),
+    // Hunting for a sure fix since the connection came back, fed by [watchSignal] while this loop follows the trip.
+    signal: SignalReturns? = null,
+    watchSignal: suspend () -> Unit = {},
     // Precise fixes as they come, watched while the trip is shown and wants one.
     updates: () -> Flow<LocationFix> = { emptyFlow() },
     // A fix when the trip wants one ([app.stopdash.domain.OnTheWay.wantsFix]): a walk to a stop ends
@@ -115,16 +120,17 @@ internal fun FollowActiveTrip(
     if (trip != null && !service) {
         LaunchedEffect(tracker, lifecycleOwner) {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { watchSignal() }
                 var woke: TripFixes.Seen? = null
                 // The last fix a refresh was handed: one still held after it never wakes another ([awaitRefresh]).
                 var handled: TripFixes.Seen? = null
                 while (true) {
                     // The trip refreshed, read first: one started in its place while the refresh runs wakes the wait too.
                     val refreshed = tracker.trip.value?.startedAt
-                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))
+                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), signal = signal, take = rider))
                     if (woke != null) handled = woke
                     // A trip started in place of this one is refreshed at once, as the service does.
-                    woke = awaitRefresh(fixes.latest, ON_THE_WAY_REFRESH, trip = tracker.trip, from = refreshed, handled = handled)
+                    woke = awaitRefresh(fixes.latest, ON_THE_WAY_REFRESH, trip = tracker.trip, from = refreshed, handled = handled, signal = signal)
                 }
             }
         }

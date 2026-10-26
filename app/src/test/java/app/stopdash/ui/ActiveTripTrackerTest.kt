@@ -3940,6 +3940,54 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a vague fix clear of the boarding stop's track sees a rider awaiting the train on board by where it places them`() = runTest {
+        // Underground no sure fix comes; a network one may (maintainer, 2026-10-26: kept at the boarding station nearly at
+        // the next but one).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        // Sure to 300 m by B: it reaches the track from A, so they may still be there.
+        tracker.refresh(fixAt(51.51, accuracy = 300f))
+        assertEquals(false, tracker.trip.value?.onBoardSeen)
+        assertTrue(tracker.progress.value is TripProgress.Waiting)
+        // By C: only the track from B to C is in reach. On board, short of C, never off there.
+        tracker.refresh(fixAt(51.52, accuracy = 300f))
+        assertEquals(true, tracker.trip.value?.onBoardSeen)
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertTrue(logged.any { it.startsWith("on the way: vague fix, seen short of stop 2 of 2") })
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
+    fun `a vague fix sees a rider only taken to be on the train that left on board by where it places them`() = runTest {
+        // The train followed has left: taken to be on it, not seen on it (maintainer, 2026-09-29), as in the bug report's
+        // tunnel (Codex, #1235).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = emptyList()
+        trains["9"] = listOf(call("B", 10), call("C", 14))
+        now = at(9)
+        tracker.refresh()
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertEquals(false, tracker.trip.value?.onBoardSeen)
+        tracker.refresh(fixAt(51.52, accuracy = 300f))
+        assertEquals(true, tracker.trip.value?.onBoardSeen)
+        assertTrue(logged.any { it.startsWith("on the way: vague fix, seen short of stop 2 of 2") })
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
     fun `seen along the ride while TfL is down, they're on board by where they were seen and it says so`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine

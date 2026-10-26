@@ -1835,6 +1835,43 @@ object OnTheWay {
     }
 
     /**
+     * [fix] when it's too vague for [usableFix] but fresh, and [trip]'s rider is still to board at [now] with a fix
+     * watched for ([watchesWait]): handed to the refresh only to see them gone from where it boards ([vagueAlong]),
+     * as a network fix is often the only one underground (maintainer, 2026-10-26: no sure fix came between Finsbury
+     * Park and King's Cross, so the trip kept them where they boarded). Null otherwise.
+     */
+    fun leavingFix(fix: LocationFix, trip: ActiveTrip, now: Instant): LocationFix? {
+        val age = fix.ageMillis ?: return null
+        return fix.takeIf { boundsRide(it) && tooVagueToAct(it) && age <= FIX_FRESH_WITHIN_MILLIS && watchesWait(trip, now) }
+    }
+
+    /**
+     * Whether a vague fix is of use to [trip] at [now], so one is asked for when no precise one comes: on board a train
+     * followed, to bound where the rider could be ([placingFix]), or awaiting a train, to see them gone from where it
+     * boards ([leavingFix]).
+     */
+    fun takesApproximate(trip: ActiveTrip, now: Instant): Boolean =
+        (trip.boarded && trip.vehicleId.isNotBlank()) || watchesWait(trip, now)
+
+    /** The fix of use to [trip] at [now], if any: [usableFix], else [placingFix], else [leavingFix]. */
+    fun fixOfUse(fix: LocationFix, trip: ActiveTrip, now: Instant): LocationFix? =
+        usableFix(fix, trip, now) ?: placingFix(fix, trip) ?: leavingFix(fix, trip, now)
+
+    /**
+     * Where a vague [fix] (aged to now) sees a rider still to board [on] already along it: none of the track from where
+     * it boards to its first stop in reach ([stretchesInReach]), so they've left there, but some of the ride's track
+     * further on, so they're on it. Placed short of the nearest stop whose stretch is in reach, so its train is
+     * counted on from as little as the fix allows; never at where they get off, which a fix this vague can't tell
+     * from a stop before it. Null where it doesn't place them so, or a stop of the ride isn't placed.
+     */
+    @WorkerThread
+    fun vagueAlong(on: TripLeg, fix: LocationFix, positions: Map<String, Coordinates>): Along? {
+        val reach = stretchesInReach(on, fix, positions) ?: return null
+        val nearest = reach.stretches.firstOrNull() ?: return null
+        return Along(nearest, atStop = false).takeIf { nearest > 0 }
+    }
+
+    /**
      * Whether [fix] says anything of where a rider on board could be, however vague: a real fix of stated accuracy.
      * A sure one ([placesOnRide]) places them; a vaguer one only bounds where they could be ([outranVague]).
      */

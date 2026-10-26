@@ -184,8 +184,15 @@ class TripFixesTest {
         val seen = fixes.latest.value
         assertEquals(1L, seen?.seq)
         assertEquals(900f, refreshFix(seen, fixes, riding, t0.plusMillis(currentTime)) { null }?.accuracyMeters)
-        // Not before boarding: there it would only wake a refresh that can't use it.
+        // Awaiting it, too: it may see them gone from where it boards ([OnTheWay.leavingFix]; maintainer, 2026-10-26).
         kept.value = riding.copy(boarded = false, vehicleId = "")
+        updates.emit(fix(accuracy = 900f))
+        runCurrent()
+        assertEquals(2L, fixes.latest.value?.seq)
+        // Not once seen on board by where they were seen, with no train followed: there it would only wake a refresh
+        // that can't use it.
+        fixes.clear()
+        kept.value = riding.copy(vehicleId = "", onBoardSeen = true)
         updates.emit(fix(accuracy = 900f))
         runCurrent()
         assertNull(fixes.latest.value)
@@ -246,14 +253,14 @@ class TripFixesTest {
         var takes = 0
         val take: suspend (ActiveTrip?) -> LocationFix? = { takes++; fix() }
         fixes.offer(fix(accuracy = 12f))
-        val used = refreshFix(fixes.latest.value, fixes, trip, t0, mayTake = false, take)
+        val used = refreshFix(fixes.latest.value, fixes, trip, t0, mayTake = false, take = take)
         assertEquals(12f, used?.accuracyMeters)
         assertNull("and drops it", fixes.latest.value)
         // Woken by the timer, it takes none of its own.
-        assertNull(refreshFix(null, fixes, trip, t0, mayTake = false, take))
+        assertNull(refreshFix(null, fixes, trip, t0, mayTake = false, take = take))
         assertEquals(0, takes)
         // Allowed, it takes one as before.
-        assertEquals(10f, refreshFix(null, fixes, trip, t0, mayTake = true, take)?.accuracyMeters)
+        assertEquals(10f, refreshFix(null, fixes, trip, t0, mayTake = true, take = take)?.accuracyMeters)
         assertEquals(1, takes)
     }
 
@@ -296,4 +303,79 @@ class TripFixesTest {
         assertEquals(4_500L, fixes.aged(fixes.latest.value!!).ageMillis)
         assertTrue(fixes.latest.value!!.seq > 0)
     }
+
+    @Test
+    fun `once the signal is back, a refresh comes each gap until a sure fix ends the hunt`() = runTest {
+        val signal = SignalReturns { currentTime }
+        // Registered while online: no return, no hunt.
+        signal.back()
+        assertNull(signal.until.value)
+        assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), signal = signal))
+        assertEquals(30_000L, currentTime)
+        // In a tunnel, then out: the next refresh comes as the gap ends, not at the timer.
+        signal.lost()
+        signal.back()
+        val first = currentTime
+        assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), signal = signal))
+        assertEquals(first + 10_000L, currentTime)
+        // A vague fix acted on keeps it hunting (maintainer, 2026-10-26): the next comes a gap later too.
+        assertEquals(900f, refreshFix(null, fixes(), trip, t0, take = { fix(accuracy = 900f) }, signal = signal)?.accuracyMeters)
+        assertTrue(signal.hunting())
+        val second = currentTime
+        assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), signal = signal))
+        assertEquals(second + 10_000L, currentTime)
+        // A sure one ends it: the timer again.
+        refreshFix(null, fixes(), trip, t0, take = { fix(accuracy = 12f) }, signal = signal)
+        assertFalse(signal.hunting())
+        val third = currentTime
+        assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), signal = signal))
+        assertEquals(third + 30_000L, currentTime)
+    }
+
+    @Test
+    fun `a sure fix too old to place anyone doesn't end the hunt`() = runTest {
+        // Seen 40 s ago and kept only to check the train followed ([OnTheWay.placingFix]) (Codex, #1235).
+        val signal = SignalReturns { currentTime }
+        signal.lost()
+        signal.back()
+        val riding = trip.copy(legIndex = 1, vehicleId = "7", boarded = true)
+        val fixes = fixes()
+        fixes.offer(fix(accuracy = 20f, ageMillis = 40_000))
+        assertEquals(20f, refreshFix(fixes.latest.value, fixes, riding, t0, signal = signal) { null }?.accuracyMeters)
+        assertTrue(signal.hunting())
+    }
+
+    @Test
+    fun `a hunt for a sure fix ends when the signal goes again, and after two minutes`() = runTest {
+        val signal = SignalReturns { currentTime }
+        signal.lost()
+        signal.back()
+        assertTrue(signal.hunting())
+        // Offline again: no fix is hunted for until it's back.
+        signal.lost()
+        assertFalse(signal.hunting())
+        signal.back()
+        advanceTimeBy(SignalReturns.HUNT_FOR.toMillis() - 1)
+        assertTrue(signal.hunting())
+        advanceTimeBy(1)
+        assertFalse(signal.hunting())
+        val from = currentTime
+        assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), signal = signal))
+        assertEquals(from + 30_000L, currentTime)
+    }
+
+    @Test
+    fun `awaiting a train, a fresh vague fix reaches the refresh only when nothing better came`() = runTest {
+        val waiting = trip.copy(legIndex = 1, legStartedAt = t0)
+        val fixes = fixes()
+        fixes.offer(fix(accuracy = 900f, ageMillis = 2_000))
+        assertEquals(900f, refreshFix(fixes.latest.value, fixes, waiting, t0) { null }?.accuracyMeters)
+        // A sure one taken goes first.
+        fixes.offer(fix(accuracy = 900f, ageMillis = 2_000))
+        assertEquals(5f, refreshFix(fixes.latest.value, fixes, waiting, t0) { fix(accuracy = 5f) }?.accuracyMeters)
+        // Too old by then, it says nothing of where they are now.
+        fixes.offer(fix(accuracy = 900f, ageMillis = 2_000))
+        assertNull(refreshFix(fixes.latest.value, fixes, waiting, t0) { delay(9_000); null })
+    }
+
 }
