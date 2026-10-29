@@ -4081,6 +4081,9 @@ hub name, from the hub's member stops) is what lets the strip drop a leading nam
 spelling it appears. The strip is **best-effort**: a spelling no alias covers only leaves the name
 in the body, never mangles the notice.
 
+Each of a stop's notices is **a card of its own** (maintainer, 2026-10-29), so a toilet out of order and a lift
+out of use are read and dismissed apart. A card names its station only where the screen doesn't already: a
+platform's, station's or searched page names it in its top bar, so its notice cards carry no title there.
 A stop-closure card carries a **dismiss (×)**: these notices are the "acknowledge and clear" kind
 (planned works, a moved stop, "Bus Stop Closed — use the next stop", a step-free-access outage),
 so once read the user can tap them away to declutter. A dismissal is **per notice**, keyed on `(place,

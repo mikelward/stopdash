@@ -191,6 +191,7 @@ import app.stopdash.domain.isStop
 import app.stopdash.domain.onPoles
 import app.stopdash.domain.placedOnPoles
 import app.stopdash.domain.placedStands
+import app.stopdash.domain.withOnlyNotice
 import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.UsageEvents
 import java.time.Duration
@@ -3419,7 +3420,7 @@ private fun RouteLegs(
         val carded = HashSet<String>()
         fun closureCard(id: String) {
             val card = view.closureCards[id]?.takeIf { carded.add(id) } ?: return
-            item(key = "closure|$id") { StopClosureCard(card.row, onDismissAlert?.let { dismiss -> { dismiss(card.row) } }, card.title) }
+            item(key = "closure|$id") { StopClosureCard(card.row, onDismissAlert?.let { dismiss -> { notice: String -> dismiss(card.row.withOnlyNotice(notice)) } }, card.title) }
         }
         // On a step-free trip, where a lift out has taken a ride's way on or off ([TripOpenView.stepFree]): said where it
         // boards or gets off there, with a plan asked for again, as a plan that failed offers one.
