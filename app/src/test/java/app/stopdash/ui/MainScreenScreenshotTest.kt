@@ -2107,6 +2107,43 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a station's notices are separate cards, each dismissed on its own, untitled on its own page`() {
+        // Maintainer, 2026-10-29: one card per notice, so the toilet notice can go while the lift notice stays; and
+        // the place's page names the station in its top bar already, so a card there doesn't repeat it.
+        val dismissed = mutableStateOf(emptySet<DismissedAlert>())
+        val noticed = manorHouse().copy(
+            disruptions = listOf(StopDisruption("The accessible toilets are out of order."), StopDisruption("Lift to platform 2 unavailable.")),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(turnpikeLaneNorth(), noticed), now.minusSeconds(60)),
+                        now,
+                        {},
+                        dismissed = dismissed.value,
+                        onDismissAlert = { row -> dismissed.value = dismissed.value + DismissedAlert.of(row) },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Platform 2, Westbound", substring = true).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("toilets", substring = true).assertExists()
+        composeRule.onNodeWithText("Lift to platform 2", substring = true).assertExists()
+        composeRule.onAllNodesWithContentDescription("Dismiss alert").assertCountEquals(2)
+        // Only the platform's own heading names the station, not the notice cards.
+        composeRule.onAllNodes(hasText("Manor House") and !hasContentDescription("Platform 2", substring = true)).assertCountEquals(0)
+
+        composeRule.onAllNodesWithContentDescription("Dismiss alert").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("toilets", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Lift to platform 2", substring = true).assertExists()
+        composeRule.onAllNodesWithContentDescription("Dismiss alert").assertCountEquals(1)
+    }
+
+    @Test
     fun `tapping a suspended line's header opens the whole stop, not just the warning`() {
         val station = kingsCrossStPancras().let { it.copy(lines = it.lines + LineRef("jubilee", "Jubilee", "tube")) }
         composeRule.setContent {

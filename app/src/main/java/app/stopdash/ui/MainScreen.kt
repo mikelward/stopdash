@@ -173,6 +173,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.ModeIcon
+import app.stopdash.domain.NoticeCard
 import app.stopdash.domain.WayStatus
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.RailKeyDefault
@@ -226,6 +227,7 @@ import app.stopdash.domain.serviceName
 import app.stopdash.domain.stopPlace
 import app.stopdash.domain.stopPlaceKey
 import app.stopdash.domain.takesLineSuffix
+import app.stopdash.domain.withOnlyNotice
 import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.theme.LocalStarredBorderColor
@@ -2136,6 +2138,8 @@ fun MainScreen(
                             // The last worked out stands while the next is, so the banner doesn't blink.
                             shownUnchecked = screenLines?.unchecked ?: true,
                             viewActions = viewActions.takeIf { !journeyViewOpen },
+                            // A platform's, station's or searched page names its place in the top bar.
+                            placeTitled = platformRows != null || stationTitle != null,
                         )
                     }
 
@@ -2343,6 +2347,8 @@ private fun LoadedContent(
     shownUnchecked: Boolean = true,
     // A platform or station view's buttons ([ViewActions]); null shows none.
     viewActions: ViewActions? = null,
+    // The screen's top bar names its place ([DepartureList]'s placeTitled).
+    placeTitled: Boolean = false,
     // Grouped by station ([StationHeader]).
     stationGroups: Boolean = false,
     // Where the list's station layout is kept, above the list so a return draws it at once; null keeps it here.
@@ -2577,6 +2583,7 @@ private fun LoadedContent(
                         onUnpauseAlerts = onUnpauseAlerts.takeIf { !journeyView },
                         disruptionsRow = disruptionsRow.takeIf { !journeyView },
                         viewActions = viewActions.takeIf { !journeyView },
+                        placeTitled = placeTitled,
                         stationGroups = stationGroups,
                         listWork = listWork,
                         nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
@@ -3212,6 +3219,9 @@ private fun DepartureList(
     disruptionsRow: TripRow? = null,
     // A platform or station view's buttons ([ViewActions]), first in it; null shows none.
     viewActions: ViewActions? = null,
+    // The screen's top bar names its place (a platform's, station's or searched page), so a notice card
+    // leading it says no station name of its own.
+    placeTitled: Boolean = false,
     // Grouped by station ([StationHeader]), on the near-me list and a searched station's page.
     stationGroups: Boolean = false,
     // Where its station layout is kept ([ListWork.stations]); null keeps it here.
@@ -3524,7 +3534,7 @@ private fun DepartureList(
                     val closure = rows.first()
                     item(key = "journey-closure|${card.journey.key}|${closure.stopId}") {
                         // Dismissed on every pole that carries it, so the next pole's copy doesn't take its place.
-                        StopClosureCard(closure, onDismiss = { rows.forEach(onDismissAlert) }, title = title)
+                        StopClosureCard(closure, onDismiss = { notice -> rows.forEach { onDismissAlert(it.withOnlyNotice(notice)) } }, title = title)
                     }
                 }
                 if (underStation) {
@@ -3841,7 +3851,11 @@ private fun DepartureList(
             item(key = "nearby-empty") { JourneyNote(note) }
         }
         items(leadingNotices, key = { "closure|${it.stopId}|${it.interchangeId}" }) { row ->
-            StopClosureCard(row, onDismiss = { onDismissAlert(row) })
+            StopClosureCard(
+                row,
+                onDismiss = { notice -> onDismissAlert(row.withOnlyNotice(notice)) },
+                title = if (placeTitled) null else row.hubName.ifBlank { row.stopName },
+            )
         }
         // One combined one-line header per group, then the group's card (SPEC D8): the place name and
         // its platform/pole qualifier read on one title-case line ("King's Cross St Pancras – Platform
@@ -3886,7 +3900,7 @@ private fun DepartureList(
             // A notice about this pole alone sits under its heading, above its departures.
             poleNotices[group.key]?.let { notice ->
                 item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
-                    StopNoticeCard(notice, closed = group.key in closedPoles, onDismiss = { onDismissAlert(notice) })
+                    StopNoticeCard(notice, closed = group.key in closedPoles, onDismiss = { onDismissAlert(notice.withOnlyNotice(it)) })
                 }
             }
             item(key = "card|${group.key}") {
@@ -4042,7 +4056,7 @@ private fun DepartureList(
             }
             if (!dismissed) {
                 item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
-                    StopNoticeCard(notice, closed, onDismiss = { onDismissAlert(notice) })
+                    StopNoticeCard(notice, closed, onDismiss = { onDismissAlert(notice.withOnlyNotice(it)) })
                 }
             }
         }
@@ -4110,7 +4124,7 @@ private fun DepartureList(
                     StopNoticeCard(
                         notice,
                         ClosedNotice.saysClosed(notice.stopDisruption.orEmpty()),
-                        onDismiss = { onDismissAlert(notice) },
+                        onDismiss = { onDismissAlert(notice.withOnlyNotice(it)) },
                         title = if (poleOnly(notice)) closureTitleOf(listOf(notice), rememberHeaderWords()) else null,
                     )
                 }
@@ -4198,7 +4212,7 @@ private fun DepartureList(
                         StopNoticeCard(
                             notice,
                             closed = member.key in closedPoles,
-                            onDismiss = { onDismissAlert(notice) },
+                            onDismiss = { onDismissAlert(notice.withOnlyNotice(it)) },
                             title = closureTitleOf(listOf(notice), rememberHeaderWords()),
                         )
                     }
@@ -5854,18 +5868,36 @@ private fun placeOf(clusterId: String, stopId: String): String = clusterId.ifBla
  * quieter tertiary tone — a lift outage shouldn't look like a shut station.
  */
 @Composable
-private fun StopNoticeCard(row: DepartureRow, closed: Boolean, onDismiss: () -> Unit, title: String? = null) {
-    StopNoticeCard(
-        cleanDisruptionBody(
-            row.stopDisruption.orEmpty(),
-            stopName = row.stopName,
-            hubName = row.hubName,
-            aliases = row.placeAliases,
-        ),
-        closed,
-        onDismiss,
-        title,
-    )
+private fun StopNoticeCard(row: DepartureRow, closed: Boolean, onDismiss: (notice: String) -> Unit, title: String? = null) {
+    EachNotice(row) { card ->
+        // A notice takes the closed tone only if it says the stop is closed, not for sharing a place another notice
+        // (a dismissed one, even) closes (Codex on #1238); a row set whole keeps its caller's.
+        StopNoticeCard(card.body, closed && (row.noticeCards.isEmpty() || card.closed), { onDismiss(card.notice) }, title)
+    }
+}
+
+/**
+ * Each of [row]'s notices drawn by [card] as a card of its own, 8dp apart, so each is read and dismissed on its own
+ * (maintainer, 2026-10-29): a station's toilet notice is no part of its escalator's. A row with one notice is one card.
+ */
+@Composable
+private fun EachNotice(row: DepartureRow, card: @Composable (NoticeCard) -> Unit) {
+    val cards = row.noticeCards
+    if (cards.isEmpty()) {
+        // A row whose notice was set whole, worked out by no worker (a ride page's line row): one card, read here as
+        // before.
+        val text = row.stopDisruption ?: return
+        // Its tone is its caller's ([StopNoticeCard]), so its [NoticeCard.closed] is never read.
+        card(NoticeCard(text, cleanDisruptionBody(text, row.stopName, row.hubName, row.placeAliases), closed = false))
+        return
+    }
+    if (cards.size == 1) {
+        card(cards.single())
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        cards.forEach { notice -> key(notice.notice) { card(notice) } }
+    }
 }
 
 /** A stop notice's card ([StopNoticeCard]) for its [text] as shown, under [title] if given; null [onDismiss] offers no ×. */
@@ -5888,22 +5920,25 @@ internal fun StopNoticeCard(text: String, closed: Boolean, onDismiss: (() -> Uni
  * head, and its departures (if any) show in the group cards below.
  */
 @Composable
-internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?, title: String = row.hubName.ifBlank { row.stopName }) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        // A traversal group, matching the departure cards. The place name is stripped from the body
-        // at display (not upstream) so the near-me fold's identity stays member-independent
-        // (cleanDisruptionBody); the title supplies the stop name a bus "Bus Stop Closed" never does.
-        Column(modifier = Modifier.padding(16.dp).semantics { isTraversalGroup = true }) {
-            StopClosureContent(
-                cleanDisruptionBody(
-                    row.stopDisruption.orEmpty(),
-                    stopName = row.stopName,
-                    hubName = row.hubName,
-                    aliases = row.placeAliases,
-                ),
-                title = title,
-                onDismiss = onDismiss,
-            )
+internal fun StopClosureCard(
+    row: DepartureRow,
+    // Dismisses the one notice its card shows ([withOnlyNotice]); null offers no ×.
+    onDismiss: ((notice: String) -> Unit)?,
+    // Null where the screen's own title names the place already.
+    title: String? = row.hubName.ifBlank { row.stopName },
+) {
+    EachNotice(row) { notice ->
+        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            // A traversal group, matching the departure cards. The place name is stripped from the body
+            // at display (not upstream) so the near-me fold's identity stays member-independent
+            // (cleanDisruptionBody); the title supplies the stop name a bus "Bus Stop Closed" never does.
+            Column(modifier = Modifier.padding(16.dp).semantics { isTraversalGroup = true }) {
+                StopClosureContent(
+                    notice.body,
+                    title = title,
+                    onDismiss = onDismiss?.let { dismiss -> { dismiss(notice.notice) } },
+                )
+            }
         }
     }
 }
@@ -7401,7 +7436,7 @@ internal fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifie
  * bleeds onto a different notice when a `LazyColumn` row is recycled.
  */
 @Composable
-private fun StopClosureContent(disruption: String, title: String, onDismiss: (() -> Unit)? = {}) {
+private fun StopClosureContent(disruption: String, title: String?, onDismiss: (() -> Unit)? = {}) {
     CollapsibleStatus(text = disruption, title = title, onDismiss = onDismiss)
 }
 
@@ -7557,6 +7592,7 @@ internal fun DepartureRow.standingOnWay(line: DepartureRow): DepartureRow = copy
     stopDisruption = line.stopDisruption,
     stopDisruptionWindows = line.stopDisruptionWindows,
     stopNotices = line.stopNotices,
+    noticeCards = line.noticeCards,
 )
 
 /**

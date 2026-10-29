@@ -97,6 +97,9 @@ data class DepartureRow(
     // of a notice, not of a card ([DismissedAlert.ofStopNotices]); empty for a row whose [stopDisruption]
     // was set whole, which is then dismissed whole.
     val stopNotices: List<String> = emptyList(),
+    // Each of [stopNotices] as its card shows it ([NoticeCard]), worked out with the row on the worker, never in
+    // composition; empty where [stopNotices] is.
+    val noticeCards: List<NoticeCard> = emptyList(),
     // The interchange this stop belongs to, TfL's `hubNaptanCode` ([StopLocation.interchangeId]): `HUBKGX`
     // ties King's Cross and St Pancras together. Blank for a stop in no hub. A near-me stop-status
     // row folds by this so an interchange's shared disruption is one alert, and two genuinely
@@ -169,3 +172,17 @@ const val STATUS_DIRECTION_KEY: String = "status"
  * [DepartureRow.lineId] is blank, so it can't collide with a line's rows).
  */
 const val STOP_STATUS_DIRECTION_KEY: String = "stop-status"
+
+/**
+ * One of a stop's notices as its own card shows it (maintainer, 2026-10-29): the [notice] as dismissed, its [body] with
+ * the place's name stripped ([cleanDisruptionBody]), and whether it says the stop is [closed] ([ClosedNotice]).
+ */
+data class NoticeCard(val notice: String, val body: String, val closed: Boolean)
+
+/**
+ * [this] stop-status row standing for [notice] alone, for its card's dismiss ([DismissedAlert.ofStopNotices]), which
+ * reads that notice's windows itself: built in O(1) by the tap, so it carries no [DepartureRow.noticeCards] and is never
+ * drawn. A row set whole, or with one notice, is itself.
+ */
+fun DepartureRow.withOnlyNotice(notice: String): DepartureRow =
+    if (stopNotices.size <= 1) this else copy(stopDisruption = notice, stopNotices = listOf(notice), noticeCards = emptyList())

@@ -1391,6 +1391,7 @@ object DepartureRows {
         return copy(
             stopDisruption = kept.joinToString("\n\n"),
             stopNotices = kept,
+            noticeCards = noticeCards.filter { it.notice in kept },
             stopDisruptionWindows = kept.flatMap { windowsOf(this, it) }.sorted().joinToString(WINDOW_ENTRY_SEPARATOR),
         )
     }
@@ -1537,6 +1538,14 @@ object DepartureRows {
                     normalizeDisruptionText(it.description)
                 },
                 stopNotices = active.map { normalizeDisruptionText(it.description) },
+                noticeCards = active.map { notice ->
+                    val text = normalizeDisruptionText(notice.description)
+                    NoticeCard(
+                        text,
+                        cleanDisruptionBody(text, stopName = stop.stopName, hubName = stop.hubName, aliases = stop.placeAliases),
+                        ClosedNotice.saysClosed(text),
+                    )
+                },
                 stopDisruptionWindows = stopDisruptionWindows(
                     all, active.mapTo(HashSet()) { normalizeDisruptionText(it.description) }, now,
                 ),

@@ -233,4 +233,22 @@ class DismissedAlertTest {
         // Gone from the place, it's let go of.
         assertFalse(rideDismissal in DepartureRows.liveStopClosureAlerts(listOf(kxCard(circle))))
     }
+
+    @Test
+    fun `each notice's card is worked out with its row, and keeps step with a dismissal`() {
+        // Codex on #1238: its body and tone are read on the worker that builds the row, never in composition.
+        val closed = StopDisruption("King's Cross St. Pancras: Station closed.")
+        val card = kxCard(closed, northern)
+        assertEquals(
+            listOf(
+                NoticeCard(closed.description, "Station closed.", closed = true),
+                NoticeCard(northern.description, northern.description, closed = false),
+            ),
+            card.noticeCards,
+        )
+        // The closure dismissed, its card goes and the lift's stays, untoned.
+        val left = DepartureRows.withoutDismissed(listOf(card), DismissedAlert.ofStopNotices(card.withOnlyNotice(closed.description)).toSet()).single()
+        assertEquals(listOf(NoticeCard(northern.description, northern.description, closed = false)), left.noticeCards)
+        assertEquals(DismissedAlert.ofStopNotices(card)[0], DismissedAlert.ofStopNotices(card.withOnlyNotice(closed.description)).single())
+    }
 }
