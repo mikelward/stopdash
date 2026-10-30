@@ -718,7 +718,6 @@
     <string name="action_star_journey">Añadir trayecto favorito</string>
     <string name="action_flip_journey">Invertir sentido</string>
     <string name="action_open_journey">Ver trayecto</string>
-    <string name="journeys_faraway">Favoritos lejanos</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
     <string name="journey_title_spoken">De %1$s a %2$s</string>
     <string name="journey_title_both_ways_spoken">%1$s y %2$s, en ambos sentidos</string>

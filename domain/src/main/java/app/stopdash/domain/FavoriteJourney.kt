@@ -328,8 +328,8 @@ object Journeys {
 
     /**
      * The journey stops a same-set relocate to ([latitude], [longitude]) should stop fetching at
-     * once: those of the journeys that fix puts over a mile away ([farJourneys]), unless the rider
-     * has revealed them ([revealed]). Nothing on a fix that isn't [fixConfirmed] — a retained or
+     * once: those of the journeys that fix puts over a mile away ([farJourneys]), less those the rider
+     * has opened from their collapsed cards ([revealed], by key). Nothing on a fix that isn't [fixConfirmed] — a retained or
      * last-known one may be where the rider was, and the screen, which also holds nothing back on
      * one, wouldn't re-report a stop dropped on it. Nor the [openJourneyKey] journey's, which the
      * screen keeps however far while its own view is open.
@@ -340,12 +340,11 @@ object Journeys {
         latitude: Double?,
         longitude: Double?,
         fixConfirmed: Boolean,
-        revealed: Boolean,
+        revealed: Set<String>,
         stopIdsByJourney: Map<String, Set<String>>,
         openJourneyKey: String? = null,
     ): Set<String> {
-        if (revealed) return emptySet()
-        val held = farJourneys(journeys, latitude, longitude, fixConfirmed).keys - setOfNotNull(openJourneyKey)
+        val held = farJourneys(journeys, latitude, longitude, fixConfirmed).keys - revealed - setOfNotNull(openJourneyKey)
         return heldBackStopIds(stopIdsByJourney, held)
     }
 

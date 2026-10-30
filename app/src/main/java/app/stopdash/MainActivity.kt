@@ -4155,6 +4155,8 @@ class MainActivity : ComponentActivity() {
             }
             val shownJourneys = journeysShown?.journeys.orEmpty()
             val farJourneyMeters = journeysShown?.farMeters.orEmpty()
+            val farJourneyLines = journeysShown?.farLines.orEmpty()
+            val farJourneys = journeysShown?.far.orEmpty()
             val journeyScope = rememberCoroutineScope()
             val journeyWriteFailed by JourneyStars.failed.collectAsStateWithLifecycle()
             val rideLineWriteFailed by RideLineWrites.failed.collectAsStateWithLifecycle()
@@ -4444,6 +4446,8 @@ class MainActivity : ComponentActivity() {
                     stationGroups = NearbyGroupingSetting.changes.collectAsStateWithLifecycle().value == NearbyGrouping.STATION,
                     tripLines = tripLinesOf(applicationContext).collectByIdentityWithLifecycle().value,
                     farJourneyMeters = farJourneyMeters,
+                    farJourneyLines = farJourneyLines,
+                    farJourneys = farJourneys,
                     nearbyKey = stopsKey,
                     farReveal = shownFarReveal,
                     // The journeys' origins (this way round) are fetched alongside the near-me stops.

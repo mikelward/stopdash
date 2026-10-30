@@ -1480,7 +1480,7 @@ list above nearer stations (bug report, 2026-10-24); one with no distance yet le
 station, such a ride is headed as a station of its own, by the stop it boards from alone, never "from ➔ to", its trains
 starred as a station card's ride's are and its notes naming where it goes, so every heading grouped by station names a
 station (maintainer, 2026-10-25). A faraway
-ride keeps its place at the foot of the list. With
+ride keeps its place among the farther places. With
 no platform headings there's one distance per station, so a bus stop says its nearest pole's. Stations go nearest
 first with **no starred band**: a starred row leads its own station rather than lifting it to the top. A station's
 notice sits under its heading and folds with it, on a searched station's page too (By stop/platform puts its notices
@@ -1604,7 +1604,7 @@ follows, since "favorite" alone meant a place in one menu and a ride in another.
 its hides and avoids (maintainer, 2026-10-24): it saves that ride from where it boards to where it gets off, on its
 line, as Settings' Add saves one, and the trip says how it went. A card that changes offers none.
 The ride then shows, edits and is removed as any other (Settings → Favorite rides), far ones held
-back under Faraway favorites, and a ride to a stop only one branch reaches counts only the trains that
+back as collapsed cards (*Journeys*), and a ride to a stop only one branch reaches counts only the trains that
 call there.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
 or the 134 between two shared stops) are the same journey. Favorite journeys lead the near-me list as
@@ -1672,11 +1672,12 @@ be saved says so. Choosing a ride's lines when it's added, and the same choice f
 section, are to come (`TODO.md`).
 
 A journey more than **a mile from both ends** of the rider's fix is **held back** (maintainer,
-2026-09-24): the foot of the list, below the farther cards, has a **Faraway favorites** button, and
-until it's tapped those
-journeys aren't fetched — sparing the request budget and battery for trains the rider can't be
-catching. A tap shows them in full at the foot of the list, each heading carrying its distance,
-until the rider moves to a new set of nearby stops. The widget never pins a far journey, tapped or
+2026-09-24), as a **collapsed card among the farther places**, placed by how far its nearer end is
+(maintainer, 2026-10-30: it read as a button at the foot): its starred heading with that distance,
+over one row of its lines and **"Tap to see"**, as a farther station's card. Until its card is tapped
+the journey isn't fetched — sparing the request budget and battery for trains the rider can't be
+catching. A tap opens that journey alone in place, its heading keeping its distance, until the rider
+moves to a new set of nearby stops; a tap on its heading opens its own view, as any ride's does. The widget never pins a far journey, tapped or
 not: it refreshes unattended, so it keeps to trains the rider can catch. Without a confirmed fix
 (none, an approximate last-known one, or one that couldn't be refreshed), or an end's position,
 every journey shows in full rather than be hidden on a guess.
@@ -5462,7 +5463,7 @@ Crashlytics keeps its own installation ID); the advertising ID is not collected.
 own events in **categories and ranges only**, never a stop, line, journey, search text or coordinate
 (maintainer, 2026-09-24): each tap by kind (a journey card, a stop row, a change card, swapping a
 journey, starring or unstarring, opening search or Settings, refreshing the widget), opening a
-farther place (by mode) or the faraway favorites, the location permission left after asking
+farther place (by mode) or a faraway favorite, the location permission left after asking
 (precise, approximate or denied), how a near-me fix went (fresh, last known or failed) with its
 accuracy and time in ranges, and how many stops of each mode a near-me lookup found (0, 1, 2–3, 4+).
 Since 2026-10-07 (maintainer: "what walk speed and accessibility settings… which type of route"),

@@ -4108,7 +4108,7 @@ class MainScreenScreenshotTest {
     private val victoriaToWarrenStreet = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), listOf(LineRef("victoria", "", "")))
 
     @Test
-    fun `a far journey waits behind a button at the foot, unfetched, and revealing it loads it`() {
+    fun `a far journey is a collapsed card among the farther places, unfetched, and a tap loads it`() {
         // More than a mile from both ends (the distance is the caller's; synthetic here).
         val origins = mutableListOf<List<StopRef>>()
         composeRule.setContent {
@@ -4128,6 +4128,8 @@ class MainScreenScreenshotTest {
                             stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
                             journeys = listOf(victoriaToWarrenStreet),
                             farJourneyMeters = mapOf(victoriaToWarrenStreet.key to 2400.0),
+                            farJourneys = listOf(victoriaToWarrenStreet),
+                            farJourneyLines = mapOf(victoriaToWarrenStreet.key to listOf(LineRef("victoria", "Victoria", "tube"))),
                             onToggleJourney = {},
                             onJourneyOrigins = { origins += it },
                         )
@@ -4137,15 +4139,19 @@ class MainScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        // Collapsed to a "Faraway favourites" button at the foot: no heading, no card, origin not fetched.
-        composeRule.onNodeWithText("Faraway favourites").assertExists()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
+        // Collapsed as a farther place is (maintainer, 2026-10-30): its starred heading with its distance, over
+        // "Tap to see", its origin not fetched.
+        composeRule.onNodeWithTag("farJourneyCard").assertExists()
+        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
+        composeRule.onNodeWithText("(2.4 km)", substring = true).assertExists()
+        composeRule.onNodeWithText("Tap to see").assertExists()
         assertTrue(origins.all { refs -> refs.none { it.id == "940GZZLUVIC" } })
         captureSnapshot("main-journey-far.png")
 
-        // Revealing it shows its card, headed with its distance, and fetches its origin.
-        composeRule.onNodeWithText("Faraway favourites").performClick()
+        // A tap opens it in place, headed with its distance still, and fetches its origin.
+        composeRule.onNodeWithTag("farJourneyCard").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
         composeRule.onNodeWithText("(2.4 km)", substring = true).assertExists()
         assertTrue(origins.last().any { it.id == "940GZZLUVIC" })
@@ -4170,25 +4176,24 @@ class MainScreenScreenshotTest {
                         stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
                         journeys = listOf(victoriaToWarrenStreet),
                         farJourneyMeters = mapOf(victoriaToWarrenStreet.key to 2400.0),
+                        farJourneys = listOf(victoriaToWarrenStreet),
                         nearbyKey = nearbyKey,
                         onToggleJourney = {},
                     )
                 }
             }
         }
-        composeRule.onNodeWithText("Faraway favourites").performClick()
+        composeRule.onNodeWithTag("farJourneyCard").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
+        composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
 
         nearbyKey = "940GZZLUSVS"
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Faraway favourites").assertExists()
+        composeRule.onNodeWithTag("farJourneyCard").assertExists()
         // Back to the first set: the tap was forgotten on leaving it.
         nearbyKey = "940GZZLUMRH"
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Faraway favourites").assertExists()
+        composeRule.onNodeWithTag("farJourneyCard").assertExists()
     }
 
     @Test
@@ -4208,24 +4213,24 @@ class MainScreenScreenshotTest {
                         stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
                         journeys = listOf(victoriaToWarrenStreet),
                         farJourneyMeters = mapOf(victoriaToWarrenStreet.key to 2400.0),
+                        farJourneys = listOf(victoriaToWarrenStreet),
                         nearbyKey = nearbyKey,
                         onToggleJourney = {},
                     )
                 }
             }
         }
-        composeRule.onNodeWithText("Faraway favourites").performClick()
+        composeRule.onNodeWithTag("farJourneyCard").performClick()
         composeRule.waitForIdle()
 
         // Same set: the reveal survives.
         restoration.emulateSavedInstanceStateRestore()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
+        composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
 
         // Restored somewhere else.
         restoreKey = "940GZZLUSVS"
         restoration.emulateSavedInstanceStateRestore()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Faraway favourites").assertExists()
+        composeRule.onNodeWithTag("farJourneyCard").assertExists()
     }
 
     @Test
@@ -4244,6 +4249,7 @@ class MainScreenScreenshotTest {
                             stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
                             journeys = listOf(victoriaToWarrenStreet),
                             farJourneyMeters = mapOf(victoriaToWarrenStreet.key to 2400.0),
+                            farJourneys = listOf(victoriaToWarrenStreet),
                             nearbyKey = "940GZZLUMRH",
                             farReveal = farReveal,
                             onToggleJourney = {},
@@ -4252,7 +4258,7 @@ class MainScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Faraway favourites").performClick()
+        composeRule.onNodeWithTag("farJourneyCard").performClick()
         composeRule.waitForIdle()
 
         // An overlay opens and closes again.
@@ -4260,7 +4266,7 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         listShown = true
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
+        composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
     }
 
     private fun journeyScreen(

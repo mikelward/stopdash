@@ -3646,6 +3646,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [x] **Hold back faraway journeys** (maintainer, 2026-09-24). A journey more than a mile
           from both ends of a confirmed fix waits behind a "Faraway favorites" button at the foot
           of the list, unfetched until tapped for that nearby set; the widget never pins one.
+    - [x] **Faraway favorites as farther places** (maintainer, 2026-10-30). Each held-back ride is a
+          collapsed card among the farther places, by its distance, under its starred heading, with
+          its lines and "Tap to see"; a tap opens and fetches that ride alone.
     - [x] **Nearest ride first** (maintainer, 2026-10-15). The near-me list's ride cards go by the
           rider's distance to each ride's nearer end, as its stops do, instead of the order they
           were saved in; the widget, which heads its rides' rows by stop, orders those stops by
@@ -3700,7 +3703,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           (2026-10-22): `JourneyStars` saves on the application scope, and a failure stands
           process-wide until the screen has said so.
     - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
-          ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
+          ride back as a collapsed card (and off the widget) is fixed. Make it a choice in
           Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same
           radius for ride alerts: a ride's alert fires only while the phone is within it of one of
           the ride's ends. Open questions for then:

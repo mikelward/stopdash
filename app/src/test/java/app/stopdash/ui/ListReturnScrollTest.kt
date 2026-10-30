@@ -11,6 +11,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import app.stopdash.domain.Departure
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.JourneyEnd
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
@@ -47,7 +50,9 @@ class ListReturnScrollTest {
         )
     }
 
-    private fun returnKeepsPlace(stationGroups: Boolean, rideGrouping: RideGrouping = RideGrouping.RIDE) {
+    // With [farRide], a faraway favorite ride collapsed among the farther places at the foot (SPEC *Journeys*).
+    private fun returnKeepsPlace(stationGroups: Boolean, rideGrouping: RideGrouping = RideGrouping.RIDE, farRide: Boolean = false) {
+        val far = FavoriteJourney(JourneyEnd("FR1", "Faraway Stop"), JourneyEnd("FR2", "Faraway End"), listOf(LineRef("88", "88", "bus")))
         val scheduler = TestCoroutineScheduler()
         val worker = StandardTestDispatcher(scheduler)
         // Held above the list, as the activity holds them.
@@ -67,6 +72,10 @@ class ListReturnScrollTest {
                                 listState = listState,
                                 stationGroups = stationGroups,
                                 rideGrouping = rideGrouping,
+                                journeys = if (farRide) listOf(far) else emptyList(),
+                                farJourneyMeters = if (farRide) mapOf(far.key to 2400.0) else emptyMap(),
+                                farJourneys = if (farRide) listOf(far) else emptyList(),
+                                onToggleJourney = {},
                             )
                         }
                     }
@@ -98,6 +107,10 @@ class ListReturnScrollTest {
 
     @Test
     fun `back to the list grouped by station lands where it was left`() = returnKeepsPlace(stationGroups = true)
+
+    @Test
+    fun `back to the list with a faraway favorite collapsed at its foot lands where it was left`() =
+        returnKeepsPlace(stationGroups = true, rideGrouping = RideGrouping.STATION, farRide = true)
 
     @Test
     fun `back to the list with rides grouped by station lands where it was left`() {
