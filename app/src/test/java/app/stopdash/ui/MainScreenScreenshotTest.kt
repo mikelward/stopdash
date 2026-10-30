@@ -4163,6 +4163,57 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Remove favourite ride").assertExists()
     }
 
+    // Saved with its line's mode, as a ride saved now is, so its heading by station carries the mode's icon.
+    private val victoriaTube = victoriaToWarrenStreet.copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))
+
+    @Test
+    fun `grouped by station with rides By station, a far journey is headed as its own station, folded and opened`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse()), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            stationGroups = true,
+                            rideGrouping = RideGrouping.STATION,
+                            journeys = listOf(victoriaTube),
+                            farJourneyMeters = mapOf(victoriaTube.key to 2400.0),
+                            farJourneys = listOf(victoriaTube),
+                            farJourneyLines = mapOf(victoriaTube.key to listOf(LineRef("victoria", "Victoria", "tube"))),
+                            onToggleJourney = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Headed as rides By station head a ride boarding at no listed station: where it boards, folded, with its
+        // distance; the card under it says where it goes, starred (maintainer, 2026-10-30).
+        composeRule.onNodeWithTag("farJourneyCard").assertExists()
+        composeRule.onAllNodesWithText("Victoria ➔ Warren Street", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithText("Warren Street").assertExists()
+        composeRule.onNodeWithText("2.4 km", substring = true).assertExists()
+        captureSnapshot("main-journey-far-by-station.png")
+
+        // Opened, the same heading stays over its trains.
+        composeRule.onNodeWithTag("farJourneyCard").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Victoria ➔ Warren Street", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithText("2.4 km", substring = true).assertExists()
+        captureSnapshot("main-journey-far-by-station-revealed.png")
+    }
+
     @Test
     fun `revealed faraway favorites are held back again after leaving their nearby set`() {
         var nearbyKey by mutableStateOf("940GZZLUMRH")

@@ -1083,8 +1083,8 @@ fun MainScreen(
         Inputs(journeyCards, farRevealed, farReveal.run),
         keep = { held, wanted -> held.parts[2] === wanted.parts[2] && (held.parts[1] as Set<*>).size <= (wanted.parts[1] as Set<*>).size },
     ) {
-        if (farRevealed.isEmpty()) emptyMap() else journeyCards.filter { it.journey.key in farRevealed }.associateBy { it.journey.key }
-    }.orEmpty()
+        if (farRevealed.isEmpty()) FarRides.None else FarRides.of(journeyCards.filter { it.journey.key in farRevealed })
+    } ?: FarRides.None
     // The lines each card finds reaching its ride's far end that the ride doesn't hold yet, kept with it so
     // its alerts, status and Settings cover them too. Worked out on the worker; reported only when one is new.
     val currentRideLinesFound by rememberUpdatedState(onRideLinesFound)
@@ -2038,7 +2038,7 @@ fun MainScreen(
                                 // A ride kept in its own platforms' groups (By station) has no card of its own.
                                 if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters && it.journey.key !in ridesInPlatforms }
                             },
-                            farJourneyCards = if (platformRows != null) emptyMap() else farRideCards,
+                            farJourneyCards = if (platformRows != null) FarRides.None else farRideCards,
                             farJourneys = if (platformRows != null) emptyList() else farJourneys,
                             farJourneyMeters = farJourneyMeters,
                             farJourneyLines = farJourneyLines,
@@ -2281,7 +2281,7 @@ private fun LoadedContent(
     onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
     onShowRideLine: ((FavoriteJourney, String) -> Unit)? = null,
-    farJourneyCards: Map<String, JourneyCard> = emptyMap(),
+    farJourneyCards: FarRides = FarRides.None,
     farJourneys: List<FavoriteJourney> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
     farJourneyLines: Map<String, List<LineRef>> = emptyMap(),
@@ -3190,7 +3190,7 @@ private fun DepartureList(
     // The faraway journeys, nearest first ([farJourneys]), placed among the farther places by each one's meters to its
     // nearer end: each a collapsed card naming its lines ([farJourneyLines]) until a tap opens it ([onRevealFar]),
     // then drawn in full ([farJourneyCards], by key).
-    farJourneyCards: Map<String, JourneyCard> = emptyMap(),
+    farJourneyCards: FarRides = FarRides.None,
     farJourneys: List<FavoriteJourney> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
     farJourneyLines: Map<String, List<LineRef>> = emptyMap(),
@@ -3476,7 +3476,12 @@ private fun DepartureList(
         // stop it boards from alone, its trains starred as a station's card has a ride's ([StationLayout.loneRideRows];
         // maintainer, 2026-10-25).
         asStation: Boolean = false,
+        // Its trains starred, rides By station: the layout's ([StationLayout.loneRideRows]) unless given.
+        rideRows: Map<DepartureRow, FavoriteJourney>? = null,
+        rideChangeAt: Map<DepartureRow, String>? = null,
     ) {
+            val starredRows = if (asStation) rideRows ?: stationLayout?.loneRideRows.orEmpty() else emptyMap()
+            val changeAtRows = if (asStation) rideChangeAt ?: stationLayout?.rideChangeAt.orEmpty() else emptyMap()
             // With no heading of its own naming the ride, its notes name its far end.
             val named = underStation || asStation
             cards.forEachIndexed { index, card ->
@@ -3627,7 +3632,7 @@ private fun DepartureList(
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
                             noTrainsTimetabled = timetabled,
                             rideDestination = card.lineLabel.takeIf { named && stopCard === card.lineCard },
-                            rideRows = if (asStation) stationLayout?.loneRideRows.orEmpty() else emptyMap(),
+                            rideRows = starredRows,
                             rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                         )
                     }
@@ -3715,8 +3720,8 @@ private fun DepartureList(
                     journeyChanges(
                         card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onAddRailKey, checking = checking,
                         onHideRideLine = onHideRideLine,
-                        rideRows = if (asStation) stationLayout?.loneRideRows.orEmpty() else emptyMap(),
-                        rideChangeAt = if (asStation) stationLayout?.rideChangeAt.orEmpty() else emptyMap(),
+                        rideRows = starredRows,
+                        rideChangeAt = changeAtRows,
                     )
                     if (state.incomplete) {
                         item(key = "journey-note|${card.journey.key}") {
@@ -4353,17 +4358,43 @@ private fun DepartureList(
         fun farRidesWithin(meters: Double) {
             while (farNext < farJourneys.size && (farJourneyMeters[farJourneys[farNext].key] ?: Double.MAX_VALUE) <= meters) {
                 val journey = farJourneys[farNext++]
-                val opened = farJourneyCards[journey.key]
+                val opened = farJourneyCards.cards[journey.key]
+                val distanceLabel = distanceSystem?.let { system -> farJourneyMeters[journey.key]?.let { distanceText(it, system, resources) } }
+                // Grouped by station, headed as a ride atop or among the stations is ([journeyItems] inStation), as its own
+                // station with rides By station: the same heading whether folded or opened, so a tap swaps only the card
+                // under it (maintainer, 2026-10-30).
                 if (opened != null) {
-                    journeyItems(listOf(opened), farJourneyMeters)
+                    journeyItems(
+                        listOf(opened), farJourneyMeters, inStation = byStation, stationDistance = distanceLabel, asStation = byStation && ridesAsStations,
+                        // Not in the layout's (it holds the near rides), so its own starred rows ([FarRides]).
+                        rideRows = farJourneyCards.rideRows, rideChangeAt = farJourneyCards.rideChangeAt,
+                    )
                 } else {
+                    if (byStation) {
+                        item(key = "journey-header|${journey.key}") {
+                            // Its mode's icon, as a ride's heading by station has it (none for a ride whose lines kept no mode).
+                            val mode = journey.mode
+                            StationHeader(
+                                if (ridesAsStations) journey.from.name else stringResource(R.string.journey_title, journey.from.name, journey.to.name),
+                                distanceLabel,
+                                modes = listOfNotNull(ModeIcon.of(mode)),
+                                modeIds = listOf(mode).filter { it.isNotBlank() },
+                                folded = true,
+                                onToggle = { onRevealFar(journey) },
+                                onOpen = onOpenJourney?.let { open -> { open(journey) } },
+                                rideForms = (listOf(journey.from.name) to listOf(journey.to.name)).takeIf { !ridesAsStations },
+                            )
+                        }
+                    }
                     item(key = "far-journey|${journey.key}") {
                         FarJourneyCardView(
                             journey,
                             lines = farJourneyLines[journey.key].orEmpty(),
-                            distanceLabel = distanceSystem?.let { system -> farJourneyMeters[journey.key]?.let { distanceText(it, system, resources) } },
+                            distanceLabel = distanceLabel,
                             onReveal = { onRevealFar(journey) },
                             onOpen = onOpenJourney?.let { open -> { open(journey) } },
+                            showHeading = !byStation,
+                            towards = journey.to.name.takeIf { byStation && ridesAsStations },
                         )
                     }
                 }
@@ -4433,6 +4464,8 @@ private fun DepartureList(
  * A faraway favorite ride, collapsed as a farther place is (maintainer, 2026-10-30): its starred heading with how far
  * its nearer end is, over one row of its [lines] and "Tap to see". A tap on the card opens it in place ([onReveal]),
  * which is what fetches its trains; one on its heading opens its own view ([onOpen]), as a ride's heading does.
+ * Grouped by station its heading is a station's, drawn apart ([showHeading] false), as a farther station's is; with
+ * rides By station that heading names only where it boards, so the card says where it goes, starred ([towards]).
  */
 @Composable
 private fun FarJourneyCardView(
@@ -4441,17 +4474,21 @@ private fun FarJourneyCardView(
     distanceLabel: String?,
     onReveal: () -> Unit,
     onOpen: (() -> Unit)?,
+    showHeading: Boolean = true,
+    towards: String? = null,
 ) = CardTextSize {
     val cueText = stringResource(R.string.farther_tap_to_see)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        JourneyHeader(
-            journey,
-            fromForms = listOf(journey.from.name),
-            toForms = listOf(journey.to.name),
-            firstOnScreen = false,
-            onOpen = onOpen,
-            distanceLabel = distanceLabel,
-        )
+        if (showHeading) {
+            JourneyHeader(
+                journey,
+                fromForms = listOf(journey.from.name),
+                toForms = listOf(journey.to.name),
+                firstOnScreen = false,
+                onOpen = onOpen,
+                distanceLabel = distanceLabel,
+            )
+        }
         OutlinedCard(
             modifier = Modifier.fillMaxWidth().clickable { onReveal() }.testTag("farJourneyCard"),
         ) {
@@ -4466,8 +4503,61 @@ private fun FarJourneyCardView(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     for (line in lines) LinePill(line.name, line.id, line.mode)
+                    // Where it goes, starred, after its lines, as a row of the ride's trains says it by station ([JourneyCardView]).
+                    if (towards != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = towards, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Icon(
+                                Icons.Filled.Star,
+                                contentDescription = stringResource(R.string.ride_row_star),
+                                tint = LocalStarredBorderColor.current,
+                                modifier = Modifier.padding(start = 4.dp).size(16.dp.withText()),
+                            )
+                        }
+                    }
                 }
                 Text(text = cueText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+/**
+ * The faraway favorites opened ([cards], by key), and, as the layout has them for the near rides
+ * ([StationLayout.loneRideRows], [StationLayout.rideChangeAt]), each one's trains, starred when rides go By station, and
+ * those to change from with where. Worked out on the worker.
+ */
+internal class FarRides(
+    val cards: Map<String, JourneyCard>,
+    val rideRows: Map<DepartureRow, FavoriteJourney>,
+    val rideChangeAt: Map<DepartureRow, String>,
+) {
+    companion object {
+        val None = FarRides(emptyMap(), emptyMap(), emptyMap())
+
+        @WorkerThread
+        fun of(cards: List<JourneyCard>): FarRides {
+            val rideRows = IdentityHashMap<DepartureRow, FavoriteJourney>()
+            val rideChangeAt = IdentityHashMap<DepartureRow, String>()
+            cards.forEach { card -> starRideRows(card, rideRows, rideChangeAt) }
+            return FarRides(cards.associateBy { it.journey.key }, rideRows, rideChangeAt)
+        }
+    }
+}
+
+/**
+ * Puts [card]'s trains in [rideRows], headed as its own station with rides By station, so each wears its star, and those
+ * to change from in [rideChangeAt] too, saying where to change, as a station card's ride's do.
+ */
+@WorkerThread
+private fun starRideRows(card: JourneyCard, rideRows: MutableMap<DepartureRow, FavoriteJourney>, rideChangeAt: MutableMap<DepartureRow, String>) {
+    val trains = card.state.drawn ?: return
+    trains.rideCard.group.rows.forEach { rideRows[it] = card.journey }
+    trains.changeStops.forEach { change ->
+        change.cards.forEach { stopCard ->
+            stopCard.group.rows.forEach { row ->
+                rideRows[row] = card.journey
+                rideChangeAt[row] = change.stopName
             }
         }
     }
@@ -5180,18 +5270,7 @@ internal class StationLayout(
             val loneRideRows = IdentityHashMap<DepartureRow, FavoriteJourney>()
             val rideChangeAt = IdentityHashMap(rides.changeAt)
             if (inCard) {
-                (ridesBefore.values.flatten() + ridesAtop).forEach { card ->
-                    val trains = card.state.drawn ?: return@forEach
-                    trains.rideCard.group.rows.forEach { loneRideRows[it] = card.journey }
-                    trains.changeStops.forEach { change ->
-                        change.cards.forEach { stopCard ->
-                            stopCard.group.rows.forEach { row ->
-                                loneRideRows[row] = card.journey
-                                rideChangeAt[row] = change.stopName
-                            }
-                        }
-                    }
-                }
+                (ridesBefore.values.flatten() + ridesAtop).forEach { card -> starRideRows(card, loneRideRows, rideChangeAt) }
             }
             return StationLayout(
                 ordered.withIndex().associate { (i, group) -> group.key to i }, rideStations, meters, cards, rides.ends, rideChangeAt, rides.journeys, rideGroups,

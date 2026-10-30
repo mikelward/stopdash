@@ -233,7 +233,10 @@ class TapHoldsStillTest {
         }
         scrollToEnd()
         val heading = SemanticsMatcher("the ride's heading") { node ->
-            node.config.getOrElseNullable(SemanticsProperties.ContentDescription) { null }?.any { it.startsWith("Faraway Stop to Faraway End") } == true
+            node.config.getOrElseNullable(SemanticsProperties.ContentDescription) { null }?.any {
+                // By ride, its own heading; rides By station, headed as a station by where it boards (its name, not its chevron).
+                it.startsWith("Faraway Stop to Faraway End") || it.startsWith("Faraway Stop, Bus, ")
+            } == true
         }
         val before = top(heading)
         composeRule.onNodeWithTag("farJourneyCard").performClick()

@@ -1495,7 +1495,9 @@ list above nearer stations (bug report, 2026-10-24); one with no distance yet le
 station, such a ride is headed as a station of its own, by the stop it boards from alone, never "from ➔ to", its trains
 starred as a station card's ride's are and its notes naming where it goes, so every heading grouped by station names a
 station (maintainer, 2026-10-25). A faraway
-ride keeps its place among the farther places. With
+ride keeps its place among the farther places, headed the same way folded and opened: as a station, its name its
+ride's, or by rides By station where it boards, the folded card then saying where it goes, starred, after its lines
+(maintainer, 2026-10-30). With
 no platform headings there's one distance per station, so a bus stop says its nearest pole's. Stations go nearest
 first with **no starred band**: a starred row leads its own station rather than lifting it to the top. A station's
 notice sits under its heading and folds with it, on a searched station's page too (By stop/platform puts its notices
