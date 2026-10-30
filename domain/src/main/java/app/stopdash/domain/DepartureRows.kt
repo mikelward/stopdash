@@ -195,7 +195,7 @@ object DepartureRows {
             // fresh stop-status closure still show.
             val status =
                 if (statusRowsShown(stop, now, statusRowsWhenStale)) {
-                    statusRows(stop, timed, lineStatuses, hiddenLines, quietRows)
+                    statusRows(stop, timed, lineStatuses, hiddenLines, quietRows, boardElsewhere(stop, stops))
                 } else {
                     emptyList()
                 }
@@ -1075,7 +1075,7 @@ object DepartureRows {
         val byStop = kept.groupBy { it.stopId }
         // Only where [across] would have made one: a stop whose arrivals are current ([statusRowsShown]).
         val restored = stops.filter { stop -> lost.any { it.first == stop.stopId } && statusRowsShown(stop, now) }.flatMap { stop ->
-            statusRows(stop, byStop[stop.stopId].orEmpty(), statuses, hiddenLinesOf(stop, now))
+            statusRows(stop, byStop[stop.stopId].orEmpty(), statuses, hiddenLinesOf(stop, now), boardElsewhere = boardElsewhere(stop, stops))
                 .filter { (it.stopId to it.lineId) in lost }
         }
         return if (restored.isEmpty()) kept else (kept + restored).sortedWith(rowOrder)
@@ -1597,6 +1597,17 @@ object DepartureRows {
     }
 
     /**
+     * Whether [stop]'s station board is shown under another of [stops] ([RailFeed.ELSEWHERE]), one that
+     * shows a board of its own: a stop whose twin isn't among them keeps its rows, so a disruption
+     * isn't hidden where nothing else shows it. A twin is told apart by its feed alone (this has no
+     * station codes), which a board at any other station on the list also satisfies; the client hands a
+     * station's board to a twin only while the stop that has it keeps asking, so they're shown together.
+     */
+    private fun boardElsewhere(stop: StopArrivals, stops: List<StopArrivals>): Boolean =
+        stop.railFeed == RailFeed.ELSEWHERE &&
+            stops.any { it !== stop && it.railFeed != null && it.railFeed != RailFeed.ELSEWHERE && it.railFeed != RailFeed.NO_KEY }
+
+    /**
      * Status rows for a stop's disrupted lines that have **no prediction rows** — a
      * suspended line often returns zero arrivals, so without this it would vanish from
      * the list rather than surface as suspended (SPEC *Departures*, the quietly-wrong
@@ -1607,7 +1618,8 @@ object DepartureRows {
      * [DepartureRow.quiet] row, since a feed that has gone quiet empties a board as a suspension does,
      * with nothing in the status to say so. A National Rail line gets none: its board lists every
      * train it runs, so an empty one is an answer, and a hub's infrequent services would otherwise
-     * fill it with rows.
+     * fill it with rows. Nor does a disrupted one where [boardElsewhere]: its trains, marked, are
+     * under the station's other stop, so a row here would only add a second "No data" heading.
      */
     private fun statusRows(
         stop: StopArrivals,
@@ -1615,10 +1627,12 @@ object DepartureRows {
         lineStatuses: Map<String, LineStatus>,
         hiddenLines: Set<String> = emptySet(),
         quiet: Boolean = false,
+        boardElsewhere: Boolean = false,
     ): List<DepartureRow> {
         val timedLineIds = timed.mapTo(mutableSetOf()) { it.lineId }
         return stop.lines
             .filter { it.id !in timedLineIds && it.id !in hiddenLines }
+            .filter { !boardElsewhere || !it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
             .mapNotNull { line ->
                 val status = lineStatuses[line.id]?.takeIf(LineStatus::disrupted)
                     ?: return@mapNotNull quietRow(stop, line, lineStatuses[line.id]?.planned.orEmpty())

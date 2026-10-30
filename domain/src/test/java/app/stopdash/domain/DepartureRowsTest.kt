@@ -1228,6 +1228,33 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `a station's stop whose board its twin shows gets no National Rail status rows beside it`() {
+        val lines = listOf(
+            LineRef("great-example", "Great Example", "national-rail"),
+            LineRef("overground-example", "Overground Example", "overground"),
+        )
+        val statuses = mapOf(
+            "great-example" to LineStatus("great-example", 6, "Severe Delays"),
+            "overground-example" to LineStatus("overground-example", 2, "Suspended"),
+        )
+        val twin = StopArrivals("910GTWINB", "Example", emptyList(), now, lines, railFeed = RailFeed.ELSEWHERE)
+        val owner = StopArrivals(
+            "910GTWINA", "Example",
+            listOf(Departure("great-example", "Great Example", "outbound", "Faraway", null, now.plusSeconds(300), "national-rail")),
+            now, lines.take(1), railFeed = RailFeed.LIVE,
+        )
+        val rows = DepartureRows.across(listOf(owner, twin), now, statuses)
+        // The line's trains are under the owner, marked; the twin adds no "No data" row of them.
+        assertEquals(listOf("great-example"), rows.filter { it.stopId == "910GTWINA" }.map { it.lineId })
+        // A TfL line's row still shows at the twin: only the board is the owner's.
+        assertEquals(listOf("overground-example"), rows.filter { it.stopId == "910GTWINB" }.map { it.lineId })
+        // Shown without the owner, the twin keeps its row, so the disruption isn't hidden.
+        val alone = DepartureRows.across(listOf(twin), now, statuses)
+        assertEquals(setOf("great-example", "overground-example"), alone.mapTo(HashSet()) { it.lineId })
+        assertEquals(NoTimes.NO_DATA, NoTimes.of(alone.single { it.lineId == "great-example" }))
+    }
+
+    @Test
     fun `a line with no departures shows a dash only when its source answered`() {
         val rail = DepartureRow(
             stopId = "910GEXAMPLE", stopName = "Example", lineId = "great-example", lineName = "Great Example",

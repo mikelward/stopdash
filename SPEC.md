@@ -4961,7 +4961,10 @@ surface.)
   reaches National Rail or counts against a caller.
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
   them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
-  train from the board whichever of them it boards at. A trip also asks for each station's board
+  train from the board whichever of them it boards at. The other id adds no "No data" row for a
+  disrupted National Rail line beside it (maintainer, 2026-10-30: St Pancras's high-speed platforms
+  showed one under a heading of their own): the line's trains, marked, are under the first. Shown
+  without it, the row stays, so a disruption is never hidden. A trip also asks for each station's board
   with its trains' calling points (Darwin's `GetDepBoardWithDetails`, in the same product, so the
   same key; maintainer, 2026-10-07): a train's own stops say whether it calls where the rider gets
   off, which its line's routes can't when one runs fast and the next all stations (a London

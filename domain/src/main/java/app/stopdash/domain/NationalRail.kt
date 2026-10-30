@@ -124,10 +124,11 @@ data class UntimedTrain(val train: Departure, val canceled: Boolean)
 /**
  * Where a National Rail station's National Rail times stand after its last fetch: the board came
  * back ([LIVE], so a line with no trains truly has none), the user has set no key so none was asked
- * for ([NO_KEY]), National Rail refused the key it was asked with ([KEY_REJECTED]), or the board was
- * asked for and failed otherwise ([UNAVAILABLE]).
+ * for ([NO_KEY]), National Rail refused the key it was asked with ([KEY_REJECTED]), the board was
+ * asked for and failed otherwise ([UNAVAILABLE]), or it's shown under another of the station's TfL
+ * stops, which shares its code ([ELSEWHERE]: St Pancras's high-speed platforms beside its main record).
  */
-enum class RailFeed { LIVE, NO_KEY, KEY_REJECTED, UNAVAILABLE }
+enum class RailFeed { LIVE, NO_KEY, KEY_REJECTED, UNAVAILABLE, ELSEWHERE }
 
 /** What a line with no departures shows where its times would be (SPEC *Departures*). */
 enum class NoTimes {
@@ -217,6 +218,8 @@ suspend fun TflClient.railRideArrivals(stopId: String): RideArrivals {
         RailFeed.UNAVAILABLE -> throw TflException.Unreachable("national rail board unavailable", null)
         RailFeed.NO_KEY -> throw TflException.Unreachable("no national rail key", null)
         RailFeed.KEY_REJECTED -> throw TflException.Unreachable("national rail key rejected", null)
+        // Only a list leaves a station's board to its twin; a trip's client gives every stop it.
+        RailFeed.ELSEWHERE -> throw TflException.Unreachable("national rail board shown at another stop", null)
         null -> throw TflException.Unreachable("no national rail station code", null)
     }
 }
@@ -354,7 +357,12 @@ class RailAwareTflClient(
             }
             outcome?.let { settle(crs, it) }
             when {
-                !shows -> fromTfl.also { early?.cancel() }
+                !shows -> {
+                    // Its lines' trains are listed under the twin, so its own status rows would only
+                    // repeat them as "No data" ([DepartureRows.across]).
+                    feeds[stopId] = RailFeed.ELSEWHERE
+                    fromTfl.also { early?.cancel() }
+                }
                 else -> {
                     val board = if (early != null) early.await() else takeHandoff(crs) ?: fetchBoard(crs, stopId)
                     showed(stopId, board)

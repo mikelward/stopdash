@@ -295,6 +295,8 @@ class RailAwareTflClientTest {
         assertEquals(1, client.arrivals("910GTWINA").rail())
         assertEquals("the twin gets TfL's rows only, and asks for no board", 0, client.arrivals("910GTWINB").rail())
         assertEquals(listOf("TWN"), board.asked)
+        assertEquals(RailFeed.LIVE, client.railFeed("910GTWINA"))
+        assertEquals("the twin says its board is shown elsewhere", RailFeed.ELSEWHERE, client.railFeed("910GTWINB"))
         // A later refresh: the owner asks again and keeps it; the board is fetched afresh.
         clock += 60_000L
         assertEquals(1, client.arrivals("910GTWINA").rail())
@@ -303,6 +305,7 @@ class RailAwareTflClientTest {
         // Once the owner has stopped asking, the twin takes over.
         clock += RailAwareTflClient.OWNER_IDLE_MILLIS
         assertEquals(1, client.arrivals("910GTWINB").rail())
+        assertEquals(RailFeed.LIVE, client.railFeed("910GTWINB"))
     }
 
     @Test
