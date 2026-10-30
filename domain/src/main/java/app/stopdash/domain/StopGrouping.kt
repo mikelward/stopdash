@@ -228,8 +228,16 @@ object StopGrouping {
         val closurePlaces = rows.filter { it.stopDisruption != null }.mapTo(HashSet()) { clusterKeyOf(it, emptySet()) }
         val places = merged.values.mapTo(HashSet()) { it.placeKey } + closurePlaces
         val showHeader = merged.size > 1 || places.size > 1
-        return merged.values.map { it.copy(showHeader = showHeader) }
+        return merged.values.map { it.copy(showHeader = showHeader, stopName = stationName(it.rows.map(DepartureRow::stopName)).ifBlank { it.stopName }) }
     }
+
+    /**
+     * A station's heading, from its rows' stop names ([names]): the shortest, so a station TfL lists as
+     * several records reads as the station, not its low-level platforms ("London St Pancras International", not "…
+     * International LL"), shortened as a station's name is everywhere else ([abbreviateStationName]: "… Intl").
+     * Display only: never matched against alert text.
+     */
+    fun stationName(names: List<String>): String = abbreviateStationName(names.filter { it.isNotBlank() }.minByOrNull { it.length }.orEmpty())
 
     /**
      * The station [group] is drawn under, grouped by station: its place (a station's code, as its records are placed:
