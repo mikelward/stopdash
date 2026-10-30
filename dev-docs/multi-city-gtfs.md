@@ -337,6 +337,54 @@ timetables change. London's file is 22,206 stops in 2.9 MB.
   Range Rd Before Simpson Av"). Each region's slice would need cutting from the one file.
 - Sydney's feeds, read with a key: see *Candidate cities* above.
 
+## Estimating UK bus times from BODS (first measurement, 2026-10-30)
+
+Outside London no open feed gives bus countdowns: BODS has positions and timetables only. So
+stopdash would estimate them. This measured how well the simplest estimate would do, as a
+first step; it should be repeated at peak (maintainer, 2026-10-30).
+
+**Method.** BODS's GTFS-RT positions for central Manchester, Liverpool and Bristol, polled
+every 20 s for 75 minutes (18:51–20:06 UTC, a Friday evening), joined by trip id to BODS's
+GTFS timetables. At each poll, each bus is placed along its trip's stops, its lateness is
+how far behind or ahead of its timetable it is there, and the estimate at each stop ahead is
+the timetabled time plus that lateness (never earlier than now). "Actual" is when later
+positions show it passing that stop. Each estimate is scored against California's accuracy
+band for trip updates (about ±0.3 min when due, ±2.4 min at 10 min out, ±3.4 min at 30), and
+compared with the bare timetable, which is what an app with no live data shows.
+
+| | Manchester | Liverpool | Bristol |
+|---|---|---|---|
+| Fresh positions carrying a trip id | 93% | 84% | 92% |
+| Trips scored | 967 | 481 | 417 |
+| **Estimates within the band** | **60%** | **68%** | **74%** |
+| …0–5 min out | 68% | 75% | 79% |
+| …10–20 min out | 56% | 64% | 72% |
+| …20–30 min out | 46% | 56% | 67% |
+| Median error, 5–10 min out | 92 s | 78 s | 66 s |
+| 90th percentile error, 10–20 min out | 8.2 min | 7.0 min | 5.2 min |
+| Timetable alone within the band | 19% | 32% | 43% |
+
+**What it shows.** Carrying the bus's lateness forward roughly doubles to triples the
+timetable's hit rate, and near the stop it is close to California's 75% target in Liverpool
+and Bristol.
+Further out it falls short, worst in Manchester, where a bus 20–30 minutes away is in the band
+under half the time and one estimate in ten is 8 minutes or more out at 10–20 minutes. Buses
+arrive later than estimated a little more often than earlier (54–71%), which errs toward
+catching the bus. By the honesty floor (SPEC principle 1), these are estimates, not
+predictions, and would be shown as such ("~5 min"), with the far ones perhaps not at all.
+
+**Limits of this first measurement.** One evening, outside peak, when traffic is lightest.
+"Actual" comes from the same feed, so a bus that stops reporting drops out rather than
+counting as a miss. Passing a stop counts as arriving, and dwell time is ignored. Estimates
+for one trip at successive polls are correlated, so the counts overstate the independent
+samples. Only buses carrying a trip id were scored (84–93% of fresh positions), and a
+position older than 2 minutes was dropped: 30% of positions in Bristol, 42% in Manchester
+and 50% in Liverpool, mostly buses that had stopped reporting, which an app would have to
+treat as no data. A better estimator
+(typical travel times between stops by time of day, learned from past positions) is the
+obvious next step, measured the same way. To repeat it: `scripts/bods_bus_estimates.py`
+(`record --city …`, then `score` against the region's BODS GTFS zip).
+
 ## Cost summary
 
 - **London (TfL Unified API):** £0, keyless (or a free `app_key`). No change.
