@@ -5601,6 +5601,54 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       the feeds, the client-only-vs-backend-vs-aggregator fork, why London stays on the
       TfL Unified API, live-vs-scheduled and its UI treatment — is in
       `dev-docs/multi-city-gtfs.md`.**
+- [ ] (Open call: scoping) **Buses outside TfL's network, such as KU1/KU3** (maintainer,
+      2026-10-30: "We're missing bus routes like KU1 and KU3"). TfL has no record of them:
+      `/Line/ku1` is a 404, `/Line/Search/KU1` matches nothing, and `/Line/Mode/bus` (675
+      routes) has K1–K5 but no KU routes. So no rebuild of `stops.tsv` can add them. KU1/KU3
+      look like Kingston University's intersite buses, which the university contracts directly
+      (Falcon Coaches from 1 September 2026, by its tender notices), not TfL. The candidate
+      source is the DfT's **Bus Open Data Service (BODS)**, which has a free key (kept on the
+      proxy like the Darwin key, D7) and publishes timetables (TransXChange/GTFS) and live
+      vehicle positions (SIRI-VM/GTFS-RT, by bounding box), with no TfL-style countdown.
+      **Coverage** (BODS's keyless GTFS timetable downloads, feed of 2026-10-22, against
+      `stops.tsv`): **KU1/KU3 aren't in BODS either** (neither the London nor the South East
+      file has a KU route), so BODS wouldn't fix the routes that prompted this. What BODS
+      would add, leaving out rail replacement, hotel and airport shuttles and tours: **72
+      routes** that TfL doesn't list at a stop where they call. They miss at **1,243 of
+      stopdash's ~20,000 bus stops**, and at 204 of those TfL lists no line at all. Most of
+      them run in from outside London and call only near its edge: Kingston (458, 461,
+      513–515, 714/715), Heathrow (555, N30, 446), Uxbridge (101–104, 583), Enfield and
+      Waltham Cross (Sullivan 355/356, Metrobus 409/411/420), and school routes (614, 644,
+      668, 687, 695, S3/S32). Some reuse a TfL route's number (Carousel's 101, Metrobus's
+      411), so matching on the route number alone isn't enough. Measured with a throwaway
+      script, not committed.
+      **BODS live data** (read with a key, 2026-10-30): its GTFS-RT feed holds **vehicle
+      positions only, no trip updates**, so "N min" would be stopdash's own estimate from
+      position against the timetable (less exact than TfL's countdown, so SPEC D4 would need
+      a way to label it). Its SIRI-VM feed **does carry KU1 and KU2** (Falcon, `FALC`), each
+      bus with its line, direction, end stops and aimed start and end times. With no BODS
+      timetable for them, there are no stops in between to estimate a time at. It also
+      carries TfL's own buses (`TFLO`), and a SIRI-SX feed carries disruption notices.
+      **Against GTFS / GTFS-Realtime** (Google's original transit feed format, which
+      `dev-docs/multi-city-gtfs.md` assumes): BODS publishes GTFS timetables and GTFS-RT vehicle
+      positions, but no GTFS-RT trip updates (the operator's own countdown, what TfL's
+      arrivals give us). Its disruptions come only as SIRI-SX, not GTFS-RT alerts. In one
+      read, only 30 of 107 buses carried a trip id found in the timetable file, so most
+      would have to be matched by line, direction and start time before stopdash could
+      estimate a time. MobilityData's catalog lists about 345 operators in 27 countries
+      with active trip-update feeds (161 US, 67 Canada, 12 Australia, …), and none in Great
+      Britain or Ireland. The catalog is voluntary, so these are minimums. So in England
+      outside London, live times would be stopdash's estimates unless an authority
+      publishes its own predictions. California's state transport department grades
+      trip-update accuracy with a tolerance that widens with time to arrival (about ±0.3
+      min when due, ±2.4 min at 10 min out, ±3.4 min at 30 min) and targets 75%+ of
+      predictions catching the bus. Accuracy per operator wasn't measured.
+      **Still to confirm**: whether riders outside the university may board KU buses, where
+      their stop-by-stop timetable could come from, and BODS's rate limits and the proxy's
+      request load. **Cost**: £0 for the data, plus proxy
+      traffic. **Play Data Safety**: none if the proxy is asked by stop or route only, never
+      by the rider's position. The shape of the work (a second provider beside TfL,
+      scheduled-vs-live) is the same as `dev-docs/multi-city-gtfs.md`'s.
 - [ ] (Later, open call) **Smart-home integration** (recorded 2026-09-19 at the maintainer's
       request). Surface the next departures on a smart-home surface — a routine, a display, a
       voice assistant — so "when's my bus?" is answered without opening the phone. It means a
