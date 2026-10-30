@@ -5601,6 +5601,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       the feeds, the client-only-vs-backend-vs-aggregator fork, why London stays on the
       TfL Unified API, live-vs-scheduled and its UI treatment — is in
       `dev-docs/multi-city-gtfs.md`.**
+      Melbourne and Sydney are scoped side by side there (*Candidate cities*, 2026-10-30):
+      both list countdowns for every mode, but read with keys only Sydney's all carried them
+      (Melbourne's tram and V/Line feeds were empty); the maintainer picks one before any code.
 - [ ] (Open call: scoping) **Buses outside TfL's network, such as KU1/KU3** (maintainer,
       2026-10-30: "We're missing bus routes like KU1 and KU3"). TfL has no record of them:
       `/Line/ku1` is a 404, `/Line/Search/KU1` matches nothing, and `/Line/Mode/bus` (675

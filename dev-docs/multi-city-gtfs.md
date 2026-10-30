@@ -199,6 +199,144 @@ interface:
   device", but it also never streams location to a crowd-sourcing backend). Out of scope
   regardless of city.
 
+## Candidate cities: Melbourne and Sydney (scoped 2026-10-30)
+
+The maintainer asked for both cities to be scoped side by side before picking one. Sources:
+MobilityData's catalog (`mobility-database-catalogs`), each authority's open-data listing.
+This sandbox couldn't reach either API (the network policy blocks both hosts), so feed sizes,
+latency and actual coverage are **unmeasured**.
+
+| | Melbourne (Transport Victoria / PTV) | Sydney (Transport for NSW) |
+|---|---|---|
+| Schedule | One GTFS zip, CC BY 4.0, no key | Greater Sydney GTFS zip, CC BY, no key |
+| Trip updates (countdowns) | Metro trains, trams, metro buses, V/Line | Buses, ferries, light rail, trains, Metro, regional buses (the catalog lists only trains, Metro and light rail; the authority's trip-update dataset lists them all) |
+| Vehicle positions | Same modes | Same modes |
+| Service alerts | Metro trains and trams in GTFS-RT; buses unconfirmed | One GTFS-RT alerts feed for all modes |
+| Access | Free key, sent as a `KeyID` header | Free key from the open-data portal |
+| Rate limit | 24 calls a minute per endpoint per key (one record says 20–27 for metro trains, cached 30 s) | Unconfirmed |
+| Refresh | Trains and buses near real time; trams every 60 s | Every feed 8–37 s old when read |
+
+**Both list real countdowns for every mode**, which would let either city hold to the live-only
+rule above (no timetable fallback), though Melbourne's tram and V/Line feeds read empty (below). The catalog alone made Sydney's buses look missing, which they
+aren't: check the authority's own listing, not just the catalog.
+
+**Melbourne, read with a key** (2026-10-30 20:20 UTC, 07:20 on a Saturday there), each feed
+answering in under a second:
+- **Metro trains:** trip updates for 141 trips, 56 KB a read, 26 s old; vehicle positions;
+  10 alerts.
+- **Buses:** trip updates for 1,210 trips (26,792 stop updates), **1.0 MB a read**, 16 s old;
+  vehicle positions (59 KB). No bus alerts: the endpoint refuses the key (403).
+- **Trams:** trip updates and vehicle positions **answered but held nothing**, three reads in
+  a row, while trams were running; 5 alerts.
+- **V/Line:** trip updates empty; vehicle positions one train, 4.7 h old; alerts refused (403).
+So listed isn't working: until trams and V/Line carry updates, Melbourne has real countdowns
+only for metro trains and buses, and a full feed per mode read every 30 s costs the proxy
+about 2 MB a minute for buses alone. Worth reading again on a weekday before deciding.
+
+**Sydney, read with a key** (2026-10-30 20:35 UTC, 07:35 on a Saturday there): **every mode
+live**, each feed 8–37 s old:
+- **Buses:** trip updates for 2,437 trips (87,357 stop updates), **3.5 MB a read**; vehicle
+  positions for 902 buses (173 KB).
+- **Sydney Trains** 337 trips (160 KB), **NSW TrainLink** 183, **Metro** 34, **ferries** 41,
+  **light rail** 14 (Inner West, `v2`) and 49 (CBD and South East, `v1`).
+- **Alerts:** 284 in one feed for every mode (433 KB).
+So Sydney has real countdowns and alerts for every mode, where Melbourne (above) had them for
+trains and buses only. Its bus feed is three times Melbourne's: about 7 MB a minute read every
+30 s, for the proxy to carry.
+
+**What decides the fork.** Neither city has a per-stop arrivals endpoint like TfL's: each
+publishes whole-network feeds per mode. Melbourne's 24 calls a minute is per key, so a shared
+key can't serve riders' devices directly, and a rider's own key on the device means
+downloading the whole network's feed on every refresh (fork #1's data and battery cost, still
+unmeasured). The middle path is the proxy stopdash already runs for National Rail: it would
+fetch each mode's feed about twice a minute, whatever the number of riders, and answer
+per-stop requests from it. That is fork #2's shape on infrastructure we already have, with
+fork #2's Data Safety consequence: our proxy would see which stops a rider asks about, as it
+already does for National Rail boards.
+
+**Also to settle per city, before code:**
+- Feed sizes and how often each changes (sets fork #1's cost, and the proxy's).
+- Stops and stations: see *Finding stops outside London* below.
+- Line colors from GTFS `route_color`, where present, in place of TfL's palette (*Line pill
+  colors* in `AGENTS.md`).
+- Disruptions: the honesty floor needs alerts for every mode; Melbourne's bus and V/Line alert
+  endpoints refused a key (403).
+- Accuracy: unmeasured for either city; a recorded week of trip updates against what then ran
+  would show it.
+- App identity: one app with a city choice, or one app per city, and the TfL-flavored name.
+
+## Finding stops outside London (2026-10-30)
+
+London's stops ship with the app (`assets/stations/stops.tsv`, built by
+`scripts/build_stops.py` from TfL), so the near-me list shows the moment there's a fix (SPEC
+*Finding stops → Near me now*). Another city would keep that design and change only its
+sources: a build script per region writes the same kind of file, rebuilt weekly as its
+timetables change. London's file is 22,206 stops in 2.9 MB.
+
+**UK (outside London):**
+- **Stops: NaPTAN**, the Department for Transport's register of every bus stop, station and
+  pier in Great Britain: open, no key, the source of TfL's own stop ids. BODS uses the same
+  ATCO codes, so stops join its timetables and live buses without translation. It holds what
+  `stops.tsv` reads from TfL: name, position, pole letter, compass point, and the stop area
+  that groups a station's or interchange's poles (in place of TfL's `stationNaptan` and
+  `hubNaptanCode`, dev-docs/station-model.md).
+- **Lines at each stop: BODS timetables**, as the routes whose trips call there (TfL's
+  `lines` today).
+- **Rail stations:** NaPTAN lists them with their CRS codes, which the National Rail boards
+  already use (`scripts/build_crs_index.py`).
+- **Size:** BODS's timetables hold 36,796 stops for the North West and 43,096 for the South
+  West, so about 5–6 MB per region at London's density. Shipping one region, fetched when
+  the rider picks it, keeps the APK from growing with each region.
+- **Measured (NaPTAN, 2026-10-30):** active stops by ATCO area: Greater Manchester 14,045,
+  Merseyside 7,461, City of Bristol 1,547 (Bristol's wider area adds its neighboring
+  councils' areas). Every active bus stop (`BCT`) has an indicator (TfL's pole letter is one)
+  and nearly all have a bearing. A city's slice is 0.4–5 MB as NaPTAN's CSV.
+
+**Australia (Melbourne, Sydney):**
+- **Stops, stations and lines all come from the GTFS Schedule itself**: `stops.txt` holds
+  each stop's id, name and position, and `parent_station` groups platforms and poles under
+  a station; `stop_times.txt` gives the routes calling at each stop; `routes.txt` gives line
+  names and, where set, `route_color`. Both cities publish the Schedule without a key (CC
+  BY), and its stop ids are the ones their trip updates use.
+- **No pole letter or compass point** as NaPTAN has: a stop's name and `platform_code` (where
+  set) would carry the side of the road, so the near-me list's labeling would need checking
+  against real stops.
+- **Measured (Melbourne's Schedule, 2026-10-23):** one 260 MB zip holding a GTFS feed per
+  mode. About 29,500 stops: 22,634 metro bus, 3,331 regional bus, 1,617 tram, 779 metro train
+  platforms (in 227 stations) and smaller regional sets. Train platforms are grouped under
+  their stations by `parent_station`, but tram and bus stops aren't grouped at all, so
+  stopdash would group a stop's poles itself, by name and distance. Tram stops carry their
+  stop number in the name ("… #45"). Every route has a `route_color`.
+- **Melbourne's line colors.** The GTFS `route_color`s are one color per mode for buses
+  (`FF8200`, all 974 metro and regional routes), V/Line (`8F1A95`) and coaches (`A57FB2`),
+  one per line group for metro trains (Burnley group `152C6B`; Cranbourne, Pakenham and
+  Sunbury `34ACE1`; Clifton Hill group `BE1014`; Northern group `FFBE00`; Frankston and
+  Stony Point `028430`; Sandringham, Werribee and Williamstown `F178AF`), and one per route
+  for trams: 24 near-neighbor colors (route 96 `C6007E`, route 109 `E87722`, …). PTV's
+  guide uses them on maps, route diagrams and timetable headers, but riders don't know a
+  tram by them ("they don't feel like an identity", maintainer, 2026-10-30), and some clash
+  with other modes' (109's orange is the buses'). So trams would likely follow London's
+  buses: one mode color, the route number as the label. Train line groups work like tube
+  lines.
+- **Melbourne's mode colors**, from *PTV Master Style Guide 2018, 2.4 Colour* (supplied by
+  the maintainer, 2026-10-30), each a mode's primary palette: Metropolitan Train Blue
+  `0072CE` (PMS 285), Tram Green `78BE20` (PMS 368), Bus Orange `FF8200` (PMS 151, as
+  GTFS), Regional Train Purple `8F1A95` (PMS 2070, as GTFS; the guide's own RGB for it,
+  127/13/130, is `7F0D82`), Night Network Indigo `041C2C` (PMS 296), Ferry Teal `00A499`.
+  Its tram route colors match GTFS exactly. Its metro train line colors predate the 2025
+  regrouping (Sunbury then with Craigieburn and Upfield; Werribee and Williamstown then
+  with Frankston; Cranbourne and Pakenham `279FD5`), so line colors come from the current
+  GTFS, not the guide. Its bus route palette is 12 colors repeated across routes, not an
+  identity, which GTFS doesn't use either.
+- **Measured (Sydney's Schedule, 2026-10-31):** one 312 MB zip ("full Greater Sydney", but it
+  reaches well beyond Sydney): 90,823 stops under 78,038 parent stations. Nearly every bus
+  stop is its own parent, so the parent groups a stop's records rather than an
+  interchange's poles, and stopdash would still group nearby poles itself. 10,267 routes, all
+  with a `route_color`, 8,651 of them school buses (`route_type` 712), which a near-me list
+  would want to tell apart. Stop names say which side of a junction a pole is on ("Rifle
+  Range Rd Before Simpson Av"). Each region's slice would need cutting from the one file.
+- Sydney's feeds, read with a key: see *Candidate cities* above.
+
 ## Cost summary
 
 - **London (TfL Unified API):** £0, keyless (or a free `app_key`). No change.
