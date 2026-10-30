@@ -1048,7 +1048,7 @@ fun MainScreen(
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
             journeyPoleKeys, journeyPoles, journeyFarEnds, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
-            journeyViewKey, quietPending, headerWords, lineWord, stationGroups, rideGrouping,
+            journeyViewKey, quietPending, headerWords, lineWord, stationGroups, rideGrouping, journeyHubs,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -1068,6 +1068,8 @@ fun MainScreen(
             shownRowsOf(
                 from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology, lastShown, stationGroups,
                 rideGrouping.takeIf { journeyViewKey == null },
+                // The station model, once loaded: a station's records read as one ([StationRows]).
+                journeyHubs?.let { it::stationCodeOf },
             )
         }
     }?.takeIf { listRows != null }
@@ -3310,7 +3312,9 @@ private fun DepartureList(
     // consistent distance (its nearest member), not each direction's own members' nearest, which
     // could differ or read farther than the place's nearest (Codex P2, PR #109). Empty on the
     // watched list (no distances, D1).
-    val placeDistanceMeters = remember(groups, stopDistanceMeters) {
+    // A place's record whose every row another record of its station lists ([StationRows]) counts too: St Pancras's
+    // high-speed platforms are still where the station is nearest (Codex, #1242). Worked out with the list's cards.
+    val placeDistanceMeters = remember(groups, stopDistanceMeters, listCards) {
         if (stopDistanceMeters.isEmpty()) {
             emptyMap()
         } else {
@@ -3318,6 +3322,7 @@ private fun DepartureList(
                 placeGroups.asSequence()
                     .flatMap { it.rows.asSequence() }
                     .mapNotNull { stopDistanceMeters[it.stopId] }
+                    .plus(listOfNotNull(listCards.mergedPlaceMeters[place]))
                     .minOrNull()
                     ?.let { place to it }
             }.toMap()
@@ -3380,6 +3385,7 @@ private fun DepartureList(
                 rideMeters,
                 stationTopology,
                 closureRows,
+                listCards.mergedStationMeters,
             )
         }
     } else {
@@ -4790,14 +4796,15 @@ internal fun groupPlace(group: StopGroup): String =
     group.rows.first().let { placeOf(it.clusterId, it.stopId) }
 
 /**
- * A station on a list grouped by station: a [place] ([placeOf]) and a [mode] together, so each station heading stands
- * for one mode, its one icon, and everything keyed by station — its groups, rides, rides' trains, notices — splits by
- * mode with it, never through a lookup by stop or place alone (maintainer, 2026-10-23). Modes sharing an icon stay
- * together (National Rail, the Overground and the Elizabeth line). One lookup: safe on the main thread.
+ * A station on a list grouped by station: a [place] ([placeOf]: a station's code, as its stops are placed by it) and a [mode]'s
+ * group together, so each station heading stands for one of the list menu's mode groups (Underground with the Elizabeth
+ * line and DLR, Overground, National Rail, ...), and everything keyed by station — its groups, rides, rides' trains,
+ * notices — splits by mode group with it, never through a lookup by stop or place alone (maintainer, 2026-10-23,
+ * 2026-10-30). One lookup: safe on the main thread.
  */
-internal fun stationKey(place: String, mode: String): String = "$place|${ModeIcon.of(mode)?.name ?: mode}"
+internal fun stationKey(place: String, mode: String): String = "$place|${ModeGroups.of(mode).key}"
 
-/** The station a group is drawn under ([stationKey]); grouped by station, a group holds one mode's rows. */
+/** The station a group is drawn under ([stationKey]); grouped by station, a group holds one mode group's rows. */
 internal fun groupStation(group: StopGroup): String =
     group.rows.first().let { row -> stationKey(placeOf(row.clusterId, row.stopId), row.mode) }
 
@@ -5058,9 +5065,13 @@ internal class StationLayout(
             topology: RouteTopology = RouteTopology.EMPTY,
             // The notices the list shows of its own, so a ride's same one at a stop it boards from isn't drawn again ([rideNotices]).
             closureRows: List<DepartureRow> = emptyList(),
+            // Each station's records whose every row another record lists ([ListCards.mergedStationMeters]): still where
+            // the station is nearest (Codex, #1242).
+            mergedStationMeters: Map<String, Double> = emptyMap(),
         ): StationLayout {
             fun metersOf(group: StopGroup): Double? =
-                group.rows.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull() ?: placeDistanceMeters[group.placeKey]
+                (group.rows.mapNotNull { stopDistanceMeters[it.stopId] } + listOfNotNull(mergedStationMeters[groupStation(group)])).minOrNull()
+                    ?: placeDistanceMeters[group.placeKey]
             val ordered = stationOrdered(groups, ::metersOf)
             val offPlaces = offCardPlaces(ordered, farther, held)
             val offCard = ordered.filter { groupPlace(it) in offPlaces }.mapTo(HashSet(), ::groupStation)
@@ -5927,7 +5938,7 @@ internal fun placeModes(stops: List<StopArrivals>): Map<String, Set<String>> {
     return modes
 }
 
-private fun placeOf(clusterId: String, stopId: String): String = clusterId.ifBlank { "\u0000stop:$stopId" }
+internal fun placeOf(clusterId: String, stopId: String): String = clusterId.ifBlank { "\u0000stop:$stopId" }
 
 /**
  * A stop notice in place (SPEC *Disruptions*): the notice alone, collapsed to its first line and

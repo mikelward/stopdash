@@ -5539,6 +5539,11 @@ and these carry the rest as their own PRs:
       and watch look like the main view unless decided otherwise). Group nearby departures syncs to the watch,
       which groups by station with `StopGrouping.groupByStation` and leads a station's heading with its mode's
       icon. The watch shows no favorite rides, so Group favorite rides has nothing to group there.
+  - [ ] **A station's records' repeats shown once on the watch, as the list and the widget show them** (maintainer,
+        2026-10-30): the watch heads a station's records as one place (each is placed by its station's code), but its
+        rows carry no station code ([DepartureRow.stationCode]), so a train two records list (Paddington's Elizabeth line)
+        shows twice there, and a record's empty "No data" row stays. Send each stop's code in the envelope (or read the
+        bundled model on the watch) and run `StationRows.merged` before grouping.
 
 ### Sharing a place in — follow-ups
 

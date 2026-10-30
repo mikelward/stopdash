@@ -14,7 +14,8 @@ import androidx.annotation.WorkerThread
  * bundle's: a station `1001276:rail`, a stop its TfL area or anchor pole, a hub its interchange
  * (`HUBKGX`), its one station's id or its anchor stop's.
  *
- * Not read by any screen yet: phase 2 points station identity at it, phase 3 hubs.
+ * Read for a station's code ([stationCodeOf]), which places its records ([StationCodeStopFinder], [StationRows]); phase 2 points
+ * station identity at it more widely, phase 3 hubs.
  */
 class Hubs private constructor(
     private val stationOfRecord: Map<String, String>,
@@ -86,6 +87,39 @@ class Hubs private constructor(
         // The prefix step again, over records the index leaves out but stops.tsv holds.
         platformRecord(id)?.let { record -> stationOfRecord[record]?.let { return Membership.Of(it) } }
         return Membership.Unbundled
+    }
+
+    /**
+     * The TfL station code (ICS) of the station [id] belongs to ([stationOf], its mode family dropped:
+     * `1000080:rail` and `1000080:tube` are both Farringdon's `1000080`); null for an id no station holds.
+     */
+    fun stationCodeOf(id: String): String? = (stationOf(id) as? Membership.Of)?.id?.substringBefore(':')?.ifBlank { null }
+
+    /**
+     * The place [id] is filed under by its station's code ([stationCodeOf]): one of the code's records, the same for
+     * each (the least id), so every record of one station is one place, while the place is still a TfL id a station
+     * opens by (Codex, #1242). Null for an id no station holds. Built on first use: a walk over every record.
+     */
+    fun stationPlaceOf(id: String): String? = stationCodeOf(id)?.let { placeOfCode[it] }
+
+    // Each station code's least record, for [stationPlaceOf].
+    private val placeOfCode: Map<String, String> by lazy {
+        val places = HashMap<String, String>()
+        for ((record, station) in stationOfRecord) {
+            val code = station.substringBefore(':').ifBlank { continue }
+            places.merge(code, record) { a, b -> minOf(a, b) }
+        }
+        places
+    }
+
+    // Each station code's records, its families' lead records first, for [lookupIdsOf].
+    private val recordsOfCode: Map<String, List<String>> by lazy {
+        val records = HashMap<String, MutableList<String>>()
+        for ((station, list) in recordsOfStation.entries.sortedBy { it.key }) {
+            val code = station.substringBefore(':').ifBlank { continue }
+            records.getOrPut(code) { ArrayList() } += list
+        }
+        records
     }
 
     /** The bus stop [id] belongs to: a pole's, a stop's own id, or a TfL stop area's (whole, or [Membership.Split]). */
@@ -199,15 +233,19 @@ class Hubs private constructor(
 
     /**
      * The ids to ask TfL ([StationFinder.stationStops]) for every stand of the station or bus stop [id]
-     * belongs to, so a page or a lookup takes in all of it. A station: [id] then each of its records
-     * ([recordsOf]). A bus stop (a pole's, a whole stop area's or the stop's own id): each of its whole
+     * belongs to, so a page or a lookup takes in all of it. A station: [id] then each record of its
+     * station code ([recordsOf] for each of its mode families: Farringdon's Underground with its rail and
+     * Elizabeth line records), as a place filed by code ([stationPlaceOf]) is any one of them (Codex, #1242). A bus stop (a pole's, a whole stop area's or the stop's own id): each of its whole
      * stop areas, one request for all its poles there, then each of its poles outside them, as TfL
      * answers a pole with that pole alone. Empty for an id the bundle doesn't hold at either level, a
      * stop area it split ([Membership.Split]) or a hub, for the caller to ask for [id] alone.
      */
     @WorkerThread
     fun lookupIdsOf(id: String): List<String> {
-        recordsOf(id).takeIf { it.isNotEmpty() }?.let { return (listOf(id) + it).distinct() }
+        recordsOf(id).takeIf { it.isNotEmpty() }?.let { own ->
+            val code = stationCodeOf(id)?.let { recordsOfCode[it] }.orEmpty()
+            return (listOf(id) + own + code).distinct()
+        }
         val stop = (stopOf(id) as? Membership.Of)?.id ?: return emptyList()
         val areas = wholeAreasOfStop[stop].orEmpty().sorted()
         val inAreas = areas.flatMapTo(HashSet()) { polesOfArea[it].orEmpty() }

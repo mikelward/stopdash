@@ -298,6 +298,97 @@ class TapHoldsStillTest {
     }
 
     @Test
+    fun `grouped by station, unfolding a station of two records holds its heading still`() {
+        // The last two stops one station's records, placed by its code ([twinPlaced]): one heading, named for the nearer.
+        val hubs = twinStations("S11", "S12")
+        val stops = twinPlaced(stops, "S11", "S12")
+        composeRule.setContent {
+            listState = rememberListStateFor("set")
+            StopDashTheme(dynamicColor = false) {
+                Surface(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker, LocalJourneyHubs provides hubs) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(stops, now.minusSeconds(60)), now, {},
+                            listKey = "set",
+                            listWork = remember { ListWork() },
+                            listState = listState,
+                            stopDistanceMeters = distances,
+                            stationGroups = true,
+                        )
+                    }
+                }
+            }
+        }
+        settle()
+        scrollToEnd()
+        // One heading for the two records.
+        val twelve = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Stop 12, Bus"))
+        assertTrue(composeRule.onAllNodes(twelve, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        val chevron = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Stop 11, Bus")) and
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)
+        composeRule.onNode(chevron, useUnmergedTree = true).performClick()
+        settle()
+        holdsStill(chevron, emptyList())
+    }
+
+    @Test
+    fun `grouped by station, the station model arriving holds the list still`() = modelArrivalHoldsStill(repeated = false)
+
+    @Test
+    fun `grouped by station, the station model arriving holds the list still when a record's every row goes`() =
+        modelArrivalHoldsStill(repeated = true)
+
+    // With [repeated], the second record has only an empty row for a disrupted line the first lists trains of (as St
+    // Pancras's high-speed record did), so merging takes every row of it away.
+    private fun modelArrivalHoldsStill(repeated: Boolean) {
+        // The model loads after the list is drawn: two stops in view, one station's records placed by its code, are read
+        // together ([StationRows]). Every frame between, their heading stays put: no frame draws the stations standing in
+        // with a record's group gone, or none at all, which shrank the list (Codex, #1242).
+        val stops = twinPlaced(stops, "S3", "S4").let { placed ->
+            if (!repeated) placed else placed.map { stop ->
+                if (stop.stopId == "S4") stop.copy(departures = emptyList(), lines = listOf(LineRef("l3", "L3", "bus"))) else stop
+            }
+        }
+        val statuses = if (repeated) mapOf("l3" to app.stopdash.domain.LineStatus("l3", 9, "Diverted")) else emptyMap()
+        var hubs by mutableStateOf<app.stopdash.domain.Hubs?>(null)
+        composeRule.setContent {
+            listState = rememberListStateFor("set")
+            StopDashTheme(dynamicColor = false) {
+                Surface(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker, LocalJourneyHubs provides hubs) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(stops, now.minusSeconds(60), lineStatuses = statuses), now, {},
+                            listKey = "set",
+                            listWork = remember { ListWork() },
+                            listState = listState,
+                            stopDistanceMeters = distances,
+                            stationGroups = true,
+                        )
+                    }
+                }
+            }
+        }
+        settle()
+        val heading = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Stop 3, Bus")) and
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)
+        val four = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Stop 4, Bus"))
+        // Placed by the station's code, the two records are one station before the model has loaded.
+        assertTrue(composeRule.onAllNodes(four, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        val before = top(heading)
+        hubs = twinStations("S3", "S4")
+        composeRule.waitForIdle()
+        assertEquals("before the worker has run", before, top(heading), 0.5f)
+        repeat(12) { step ->
+            scheduler.runCurrent()
+            composeRule.waitForIdle()
+            assertEquals("worker step $step", before, top(heading), 0.5f)
+        }
+        settle()
+        assertEquals("once the worker has run", before, top(heading), 0.5f)
+        assertTrue(composeRule.onAllNodes(four, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
     fun `grouped by station, an interchange arriving while the last stations stand in is drawn once`() {
         // A place new to the list whose groups alternate by mode (Tube, Rail, Tube) has no rank in the stations standing
         // in, so they stay in that order; each station's heading was drawn at each of its runs, the same key twice, and

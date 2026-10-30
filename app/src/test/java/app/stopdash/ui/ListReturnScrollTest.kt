@@ -51,7 +51,10 @@ class ListReturnScrollTest {
     }
 
     // With [farRide], a faraway favorite ride collapsed among the farther places at the foot (SPEC *Journeys*).
-    private fun returnKeepsPlace(stationGroups: Boolean, rideGrouping: RideGrouping = RideGrouping.RIDE, farRide: Boolean = false) {
+    // With [twins], the last two stops one station's two records, placed by its code and read as one ([twinStations]).
+    private fun returnKeepsPlace(stationGroups: Boolean, rideGrouping: RideGrouping = RideGrouping.RIDE, farRide: Boolean = false, twins: Boolean = false) {
+        val hubs = if (twins) twinStations("S11", "S12") else null
+        val stops = if (twins) twinPlaced(stops, "S11", "S12") else stops
         val far = FavoriteJourney(JourneyEnd("FR1", "Faraway Stop"), JourneyEnd("FR2", "Faraway End"), listOf(LineRef("88", "88", "bus")))
         val scheduler = TestCoroutineScheduler()
         val worker = StandardTestDispatcher(scheduler)
@@ -64,7 +67,7 @@ class ListReturnScrollTest {
             StopDashTheme(dynamicColor = false) {
                 Surface(Modifier.fillMaxSize()) {
                     if (!covered) {
-                        CompositionLocalProvider(LocalWorker provides worker) {
+                        CompositionLocalProvider(LocalWorker provides worker, LocalJourneyHubs provides hubs) {
                             MainScreen(
                                 DeparturesUiState.Loaded(stops, now.minusSeconds(60)), now, {},
                                 listKey = "set",
@@ -116,4 +119,8 @@ class ListReturnScrollTest {
     fun `back to the list with rides grouped by station lands where it was left`() {
         returnKeepsPlace(stationGroups = false, rideGrouping = RideGrouping.STATION)
     }
+
+    @Test
+    fun `back to the list grouped by station, a station's records as one, lands where it was left`() =
+        returnKeepsPlace(stationGroups = true, twins = true)
 }

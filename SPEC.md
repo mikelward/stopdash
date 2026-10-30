@@ -682,8 +682,12 @@ rules each screen keeps:
   regrouped), and leaves nothing to compute or fetch while a rider waits.
 - **Edges fail safe.** A stop the bundle doesn't hold is matched only by its own id until a refresh
   takes it in. A bundle that can't be read whole leaves the model unavailable, never half-loaded.
-- **Not used yet.** Every screen still asks its own rule. The next steps move station identity, then
-  hubs, onto the model, each saying here what changed.
+- **First use: a station's code.** Every nearby lookup places a station's record by its station code
+  (TfL's ICS) from the model, so a station's records are one place (*Grouped by station*; maintainer,
+  2026-10-30). The near-me list and the widget also read the code to show what two records repeat once; the
+  watch doesn't yet (`TODO.md`). A station page or saved place opened from a station asks TfL for every
+  record of its code, each mode's, since the place is any one of them. Every other screen still asks its own rule.
+  The next steps move station identity, then hubs, onto the model, each saying here what changed.
 
 ### Departures
 
@@ -1444,8 +1448,19 @@ opens its station where it heads one, else shows it on the map.
 
 **Grouped by station** (maintainer, 2026-10-23), Settings → **Group nearby departures**: **By stop/platform**, the
 default, is the card per platform or pole above; **By station** heads each station once, in bold, a station being
-one place's stops of one mode (a place's Underground, rail and bus stops are three stations, each its own heading;
-the Tube, the DLR and the Elizabeth line, sharing an icon, are one, as are National Rail and the Overground). Everything the list keys by
+one station code's stops of one of the list menu's mode groups (maintainer, 2026-10-30): Underground (the Tube, the DLR
+and the Elizabeth line), Overground, National Rail, Bus, and so on, each its own heading, never a sub-heading. The code is
+TfL's (ICS), read from the bundled station model: TfL lists some stations under several records sharing one (St
+Pancras International's high-speed platforms beside its main record; Paddington's Elizabeth line beside its main
+station; Farringdon's rail and Underground stations), and they're one station. **A station's record is placed by its
+code**, as the nearby lookup returns it: filed under one of the code's records, the same for each, so the place is
+still a TfL id a station opens by (a starred place, a search row). It's one place wherever a place is keyed, in either grouping and on every
+surface: the heading, the station page it opens, a ride's station, the place's distance (its nearest record's, one
+with no row of its own included), its notices, the widget's and the watch's headings. A stop the model doesn't hold
+(a bus stop), or every stop where it's unavailable, keeps TfL's cluster. A train two records both list shows once,
+under the nearer, and a line's row with no trains (a status or "?" row) goes where another record of the station
+shows that line: the one National Rail board a station's records share is shown under one of them, so the other's
+empty "No data" row added a second heading of the same name. Everything the list keys by
 station goes by its mode too: a departure, a ride and its trains, a notice (under its own stop's station) and
 the distance (its own mode's nearest stop), so nothing shows under another mode's heading. It shows how far
 its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**

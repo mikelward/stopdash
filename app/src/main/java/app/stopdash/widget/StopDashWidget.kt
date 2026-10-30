@@ -59,6 +59,7 @@ import app.stopdash.R
 import app.stopdash.shared.R as SharedR
 import app.stopdash.StopdashDebugLog
 import com.mikelward.androidlog.safe
+import app.stopdash.data.HubsStore
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
@@ -95,6 +96,7 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StopGroup
+import app.stopdash.domain.StationRows
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.lineCode
@@ -358,6 +360,8 @@ open class StopDashWidget internal constructor(
             hiddenLabel = { hiddenGroupsLabel(it, context.resources) },
             countdownWords = countdownWords(context.resources),
             headerWords = headerWords(context.resources),
+            // Waited for briefly while it loads, as the app starts it; without it, each record its own station.
+            stationCodeOf = HubsStore.ready()?.let { it::stationCodeOf },
         )
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
@@ -449,6 +453,9 @@ internal suspend fun widgetModels(
     countdownWords: CountdownWords = CountdownWords.ENGLISH,
     // The stop headers' words ("Platform 2", "Stop D"), in the app's language ([widgetModel]).
     headerWords: HeaderWords = HeaderWords.ENGLISH,
+    // Each stop's station code from the station model ([Hubs.stationCodeOf]): a station's records read as one
+    // ([StationRows]), as the app's list reads them. Null while the model loads: each record its own station.
+    stationCodeOf: ((stopId: String) -> String?)? = null,
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
@@ -466,6 +473,7 @@ internal suspend fun widgetModels(
             locale = locale,
             countdownWords = countdownWords,
             headerWords = headerWords,
+            stationCodeOf = stationCodeOf,
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
@@ -677,6 +685,9 @@ internal fun widgetModel(
     countdownWords: CountdownWords = CountdownWords.ENGLISH,
     // The stop headers' words ("Platform 2", "Stop D"), in the app's language ([BudgetedRows.select]).
     headerWords: HeaderWords = HeaderWords.ENGLISH,
+    // Each stop's station code from the station model ([Hubs.stationCodeOf]): a station's records read as one
+    // ([StationRows]), as the app's list reads them. Null while the model loads: each record its own station.
+    stationCodeOf: ((stopId: String) -> String?)? = null,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -766,7 +777,7 @@ internal fun widgetModel(
     val nearby = withoutJourneys(folded, snapshot).let { rows ->
         if (snapshot.nearestFirst.isEmpty()) rows else DepartureRows.byStopDistance(rows, DepartureRows.rankDistances(snapshot.nearestFirst))
     }
-    val shownNearby = HiddenModes.rows(nearby, hiddenModes)
+    val shownNearby = HiddenModes.rows(nearby, hiddenModes).let { rows -> stationCodeOf?.let { StationRows.merged(rows, it) { row -> StarredRow.of(row) in starred } } ?: rows }
     val pinned = journeyRows + DepartureRows.pinStarred(shownNearby, starred)
     val onlyHidden = hiddenModes.takeIf { pinned.isEmpty() && nearby.isNotEmpty() }?.let(hiddenLabel)
     // The journeys stay a band of their own at the top: grouping by place runs within each band, so
