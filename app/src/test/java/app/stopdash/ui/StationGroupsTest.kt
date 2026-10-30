@@ -482,6 +482,25 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `an opened faraway ride has its trains, to change from too, starred as the layout stars a near one's`() {
+        // Not in the layout, which holds the near rides, so worked out apart ([FarRides]): headed by where it boards, rides
+        // By station, its trains wear its star all the same (Codex, #1244).
+        val change = app.stopdash.domain.JourneyChange("FORK", "Fork", row("F1", "F").copy(destination = "Fork end"))
+        val far = JourneyCard(
+            FavoriteJourney(JourneyEnd("F1", "Faraway"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", ""))),
+            JourneyCardState.Trains(listOf(row("F1", "F").copy(destination = "Far end")), changes = listOf(change)),
+            boardingIds = listOf("F1"),
+        )
+        val rides = FarRides.of(listOf(far))
+        val trains = far.state as JourneyCardState.Trains
+        val changeRow = trains.changeStops.single().cards.single().group.rows.single()
+        assertEquals(far, rides.cards[far.journey.key])
+        assertEquals(far.journey, rides.rideRows[trains.rideCard.group.rows.single()])
+        assertEquals(far.journey, rides.rideRows[changeRow])
+        assertEquals("Fork", rides.rideChangeAt[changeRow])
+    }
+
+    @Test
     fun `a ride boarding at no listed station goes before the first station farther than it, not atop the list`() {
         // A ride whose stop is a farther place's was drawn atop the list, above nearer stations (bug report, 2026-10-24).
         val near = group("n", "N1", "N")
