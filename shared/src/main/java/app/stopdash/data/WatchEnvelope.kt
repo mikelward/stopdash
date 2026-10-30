@@ -11,11 +11,14 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StationRows
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.toJavaDuration
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -72,7 +75,22 @@ data class WatchEnvelope(
      *  the app and the widget do (SPEC *One widget, many surfaces*). Additive: an older watch app ignores
      *  it and heads by stop, and an older phone sends none, which is By stop/platform. */
     val nearbyByStation: Boolean = false,
+    /** Each sent stop's station code where the phone's station model holds it (`Hubs.stationCodeOf`), so the
+     *  watch shows once what a station's records repeat ([StationRows]), as the widget and the in-app list do.
+     *  TfL's public codes, nothing about the user. Additive: an older watch app ignores it, and an older phone
+     *  sends none, which merges nothing. Left out of the encoding when empty, so a phone without the model
+     *  sends no more than before. */
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val stationCodes: Map<String, String> = emptyMap(),
 ) {
+    /** [stationCodes] as [StationRows.merged] reads them; null when the phone sent none. */
+    fun stationCodeOf(): ((stopId: String) -> String?)? = stationCodes.takeIf { it.isNotEmpty() }?.let { codes -> codes::get }
+
+    /** [rows] with what a station's records repeat shown once ([StationRows.merged]), a starred row kept. */
+    fun stationMerged(rows: List<DepartureRow>, starred: Set<StarredRow>): List<DepartureRow> =
+        stationCodeOf()?.let { codes -> StationRows.merged(rows, codes) { StarredRow.of(it) in starred } } ?: rows
+
     /** [nearbyChoices] as the fold reads them. */
     fun foldChoices(): List<FoldChoice> = nearbyChoices.map { it.toDomain() }
 
@@ -232,6 +250,8 @@ object WatchEnvelopes {
         hiddenModes: Set<String> = emptySet(),
         // Settings → Group nearby departures is By station ([WatchEnvelope.nearbyByStation]).
         nearbyByStation: Boolean = false,
+        // Each stop's station code, from the phone's station model ([WatchEnvelope.stationCodes]); null without it.
+        stationCodeOf: ((stopId: String) -> String?)? = null,
         // The phone's refreshed route lines ([RouteTopologyStore.refreshedLines]).
         routeLines: Map<String, List<RoutePattern>> = emptyMap(),
         threshold: Duration = Staleness.THRESHOLD,
@@ -309,6 +329,8 @@ object WatchEnvelopes {
             val ids = kept.mapTo(HashSet()) { it.stopId }
             return snapshot.nearbyChoices.filter { it.stopId in ids }.map(PersistedFoldChoice::of)
         }
+        fun codesFor(kept: List<PersistedStop>): Map<String, String> =
+            stationCodeOf?.let { codeOf -> kept.mapNotNull { stop -> codeOf(stop.stopId)?.let { stop.stopId to it } }.toMap(sortedMapOf()) }.orEmpty()
         // Kept whatever stops go: a few KB at most, and only while TfL's routes differ from the asset.
         val lines = routeLines.toSortedMap().mapValues { (_, patterns) -> patterns.map(PersistedRoutePattern::of) }
         var envelope = WatchEnvelope(
@@ -321,6 +343,7 @@ object WatchEnvelopes {
             nearestFirst = orderFor(stops),
             nearbyChoices = choicesFor(stops),
             nearbyByStation = nearbyByStation,
+            stationCodes = codesFor(stops),
         )
         var bytes = encode(envelope)
         if (bytes.size <= dataItemBudget) return WatchPayload(envelope, bytes, asAsset = false)
@@ -348,6 +371,7 @@ object WatchEnvelopes {
                 nearestFirst = orderFor(kept),
                 nearbyChoices = choicesFor(kept),
                 nearbyByStation = nearbyByStation,
+                stationCodes = codesFor(kept),
             )
             bytes = encode(envelope)
         }
