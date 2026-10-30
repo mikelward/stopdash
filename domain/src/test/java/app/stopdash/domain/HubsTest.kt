@@ -54,6 +54,49 @@ class HubsTest {
     }
 
     @Test
+    fun `a station's code is its records' and platforms' ICS code, whatever its mode`() {
+        assertEquals("1009001", hubs.stationCodeOf("910GHILL"))
+        assertEquals("1009001", hubs.stationCodeOf("910GHILLLL"))
+        assertEquals("1009001", hubs.stationCodeOf("9100HILL1"))
+        assertEquals("1009002", hubs.stationCodeOf("940GZZLUHIL"))
+        assertNull("a bus pole is no station's", hubs.stationCodeOf("490000001A"))
+        assertNull(hubs.stationCodeOf("910GNOWHERE"))
+    }
+
+    @Test
+    fun `a station's records are filed under one of them, a TfL id it opens by`() {
+        assertEquals("910GHILL", hubs.stationPlaceOf("910GHILL"))
+        assertEquals("910GHILL", hubs.stationPlaceOf("910GHILLLL"))
+        assertEquals("910GHILL", hubs.stationPlaceOf("9100HILL1"))
+        // Its own code's, apart from the rail station's.
+        assertEquals("940GZZLUHIL", hubs.stationPlaceOf("940GZZLUHIL"))
+        assertNull(hubs.stationPlaceOf("490000001A"))
+    }
+
+    @Test
+    fun `a station's place opens every record of its code, each mode family's`() {
+        // Hill's Underground under the rail station's code, as Farringdon's is: filed under the rail record.
+        val shared = Hubs.of(
+            StationIndex(
+                listOf(
+                    IndexedStation("910GHILL", "Hill", listOf("national-rail"), "HUBEXA", 51.500, -0.120,
+                        icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+                    IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
+                        icsCode = "1009001", station = "1009001:tube", modelHub = "HUBEXA"),
+                    IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),
+                ),
+                revision = "abc",
+            ),
+            stops(),
+        )!!
+        assertEquals("910GHILL", shared.stationPlaceOf("940GZZLUHIL"))
+        assertEquals(setOf("910GHILL", "940GZZLUHIL"), shared.lookupIdsOf("910GHILL").toSet())
+        assertEquals(setOf("910GHILL", "940GZZLUHIL"), shared.lookupIdsOf("940GZZLUHIL").toSet())
+        // A code of its own stays its own.
+        assertEquals(setOf("940GZZLUHIL"), hubs.lookupIdsOf("940GZZLUHIL").toSet())
+    }
+
+    @Test
     fun `a platform is its record's station`() {
         assertEquals(Membership.Of("1009001:rail"), hubs.stationOf("9100HILL1"))
         // Named by its record's code alone, as TfL names an access area.

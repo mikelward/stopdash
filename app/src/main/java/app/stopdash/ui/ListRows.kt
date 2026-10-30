@@ -8,9 +8,11 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NoticeLines
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteTopology
+import app.stopdash.domain.StationRows
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StarredRow
@@ -163,6 +165,10 @@ internal class ListCards private constructor(
     // each with its place in the run, worked out on the worker against the last list.
     private val lineage: Any = Any(),
     private val generation: Int = 0,
+    // How far each place's, and each station's ([stationKey]), records whose every row another record of their station
+    // lists are ([StationRows]): they've no group to measure, but the station is still as near as they are (Codex, #1242).
+    val mergedPlaceMeters: Map<String, Double> = emptyMap(),
+    val mergedStationMeters: Map<String, Double> = emptyMap(),
 ) {
     /** [group]'s card; [group] must be one of [groups]. */
     fun of(group: StopGroup): StopCard = checkNotNull(byGroup[group]) { "a group the list didn't work out" }
@@ -199,15 +205,23 @@ internal class ListCards private constructor(
             splitByMode: Boolean = false,
             // The list worked out before it, which it carries on from while it holds every one of its places ([grownFrom]).
             last: ListCards? = null,
+            // The places whose rows were read into another record of their station ([StationRows]): still listed, under
+            // that record's station, so the last stations stand in for them too, as the station model arriving merges a
+            // record away (Codex, #1242). Drawn as none, the list emptied for a frame and lost its position.
+            mergedPlaces: Set<String> = emptySet(),
+            mergedPlaceMeters: Map<String, Double> = emptyMap(),
+            mergedStationMeters: Map<String, Double> = emptyMap(),
         ): ListCards {
             val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead, splitByMode = splitByMode)
             val places = groups.mapTo(HashSet(), ::groupPlace)
-            val grown = last != null && places.containsAll(last.placeSet)
+            val grown = last != null && last.placeSet.all { it in places || it in mergedPlaces }
             return ListCards(
                 groups,
                 groups.associateWithTo(IdentityHashMap()) { stopCard(it, topology) },
                 lineage = if (grown) last!!.lineage else Any(),
                 generation = if (grown) last!!.generation + 1 else 0,
+                mergedPlaceMeters = mergedPlaceMeters,
+                mergedStationMeters = mergedStationMeters,
             )
         }
     }
@@ -547,7 +561,13 @@ internal fun shownRowsOf(
     byStation: Boolean = false,
     // How Group favorite rides groups a ride's trains ([inPlatforms]).
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
+    // Each stop's station code, from the station model ([Hubs.stationCodeOf]): a station's records read as one
+    // ([StationRows]). Null while the model loads, or where it's unavailable: each record its own station.
+    stationCodeOf: ((stopId: String) -> String?)? = null,
 ): ShownRows {
+    val listedRows = nearbyRows
+    @Suppress("NAME_SHADOWING")
+    val nearbyRows = if (stationCodeOf == null) nearbyRows else StationRows.merged(nearbyRows, stationCodeOf) { StarredRow.of(it) in starred }
     val inPlatforms = if (byStation || rideGrouping != RideGrouping.STATION) emptyList() else ridesInPlatforms(cards, nearbyRows)
     val joined = inPlatforms.mapTo(HashSet()) { it.journey.key }
     // What the cards drawn above show: a ride kept in its platforms isn't drawn above, so its trains stay in the list.
@@ -577,12 +597,34 @@ internal fun shownRowsOf(
         if (stopDistanceMeters.isEmpty()) {
             emptyList()
         } else {
-            val shown = nearbyRows.toHashSet()
+            // The rows as listed, before their stations were read together: what they're compared with is from those.
+            val shown = listedRows.toHashSet()
             from.nearby.filter { it !in shown && it.stopDisruption?.let(ClosedNotice::saysClosed) == true }
         }
     // On the near-me list (distances present) a place is ordered by distance, not lifted for carrying a
     // line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
-    val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology, splitByMode = byStation, last = last?.listCards)
+    // The records whose every row of a mode group was read into another record of their station, none without the
+    // station model: their places, and how far they are, by place and by station (one per mode group, so a record's
+    // tube rows read into a sibling still give that station's tube card its distance though its rail rows stay).
+    val mergedAway = if (stationCodeOf == null || nearbyRows === listedRows) {
+        emptyList()
+    } else {
+        val kept = nearbyRows.mapTo(HashSet()) { it.stopId to ModeGroups.of(it.mode).key }
+        listedRows.filter { (it.stopId to ModeGroups.of(it.mode).key) !in kept }
+    }
+    val mergedPlaceMeters = HashMap<String, Double>()
+    val mergedStationMeters = HashMap<String, Double>()
+    for (row in mergedAway) {
+        val meters = stopDistanceMeters[row.stopId] ?: continue
+        val place = placeOf(row.clusterId, row.stopId)
+        mergedPlaceMeters.merge(place, meters, ::minOf)
+        mergedStationMeters.merge(stationKey(place, row.mode), meters, ::minOf)
+    }
+    val listCards = ListCards.of(
+        rows, warningsLead = stopDistanceMeters.isEmpty(), topology, splitByMode = byStation, last = last?.listCards,
+        mergedPlaces = mergedAway.mapTo(HashSet()) { placeOf(it.clusterId, it.stopId) },
+        mergedPlaceMeters = mergedPlaceMeters, mergedStationMeters = mergedStationMeters,
+    )
     return ShownRows(
         rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
         ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),

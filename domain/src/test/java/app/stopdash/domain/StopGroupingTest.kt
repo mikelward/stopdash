@@ -744,7 +744,8 @@ class StopGroupingTest {
         )
         // By stop/platform, as before: one card for the platform.
         assertEquals(listOf(listOf("T", "O", "E")), StopGrouping.groupByStop(rows).map { group -> group.rows.map { it.stopId } })
-        // Grouped by station: the Overground apart; the Underground and the Elizabeth line, sharing an icon, together.
+        // Grouped by station: the Overground apart; the Underground and the Elizabeth line, one group in the list's menu,
+        // together.
         val byMode = StopGrouping.groupByStop(rows, splitByMode = true)
         assertEquals(listOf(listOf("T", "E"), listOf("O")), byMode.map { group -> group.rows.map { it.stopId } })
         assertEquals(2, byMode.map { it.key }.distinct().size)
@@ -765,6 +766,24 @@ class StopGroupingTest {
         assertEquals(listOf("Highbury", "Highbury", "Upper Street"), stations.map { it.stopName })
         assertTrue(stations.all { it.qualifier == null && it.showHeader })
         assertEquals(3, stations.map { it.key }.distinct().size)
+    }
+
+    @Test
+    fun `grouped by station, a station's records are one, each of the menu's mode groups apart`() {
+        // Two records of one station, filed under its least record ([StationCodeStopFinder]), and the same station's Overground:
+        // National Rail and the Overground share an icon but are separate groups in the list's menu, so separate stations.
+        val rows = listOf(
+            row("R1", "Hill", clusterId = "R1", lineId = "southeastern", mode = "national-rail"),
+            row("O", "Hill", clusterId = "R1", lineId = "mildmay", mode = "overground"),
+            row("R2", "Hill", clusterId = "R1", lineId = "thameslink", mode = "national-rail"),
+            row("E", "Hill", clusterId = "R1", lineId = "elizabeth", mode = "elizabeth-line"),
+            row("T", "Hill", clusterId = "R1", lineId = "victoria", mode = "tube"),
+        )
+        val stations = StopGrouping.groupByStation(rows)
+        assertEquals(
+            listOf(setOf("R1", "R2"), setOf("O"), setOf("E", "T")),
+            stations.map { group -> group.rows.mapTo(HashSet()) { it.stopId } },
+        )
     }
 
     @Test

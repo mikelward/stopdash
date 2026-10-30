@@ -34,6 +34,7 @@ import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.BugReport
 import app.stopdash.domain.BundledStopFinder
+import app.stopdash.domain.StationCodeStopFinder
 import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.StopFinder
@@ -603,9 +604,11 @@ class MainActivity : ComponentActivity() {
     // either way kept in the nearby cache, which "Find a station" lists the rider's stops from. The
     // rider's position, so a bundle that can't be read fails the lookup rather than send it to TfL.
     private val nearbyStopFinder by lazy {
-        CachingStopFinder(
-            bundledStopFinder(applicationContext, nearbyTflClient, "nearby", aroundRider = true),
-            nearbyStopsCache(applicationContext),
+        placedByStationCode(
+            CachingStopFinder(
+                bundledStopFinder(applicationContext, nearbyTflClient, "nearby", aroundRider = true),
+                nearbyStopsCache(applicationContext),
+            ),
         )
     }
 
@@ -613,14 +616,14 @@ class MainActivity : ComponentActivity() {
     // memory only: they aren't places near the rider, so they mustn't show in the search as stops
     // the app has shown them nearby, or push the rider's own nearby lookups out of that cache.
     private val stationAreaStopFinder by lazy {
-        CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "station area"), stationAreaStopsCache)
+        placedByStationCode(CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "station area"), stationAreaStopsCache))
     }
 
     // The stops a short walk from a place a trip goes to ([PlaceStopsFinder]), for its Direct section:
     // cached apart again, in a file, so a place's stops hold for a day and never push the rider's own
     // nearby lookups out.
     private val placeStopsFinder by lazy {
-        PlaceStopsFinder(CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "place stops"), placeStopsCache(applicationContext)))
+        PlaceStopsFinder(placedByStationCode(CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "place stops"), placeStopsCache(applicationContext))))
     }
 
     // The stops around a favorite journey's ends, by their published positions (SPEC *Journeys*): a
@@ -628,7 +631,7 @@ class MainActivity : ComponentActivity() {
     // within the day or pushes a trip's places out (Codex, #691).
     private val journeyEndStops by lazy {
         JourneyEndStops(
-            CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "journey ends"), journeyEndStopsCache(applicationContext)),
+            placedByStationCode(CachingStopFinder(bundledStopFinder(applicationContext, nearbyTflClient, "journey ends"), journeyEndStopsCache(applicationContext))),
             ::logRouteStopsWarning,
         )
     }
@@ -7989,13 +7992,23 @@ internal fun bundledStopFinder(context: Context, tfl: StopFinder, label: String,
 }
 
 /**
+ * [finder]'s stops, a station's records one place by its code (SPEC *Grouped by station*): around the lookup's
+ * cache, so a cached answer (an older build's, or one kept while the model loaded) is placed as a fresh one is
+ * (Codex, #1242).
+ */
+internal fun placedByStationCode(finder: StopFinder): StopFinder = StationCodeStopFinder(finder, model = { HubsStore.ready() })
+
+/**
  * The widget's follow, location's one use in the background: the rider's nearby lookups and the bundled
  * stops, and never TfL, so a position read while the app isn't open never leaves the phone (SPEC D1,
  * *Privacy*; the background location disclosure says so).
  */
 internal fun onDeviceStopFinder(context: Context): StopFinder {
     val appContext = context.applicationContext
-    return OnDeviceStopFinder(bundled = { BundledStopsStore.load(appContext) }, cache = nearbyStopsCache(appContext), warn = ::logLocationWarning)
+    return StationCodeStopFinder(
+        OnDeviceStopFinder(bundled = { BundledStopsStore.load(appContext) }, cache = nearbyStopsCache(appContext), warn = ::logLocationWarning),
+        model = { HubsStore.ready() },
+    )
 }
 
 /** The rider's own nearby lookups, on file: the app's near me, and the widget following the rider. */

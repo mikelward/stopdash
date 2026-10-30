@@ -57,6 +57,11 @@ data class DepartureRow(
     // [stopName], so a station whose poles TfL spells differently still reads as one place, and two
     // genuinely distinct stops that share a name stay apart (SPEC D8). Blank groups the stop alone.
     val clusterId: String = "",
+    // The TfL station code (ICS) of the station this stop is part of, from the bundled station model
+    // ([Hubs.stationCodeOf]): St Pancras's three records share one, as do Farringdon's rail and Underground
+    // stations. What two records repeat is shown once by it ([StationRows]); their place is the code too
+    // ([StationCodeStopFinder]). Blank where the model doesn't hold the stop (a bus pole) or hasn't loaded.
+    val stationCode: String = "",
     // The bus pole's letter ("D"), compass bearing ("E"), and "towards" description ("Farringdon"),
     // from the nearby lookup (see [StopArrivals]). A bus place splits into one header per pole by the
     // letter (else bearing) — "King's Cross Station (D) (towards Farringdon)" — the bus analog of a

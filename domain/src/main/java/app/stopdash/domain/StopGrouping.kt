@@ -66,8 +66,9 @@ object StopGrouping {
     fun groupByStop(
         rows: List<DepartureRow>,
         warningsLead: Boolean = true,
-        // A list grouped by station heads each place's modes apart ([ModeIcon]), so no group mixes them: one
-        // station ID's Underground and Overground can share a platform number (maintainer, 2026-10-23).
+        // A list grouped by station heads each place's mode groups apart ([ModeGroups], as the list's menu has
+        // them), so no group mixes them: one station ID's Underground and Overground can share a platform number
+        // (maintainer, 2026-10-23).
         splitByMode: Boolean = false,
     ): List<StopGroup> {
         // Stop closures form NO group — the screen renders them as header-less cards that title
@@ -118,7 +119,7 @@ object StopGrouping {
             // a warned stop stays (clusterKeyOf), so a "No departures" row is still not merged with a
             // same-named pole's live same-line departures.
             val split = splitOf(row)
-            val key = "$place\u0001${split.keyPart}" + if (splitByMode) "\u0001${ModeIcon.of(row.mode)?.name ?: row.mode}" else ""
+            val key = "$place\u0001${split.keyPart}" + if (splitByMode) "\u0001${ModeGroups.of(row.mode).key}" else ""
             infoOf.getOrPut(key) { GroupInfo(place, split) }
             byGroup.getOrPut(key) { mutableListOf() }.add(row)
         }
@@ -210,7 +211,7 @@ object StopGrouping {
 
     /**
      * [rows] grouped by station, as the widget shows them where the rider groups nearby departures
-     * or favorite rides by station (SPEC *Grouped by station*): one group per place and mode ([ModeIcon]),
+     * or favorite rides by station (SPEC *Grouped by station*): one group per station and mode group ([stationKeyOf]),
      * its platforms' and poles' groups from [groupByStop] run together under the place's name alone, in
      * [groupByStop]'s order, a place's stations together. A header is drawn where there's more than one station to tell
      * apart (counting a closure's stop, as [groupByStop] does) or where the station is split by mode.
@@ -220,8 +221,7 @@ object StopGrouping {
         val groups = groupByStop(rows, warningsLead = warningsLead, splitByMode = true)
         val merged = LinkedHashMap<String, StopGroup>()
         for (group in groups) {
-            val mode = group.rows.first().mode.let { ModeIcon.of(it)?.name ?: it }
-            val key = "${group.placeKey}\u0001$mode"
+            val key = stationKeyOf(group)
             merged[key] = merged[key]?.let { it.copy(rows = it.rows + group.rows) }
                 ?: group.copy(key = "station\u0001$key", qualifier = null, splitKey = "")
         }
@@ -230,6 +230,13 @@ object StopGrouping {
         val showHeader = merged.size > 1 || places.size > 1
         return merged.values.map { it.copy(showHeader = showHeader) }
     }
+
+    /**
+     * The station [group] is drawn under, grouped by station: its place (a station's code, as its records are placed:
+     * [StationCodeStopFinder]) and its mode group ([ModeGroups]), so one station's Underground and National Rail are
+     * two stations, and its records one (maintainer, 2026-10-30).
+     */
+    fun stationKeyOf(group: StopGroup): String = "${group.placeKey}\u0001${ModeGroups.of(group.rows.first().mode).key}"
 
     /**
      * The stops that head their own group because they carry a row with no countdown (a line-status
