@@ -776,23 +776,25 @@ class JourneysTest {
     }
 
     @Test
-    fun `a relocate holds a far journey's stops back only on a confirmed fix, unrevealed`() {
+    fun `a relocate holds a far journey's stops back only on a confirmed fix, unopened`() {
         val stops = mapOf(journey.key to setOf("ORIGIN"))
-        fun hold(fixConfirmed: Boolean, revealed: Boolean) =
+        fun hold(fixConfirmed: Boolean, revealed: Set<String>) =
             Journeys.stopIdsToHoldBack(listOf(journey), 51.47, -0.12, fixConfirmed, revealed, stops)
-        assertEquals(setOf("ORIGIN"), hold(fixConfirmed = true, revealed = false))
+        assertEquals(setOf("ORIGIN"), hold(fixConfirmed = true, revealed = emptySet()))
         // A retained or last-known fix may be where the rider was: keep fetching.
-        assertEquals(emptySet<String>(), hold(fixConfirmed = false, revealed = false))
-        assertEquals(emptySet<String>(), hold(fixConfirmed = true, revealed = true))
+        assertEquals(emptySet<String>(), hold(fixConfirmed = false, revealed = emptySet()))
+        // Opened from its collapsed card: keep fetching it, and only it.
+        assertEquals(emptySet<String>(), hold(fixConfirmed = true, revealed = setOf(journey.key)))
+        assertEquals(setOf("ORIGIN"), hold(fixConfirmed = true, revealed = setOf("another|ride")))
         // Its own view is open: the screen keeps it, so keep fetching it.
         assertEquals(
             emptySet<String>(),
-            Journeys.stopIdsToHoldBack(listOf(journey), 51.47, -0.12, true, false, stops, openJourneyKey = journey.key),
+            Journeys.stopIdsToHoldBack(listOf(journey), 51.47, -0.12, true, emptySet(), stops, openJourneyKey = journey.key),
         )
         // A near journey is never held back.
         assertEquals(
             emptySet<String>(),
-            Journeys.stopIdsToHoldBack(listOf(journey), 51.51, -0.12, true, false, stops),
+            Journeys.stopIdsToHoldBack(listOf(journey), 51.51, -0.12, true, emptySet(), stops),
         )
     }
 

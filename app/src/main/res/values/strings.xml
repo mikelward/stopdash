@@ -1268,8 +1268,6 @@
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->
     <string name="action_open_journey">Show ride</string>
-    <!-- Above the favorite journeys more than a mile away, collapsed to their headings. -->
-    <string name="journeys_faraway">Faraway favorites</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
     <!-- The journey heading as a screen reader hears it, in place of the arrow icon. -->
     <string name="journey_title_spoken">%1$s to %2$s</string>

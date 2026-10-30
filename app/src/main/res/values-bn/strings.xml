@@ -712,7 +712,6 @@
     <string name="action_star_journey">প্রিয় যাত্রা যোগ করুন</string>
     <string name="action_flip_journey">দিক বদলান</string>
     <string name="action_open_journey">যাত্রা দেখুন</string>
-    <string name="journeys_faraway">দূরের প্রিয় যাত্রা</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
     <string name="journey_title_spoken">%1$s থেকে %2$s</string>
     <string name="journey_title_both_ways_spoken">%1$s ও %2$s, দুই দিকেই</string>

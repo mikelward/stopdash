@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Departure
@@ -181,6 +183,90 @@ class TapHoldsStillTest {
     @Test
     fun `grouped by station with rides By stop, opening a faraway place holds it still`() =
         opensFartherInPlace(stationGroups = true, rideGrouping = RideGrouping.STOP)
+
+    // A faraway favorite ride, collapsed among the farther places until tapped (SPEC *Journeys*): opened, it grows
+    // below its heading as its stop is fetched and its trains come in.
+    /**
+     * Opens a faraway favorite. With [another], a nearer one is already open first, which stays open (its rows drawn)
+     * while the worker prepares the second.
+     */
+    private fun opensFarRideInPlace(stationGroups: Boolean, rideGrouping: RideGrouping, another: Boolean = false) {
+        val far = FavoriteJourney(JourneyEnd("FR1", "Faraway Stop"), JourneyEnd("FR2", "Faraway End"), listOf(LineRef("88", "88", "bus")))
+        val nearer = FavoriteJourney(JourneyEnd("FR3", "Nearer Stop"), JourneyEnd("FR4", "Nearer End"), listOf(LineRef("77", "77", "bus")))
+        val rides = if (another) listOf(nearer, far) else listOf(far)
+        val farStop = StopArrivals(
+            "FR1", "Faraway Stop",
+            (1..4).map { Departure("88", "88", "outbound", "Faraway End", null, now.plusSeconds(120L * it), "bus") },
+            fetchedAt = now.minusSeconds(60),
+        )
+        var state by mutableStateOf<DeparturesUiState>(DeparturesUiState.Loaded(stops, now.minusSeconds(60)))
+        composeRule.setContent {
+            listState = rememberListStateFor("set")
+            StopDashTheme(dynamicColor = false) {
+                Surface(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        MainScreen(
+                            state, now, {},
+                            listKey = "set",
+                            nearbyKey = "set",
+                            listWork = remember { ListWork() },
+                            listState = listState,
+                            stopDistanceMeters = distances,
+                            farther = listOf(FartherCard(fartherPlace)),
+                            onOpenFarther = {},
+                            stationGroups = stationGroups,
+                            journeys = rides,
+                            farJourneyMeters = mapOf(far.key to 2400.0, nearer.key to 2000.0).filterKeys { key -> rides.any { it.key == key } },
+                            farJourneys = rides,
+                            onToggleJourney = {},
+                            rideGrouping = rideGrouping,
+                        )
+                    }
+                }
+            }
+        }
+        settle()
+        if (another) {
+            scrollToEnd()
+            composeRule.onAllNodesWithTag("farJourneyCard")[0].performClick()
+            settle()
+        }
+        scrollToEnd()
+        val heading = SemanticsMatcher("the ride's heading") { node ->
+            node.config.getOrElseNullable(SemanticsProperties.ContentDescription) { null }?.any { it.startsWith("Faraway Stop to Faraway End") } == true
+        }
+        val before = top(heading)
+        composeRule.onNodeWithTag("farJourneyCard").performClick()
+        val changes = listOf<() -> Unit>(
+            {},
+            // Its origin fetched with the list's own stops, as the activity reports it ([onJourneyOrigins]): no distance of
+            // its own on the list, so it's no nearby place.
+            { state = DeparturesUiState.Loaded(stops + farStop, now.minusSeconds(60)) },
+        )
+        changes.forEachIndexed { change, apply ->
+            apply()
+            composeRule.waitForIdle()
+            assertEquals("change $change, before the worker has run", before, top(heading), 0.5f)
+            repeat(12) { step ->
+                scheduler.runCurrent()
+                composeRule.waitForIdle()
+                assertEquals("change $change, worker step $step", before, top(heading), 0.5f)
+            }
+        }
+        settle()
+        assertEquals("once the worker has run", before, top(heading), 0.5f)
+    }
+
+    @Test
+    fun `grouped by platform, opening a faraway favorite holds it still`() = opensFarRideInPlace(stationGroups = false, RideGrouping.RIDE)
+
+    @Test
+    fun `grouped by station with rides By station, opening a faraway favorite holds it still`() =
+        opensFarRideInPlace(stationGroups = true, RideGrouping.STATION)
+
+    @Test
+    fun `opening a second faraway favorite keeps the first open and holds still`() =
+        opensFarRideInPlace(stationGroups = false, RideGrouping.RIDE, another = true)
 
     @Test
     fun `grouped by station, unfolding a station holds its heading still`() {

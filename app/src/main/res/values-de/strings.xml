@@ -712,7 +712,6 @@
     <string name="action_star_journey">Lieblingsstrecke hinzufügen</string>
     <string name="action_flip_journey">Richtung tauschen</string>
     <string name="action_open_journey">Strecke anzeigen</string>
-    <string name="journeys_faraway">Ferne Favoriten</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
     <string name="journey_title_spoken">%1$s nach %2$s</string>
     <string name="journey_title_both_ways_spoken">%1$s und %2$s, in beide Richtungen</string>

@@ -735,7 +735,6 @@
     <string name="action_star_journey">Dodaj ulubiony przejazd</string>
     <string name="action_flip_journey">Zamień kierunek</string>
     <string name="action_open_journey">Pokaż przejazd</string>
-    <string name="journeys_faraway">Odległe ulubione</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
     <string name="journey_title_spoken">%1$s, kierunek %2$s</string>
     <string name="journey_title_both_ways_spoken">%1$s i %2$s, w obie strony</string>

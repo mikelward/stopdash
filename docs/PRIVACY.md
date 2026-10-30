@@ -401,7 +401,7 @@ What it sends:
   stops near you, a trip, Settings and so on) and what opened the app (its icon, the widget, a
   notification or a shortcut); the kind of thing you tapped (a journey card, a stop row, a change
   card, swapping a journey, starring or unstarring, opening search or Settings, refreshing the
-  widget), opening a farther place (as "bus", "tube" and so on) or your faraway favorites, the
+  widget), opening a farther place (as "bus", "tube" and so on) or one of your faraway favorites, the
   location permission you chose (precise, approximate or none), how getting your location went (a
   fresh fix, the last known one, or none, with its accuracy and how long it took in ranges like
   "10–25 m" and "1–3 s"), and how many stops of each kind were near you, in ranges (0, 1, 2–3, 4 or

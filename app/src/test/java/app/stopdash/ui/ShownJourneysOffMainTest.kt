@@ -66,6 +66,8 @@ class ShownJourneysOffMainTest {
             // The flipped one is turned round; the far one is held back, measured to its nearer end.
             assertEquals(listOf("B", "C"), shown!!.journeys.map { it.from.stopId })
             assertEquals(setOf(far.key), shown!!.farMeters.keys)
+            // The far ones alone, in order, for the list to draw as collapsed cards without walking the rest.
+            assertEquals(listOf(far.key), shown!!.far.map { it.key })
         } finally {
             pool.shutdown()
         }

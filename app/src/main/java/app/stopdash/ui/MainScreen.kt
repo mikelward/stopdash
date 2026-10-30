@@ -309,13 +309,17 @@ fun MainScreen(
     // they never draw one way and regroup the other (Codex, #849); by ride when not given, so a caller
     // with no setting behind it keeps each ride's own heading.
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
-    // The journeys more than a mile from the rider (key → meters to the nearer end): held behind the
-    // Faraway favorites button, and not fetched until it's tapped ([Journeys.farJourneys]).
+    // The journeys more than a mile from the rider (key → meters to the nearer end): each a collapsed card
+    // among the farther places, and not fetched until it's tapped ([Journeys.farJourneys]).
     farJourneyMeters: Map<String, Double> = emptyMap(),
-    // The nearby stop set shown ([NearbyStopsViewModel.State.Ready.clusterSetKey]): a tap on Faraway
-    // favorites holds for this set only, so a relocation elsewhere holds far journeys back again.
+    // The lines each of those collapsed cards names, less any the rider hid from it ([ShownJourneys.farLines]).
+    farJourneyLines: Map<String, List<LineRef>> = emptyMap(),
+    // Those journeys alone, nearest first ([ShownJourneys.far]).
+    farJourneys: List<FavoriteJourney> = emptyList(),
+    // The nearby stop set shown ([NearbyStopsViewModel.State.Ready.clusterSetKey]): a far journey opened
+    // holds for this set only, so a relocation elsewhere holds far journeys back again.
     nearbyKey: String? = null,
-    // The Faraway favorites tap; the app hoists it above the overlays so opening one keeps it.
+    // The far journeys opened; the app hoists it above the overlays so opening one keeps it.
     farReveal: FarRevealState = rememberFarReveal(nearbyKey),
     // What this list is a list of (a nearby set, a trip's origins): a new one starts the held
     // loading cards afresh ([PendingTracker]). The nearby set's key by default.
@@ -569,13 +573,12 @@ fun MainScreen(
     // Opened from the first frame on a ride handed back to it, never the list for a frame first.
     var journeyViewKey by rememberSaveable { mutableStateOf(reopenJourneyKey) }
     LaunchedEffect(reopenJourneyKey) { if (reopenJourneyKey != null) onJourneyReopened() }
-    // Whether the rider has tapped "Faraway favorites" to show the far journeys in full, for this
-    // nearby set ([rememberFarReveal]).
+    // The far journeys the rider has opened from their collapsed cards, for this nearby set ([rememberFarReveal]).
     val farRevealed = farReveal.revealed
-    // The journeys shown in full and fetched: the near ones, the far ones once revealed, and a far
-    // one while its own view is open.
+    // The journeys shown in full and fetched: the near ones, each far one once opened, and a far one
+    // while its own view is open.
     val cardJourneys = remember(journeys, farJourneyMeters, journeyViewKey, farRevealed) {
-        journeys.filter { it.key !in farJourneyMeters || farRevealed || it.key == journeyViewKey }
+        journeys.filter { it.key !in farJourneyMeters || it.key in farRevealed || it.key == journeyViewKey }
     }
     // Every line found serving each ride, none above another: any of their routes may place its stops.
     val journeyStarLines = remember(cardJourneys) { cardJourneys.flatMap { it.lineIds }.filter { it.isNotBlank() }.distinct() }
@@ -1069,6 +1072,17 @@ fun MainScreen(
         }
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()
+    // The faraway favorites opened, each one's card by its key, worked out on the worker (AGENTS.md *Main thread*). The
+    // last answer stands in while every ride it opened is still opened (another just opened beside them: the same run,
+    // no fewer rides, checked without walking either), so an opened one never folds back for a frame; none for others,
+    // so a ride no longer opened (another nearby set) never draws open.
+    val farRideCards = rememberWorked(
+        listWork.farRides,
+        Inputs(journeyCards, farRevealed, farReveal.run),
+        keep = { held, wanted -> held.parts[2] === wanted.parts[2] && (held.parts[1] as Set<*>).size <= (wanted.parts[1] as Set<*>).size },
+    ) {
+        if (farRevealed.isEmpty()) emptyMap() else journeyCards.filter { it.journey.key in farRevealed }.associateBy { it.journey.key }
+    }.orEmpty()
     // The lines each card finds reaching its ride's far end that the ride doesn't hold yet, kept with it so
     // its alerts, status and Settings cover them too. Worked out on the worker; reported only when one is new.
     val currentRideLinesFound by rememberUpdatedState(onRideLinesFound)
@@ -2016,27 +2030,25 @@ fun MainScreen(
                             stopDistanceMeters = if (platformRows != null) emptyMap() else stopDistanceMeters,
                             onOpenStopMap = onOpenStopMap,
                             // Journey cards sit atop the near-me list only, not a platform or station view.
-                            // A far journey's card sits at the foot, once revealed, never among the near ones.
+                            // A far journey's card sits among the farther places by its distance, never among the near ones.
                             // Kept while its inputs are, so the list's station grouping isn't worked out again each tick.
                             journeyCards = remember(platformRows != null, journeyCards, farJourneyMeters, ridesInPlatforms) {
                                 // A ride kept in its own platforms' groups (By station) has no card of its own.
                                 if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters && it.journey.key !in ridesInPlatforms }
                             },
-                            farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
+                            farJourneyCards = if (platformRows != null) emptyMap() else farRideCards,
+                            farJourneys = if (platformRows != null) emptyList() else farJourneys,
                             farJourneyMeters = farJourneyMeters,
+                            farJourneyLines = farJourneyLines,
                             rideGrouping = rideGrouping,
                             platformRideRows = if (platformRows != null) emptyMap() else platformRideRowsShown,
                             platformRideEnds = if (platformRows != null) emptyMap() else platformRideEndsShown,
                             checkingRides = checkingRidesShown,
                             ridePlaceMeters = shownRidePlaceMeters,
                             rideMeters = shownRideMeters,
-                            onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
-                                {
-                                    UsageEvents.log(UsageEvent.FarawayFavorites)
-                                    farReveal.reveal()
-                                }
-                            } else {
-                                null
+                            onRevealFar = { journey ->
+                                UsageEvents.log(UsageEvent.FarawayFavorites)
+                                farReveal.reveal(journey.key)
                             },
                             // Every nearby row is on a journey card above: nothing to call "no departures".
                             nearbyShownAbove = platformRows == null && rows.isEmpty() && nearbyRows.isNotEmpty(),
@@ -2267,8 +2279,10 @@ private fun LoadedContent(
     onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
     onShowRideLine: ((FavoriteJourney, String) -> Unit)? = null,
-    farJourneyCards: List<JourneyCard> = emptyList(),
+    farJourneyCards: Map<String, JourneyCard> = emptyMap(),
+    farJourneys: List<FavoriteJourney> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
+    farJourneyLines: Map<String, List<LineRef>> = emptyMap(),
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
     // A favorite ride's trains kept in their own platforms' groups (Group favorite rides: By station), by identity.
     platformRideRows: Map<DepartureRow, FavoriteJourney> = emptyMap(),
@@ -2277,7 +2291,7 @@ private fun LoadedContent(
     checkingRides: Set<String> = emptySet(),
     ridePlaceMeters: Map<String, Double> = emptyMap(),
     rideMeters: Map<String, Double> = emptyMap(),
-    onRevealFar: (() -> Unit)? = null,
+    onRevealFar: (FavoriteJourney) -> Unit = {},
     starred: Set<StarredRow> = emptySet(),
     onToggleStar: (DepartureRow) -> Unit = {},
     starringAvailable: Boolean = true,
@@ -2429,7 +2443,7 @@ private fun LoadedContent(
             // Favorite journeys still show when nothing nearby has departures: their origins can be
             // farther away, and hiding them behind "No departures" would drop live trains.
             // A dismissed closure still draws its place's heading, so it keeps the list up.
-            val empty = rows.isEmpty() && journeyCards.isEmpty() && farJourneyCards.isEmpty() && onRevealFar == null &&
+            val empty = rows.isEmpty() && journeyCards.isEmpty() && farJourneys.isEmpty() &&
                 shownPending.isEmpty() && dismissedClosures.isEmpty()
             // A refresh can trade the list for the "No departures" screen, or back, with no loading
             // screen between: whichever comes in does so row by row, taps ignored meanwhile, so a tap
@@ -2563,7 +2577,9 @@ private fun LoadedContent(
                         onHideRideLine = onHideRideLine,
                         onShowRideLine = onShowRideLine,
                         farJourneyCards = farJourneyCards,
+                        farJourneys = farJourneys,
                         farJourneyMeters = farJourneyMeters,
+                        farJourneyLines = farJourneyLines,
                         rideGrouping = rideGrouping,
                         platformRideRows = platformRideRows,
                         checkingRides = checkingRides,
@@ -3169,10 +3185,13 @@ private fun DepartureList(
     onRetryJourneyRoutes: () -> Unit = {},
     // Opens a journey's own view from a tap on its heading; null leaves the heading inert.
     onOpenJourney: ((FavoriteJourney) -> Unit)? = null,
-    // The faraway journeys' cards once revealed, with each one's meters to its nearer end; and the
-    // button that reveals them, null once they are (or when there are none).
-    farJourneyCards: List<JourneyCard> = emptyList(),
+    // The faraway journeys, nearest first ([farJourneys]), placed among the farther places by each one's meters to its
+    // nearer end: each a collapsed card naming its lines ([farJourneyLines]) until a tap opens it ([onRevealFar]),
+    // then drawn in full ([farJourneyCards], by key).
+    farJourneyCards: Map<String, JourneyCard> = emptyMap(),
+    farJourneys: List<FavoriteJourney> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
+    farJourneyLines: Map<String, List<LineRef>> = emptyMap(),
     // How the journey cards group their departures off their own view ([RideGrouping]).
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
     // A favorite ride's trains kept in their own platforms' groups (Group favorite rides: By station), by identity.
@@ -3184,7 +3203,7 @@ private fun DepartureList(
     ridePlaceMeters: Map<String, Double> = emptyMap(),
     // How far the stop each card boards from is, by journey key, worked out with them ([rideMeters]).
     rideMeters: Map<String, Double> = emptyMap(),
-    onRevealFar: (() -> Unit)? = null,
+    onRevealFar: (FavoriteJourney) -> Unit = {},
     // True in a journey's own view: the title bar names the journey, so its heading is dropped, and
     // each of its groups is headed by its platform/pole so the rider sees where to board.
     journeyView: Boolean = false,
@@ -3518,8 +3537,8 @@ private fun DepartureList(
                             card.journey,
                             card.fromForms,
                             card.toForms,
-                            // First on screen, or first under the "Faraway favorites" label: no break.
-                            firstOnScreen = index == 0,
+                            // First on screen: no break. A faraway ride, among the farther places, always follows another.
+                            firstOnScreen = index == 0 && farMeters == null,
                             onOpen = onOpen,
                             distanceLabel = distanceLabel ?: rideDistance,
                         )
@@ -4322,9 +4341,32 @@ private fun DepartureList(
         }
         slotItems(listed.size)
         journeyItems(ridesBefore[StationLayout.AFTER_STATIONS].orEmpty(), inStation = true, asStation = ridesAsStations)
+        // The faraway favorites (SPEC *Journeys*), drawn among the farther places as one of them, by how far each is
+        // (maintainer, 2026-10-30): collapsed under its starred heading until a tap opens it, which is what fetches it.
+        var farNext = 0
+        fun farRidesWithin(meters: Double) {
+            while (farNext < farJourneys.size && (farJourneyMeters[farJourneys[farNext].key] ?: Double.MAX_VALUE) <= meters) {
+                val journey = farJourneys[farNext++]
+                val opened = farJourneyCards[journey.key]
+                if (opened != null) {
+                    journeyItems(listOf(opened), farJourneyMeters)
+                } else {
+                    item(key = "far-journey|${journey.key}") {
+                        FarJourneyCardView(
+                            journey,
+                            lines = farJourneyLines[journey.key].orEmpty(),
+                            distanceLabel = distanceSystem?.let { system -> farJourneyMeters[journey.key]?.let { distanceText(it, system, resources) } },
+                            onReveal = { onRevealFar(journey) },
+                            onOpen = onOpenJourney?.let { open -> { open(journey) } },
+                        )
+                    }
+                }
+            }
+        }
         // Below the loaded places: the farther stations and bus places, each collapsed until tapped
-        // (in [CollapsedPlaces.ordered]'s order).
+        // (in [CollapsedPlaces.ordered]'s order), the faraway favorites among them.
         for (card in farther) {
+            farRidesWithin(card.place.meters)
             // An opened station's notice heads it; with nothing running there, it stands for the card.
             val opened = fartherGroups[card.place.key]
             // A dismissed closure keeps its heading only where the place has nothing else to show —
@@ -4376,23 +4418,50 @@ private fun DepartureList(
                 }
             }
         }
-        // The faraway journeys (SPEC *Journeys*), at the foot below the farther cards: a button, then,
-        // once tapped, their cards under a "Faraway favorites" label (revealing is what fetches them).
-        if (farJourneyCards.isNotEmpty()) {
-            item(key = "far-journeys-label") {
-                Text(
-                    text = stringResource(R.string.journeys_faraway),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, top = 16.dp),
-                )
-            }
-            journeyItems(farJourneyCards, farJourneyMeters)
-        } else if (onRevealFar != null) {
-            item(key = "far-journeys-reveal") {
-                TextButton(onClick = onRevealFar, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Text(stringResource(R.string.journeys_faraway))
+        // Those farther than every farther place, at the foot.
+        farRidesWithin(Double.MAX_VALUE)
+    }
+}
+
+/**
+ * A faraway favorite ride, collapsed as a farther place is (maintainer, 2026-10-30): its starred heading with how far
+ * its nearer end is, over one row of its [lines] and "Tap to see". A tap on the card opens it in place ([onReveal]),
+ * which is what fetches its trains; one on its heading opens its own view ([onOpen]), as a ride's heading does.
+ */
+@Composable
+private fun FarJourneyCardView(
+    journey: FavoriteJourney,
+    lines: List<LineRef>,
+    distanceLabel: String?,
+    onReveal: () -> Unit,
+    onOpen: (() -> Unit)?,
+) = CardTextSize {
+    val cueText = stringResource(R.string.farther_tap_to_see)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        JourneyHeader(
+            journey,
+            fromForms = listOf(journey.from.name),
+            toForms = listOf(journey.to.name),
+            firstOnScreen = false,
+            onOpen = onOpen,
+            distanceLabel = distanceLabel,
+        )
+        OutlinedCard(
+            modifier = Modifier.fillMaxWidth().clickable { onReveal() }.testTag("farJourneyCard"),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (line in lines) LinePill(line.name, line.id, line.mode)
                 }
+                Text(text = cueText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -4655,9 +4724,9 @@ internal fun remeasured(place: PendingPlace, stopDistanceMeters: Map<String, Dou
 private val StopIdsSaver = Saver<Set<String>, ArrayList<String>>(save = { ArrayList(it) }, restore = { it.toSet() })
 
 // The item-key prefixes that aren't loaded rows: the loading and farther cards, headings (each sits
-// just above its own rows), and the faraway-journeys label and button. Every other item — a place's
+// just above its own rows), and a faraway favorite's collapsed card. Every other item — a place's
 // group card, a journey's trains or its settled "none"/note — is something the rider may be reading.
-private val NOT_LOADED_KEYS = listOf("pending|", "farther|", "header|", "journey-header|", "far-journeys-")
+private val NOT_LOADED_KEYS = listOf("pending|", "farther|", "header|", "journey-header|", "far-journey|")
 
 /**
  * Of the list's drawn item [keys], top to bottom, the ones a landing card is held at: those with a

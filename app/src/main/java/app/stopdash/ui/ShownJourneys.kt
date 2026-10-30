@@ -7,14 +7,21 @@ import androidx.compose.runtime.remember
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.LineRef
 
 /**
  * The saved journeys as the list shows them ([shownJourneysOf]): nearest first, each turned so its
  * origin is the end nearer the rider, or the other way if they flipped it ([journeys]), and those held
- * back behind the Faraway favorites button with each one's meters to its nearer end ([farMeters], SPEC
- * *Journeys*).
+ * back as collapsed cards until tapped, with each one's meters to its nearer end ([farMeters], SPEC
+ * *Journeys*), the lines its card names, less any the rider hid from it or with no name to show ([farLines]),
+ * and those journeys alone in order ([far]), so the list walks none to find them.
  */
-internal class ShownJourneys(val journeys: List<FavoriteJourney>, val farMeters: Map<String, Double>)
+internal class ShownJourneys(
+    val journeys: List<FavoriteJourney>,
+    val farMeters: Map<String, Double>,
+    val farLines: Map<String, List<LineRef>> = emptyMap(),
+    val far: List<FavoriteJourney> = emptyList(),
+)
 
 /**
  * [ShownJourneys] for [saved] at [at]: nearest first ([Journeys.nearestFirst]), each oriented, the
@@ -32,7 +39,10 @@ internal fun shownJourneysOf(
         val oriented = Journeys.oriented(journey, at.latitude, at.longitude)
         if (journey.key in flipped) oriented.reversed() else oriented
     }
-    return ShownJourneys(shown, Journeys.farJourneys(shown, at.latitude, at.longitude, fixConfirmed))
+    val far = Journeys.farJourneys(shown, at.latitude, at.longitude, fixConfirmed)
+    val farOnes = shown.filter { it.key in far }
+    val farLines = farOnes.associate { journey -> journey.key to journey.lines.filter { it.name.isNotBlank() && !journey.hides(it.id) } }
+    return ShownJourneys(shown, far, farLines, farOnes)
 }
 
 /**
