@@ -4163,6 +4163,195 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Remove favourite ride").assertExists()
     }
 
+    // Every way the two grouping settings draw the same list, so a capture shows each side by side (maintainer, 2026-10-31):
+    // a rider at King's Cross St. Pancras (real stations, lines and directions; synthetic distances near the real ones)
+    // with a nearby favorite ride from there north to Highbury & Islington, Euston a farther station not yet opened, and a
+    // faraway favorite, Victoria to Brixton, more than a mile from both its ends. Captured folded, then with both the far
+    // ride and Euston's card opened.
+    private val victoriaLineNorthbound = LineSequence(
+        routes = listOf(
+            LineRoute(
+                "Brixton ↔ Walthamstow Central",
+                listOf(
+                    "940GZZLUBXN", "940GZZLUSKW", "940GZZLUVXL", "940GZZLUPCO", "940GZZLUVIC", "940GZZLUGPK", "940GZZLUOXC",
+                    "940GZZLUWRR", "940GZZLUEUS", "940GZZLUKSX", "940GZZLUHAI", "940GZZLUFPK", "940GZZLUSVS", "940GZZLUTMH",
+                    "940GZZLUBLR", "940GZZLUWWL",
+                ),
+                direction = "outbound",
+            ),
+        ),
+        stopNames = mapOf(
+            "940GZZLUBXN" to "Brixton", "940GZZLUSKW" to "Stockwell", "940GZZLUVXL" to "Vauxhall", "940GZZLUPCO" to "Pimlico",
+            "940GZZLUVIC" to "Victoria", "940GZZLUGPK" to "Green Park", "940GZZLUOXC" to "Oxford Circus",
+            "940GZZLUWRR" to "Warren Street", "940GZZLUEUS" to "Euston", "940GZZLUKSX" to "King's Cross St. Pancras",
+            "940GZZLUHAI" to "Highbury & Islington", "940GZZLUFPK" to "Finsbury Park", "940GZZLUSVS" to "Seven Sisters",
+            "940GZZLUTMH" to "Tottenham Hale", "940GZZLUBLR" to "Blackhorse Road", "940GZZLUWWL" to "Walthamstow Central",
+        ),
+    )
+    private val victoriaLineSouthbound = victoriaLineNorthbound.copy(
+        routes = victoriaLineNorthbound.routes.map { it.copy(name = "Walthamstow Central ↔ Brixton", stopIds = it.stopIds.reversed(), direction = "inbound") },
+    )
+    private val piccadillyFromKingsCross = LineSequence(
+        routes = listOf(
+            LineRoute(
+                "Heathrow Terminal 5 ↔ Cockfosters",
+                listOf("940GZZLUKSX", "940GZZLUCAR", "940GZZLUHWY", "940GZZLUASL", "940GZZLUFPK", "940GZZLUMRH", "940GZZLUCKS"),
+                direction = "outbound",
+            ),
+            LineRoute(
+                "Cockfosters ↔ Heathrow Terminal 5",
+                listOf("940GZZLUKSX", "940GZZLURSQ", "940GZZLUHBN", "940GZZLUCGN", "940GZZLULSQ", "940GZZLUPCC", "940GZZLUHR5"),
+                direction = "inbound",
+            ),
+        ),
+        stopNames = mapOf(
+            "940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUCAR" to "Caledonian Road", "940GZZLUHWY" to "Holloway Road",
+            "940GZZLUASL" to "Arsenal", "940GZZLUFPK" to "Finsbury Park", "940GZZLUMRH" to "Manor House",
+            "940GZZLUCKS" to "Cockfosters", "940GZZLURSQ" to "Russell Square", "940GZZLUHBN" to "Holborn",
+            "940GZZLUCGN" to "Covent Garden", "940GZZLULSQ" to "Leicester Square", "940GZZLUPCC" to "Piccadilly Circus",
+            "940GZZLUHR5" to "Heathrow Terminal 5",
+        ),
+    )
+    private val kingsCrossToHighbury = FavoriteJourney(
+        JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"),
+        JourneyEnd("940GZZLUHAI", "Highbury & Islington"),
+        listOf(LineRef("victoria", "Victoria", "tube")),
+    )
+    private val victoriaToBrixton = FavoriteJourney(
+        JourneyEnd("940GZZLUVIC", "Victoria"),
+        JourneyEnd("940GZZLUBXN", "Brixton"),
+        listOf(LineRef("victoria", "Victoria", "tube")),
+    )
+    private val eustonPlace = CollapsedPlaces.Place(
+        key = "station:940GZZLUEUS",
+        stationId = "940GZZLUEUS",
+        name = "Euston",
+        meters = 800.0,
+        lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("northern", "Northern", "tube")),
+        stops = listOf(
+            StopLocation(
+                "940GZZLUEUS", "Euston", 0.0, 0.0,
+                listOf(LineRef("victoria", "Victoria", "tube"), LineRef("northern", "Northern", "tube")),
+                clusterId = "940GZZLUEUS",
+            ),
+        ),
+    )
+
+    private fun groupingsCapture(stationGroups: Boolean, rideGrouping: RideGrouping, name: String) {
+        val kingsCross = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            listOf(
+                dep("victoria", "Victoria", "outbound", "Walthamstow Central", 60, "Northbound - Platform 1"),
+                dep("victoria", "Victoria", "inbound", "Brixton", 210, "Southbound - Platform 2"),
+                dep("piccadilly", "Piccadilly", "outbound", "Cockfosters", 120, "Eastbound - Platform 3"),
+                dep("piccadilly", "Piccadilly", "inbound", "Heathrow Terminal 5", 330, "Westbound - Platform 4"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val victoria = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(
+                dep("victoria", "Victoria", "inbound", "Brixton", 150, "Southbound - Platform 4"),
+                dep("victoria", "Victoria", "inbound", "Brixton", 330, "Southbound - Platform 4"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val reveal = FarRevealState(mutableStateOf(FarOpened.None), "940GZZLUKSX")
+        var state by mutableStateOf<DeparturesUiState>(DeparturesUiState.Loaded(listOf(kingsCross, kingsCrossBusStop()), now.minusSeconds(60)))
+        var farther by mutableStateOf(listOf(FartherCard(eustonPlace)))
+        var distances by mutableStateOf(mapOf("940GZZLUKSX" to 150.0, "490000077E" to 120.0))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                // The Victoria northbound as listed, southbound ("inbound", toward Brixton) the other way; the
+                                // Piccadilly, which King's Cross also has, each way from there.
+                                override suspend fun routeSequence(lineId: String, direction: String) = when {
+                                    lineId == "piccadilly" -> piccadillyFromKingsCross
+                                    direction == "inbound" -> victoriaLineSouthbound
+                                    else -> victoriaLineNorthbound
+                                }
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            state,
+                            now,
+                            {},
+                            stopDistanceMeters = distances,
+                            stationGroups = stationGroups,
+                            rideGrouping = rideGrouping,
+                            journeys = listOf(kingsCrossToHighbury, victoriaToBrixton),
+                            farJourneyMeters = mapOf(victoriaToBrixton.key to 3900.0),
+                            farJourneys = listOf(victoriaToBrixton),
+                            farJourneyLines = mapOf(victoriaToBrixton.key to victoriaToBrixton.lines),
+                            farReveal = reveal,
+                            farther = farther,
+                            onOpenFarther = {},
+                            onToggleJourney = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("farJourneyCard").assertExists()
+        captureSnapshot("$name.png", heightPx = 4200)
+
+        // Opened: the far ride, fetched with its origin, and Euston's card, its stop's trains in.
+        reveal.reveal(victoriaToBrixton.key)
+        val euston = StopArrivals(
+            "940GZZLUEUS",
+            "Euston",
+            listOf(
+                dep("victoria", "Victoria", "outbound", "Walthamstow Central", 180, "Northbound - Platform 5"),
+                dep("northern", "Northern", "inbound", "Morden", 240, "Southbound - Platform 2", branch = "Bank"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        // An opened farther card's trains come in with the list's own, its stop at its own distance.
+        farther = listOf(FartherCard(eustonPlace, FartherLoad.Open(emptyList(), mapOf("940GZZLUEUS" to 800.0))))
+        distances = distances + ("940GZZLUEUS" to 800.0)
+        state = DeparturesUiState.Loaded(listOf(kingsCross, kingsCrossBusStop(), victoria, euston), now.minusSeconds(60))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
+        captureSnapshot("$name-opened.png", heightPx = 4200)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `groupings, nearby by stop or platform, rides by ride`() =
+        groupingsCapture(stationGroups = false, RideGrouping.RIDE, "groupings-platform-ride")
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `groupings, nearby by stop or platform, rides by stop or platform`() =
+        groupingsCapture(stationGroups = false, RideGrouping.STOP, "groupings-platform-stop")
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `groupings, nearby by stop or platform, rides by station`() =
+        groupingsCapture(stationGroups = false, RideGrouping.STATION, "groupings-platform-station")
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `groupings, nearby by station, rides by ride`() =
+        groupingsCapture(stationGroups = true, RideGrouping.RIDE, "groupings-station-ride")
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `groupings, nearby by station, rides by stop or platform`() =
+        groupingsCapture(stationGroups = true, RideGrouping.STOP, "groupings-station-stop")
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `groupings, nearby by station, rides by station`() =
+        groupingsCapture(stationGroups = true, RideGrouping.STATION, "groupings-station-station")
+
     // Saved with its line's mode, as a ride saved now is, so its heading by station carries the mode's icon.
     private val victoriaTube = victoriaToWarrenStreet.copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))
 
