@@ -4320,6 +4320,72 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("farJourneyCard").assertDoesNotExist()
         captureSnapshot("$name-opened.png", heightPx = 4200)
+        // By stop/platform, its stop ➔ where it goes heads the opened ride, alone: grouped by station no ride
+        // heading stands over it too (maintainer, 2026-10-31).
+        // One heading says how far it is, whatever the settings (its distance said once).
+        composeRule.onAllNodesWithText("3.9 km", substring = true).assertCountEquals(1)
+        // Grouped by station by stop, its heading is heard with the platform it boards from, as it reads.
+        if (stationGroups && rideGrouping == RideGrouping.STOP) {
+            composeRule.onAllNodesWithContentDescription("Victoria, Platform 4", substring = true).onFirst().assertExists()
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h1600dp-420dpi")
+    fun `grouped by station by stop, a ride boarding at an opened farther station says how far its stop is`() {
+        // Euston ➔ Brixton boards at Euston, a farther station opened, not one the list loaded: headed by its stop, which
+        // says how far it is, as its own heading did (Codex, #1249).
+        val eustonToBrixton = FavoriteJourney(
+            JourneyEnd("940GZZLUEUS", "Euston"),
+            JourneyEnd("940GZZLUBXN", "Brixton"),
+            listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val kingsCross = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            listOf(dep("piccadilly", "Piccadilly", "outbound", "Cockfosters", 120, "Eastbound - Platform 3")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val euston = StopArrivals(
+            "940GZZLUEUS",
+            "Euston",
+            listOf(dep("victoria", "Victoria", "inbound", "Brixton", 180, "Southbound - Platform 6")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = when {
+                                    lineId == "piccadilly" -> piccadillyFromKingsCross
+                                    direction == "inbound" -> victoriaLineSouthbound
+                                    else -> victoriaLineNorthbound
+                                }
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(kingsCross, euston), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUKSX" to 150.0, "940GZZLUEUS" to 800.0),
+                            stationGroups = true,
+                            rideGrouping = RideGrouping.STOP,
+                            journeys = listOf(eustonToBrixton),
+                            farther = listOf(FartherCard(eustonPlace, FartherLoad.Open(emptyList(), mapOf("940GZZLUEUS" to 800.0)))),
+                            onOpenFarther = {},
+                            onToggleJourney = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("Euston, Platform 6", substring = true).onFirst().assertExists()
+        composeRule.onAllNodesWithContentDescription("Euston, Platform 6", substring = true).onFirst()
+            .assert(hasContentDescription("0.8 km", substring = true))
     }
 
     @Test

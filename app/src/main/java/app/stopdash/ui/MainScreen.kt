@@ -3522,7 +3522,7 @@ private fun DepartureList(
                             RideHiddenLineRow(name, onShow = { onShowRideLine(card.journey, entry) })
                         }
                     }
-                } else if (inStation) {
+                } else if (inStation && !byStop) {
                     val foldKey = "ride|${card.journey.key}"
                     val folded = foldKey in foldedStations
                     item(key = "journey-header|${card.journey.key}") {
@@ -3694,6 +3694,34 @@ private fun DepartureList(
                                 // for a far ride whose stops have no distance, how far its origin is.
                                 val stopDistance = ridePlaceMeters[group.placeKey]?.takeIf { !inStation || card.journey.bus }?.let { meters ->
                                     distanceSystem?.let { distanceText(meters, it, resources) }
+                                }
+                                // Grouped by station, headed as a station is, as a ride boarding at a listed station's stop
+                                // is ([rideGroupItems]): by the stop ➔ where it goes, with no ride heading above it.
+                                if (inStation) {
+                                    val foldKey = "ride|${card.journey.key}|${group.key}"
+                                    val folded = foldKey in foldedStations
+                                    item(key = "journey-stop|${card.journey.key}|${group.key}") {
+                                        val mode = card.journey.mode
+                                        // Heard with its platform or pole, as its own heading says it ([RideStopHeader]).
+                                        val stop = groupHeaderSpoken(group.qualifier, rememberHeaderWords())?.let { "${group.stopName}, $it" } ?: group.stopName
+                                        StationHeader(
+                                            stringResource(R.string.journey_title, stop, card.journey.to.name),
+                                            // Else, on the origin's stop, how far it is: its station's, a far ride's, or the
+                                            // stop it boards from, as the ride's own station heading says it.
+                                            stopDistance ?: (
+                                                stationDistance ?: distanceLabel
+                                                    ?: distanceSystem?.let { system -> rideMeters[card.journey.key]?.let { distanceText(it, system, resources) } }
+                                                )?.takeIf { group.key in card.originGroupKeys },
+                                            modes = listOfNotNull(ModeIcon.of(mode)),
+                                            modeIds = listOf(mode).filter { it.isNotBlank() },
+                                            folded = folded,
+                                            onToggle = { foldedStations = if (foldKey in foldedStations) foldedStations - foldKey else foldedStations + foldKey },
+                                            onOpen = onOpen,
+                                            rideForms = state.stopForms[groupIndex].joined to card.toForms,
+                                        )
+                                    }
+                                    if (!folded) rideStopCard(group.key, state.cards[groupIndex], checking)
+                                    return@forEachIndexed
                                 }
                                 item(key = "journey-stop|${card.journey.key}|${group.key}") {
                                     RideStopHeader(
@@ -4987,12 +5015,6 @@ internal class StationRide(
 /** A ride's trains boarding from one stop ([StationRide.parts]): its group [key], its heading's [fromForms] (the stop and its platform or pole). */
 internal class StationRidePart(val key: String, val fromForms: List<String>, val rows: List<Pair<DepartureRow, List<DestinationGroup>>>)
 
-/** A stop's heading forms as one list, each name form with its platform's or pole's ("King's X – Plat 5"), longest first. */
-internal fun RideStopForms.joined(): List<String> =
-    (0 until maxOf(name.size, qualifier.size, 1)).map { i ->
-        name.getOrElse(i) { name.lastOrNull().orEmpty() } + qualifier.getOrElse(i) { qualifier.lastOrNull().orEmpty() }
-    }.distinct()
-
 /**
  * The trains of the rides that join a station's card ([joinsStationCard]), from [rides] by the station each
  * boards at ([rideStation]; null for none listed, which keep their own card), put by the station each train
@@ -5023,7 +5045,7 @@ internal fun stationRideRows(
                 val rowStation = stationOf(pair.first) ?: station
                 byStation.getOrPut(rowStation) { LinkedHashMap() }.getOrPut(ride.journey.key) { mutableListOf() }.add(pair)
                 parts.getOrPut(rowStation to ride.journey.key) { LinkedHashMap() }
-                    .getOrPut(group.key) { forms.joined() to mutableListOf() }.second.add(pair)
+                    .getOrPut(group.key) { forms.joined to mutableListOf() }.second.add(pair)
                 ends[pair.first] = ride.destinationIds
                 rowJourneys[pair.first] = ride.journey
                 if (at != null) changeAt[pair.first] = at
@@ -6244,6 +6266,14 @@ internal data class JourneyCard(
  * card's groups on the worker.
  */
 internal class RideStopForms(val name: List<String>, val qualifier: List<String>) {
+    /**
+     * Its heading forms as one list, each name form with its platform's or pole's ("King's X – Plat 5"), longest first:
+     * worked out with the forms, on the worker, so a heading drawing them only reads them.
+     */
+    val joined: List<String> = (0 until maxOf(name.size, qualifier.size, 1)).map { i ->
+        name.getOrElse(i) { name.lastOrNull().orEmpty() } + qualifier.getOrElse(i) { qualifier.lastOrNull().orEmpty() }
+    }.distinct()
+
     companion object {
         fun of(group: StopGroup, words: HeaderWords = HeaderWords.ENGLISH): RideStopForms {
             val forms = groupHeaderForms(group.qualifier, words)
