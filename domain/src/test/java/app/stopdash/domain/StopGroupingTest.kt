@@ -796,4 +796,36 @@ class StopGroupingTest {
         assertEquals(listOf(listOf("T1", "T2")), stations.map { group -> group.rows.map { it.stopId } })
         assertFalse(stations.single().showHeader)
     }
+
+    @Test
+    fun `a starred train lifts its own platform, leaving the rest of its station by distance`() {
+        // King's Cross St. Pancras's Platform 1 holds a starred train; the King's Cross Station bus stop is nearer than
+        // its other platforms. The starred platform leads alone; the bus stop keeps its place before them (maintainer,
+        // 2026-10-31).
+        val platform1 = row("940GZZLUKSX", "King's Cross St. Pancras", clusterId = "HUBKGX", platform = "Northbound - Platform 1", destination = "Walthamstow Central")
+        val bus = row("490000077E", "King's Cross Station", mode = "bus", destination = "Stoke Newington")
+        val platform3 = row("940GZZLUKSX", "King's Cross St. Pancras", clusterId = "HUBKGX", platform = "Eastbound - Platform 3", destination = "Cockfosters")
+        // As the caller orders them: the starred band first, then nearest first.
+        val rows = listOf(platform1, bus, platform3)
+        val groups = StopGrouping.groupByStop(rows, warningsLead = false, lifted = { it === platform1 })
+        assertEquals(listOf("1", null, "3"), groups.map { it.platform })
+        // With nothing lifted, a place's groups stay together, as before.
+        assertEquals(listOf("1", "3", null), StopGrouping.groupByStop(rows, warningsLead = false).map { it.platform })
+        // Grouped by station, the station still leads whole with it.
+        assertEquals(listOf("1", "3", null), StopGrouping.groupByStop(rows, warningsLead = false, splitByMode = true, lifted = { it === platform1 }).map { it.platform })
+        // So does the watched list, ordered with no distances, where a warning leads its place (Codex, #1250).
+        assertEquals(listOf("1", "3", null), StopGrouping.groupByStop(rows, warningsLead = true, lifted = { it === platform1 }).map { it.platform })
+    }
+
+    @Test
+    fun `on the watched list a starred platform stays behind its station's warning`() {
+        // A suspended line's status row (no trains) at a watched station, and a starred train on another platform there:
+        // the warning leads, as before (Codex, #1250).
+        val suspended = row("940GZZLUKSX", "King's Cross St. Pancras", clusterId = "HUBKGX", lineId = "piccadilly", platform = "Westbound - Platform 4", destination = "Heathrow Terminal 5", upcoming = emptyList())
+        val starred = row("940GZZLUKSX", "King's Cross St. Pancras", clusterId = "HUBKGX", lineId = "victoria", platform = "Northbound - Platform 1", destination = "Walthamstow Central")
+        val groups = StopGrouping.groupByStop(listOf(suspended, starred), warningsLead = true, lifted = { it === starred })
+        assertTrue("the warning leads", groups.first().rows.first() === suspended)
+        assertEquals("1", groups.last().platform)
+    }
+
 }

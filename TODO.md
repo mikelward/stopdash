@@ -1610,6 +1610,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
 
 ## Phase 2 — Watched stops and settings
 
+- [ ] **Confirm a star lifts only its platform** (maintainer, 2026-10-31: "let's try your way with a to-do to
+      check/confirm"). Grouped by stop/platform, a starred row or a favorite ride's train (rides By station) now
+      lifts only its own platform's or pole's group, the rest of its station staying in distance order, so a nearer
+      stop can sit between a station's platforms. Check on a device whether the split station reads well, or
+      whether the whole station should lead again (the `groupings-platform-station` captures show it).
 - [x] **Favorite rides from a long press** (maintainer, 2026-10-23; SPEC *Journeys*). A route row's long
       press, and its route page's menu, open "Add favorite…": the row's route page titled "To…", where a tap on
       a stop saves the ride there, the list saying how it went. Nothing new is pinned.

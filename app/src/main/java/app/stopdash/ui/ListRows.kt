@@ -211,8 +211,10 @@ internal class ListCards private constructor(
             mergedPlaces: Set<String> = emptySet(),
             mergedPlaceMeters: Map<String, Double> = emptyMap(),
             mergedStationMeters: Map<String, Double> = emptyMap(),
+            // The rows a star lifted, whose own group leads ([StopGrouping.groupByStop]).
+            lifted: (DepartureRow) -> Boolean = { false },
         ): ListCards {
-            val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead, splitByMode = splitByMode)
+            val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead, splitByMode = splitByMode, lifted = lifted)
             val places = groups.mapTo(HashSet(), ::groupPlace)
             val grown = last != null && last.placeSet.all { it in places || it in mergedPlaces }
             return ListCards(
@@ -624,6 +626,7 @@ internal fun shownRowsOf(
         rows, warningsLead = stopDistanceMeters.isEmpty(), topology, splitByMode = byStation, last = last?.listCards,
         mergedPlaces = mergedAway.mapTo(HashSet()) { placeOf(it.clusterId, it.stopId) },
         mergedPlaceMeters = mergedPlaceMeters, mergedStationMeters = mergedStationMeters,
+        lifted = { StarredRow.of(it) in starred || (rideKeys.isNotEmpty() && platformRideKey(it) in rideKeys) },
     )
     return ShownRows(
         rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
