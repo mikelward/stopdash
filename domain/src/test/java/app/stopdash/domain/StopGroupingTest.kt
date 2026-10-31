@@ -787,6 +787,17 @@ class StopGroupingTest {
     }
 
     @Test
+    fun `grouped by station, a station is headed by its records' shortest name, shortened as a station's is`() {
+        // Its low-level record nearest, as St Pancras's Thameslink platforms can be.
+        val rows = listOf(
+            row("LL", "Example International LL", clusterId = "MAIN", lineId = "thameslink", mode = "national-rail"),
+            row("MAIN", "Example International", clusterId = "MAIN", lineId = "southeastern", mode = "national-rail"),
+            row("B", "Example Road", clusterId = "BUS", lineId = "19", mode = "bus"),
+        )
+        assertEquals(listOf("Example Intl", "Example Road"), StopGrouping.groupByStation(rows).map { it.stopName })
+    }
+
+    @Test
     fun `grouped by station, one station alone needs no header`() {
         val rows = listOf(
             row("T1", "Highbury", clusterId = "HIG", lineId = "victoria", platform = "Southbound - Platform 3"),

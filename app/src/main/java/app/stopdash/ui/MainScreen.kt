@@ -4177,7 +4177,7 @@ private fun DepartureList(
             }
             item(key = "station|$station") {
                 StationHeader(
-                    first.stopName,
+                    stationLayout?.names?.get(station)?.ifBlank { null } ?: first.stopName,
                     distanceLabel,
                     modes = stationLayout?.modes?.get(station).orEmpty(),
                     modeIds = stationLayout?.modeIds?.get(station).orEmpty(),
@@ -5110,8 +5110,10 @@ internal class StationLayout(
     val modes: Map<String, List<ModeIcon>> = emptyMap(),
     // And by TfL's mode ids, each once, for a screen reader to tell a place's stations apart ([modesSpoken]).
     val modeIds: Map<String, List<String>> = emptyMap(),
-    // Each station's first group, which names it and opens it.
+    // Each station's first group, which opens it.
     val firstGroups: Map<String, StopGroup> = emptyMap(),
+    // Each station's heading ([StopGrouping.stationName]): its records' shortest name, shortened as a station's is.
+    val names: Map<String, String> = emptyMap(),
     // Each station's groups, in order, for their poles' own notices (or a dismissed one's "Closed") above its card.
     val members: Map<String, List<StopGroup>> = emptyMap(),
     // The opened farther cards' groups, in card order and then station order: planned and drawn after the listed ones,
@@ -5282,6 +5284,7 @@ internal class StationLayout(
                 stationRides = stationRides,
                 loneRideRows = if (loneRideRows.isEmpty()) emptyMap() else loneRideRows,
                 firstGroups = members.mapValues { (_, stationGroups) -> stationGroups.first() },
+                names = members.mapValues { (_, stationGroups) -> StopGrouping.stationName(stationGroups.flatMap { group -> group.rows.map { it.stopName } }) },
                 members = members,
                 fartherGroups = fartherGroups,
                 fartherStart = fartherStart,
