@@ -53,7 +53,7 @@ object StopGrouping {
      * Order is preserved: places come out in the order they first appear in [rows]. Because
      * [rows] arrive already ordered (soonest-first, or closest-stop-first near me, with warnings
      * and starred rows lifted by the caller), the leading group is still the one with the
-     * soonest/closest — or most urgent — departure, and a star lifts its whole place with it. A
+     * soonest/closest — or most urgent — departure, and a star lifts its own group ([lifted]), or grouped by station its whole place. A
      * place's poles' rows stay contiguous within its group even where the flat list interleaved
      * them with another place's.
      *
@@ -70,6 +70,12 @@ object StopGrouping {
         // them), so no group mixes them: one station ID's Underground and Overground can share a platform number
         // (maintainer, 2026-10-23).
         splitByMode: Boolean = false,
+        // The rows a star lifted ([DepartureRows.pinStarred]): a starred row's, or a favorite ride's train kept in its own
+        // platform's group. Grouped by stop/platform their group leads, alone, and the rest of its place keeps its place
+        // by distance (maintainer, 2026-10-31: one starred train put a whole station above a nearer stop). Grouped by
+        // station, which heads a station once, the station still leads with it; so does the watched list
+        // ([warningsLead]), ordered with no distances, where its warnings lead.
+        lifted: (DepartureRow) -> Boolean = { false },
     ): List<StopGroup> {
         // Stop closures form NO group — the screen renders them as header-less cards that title
         // themselves on expand (SPEC *Disruptions*) — but a closure's stop is still a **place on
@@ -161,16 +167,20 @@ object StopGrouping {
         }
         fun placeRankOf(key: String): Int =
             if (warningsLead) placeRank.getValue(infoOf.getValue(key).place) else 0
+        // The groups a star lifted, each leading on its own rather than with its whole place: on the near-me list only,
+        // and not grouped by station.
+        val leads: Set<String> = if (splitByMode || warningsLead) emptySet() else byGroup.filterValues { it.any(lifted) }.keys
         val placeFirstIndex = LinkedHashMap<String, Int>()
         byGroup.keys.forEach { key ->
-            placeFirstIndex.getOrPut(infoOf.getValue(key).place) { placeFirstIndex.size }
+            if (key !in leads) placeFirstIndex.getOrPut(infoOf.getValue(key).place) { placeFirstIndex.size }
         }
         val groupIndex = byGroup.keys.withIndex().associate { (i, key) -> key to i }
         return byGroup.entries
             .sortedWith(
                 compareBy<Map.Entry<String, MutableList<DepartureRow>>>(
                     { placeRankOf(it.key) },
-                    { placeFirstIndex.getValue(infoOf.getValue(it.key).place) },
+                    { if (it.key in leads) 0 else 1 },
+                    { if (it.key in leads) 0 else placeFirstIndex.getValue(infoOf.getValue(it.key).place) },
                     { groupIndex.getValue(it.key) },
                 ),
             )

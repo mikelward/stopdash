@@ -3984,10 +3984,10 @@ private fun DepartureList(
         // Every card in first-seen order, so one landing never reorders the cards around it.
         val cards = (loadingCards.map { it to FartherCue.LOADING } + heldCards)
             .sortedBy { (place, _) -> pendingTracker.order(place.placeKey) }
-        // A place is in the starred band if any of its groups is, so no card splits a starred station.
-        val starredPlaces = if (byStation) emptySet() else {
-            listed.filter { group -> group.rows.any { StarredRow.of(it) in starred } }.mapTo(HashSet()) { it.placeKey }
-        }
+        // The groups in the starred band: those a star lifted, a starred row's or a favorite ride's train's (Group favorite
+        // rides By station), each on its own, as the list orders them ([StopGrouping.groupByStop]: the rest of their
+        // place stays by distance, so something loading slots in among them by distance too). Grouped by station, none.
+        val pinnedGroups = pinnedGroups(listed, starred, platformRideRows, byStation)
         // Each listed group's distance for slotting in what has no section yet: grouped by station, its own station's
         // (its own mode's nearest stop, [StationLayout.meters]), as the stations themselves are ordered by.
         val groupMeters = listed.map { g ->
@@ -3995,7 +3995,7 @@ private fun DepartureList(
         }
         val slots = pendingSlots(
             groupMeters,
-            listed.map { it.placeKey in starredPlaces },
+            pinnedGroups,
             cards.map { it.first },
         )
         // The near-me notices, each drawn once (SPEC *Disruptions*, [planNotices]). One whose place
@@ -4069,7 +4069,7 @@ private fun DepartureList(
         } else {
             distanceSlots(
                 groupMeters,
-                listed.map { it.placeKey in starredPlaces },
+                pinnedGroups,
                 loose.map { (notice, _) -> noticeNearest(notice)?.second },
             )
         }
@@ -5458,6 +5458,19 @@ internal fun pendingPlaces(
  * the groups past the starred band ([pinned]), as it will once loaded; one without (the watched
  * list) goes to the foot.
  */
+/**
+ * Which of [groups] are in the starred band, for [pendingSlots] and [distanceSlots]: each holding a [starred] row or a
+ * favorite ride's train kept in its platform ([rideRows]), on its own, as the list orders them
+ * ([StopGrouping.groupByStop]); none grouped by station ([byStation]), whose stations go by their own distance.
+ */
+internal fun pinnedGroups(
+    groups: List<StopGroup>,
+    starred: Set<StarredRow>,
+    rideRows: Map<DepartureRow, FavoriteJourney>,
+    byStation: Boolean,
+): List<Boolean> =
+    if (byStation) groups.map { false } else groups.map { group -> group.rows.any { StarredRow.of(it) in starred || it in rideRows } }
+
 internal fun pendingSlots(groupMeters: List<Double?>, pinned: List<Boolean>, pending: List<PendingPlace>): List<Int> =
     distanceSlots(groupMeters, pinned, pending.map { p -> p.place.meters.takeIf { p.distanced } })
 

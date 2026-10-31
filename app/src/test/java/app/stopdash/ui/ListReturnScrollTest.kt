@@ -11,10 +11,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.RideGrouping
+import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import java.time.Instant
@@ -52,9 +54,35 @@ class ListReturnScrollTest {
 
     // With [farRide], a faraway favorite ride collapsed among the farther places at the foot (SPEC *Journeys*).
     // With [twins], the last two stops one station's two records, placed by its code and read as one ([twinStations]).
-    private fun returnKeepsPlace(stationGroups: Boolean, rideGrouping: RideGrouping = RideGrouping.RIDE, farRide: Boolean = false, twins: Boolean = false) {
+    // With [split], the stops at their distances and a station among them whose starred platform leads the list, its
+    // other platform staying by distance, nearer stops between (maintainer, 2026-10-31).
+    private fun returnKeepsPlace(
+        stationGroups: Boolean,
+        rideGrouping: RideGrouping = RideGrouping.RIDE,
+        farRide: Boolean = false,
+        twins: Boolean = false,
+        split: Boolean = false,
+    ) {
         val hubs = if (twins) twinStations("S11", "S12") else null
-        val stops = if (twins) twinPlaced(stops, "S11", "S12") else stops
+        val splitStation = StopArrivals(
+            "SX", "Split Station",
+            listOf(
+                Departure("tx", "TX", "outbound", "North End", "Northbound - Platform 1", now.plusSeconds(90), "tube"),
+                Departure("tx", "TX", "inbound", "South End", "Southbound - Platform 2", now.plusSeconds(150), "tube"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val starred = if (split) {
+            setOf(StarredRow.of(DepartureRows.across(listOf(splitStation), now).first { it.destination == "North End" }))
+        } else {
+            emptySet()
+        }
+        val meters = if (split) stops.withIndex().associate { (i, stop) -> stop.stopId to 40.0 + i * 20 } + ("SX" to 150.0) else emptyMap()
+        val stops = when {
+            twins -> twinPlaced(stops, "S11", "S12")
+            split -> stops + splitStation
+            else -> stops
+        }
         val far = FavoriteJourney(JourneyEnd("FR1", "Faraway Stop"), JourneyEnd("FR2", "Faraway End"), listOf(LineRef("88", "88", "bus")))
         val scheduler = TestCoroutineScheduler()
         val worker = StandardTestDispatcher(scheduler)
@@ -75,6 +103,8 @@ class ListReturnScrollTest {
                                 listState = listState,
                                 stationGroups = stationGroups,
                                 rideGrouping = rideGrouping,
+                                stopDistanceMeters = meters,
+                                starred = starred,
                                 journeys = if (farRide) listOf(far) else emptyList(),
                                 farJourneyMeters = if (farRide) mapOf(far.key to 2400.0) else emptyMap(),
                                 farJourneys = if (farRide) listOf(far) else emptyList(),
@@ -110,6 +140,10 @@ class ListReturnScrollTest {
 
     @Test
     fun `back to the list grouped by station lands where it was left`() = returnKeepsPlace(stationGroups = true)
+
+    @Test
+    fun `back to the list grouped by platform with a starred platform leading apart from its station lands where it was left`() =
+        returnKeepsPlace(stationGroups = false, split = true)
 
     @Test
     fun `back to the list with a faraway favorite collapsed at its foot lands where it was left`() =

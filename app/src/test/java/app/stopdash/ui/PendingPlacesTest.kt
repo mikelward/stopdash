@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.StarredRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -72,6 +73,32 @@ class PendingPlacesTest {
         val near = pendingPlaces(listOf(StopRef("s", "Stop")), emptySet(), mapOf("s" to 50.0)).single()
         // A starred station's two platform groups, both in the starred band, then a place at 300 m.
         assertEquals(listOf(2), pendingSlots(listOf(900.0, 900.0, 300.0), listOf(true, true, false), listOf(near)))
+    }
+
+    @Test
+    fun `only a starred station's lifted platform is pinned, its others slotting by distance`() {
+        // King's Cross St. Pancras's Platform 1 holds a starred train and leads; the bus stop at 100 m, then the station's
+        // other platform at 900 m. A place loading at 950 m goes after that platform, not before it (Codex, #1250).
+        fun row(platform: String, stopId: String = "940GZZLUKSX", name: String = "King's Cross St. Pancras") = app.stopdash.domain.DepartureRow(
+            stopId = stopId, stopName = name, clusterId = "", stopLetter = "", bearing = "", towards = "",
+            lineId = "victoria", lineName = "Victoria", direction = "", directionKey = platform, destination = "Walthamstow Central",
+            mode = "tube", fetchedAt = java.time.Instant.EPOCH, platform = platform,
+            upcoming = listOf(
+                app.stopdash.domain.Departure("victoria", "Victoria", "", "Walthamstow Central", platform, java.time.Instant.EPOCH.plusSeconds(60), "tube"),
+            ),
+        )
+        val platform1 = row("Northbound - Platform 1")
+        val groups = app.stopdash.domain.StopGrouping.groupByStop(
+            listOf(platform1, row("", "490000077E", "King's Cross Station"), row("Eastbound - Platform 3")),
+            warningsLead = false,
+            lifted = { it === platform1 },
+        )
+        val pinned = pinnedGroups(groups, setOf(StarredRow.of(platform1)), emptyMap(), byStation = false)
+        assertEquals(listOf(true, false, false), pinned)
+        val loading = pendingPlaces(listOf(StopRef("s", "Stop")), emptySet(), mapOf("s" to 950.0)).single()
+        assertEquals(listOf(3), pendingSlots(listOf(900.0, 100.0, 900.0), pinned, listOf(loading)))
+        // Grouped by station, nothing is pinned.
+        assertEquals(listOf(false, false, false), pinnedGroups(groups, setOf(StarredRow.of(platform1)), emptyMap(), byStation = true))
     }
 
     @Test

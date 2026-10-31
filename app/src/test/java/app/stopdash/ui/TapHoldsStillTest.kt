@@ -21,7 +21,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import app.stopdash.ui.theme.StopDashTheme
@@ -77,6 +79,18 @@ class TapHoldsStillTest {
         fetchedAt = now.minusSeconds(60),
     )
 
+    // A station of two platforms among the stops, one with a starred train: grouped by platform, that platform leads the
+    // list on its own and the other keeps its place by distance, nearer stops between (maintainer, 2026-10-31).
+    private val splitStation = StopArrivals(
+        "SX", "Split Station",
+        listOf(
+            Departure("tx", "TX", "outbound", "North End", "Northbound - Platform 1", now.plusSeconds(90), "tube"),
+            Departure("tx", "TX", "inbound", "South End", "Southbound - Platform 2", now.plusSeconds(150), "tube"),
+        ),
+        fetchedAt = now.minusSeconds(60),
+    )
+    private val splitStarred = StarredRow.of(DepartureRows.across(listOf(splitStation), now).first { it.destination == "North End" })
+
     private val scheduler = TestCoroutineScheduler()
     private val worker = StandardTestDispatcher(scheduler)
     private lateinit var listState: LazyListState
@@ -117,9 +131,13 @@ class TapHoldsStillTest {
         composeRule.runOnIdle { assertTrue("the list scrolls", listState.firstVisibleItemIndex > 0) }
     }
 
-    // With [rideGrouping], a favorite ride from the first stop rides along, grouped that way.
-    private fun opensFartherInPlace(stationGroups: Boolean, rideGrouping: RideGrouping? = null) {
+    // With [rideGrouping], a favorite ride from the first stop rides along, grouped that way. With [split], a station among
+    // them whose starred platform leads the list, its other platform staying by distance, nearer stops between
+    // ([splitStation]).
+    private fun opensFartherInPlace(stationGroups: Boolean, rideGrouping: RideGrouping? = null, split: Boolean = false) {
         val journeys = if (rideGrouping == null) emptyList() else listOf(FavoriteJourney(JourneyEnd("S1", "Stop 1"), JourneyEnd("D1", "Dest 1"), listOf(LineRef("l1", "", "bus"))))
+        val stops = if (split) stops + splitStation else stops
+        val distances = if (split) distances + ("SX" to 150.0) else distances
         var farther by mutableStateOf(listOf(FartherCard(fartherPlace)))
         val departures = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
         // The activity merges an opened card's departures and distances into the list's own ([FartherMerge]).
@@ -142,6 +160,7 @@ class TapHoldsStillTest {
                             journeys = journeys,
                             onToggleJourney = {},
                             rideGrouping = rideGrouping ?: RideGrouping.RIDE,
+                            starred = if (split) setOf(splitStarred) else emptySet(),
                         )
                     }
                 }
@@ -168,6 +187,10 @@ class TapHoldsStillTest {
 
     @Test
     fun `grouped by platform, opening a faraway place holds it still`() = opensFartherInPlace(stationGroups = false)
+
+    @Test
+    fun `grouped by platform with a starred platform leading apart from its station, opening a faraway place holds it still`() =
+        opensFartherInPlace(stationGroups = false, split = true)
 
     @Test
     fun `grouped by station, opening a faraway place holds it still`() = opensFartherInPlace(stationGroups = true)

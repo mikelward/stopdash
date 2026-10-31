@@ -307,7 +307,9 @@ The app finds stops two ways:
   stop and gets no special order** — it is not hoisted above a closer stop, nor lifted within its
   own stop's section; it simply trails that stop's departures, so a nearer stop is never pushed
   below a farther one for carrying an alert. Starred rows are still pinned to the top (grouped by station, to
-  the top of their own station, *Grouped by station*). **A stop
+  the top of their own station, *Grouped by station*), their own platform's or pole's group alone: the rest of
+  its place keeps its place by distance, so one starred train never puts a whole station above a nearer stop
+  (maintainer, 2026-10-31; to be confirmed on a device, `TODO.md`). **A stop
   notice rides with its place too** (maintainer, 2026-09-26): drawn at the place's distance, not
   lifted to the top (*Disruptions*). Earlier the alert lifted its whole stop above closer ones, which read as
   the app ignoring distance. Distance orders only this location-derived list — never the
@@ -1664,7 +1666,7 @@ tight line, and a far ride's, measured to its origin, heads only the origin's st
 opens the journey's own view, where Swap direction is. Until the ride has departures to group (checking, couldn't check, none due) it keeps
 its heading, so the row or note under it says which ride. **By station** (maintainer, 2026-10-23) gives the ride no
 group at all: its trains stay in their own platform's or stop's group on the list, each with the ride's star after
-where it goes, and that group leads its place, as a starred row lifts it. A ride with a train the list doesn't show,
+where it goes, and that group leads the list alone, as a starred row lifts it. A ride with a train the list doesn't show,
 none yet, or more to say than its trains (a closure) keeps its own heading and card. Grouped by station, its trains
 lead its station's card instead (*Grouped by station*). Whichever, the journey's own view heads every group.
 
