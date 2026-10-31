@@ -81,7 +81,9 @@ class WatchPublisher(
         emptyIfNone: Boolean = false,
         // Settings → Group nearby departures is By station, which the watch heads its rows by.
         nearbyByStation: Boolean = false,
-    ): Outcome = attempt(snapshot, starred, hiddenModes, selected, routeLines, force, emptyIfNone, nearbyByStation).also(::report)
+        // Each stop's station code from the station model ([WatchEnvelope.stationCodes]); null without it.
+        stationCodeOf: ((stopId: String) -> String?)? = null,
+    ): Outcome = attempt(snapshot, starred, hiddenModes, selected, routeLines, force, emptyIfNone, nearbyByStation, stationCodeOf).also(::report)
 
     /** The last link state [report] logged, so a state that holds isn't logged on every publish. */
     private var reported: String? = null
@@ -134,12 +136,13 @@ class WatchPublisher(
         force: Boolean,
         emptyIfNone: Boolean,
         nearbyByStation: Boolean,
+        stationCodeOf: ((stopId: String) -> String?)?,
     ): Outcome {
         val snapshot = snapshot ?: if (emptyIfNone) DeparturesSnapshot(emptyList(), SteadyClock.stamp(now())) else return Outcome.NothingStored
         return try {
             // Asked first, so a phone with no watch app never builds or hashes an envelope.
             if (!channel.watchInstalled()) return Outcome.NoWatch
-            val payload = WatchEnvelopes.build(snapshot, starred, selected = selected, hiddenModes = hiddenModes, nearbyByStation = nearbyByStation, routeLines = routeLines, now = now())
+            val payload = WatchEnvelopes.build(snapshot, starred, selected = selected, hiddenModes = hiddenModes, nearbyByStation = nearbyByStation, stationCodeOf = stationCodeOf, routeLines = routeLines, now = now())
             val hash = sha256(payload.bytes)
             if (!force && hash == marker.get()) return Outcome.Unchanged
             channel.put(payload)

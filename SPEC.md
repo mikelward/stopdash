@@ -684,8 +684,8 @@ rules each screen keeps:
   takes it in. A bundle that can't be read whole leaves the model unavailable, never half-loaded.
 - **First use: a station's code.** Every nearby lookup places a station's record by its station code
   (TfL's ICS) from the model, so a station's records are one place (*Grouped by station*; maintainer,
-  2026-10-30). The near-me list and the widget also read the code to show what two records repeat once; the
-  watch doesn't yet (`TODO.md`). A station page or saved place opened from a station asks TfL for every
+  2026-10-30). The near-me list, the widget and the watch (sent each stop's code by the phone) also read the code to
+  show what two records repeat once. A station page or saved place opened from a station asks TfL for every
   record of its code, each mode's, since the place is any one of them. Every other screen still asks its own rule.
   The next steps move station identity, then hubs, onto the model, each saying here what changed.
 

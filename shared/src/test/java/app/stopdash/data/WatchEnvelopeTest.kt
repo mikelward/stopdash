@@ -413,6 +413,14 @@ class WatchEnvelopeTest {
         assertFalse(decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now)).nearbyByStation)
     }
 
+    @Test
+    fun `each sent stop's station code travels with it, none without the model`() {
+        val snapshot = DeparturesSnapshot(listOf(stop("910GEXAMPLE1", listOf(departure(2))), stop("490GEXAMPLE2", listOf(departure(3)))), now)
+        val codes = mapOf("910GEXAMPLE1" to "1009001")
+        assertEquals(codes, decoded(WatchEnvelopes.build(snapshot, emptySet(), stationCodeOf = codes::get, now = now)).stationCodes)
+        assertEquals(emptyMap<String, String>(), decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now)).stationCodes)
+    }
+
     private val bank = RoutePattern("Bank", listOf("940GA", "940GB", "940GC"), "Edgware", "Morden")
     private val charingX = RoutePattern("Charing X", listOf("940GA", "940GX", "940GC"), "Edgware", "Morden")
 
