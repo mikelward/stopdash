@@ -71,9 +71,9 @@ internal fun ShortenedText(forms: List<String>, style: TextStyle, modifier: Modi
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (display != full) Modifier.semantics { contentDescription = full } else Modifier),
+            // As wide as the form shown, not the room it was chosen for, as the one-form name is: what follows it (a
+            // ride's star) sits after it whichever form shows, where a filled width pushed it to the far edge.
+            modifier = if (display != full) Modifier.semantics { contentDescription = full } else Modifier,
         )
     }
 }
