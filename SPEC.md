@@ -3145,7 +3145,9 @@ as it was.
   the other end), or a tap on any step in the list, puts them at that step now, as if they'd just
   got there. A walk is one step and a ride two (maintainer, 2026-09-29): boarding it (its line's row)
   and **getting off it** ("Ride to …", said as a continuous action, as "Walk to …" is; maintainer, 2026-10-01), so the rider can say they're on
-  before they say they're off. Getting off is a step for Next, Back and the card, but not a row of its
+  before they say they're off. Back onto an earlier ride's getting off, its train not kept (only Back straight
+  after their own Next keeps it), is boarding that ride again instead, the next train they can catch picked: on
+  board a train nobody knows waited on "Finding your train" for one long gone (maintainer, 2026-11-01). Getting off is a step for Next, Back and the card, but not a row of its
   own in the route's legs: one row per leg, the ride's row the rider's while they board it and ride it
   (maintainer, 2026-10-03). A **change on foot** — a walk between two rides
   whose two ends are within 200 m of each other — is no step at all (maintainer, 2026-10-03). A

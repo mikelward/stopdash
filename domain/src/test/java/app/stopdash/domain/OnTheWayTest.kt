@@ -2613,9 +2613,13 @@ class OnTheWayTest {
         assertEquals("8", keptBack.vehicleId)
         assertEquals(setOf("line/2/x"), keptBack.disruptionsDismissed)
         assertEquals(setOf("line/2/x"), keptBack.disruptionsHeard)
-        // Only straight back: a step further on, the ride's getting off is picked afresh.
+        // Only straight back: from a step further on, its train isn't kept, so it's boarding the ride again, the next
+        // train they can catch picked from now, never on board one nobody knows (maintainer, 2026-11-01).
         val further = OnTheWay.atStep(walking, OnTheWay.Step(2), at(10))
-        assertEquals("", OnTheWay.atStep(further, OnTheWay.Step(0, onBoard = true), at(11)).vehicleId)
+        val boardAgain = OnTheWay.atStep(further, OnTheWay.Step(0, onBoard = true), at(11))
+        assertEquals(Triple(0, "", false), Triple(boardAgain.legIndex, boardAgain.vehicleId, boardAgain.boarded))
+        assertEquals(at(11), boardAgain.legStartedAt)
+        assertEquals(TripProgress.Waiting(placed.leg!!, null), OnTheWay.advance(boardAgain, null, at(11)).second)
         // On board with no train named: Back is on board as they said then, not from the Back tap,
         // which would look for one at the platform by then (Codex, PR #384).
         val unnamed = OnTheWay.atStep(placed, OnTheWay.Step(0, onBoard = true), at(4))
@@ -2624,6 +2628,22 @@ class OnTheWayTest {
         assertTrue(unnamedBack.boarded)
         assertEquals(unnamed.legStartedAt, unnamedBack.legStartedAt)
         assertEquals(unnamed.boardedAt, unnamedBack.boardedAt)
+    }
+
+    @Test
+    fun `Back onto a ride the trip moved on from by itself is boarding it again`() {
+        // Taken on board by its train leaving, then moved on by the train reaching C: the walk. Back: on board a train
+        // long gone would wait on "Finding your train" for good (maintainer's report, 2026-11-01), so it's boarding A again.
+        val assumed = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        val dueOff = OnTheWay.advance(assumed, listOf(call("B", 11), call("C", 14)), at(10)).first
+        val walking = OnTheWay.advance(dueOff, emptyList(), at(16)).first
+        assertEquals(1, walking.legIndex)
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepBefore(walking))
+        val back = OnTheWay.atStep(walking, OnTheWay.stepBefore(walking)!!, at(17))
+        assertEquals(OnTheWay.Step(0), OnTheWay.stepOf(back))
+        assertEquals("", back.vehicleId)
+        assertFalse(back.boarded)
+        assertEquals(at(17), back.legStartedAt)
     }
 
     @Test
