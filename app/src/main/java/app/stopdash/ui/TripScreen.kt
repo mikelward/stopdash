@@ -3193,7 +3193,7 @@ private fun CardHeader(
 ) {
     val estimate = card.first()
     if (estimate.route.rides.isEmpty()) return RouteSummary(card, rideLines, statuses)
-    val fare = estimate.route.fare
+    val fare = estimate.fare
     val density = LocalDensity.current
     val columnWidth = slotWidth ?: with(density) { linePillWidthPx(density, MaterialTheme.typography.labelLarge.fontSize).toDp() }
     val gap = with(density) { 12.dp.roundToPx() }
@@ -3452,7 +3452,7 @@ private fun RouteLegs(
             item(key = "directFailed") { PlanNotice(stringResource(R.string.trip_direct_replan_failed), state.planning, onRetry) }
         }
         item(key = "summary") { RouteSummary(listOf(estimate), rideLines, view.statuses, Modifier.padding(vertical = 8.dp)) }
-        estimate.route.fare?.let { fare -> item(key = "fare") { RouteFare(fare) } }
+        estimate.fare?.let { fare -> item(key = "fare") { RouteFare(fare) } }
         item(key = "status") { DisruptionsRow(row) }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {

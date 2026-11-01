@@ -2956,6 +2956,16 @@ the first, so a route riding only London buses, on lines the plan priced, boarde
 takes the plan's own bus fare, where the plan's priced bus routes all agree on it. That's the Planner's
 price for those buses, not a guess; a route with any other part stays blank.
 The level is named only where every part of the route is charged at it; a bus part has none.
+**Peak or off-peak by when the rider boards** (maintainer, 2026-11-01, after a card boarding a train at
+09:15 showed its off-peak price beside the peak one for the same train). The Planner prices each part at
+its own timetabled times, which a live card moves away from, and it misplaces the peak's edges by a few
+minutes besides (a 09:26 train charged off-peak). So each part it priced both ways (it gives the peak
+and off-peak price with every tube or rail charge) is charged at TfL's published hours for the time the
+card says the rider boards it, or the Planner's own time where the card has none: peak on weekdays but
+bank holidays, touching in 06:30–09:30 and 16:00–19:00, except into zone 1 in the evening (TfL's
+counter-flow fare). The total moves by what each part moved, so a Hopper discount stays off, and
+*Cheapest* compares the fares as the cards show them. A holiday declared for an occasion isn't known,
+and is charged as its weekday.
 
 **A later trip** (maintainer, 2026-10-15). *Change time…* in the trip's overflow plans the same
 trip — the same ends, stop it goes via, walk, step-free level, modes and lines avoided — for a time the rider picks:

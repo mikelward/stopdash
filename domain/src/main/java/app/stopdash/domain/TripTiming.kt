@@ -65,6 +65,10 @@ object TripTiming {
         // The legs, by index, whose timetable [estimate] asked for ([schedule]): reached past their
         // live predictions, so a timetable fetched for them may time them better.
         val scheduleAsked: Set<Int> = emptySet(),
+        // What the route costs boarded when [legs] board ([PeakFare]), rather than at the Planner's own
+        // times: a card timed from live trains reached later or sooner than the Planner's can fall the
+        // other side of the peak's edge.
+        val fare: TripFare? = route.fare,
     ) {
         /** Door-to-door time from now, or null when the arrival is withheld. */
         val duration: Duration? get() = arrival?.let { Duration.between(start, it) }
@@ -315,7 +319,8 @@ object TripTiming {
             late?.minus(route.legs.lastOrNull()?.changeAfter ?: Duration.ZERO)?.let { Duration.between(arrival, it).coerceAtLeast(Duration.ZERO) }
         }
         val onDelayed = rides.any { (index, leg) -> decides(index, leg.lineId, delayed) }
-        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access, onDelayed, scheduleAsked)
+        val fare = route.fare?.let { PeakFare.charged(it, route, legs) }
+        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access, onDelayed, scheduleAsked, fare)
     }
 
     // One leg timed by [estimate]: its [timing], the [basis] behind it, whether it boards a frequent
@@ -460,9 +465,13 @@ object TripTiming {
             ?.takeIf { walksLess(it.route, estimates.first().route) }
         // Of routes costing least, the first that costs less than the first route: against an unpriced
         // one only a bus fare can, so a tram at that fare listed first doesn't hide the bus (Codex, #906).
-        val priced = estimates.filter { it.route.fare != null }
-        val lowest = priced.minOfOrNull { checkNotNull(it.route.fare).pence }
-        val cheapest = priced.firstOrNull { checkNotNull(it.route.fare).pence == lowest && costsLess(it.route, estimates.first().route) }
+        // Each at its fare as boarded ([Estimate.fare]), as its card shows it.
+        val priced = estimates.filter { it.fare != null }
+        val lowest = priced.minOfOrNull { checkNotNull(it.fare).pence }
+        val cheapest = priced.firstOrNull {
+            val first = estimates.first()
+            checkNotNull(it.fare).pence == lowest && costsLess(it.route, first.route, it.fare, first.fare)
+        }
         return estimates.filter { route ->
             if (route === leastWalking || route === cheapest || found(route)) return@filter true
             val arrival = rankedArrival(route) ?: return@filter true
@@ -486,11 +495,11 @@ object TripTiming {
     /**
      * Whether [route] costs less than [than], as the *Cheapest* header goes ([routeLabels]): both priced,
      * by any amount, or [route] on one bus fare and [than] unpriced but riding a train, which costs more
-     * ([BusFare.costsMoreThanABus]).
+     * ([BusFare.costsMoreThanABus]). [fare] and [thanFare] are what each costs, the Planner's own by default.
      */
-    fun costsLess(route: TripRoute, than: TripRoute): Boolean {
-        val fare = route.fare ?: return false
-        val other = than.fare ?: return BusFare.onOneBusFare(route) && BusFare.costsMoreThanABus(than)
+    fun costsLess(route: TripRoute, than: TripRoute, fare: TripFare? = route.fare, thanFare: TripFare? = than.fare): Boolean {
+        fare ?: return false
+        val other = thanFare ?: return BusFare.onOneBusFare(route) && BusFare.costsMoreThanABus(than)
         return fare.pence < other.pence
     }
 

@@ -53,7 +53,7 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
     val walking = cards.map { it.route.walking }
     val least = walking.min()
     if (least < walking.max()) walking.forEachIndexed { i, walk -> if (walk == least) labels[i] += RouteLabel.LEAST_WALKING }
-    val fares = cards.map { it.route.fare?.pence }
+    val fares = cards.map { it.fare?.pence }
     val lowest = fares.filterNotNull().minOrNull() ?: return labels
     val atLowest = fares.indices.filter { fares[it] == lowest }
     val busFare = atLowest.any { BusFare.onOneBusFare(cards[it].route) }
