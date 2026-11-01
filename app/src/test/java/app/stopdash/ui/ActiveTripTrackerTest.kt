@@ -2432,6 +2432,55 @@ class ActiveTripTrackerTest {
         app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, longitude), isFallback = false, accuracyMeters = accuracy, ageMillis = 1_000L)
 
     @Test
+    fun `a train taken as boarded by leaving is let go by a sure fix away from the stop and the line`() = runTest {
+        // Maintainer's report, 2026-11-01: the train left, so the trip told them "next stop" while sure fixes had
+        // them on the street beside the station all along.
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(7)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        // 3 has left A, with nothing seen: taken on board, as before.
+        departures["A"] = listOf(train("4", 12))
+        trains["3"] = listOf(call("B", 11), call("C", 14))
+        trains["4"] = listOf(call("A", 12), call("B", 15), call("C", 18))
+        now = at(9)
+        tracker.refresh()
+        assertTrue(tracker.trip.value?.boarded == true)
+        // Seen 280 m east of A, sure to 12 m: nowhere 3 could have taken them. The next train they can catch is followed.
+        tracker.refresh(fixAt(51.5, longitude = -0.116, accuracy = 12f))
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.trip.value?.boarded == false)
+        assertEquals(TripProgress.Waiting(ride, at(12)), tracker.progress.value)
+        assertTrue(logged.contains("on the way: a sure fix away from the boarding stop and the ride on line red: not on the train followed, let go"))
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
+    fun `a fix grown old over a slow route read doesn't let go of a train taken as boarded`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(7)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = listOf(train("4", 12))
+        trains["3"] = listOf(call("B", 11), call("C", 14))
+        trains["4"] = listOf(call("A", 12), call("B", 15), call("C", 18))
+        now = at(9)
+        tracker.refresh()
+        // A second old as it comes, then the route's read takes ten more: no longer where they are (Codex, #1252).
+        sequenceTakes = 10_000L
+        tracker.refresh(fixAt(51.5, longitude = -0.116, accuracy = 12f))
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.trip.value?.boarded == true)
+    }
+
+    @Test
     fun `a rider seen along the ride while its train is awaited is on the train that left`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine

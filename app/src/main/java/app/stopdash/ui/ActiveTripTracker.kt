@@ -1672,6 +1672,21 @@ class ActiveTripTracker(
         val followed = _trip.value?.vehicleId.orEmpty()
         val before = _trip.value ?: return false
         var trip = OnTheWay.seen(before, seenRider, now, places)
+        // Taken on board only by its train leaving, and a sure fix says otherwise: away from the stop and the ride's
+        // way alike (maintainer, 2026-11-01). Its stops placed by the line's route, read only for a fix that could say.
+        if (trip.legIndex == before.legIndex && trip.boarded && !trip.onBoardSeen && seenRider?.let(OnTheWay::usableFix) != null) {
+            OnTheWay.ridden(trip)?.takeIf { !it.isWalk }?.let { on ->
+                val positions = routeOf(on.lineId)?.let { route -> withContext(compute) { OnTheWay.ridePositions(on, route) } }.orEmpty()
+                // Aged by the route's read: after a slow TfL, a fix fresh before it may be where the rider was, not where
+                // they are, and no proof they didn't board since (Codex, #1252), as [boardedAlong] ages its own.
+                val fresh = aged(seenRider, Duration.ofMillis(elapsed() - seenAt))
+                val missed = withContext(compute) { OnTheWay.contradictedBoarding(trip, on, fresh, positions, now) }
+                if (missed !== trip) {
+                    warn("on the way: a sure fix away from the boarding stop and the ride on line ${on.lineId}: not on the train followed, let go")
+                    trip = missed
+                }
+            }
+        }
         // What a fix moved the trip on by, never where: a point or an entrance.
         if (trip.legIndex != before.legIndex) {
             OnTheWay.seenAtStop(before, seenRider, now, places)?.let { warn("on the way: seen at the stop by ${it.label}") }

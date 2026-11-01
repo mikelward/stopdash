@@ -1981,6 +1981,51 @@ class OnTheWayTest {
         assertEquals(onBoard, OnTheWay.seen(onBoard, fix(near, 50f), at(7)))
     }
 
+    // The ride's stops placed: A at the platform, B 550 m north, C 1.1 km north.
+    private val rideStops = mapOf("A" to platform, "B" to Coordinates(51.505, -0.12), "C" to Coordinates(51.51, -0.12))
+
+    @Test
+    fun `a boarding only assumed is taken back by a sure fix away from the stop and the ride alike`() {
+        // Taken on board by the train leaving, nothing seen; the rider is still 280 m east of the stop, beside it, no nearer
+        // any stop of the ride (maintainer's report, 2026-11-01: told "next stop" from the street).
+        val assumed = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        val beside = fix(Coordinates(51.5, -0.116), 12f)
+        val missed = OnTheWay.contradictedBoarding(assumed, placed.leg!!, beside, rideStops, at(6))
+        assertEquals("", missed.vehicleId)
+        assertFalse(missed.boarded)
+        assertEquals(at(6), missed.legStartedAt)
+        // On a ride of one stop, where it gets off is all there is to place: the line's route not read, it's enough.
+        val oneStop = placed.leg!!.copy(toId = "B", toName = "B", path = listOf("B"), toAt = rideStops.getValue("B"))
+        assertFalse(OnTheWay.contradictedBoarding(assumed, oneStop, beside, emptyMap(), at(6)).boarded)
+    }
+
+    @Test
+    fun `a boarding only assumed stands while the fix is silent or could be on the train`() {
+        val assumed = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        val leg = placed.leg!!
+        // 250 m on up the line: on the way to B, as a rider on the train would be.
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, fix(Coordinates(51.50225, -0.12), 12f), rideStops, at(6)))
+        // The same spot beside the stop, where the line bends east to B: on its way.
+        val bending = rideStops + ("B" to Coordinates(51.5, -0.112))
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, fix(Coordinates(51.5, -0.116), 12f), bending, at(6)))
+        val beside = fix(Coordinates(51.5, -0.116), 12f)
+        // A vague fix, or one half a minute old, says nothing.
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, beside.copy(accuracyMeters = 80f), rideStops, at(6)))
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, beside.copy(ageMillis = 30_000L), rideStops, at(6)))
+        // Still at the stop: the left-behind check's to judge ([OnTheWay.seen]), after its minute.
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, stillThere, rideStops, at(6)))
+        // No later stop placed, or only where it gets off with a stop between: a line that bends away first could have
+        // them on it no nearer the end (Codex, #1252).
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, beside, emptyMap(), at(6)))
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg.copy(toAt = rideStops.getValue("C")), beside, emptyMap(), at(6)))
+        assertEquals(assumed, OnTheWay.contradictedBoarding(assumed, leg, beside, rideStops - "B", at(6)))
+        // Seen on board, or on board by their word: never second-guessed.
+        assertEquals(assumed.copy(onBoardSeen = true), OnTheWay.contradictedBoarding(assumed.copy(onBoardSeen = true), leg, beside, rideStops, at(6)))
+        // Not on board yet: nothing assumed to take back.
+        val waiting = OnTheWay.follow(placed, train("8", 5))
+        assertEquals(waiting, OnTheWay.contradictedBoarding(waiting, leg, beside, rideStops, at(4)))
+    }
+
     @Test
     fun `a fix taken a while ago isn't used, however sure it was then`() {
         val fresh = stillThere.copy(ageMillis = 2_000L)
