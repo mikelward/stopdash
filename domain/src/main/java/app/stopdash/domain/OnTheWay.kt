@@ -3147,7 +3147,7 @@ object OnTheWay {
      * [ON_BOARD_GRACE] from the stop isn't the one they're on, so it's let go and one at the platform
      * picked the same way. Their word is dated past the left-behind check ([seen]), which only
      * second-guesses that assumption, so a train still standing at the platform can't have it taken
-     * back.
+     * back. On board an earlier ride whose train isn't kept is boarding it instead: no train to be on is known.
      */
     @WorkerThread
     fun atStep(trip: ActiveTrip, step: Step, now: Instant): ActiveTrip {
@@ -3165,6 +3165,10 @@ object OnTheWay {
                     ),
                 )
             }
+        // Back to an earlier ride's on-board step with its train not kept (the trip moved on by itself, or other steps
+        // came since): back to boarding it, the next train they can catch picked, never on board a train nobody knows,
+        // which waited on "Finding your train" for one already gone (maintainer, 2026-11-01).
+        val step = if (step.onBoard && step.leg < trip.legIndex) Step(step.leg) else step
         val moved = if (!step.onBoard) {
             atLeg(trip, step.leg, now)
         } else {
