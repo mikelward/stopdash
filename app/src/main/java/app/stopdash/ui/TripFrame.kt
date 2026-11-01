@@ -113,6 +113,10 @@ internal class TripCardView(
     // [ride]'s line's route, both ways, where it has loaded: what tells a bus ride's way back, from across the road, for
     // the ride saved already ([Journeys.savedAlready]).
     val rideRoute: LineSequence? = null,
+    // The walk after the last ride where it's long enough to show ([walkToEnd]), and the forms where it ends shortens
+    // through; null where it isn't.
+    val endWalk: Duration? = null,
+    val endForms: List<String>? = null,
 )
 
 /**
@@ -248,6 +252,7 @@ private fun listView(
     }
     // The row over the cards is the list's own work ([rememberTripRow]), kept apart so it outlives an open route.
     val views = cards.map { card ->
+        val endWalk = walkToEnd(card.first().route)
         // Every route's on the card: another line's ride may use another pole of the pair.
         val closures = card.fold(emptyMap<String, DepartureRow>()) { found, estimate -> found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf) }
         TripCardView(
@@ -267,6 +272,8 @@ private fun listView(
             rideModes = card.first().route.rides.mapNotNull { ModeIcon.of(it.mode) },
             ride = card.first().route.rides.singleOrNull()?.let(Journeys::ofLeg),
             rideRoute = card.first().route.rides.singleOrNull()?.let { sequences[it.lineId] },
+            endWalk = endWalk?.first,
+            endForms = endWalk?.second?.let { DestinationAbbreviations.forms(it) },
         )
     }
     // The list takes every route's warnings.
