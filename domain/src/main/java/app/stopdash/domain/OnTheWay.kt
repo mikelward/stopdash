@@ -2868,11 +2868,39 @@ object OnTheWay {
         // Wherever within its uncertainty the rider really is, they're still that close: a fix 140 m out
         // but only sure to 50 m could be a rider already moving off on the train.
         if (!near(rider, at, MISSED_WITHIN_METERS)) return trip
-        return asPlanned(trip).copy(
-            vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, heldFrom = null,
-            legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt, onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null,
-        )
+        return leftBehind(trip, now)
     }
+
+    /**
+     * [trip] once a sure fix ([usableFix]) contradicts a boarding it only assumed, its train having left the stop
+     * with nothing seen (maintainer, 2026-11-01: "it can only assume when silent, not when contradicted"): the
+     * rider seen clear of the boarding stop (further than [MISSED_WITHIN_METERS], the fix's uncertainty against
+     * it) and no nearer any of [on]'s later stops ([positions], [ridePositions]) than the boarding stop is, by
+     * more than that, so nowhere a train on the ride could have taken them: still waiting somewhere off the way,
+     * or never there. Not on it, so the next train they can catch is picked, as for a rider [seen] still at the
+     * stop. A rider on board is on the ride's way, nearer some stop of it by far, however it bends; one seen on
+     * board, or on board by their word, is never second-guessed. Unchanged unless every stop past the boarding one is
+     * placed. [on] is the ride as the followed train's line runs it ([ridden]).
+     */
+    @WorkerThread
+    fun contradictedBoarding(trip: ActiveTrip, on: TripLeg, rider: LocationFix?, positions: Map<String, Coordinates>, now: Instant): ActiveTrip {
+        if (on.isWalk || !trip.boarded || trip.onBoardSeen || trip.boardedAt == null) return trip
+        val fix = rider?.let(::usableFix) ?: return trip
+        val accuracy = fix.accuracyMeters?.toDouble() ?: return trip
+        val boarding = positions[on.fromId] ?: on.fromAt ?: trip.leg?.fromAt ?: return trip
+        if (distance(fix.coordinates, boarding) - accuracy <= MISSED_WITHIN_METERS) return trip
+        // Every later stop placed, or nothing is judged: without the stops between, a line that bends away first could
+        // put a rider on it no nearer where they get off (Codex, #1252). A ride of one stop has none between.
+        val later = (on.path + on.toId).distinct().map { id -> positions[id] ?: on.toAt?.takeIf { id == on.toId } ?: return trip }
+        val onTheWay = later.any { stop -> distance(boarding, stop) - distance(fix.coordinates, stop) + accuracy > MISSED_WITHIN_METERS }
+        return if (onTheWay) trip else leftBehind(trip, now)
+    }
+
+    // [trip] with the train it took the rider to be on let go: waiting again from [now] for the next they can catch.
+    private fun leftBehind(trip: ActiveTrip, now: Instant): ActiveTrip = asPlanned(trip).copy(
+        vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, heldFrom = null,
+        legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt, onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null,
+    )
 
     /**
      * Where [rider] is seen at a station placed at [placed] (the Planner's point, when it gives one)
