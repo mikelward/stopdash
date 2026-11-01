@@ -257,7 +257,7 @@ fun publicHoliday(date: LocalDate): Boolean {
 }
 
 // Easter Sunday in the Gregorian calendar (the anonymous Gregorian algorithm).
-private fun easterSunday(year: Int): LocalDate {
+internal fun easterSunday(year: Int): LocalDate {
     val a = year % 19
     val b = year / 100
     val c = year % 100

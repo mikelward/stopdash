@@ -343,10 +343,32 @@ fun mergedRoutes(first: List<TripRoute>, second: List<TripRoute>): List<TripRout
  * go fare in [pence], for the time the route was planned at, Hopper discounts included. [level] is
  * whether that's the peak or off-peak fare, where every priced part of the route says the same; null
  * where they differ or don't say (a bus fare has no peak). [pinkReader] where the Planner warns that
- * the fare is only right if the rider touches a pink reader where they change.
+ * the fare is only right if the rider touches a pink reader where they change. [parts] are the
+ * Planner's charges that make it up, each with its peak and off-peak price where it gave both, so
+ * [PeakFare] can charge each at the time the rider boards; empty where the Planner itemized none.
  */
-data class TripFare(val pence: Int, val level: Level? = null, val pinkReader: Boolean = false) {
+data class TripFare(
+    val pence: Int,
+    val level: Level? = null,
+    val pinkReader: Boolean = false,
+    val parts: List<Part> = emptyList(),
+) {
     enum class Level { PEAK, OFF_PEAK }
+
+    /**
+     * One of the Planner's charges: [pence] at its [level] (null for a bus, which has no peak), its
+     * [peak] and [offPeak] prices where it gave both, whether it's a journey into zone 1 against the
+     * evening rush ([counterflow]: TfL's "Inbound CF", off-peak then), and when the rider touches in
+     * for it by the Planner's times ([tapIn]).
+     */
+    data class Part(
+        val pence: Int,
+        val level: Level? = null,
+        val peak: Int? = null,
+        val offPeak: Int? = null,
+        val counterflow: Boolean = false,
+        val tapIn: Instant? = null,
+    )
 
     /** The fare as a price, "£3.10", always in pounds whatever the device's locale. */
     val label: String get() = "£%d.%02d".format(java.util.Locale.ROOT, pence / 100, pence % 100)

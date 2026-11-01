@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.PeakFare
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -10,6 +11,7 @@ import app.stopdash.domain.riderLineName
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import kotlinx.serialization.Serializable
@@ -24,23 +26,31 @@ import kotlinx.serialization.Serializable
 data class TflJourneyResultsDto(val journeys: List<TflJourneyDto> = emptyList()) {
     /**
      * [now] places a London time the clocks' autumn rollback makes ambiguous ([londonTime]);
-     * [stationOf] names the station a train's platform is at ([TflJourneyPointDto.stopId]).
+     * [stationOf] names the station a train's platform is at ([TflJourneyPointDto.stopId]);
+     * [onBadTapTime] hears of a fare touch-in time that couldn't be read ([TflFareDto.toPart]).
      */
-    fun toRoutes(now: Instant = Instant.now(), stationOf: (String) -> String? = { null }): List<TripRoute> =
-        journeys.mapNotNull { it.toRouteOrNull(now, stationOf) }
+    fun toRoutes(
+        now: Instant = Instant.now(),
+        stationOf: (String) -> String? = { null },
+        onBadTapTime: (DateTimeParseException) -> Unit = {},
+    ): List<TripRoute> = journeys.mapNotNull { it.toRouteOrNull(now, stationOf, onBadTapTime) }
 }
 
 @Serializable
 data class TflJourneyDto(val legs: List<TflJourneyLegDto> = emptyList(), val fare: TflJourneyFareDto? = null) {
     /** Null for a journey with a leg that can't be read, so a half-understood route is never shown. */
-    fun toRouteOrNull(now: Instant = Instant.now(), stationOf: (String) -> String? = { null }): TripRoute? {
+    fun toRouteOrNull(
+        now: Instant = Instant.now(),
+        stationOf: (String) -> String? = { null },
+        onBadTapTime: (DateTimeParseException) -> Unit = {},
+    ): TripRoute? {
         // Each time is read after the one before it (and its change time), so a journey across the
         // autumn rollback runs forward rather than jump back an hour.
         var after: Instant? = null
         val legs = legs.map { dto ->
             dto.toLegOrNull(now, after, stationOf)?.also { after = it.arrival.plus(it.changeAfter) } ?: return null
         }
-        return TripRoute(legs, fare?.toFareOrNull()).takeIf { legs.isNotEmpty() }
+        return TripRoute(legs, fare?.toFareOrNull(onBadTapTime)).takeIf { legs.isNotEmpty() }
     }
 
     /** Whether it rides a service no route through can be followed on ([TflJourneyLegDto.unfollowable]). */
@@ -62,7 +72,7 @@ data class TflJourneyFareDto(
      * The route's [TripFare], or null where there's no price to stand behind: none given, or 0, which
      * StopDash won't show as a free ride it can't vouch for.
      */
-    fun toFareOrNull(): TripFare? {
+    fun toFareOrNull(onBadTapTime: (DateTimeParseException) -> Unit = {}): TripFare? {
         val pence = totalCost?.takeIf { it > 0 } ?: return null
         // A level only where every part of the route is charged at it: a bus part has none, and a route
         // charged peak on one part and off-peak on another has no one level to name.
@@ -72,11 +82,15 @@ data class TflJourneyFareDto(
             "off peak" -> TripFare.Level.OFF_PEAK
             else -> null
         }
-        return TripFare(
+        val fare = TripFare(
             pence = pence,
             level = level,
             pinkReader = caveats.any { it.type.equals(PINK_READER, ignoreCase = true) },
+            parts = fares.map { it.toPart(onBadTapTime) },
         )
+        // Each charge with both prices at TfL's published hours for the Planner's own touch-in, as the
+        // Planner misplaces the edges of the peak by a few minutes ([PeakFare]).
+        return PeakFare.charged(fare)
     }
 
     private companion object {
@@ -84,8 +98,55 @@ data class TflJourneyFareDto(
     }
 }
 
+/**
+ * One of a journey's charges: its [cost] at its [chargeLevel], the [peak] and [offPeak] prices it would
+ * be at each (0 for a bus, which has neither), its [chargeProfileName] ("Inbound CF" for a journey into
+ * zone 1 against the evening rush) and where and when it's touched for ([taps]).
+ */
 @Serializable
-data class TflFareDto(val chargeLevel: String = "")
+data class TflFareDto(
+    val chargeLevel: String = "",
+    val cost: Int = 0,
+    val peak: Int = 0,
+    val offPeak: Int = 0,
+    val chargeProfileName: String = "",
+    val taps: List<TflFareTapDto> = emptyList(),
+) {
+    /** The charge as a [TripFare.Part]; [onBadTapTime] hears of a touch-in time that couldn't be read. */
+    fun toPart(onBadTapTime: (DateTimeParseException) -> Unit = {}): TripFare.Part = TripFare.Part(
+        pence = cost,
+        level = when (chargeLevel.trim().lowercase().replace('-', ' ')) {
+            "peak" -> TripFare.Level.PEAK
+            "off peak" -> TripFare.Level.OFF_PEAK
+            else -> null
+        },
+        // Both prices only where the Planner gave both; a bus's zeros aren't a free ride at either.
+        peak = peak.takeIf { it > 0 && offPeak > 0 },
+        offPeak = offPeak.takeIf { it > 0 && peak > 0 },
+        counterflow = chargeProfileName.trim().equals(COUNTERFLOW, ignoreCase = true),
+        // Touched in at its first tap: the timestamp carries its offset, so it reads unambiguously.
+        tapIn = taps.firstOrNull()?.tapDetails?.tapTimestamp?.let { stamp ->
+            try {
+                OffsetDateTime.parse(stamp).toInstant()
+            } catch (e: DateTimeParseException) {
+                // No time: the charge stays at the Planner's own level, as it priced it, rather than one
+                // guessed at; the caller logs it, so a fare left uncorrected says why.
+                onBadTapTime(e)
+                null
+            }
+        },
+    )
+
+    private companion object {
+        const val COUNTERFLOW = "Inbound CF"
+    }
+}
+
+@Serializable
+data class TflFareTapDto(val tapDetails: TflFareTapDetailsDto = TflFareTapDetailsDto())
+
+@Serializable
+data class TflFareTapDetailsDto(val tapTimestamp: String = "")
 
 @Serializable
 data class TflFareCaveatDto(val type: String = "")

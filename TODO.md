@@ -2969,6 +2969,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               route opened off the later list landing on that list.
         - [ ] A row of its own in the From/To bar, if the overflow proves too hidden (maintainer chose the
               overflow for now, 2026-10-15).
+        - [ ] **Check the Planner's `time` in summer time.** Unconfirmed (seen 2026-10-21): during summer
+              time, asking TfL's Planner for 09:15 answered trains from 10:20, as if it read `time` as
+              UTC. If it holds, a later trip lists routes an hour late from late March to late October.
+              Re-check once the clocks go forward, against a timetable.
         - [ ] **Read the repeated autumn hour from TfL's durations?** Open question (maintainer,
               2026-10-15: a separate PR if at all, a corner case; not to be built yet). A Planner time
               is a bare London clock time, so in 01:00–01:59 the night the clocks go back the decoder

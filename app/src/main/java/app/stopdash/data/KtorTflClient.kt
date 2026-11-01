@@ -477,7 +477,10 @@ class KtorTflClient(
                 return@tflRequest emptyList()
             }
             // A later trip's times read about its own time, not now ([TripTime.readFrom]), for the hour the clocks go back.
-            val routes = dto.toRoutes(now = at?.readFrom ?: Instant.now(), stationOf = stationOf)
+            val routes = dto.toRoutes(now = at?.readFrom ?: Instant.now(), stationOf = stationOf) { e ->
+                // The type alone: the timestamp is TfL's, but the message quotes it whole.
+                warn("$source: unreadable fare touch-in time (${e::class.simpleName}); charged at the Planner's level")
+            }
             // Journeys offered but none readable: not "no routes" (which would be reused as a real answer
             // for the plan's lifetime). Each riding a service TfL names no line or stop for is the
             // Planner's answer, said as that; else a decode failure.

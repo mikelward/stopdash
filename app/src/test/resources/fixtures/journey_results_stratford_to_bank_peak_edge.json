@@ -1,0 +1,298 @@
+{
+  "journeys": [
+    {
+      "startDateTime": "2026-11-04T09:28:00",
+      "duration": 12,
+      "arrivalDateTime": "2026-11-04T09:40:00",
+      "legs": [
+        {
+          "departureTime": "2026-11-04T09:28:00",
+          "arrivalTime": "2026-11-04T09:40:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUSTD",
+            "icsCode": "1000226",
+            "individualStopId": "9400ZZLUSTD2",
+            "commonName": "Stratford Underground Station",
+            "lat": 51.541694451168,
+            "lon": -0.0033333414029999998
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUBNK",
+            "icsCode": "1000013",
+            "individualStopId": "9400ZZLUBNK2",
+            "commonName": "Bank Underground Station",
+            "lat": 51.513394268096,
+            "lon": -0.088594600755
+          },
+          "routeOptions": [
+            {
+              "name": "Central",
+              "directions": [
+                "West Ruislip Underground Station"
+              ],
+              "lineIdentifier": {
+                "id": "central",
+                "name": "Central"
+              }
+            }
+          ],
+          "mode": {
+            "id": "tube",
+            "name": "tube"
+          },
+          "path": {
+            "stopPoints": [
+              {
+                "id": "940GZZLUMED",
+                "name": "Mile End Underground Station"
+              },
+              {
+                "id": "940GZZLUBLG",
+                "name": "Bethnal Green Underground Station"
+              },
+              {
+                "id": "940GZZLULVT",
+                "name": "Liverpool Street Underground Station"
+              },
+              {
+                "id": "940GZZLUBNK",
+                "name": "Bank Underground Station"
+              }
+            ]
+          },
+          "duration": 12
+        }
+      ],
+      "fare": {
+        "totalCost": 310,
+        "fares": [
+          {
+            "lowZone": 1,
+            "highZone": 2,
+            "cost": 310,
+            "chargeProfileName": "Inbound CF",
+            "isHopperFare": false,
+            "chargeLevel": "Off Peak",
+            "peak": 360,
+            "offPeak": 310,
+            "taps": [
+              {
+                "atcoCode": "940GZZLUSTD",
+                "tapDetails": {
+                  "modeType": "Rail",
+                  "validationType": "None",
+                  "tapTimestamp": "2026-11-04T09:28:00+00:00"
+                }
+              },
+              {
+                "atcoCode": "940GZZLUBNK",
+                "tapDetails": {
+                  "modeType": "Rail",
+                  "validationType": "None",
+                  "tapTimestamp": "2026-11-04T09:40:00+00:00"
+                }
+              }
+            ]
+          }
+        ],
+        "caveats": []
+      }
+    },
+    {
+      "startDateTime": "2026-11-04T09:30:00",
+      "duration": 12,
+      "arrivalDateTime": "2026-11-04T09:42:00",
+      "legs": [
+        {
+          "departureTime": "2026-11-04T09:30:00",
+          "arrivalTime": "2026-11-04T09:42:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUSTD",
+            "icsCode": "1000226",
+            "individualStopId": "9400ZZLUSTD2",
+            "commonName": "Stratford Underground Station",
+            "lat": 51.541694451168,
+            "lon": -0.0033333414029999998
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUBNK",
+            "icsCode": "1000013",
+            "individualStopId": "9400ZZLUBNK2",
+            "commonName": "Bank Underground Station",
+            "lat": 51.513394268096,
+            "lon": -0.088594600755
+          },
+          "routeOptions": [
+            {
+              "name": "Central",
+              "directions": [
+                "Ruislip Gardens Underground Station"
+              ],
+              "lineIdentifier": {
+                "id": "central",
+                "name": "Central"
+              }
+            }
+          ],
+          "mode": {
+            "id": "tube",
+            "name": "tube"
+          },
+          "path": {
+            "stopPoints": [
+              {
+                "id": "940GZZLUMED",
+                "name": "Mile End Underground Station"
+              },
+              {
+                "id": "940GZZLUBLG",
+                "name": "Bethnal Green Underground Station"
+              },
+              {
+                "id": "940GZZLULVT",
+                "name": "Liverpool Street Underground Station"
+              },
+              {
+                "id": "940GZZLUBNK",
+                "name": "Bank Underground Station"
+              }
+            ]
+          },
+          "duration": 12
+        }
+      ],
+      "fare": {
+        "totalCost": 310,
+        "fares": [
+          {
+            "lowZone": 1,
+            "highZone": 2,
+            "cost": 310,
+            "chargeProfileName": "Inbound CF",
+            "isHopperFare": false,
+            "chargeLevel": "Off Peak",
+            "peak": 360,
+            "offPeak": 310,
+            "taps": [
+              {
+                "atcoCode": "940GZZLUSTD",
+                "tapDetails": {
+                  "modeType": "Rail",
+                  "validationType": "None",
+                  "tapTimestamp": "2026-11-04T09:30:00+00:00"
+                }
+              },
+              {
+                "atcoCode": "940GZZLUBNK",
+                "tapDetails": {
+                  "modeType": "Rail",
+                  "validationType": "None",
+                  "tapTimestamp": "2026-11-04T09:42:00+00:00"
+                }
+              }
+            ]
+          }
+        ],
+        "caveats": []
+      }
+    },
+    {
+      "startDateTime": "2026-11-04T09:32:00",
+      "duration": 12,
+      "arrivalDateTime": "2026-11-04T09:44:00",
+      "legs": [
+        {
+          "departureTime": "2026-11-04T09:32:00",
+          "arrivalTime": "2026-11-04T09:44:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUSTD",
+            "icsCode": "1000226",
+            "individualStopId": "9400ZZLUSTD2",
+            "commonName": "Stratford Underground Station",
+            "lat": 51.541694451168,
+            "lon": -0.0033333414029999998
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUBNK",
+            "icsCode": "1000013",
+            "individualStopId": "9400ZZLUBNK2",
+            "commonName": "Bank Underground Station",
+            "lat": 51.513394268096,
+            "lon": -0.088594600755
+          },
+          "routeOptions": [
+            {
+              "name": "Central",
+              "directions": [
+                "North Acton Underground Station"
+              ],
+              "lineIdentifier": {
+                "id": "central",
+                "name": "Central"
+              }
+            }
+          ],
+          "mode": {
+            "id": "tube",
+            "name": "tube"
+          },
+          "path": {
+            "stopPoints": [
+              {
+                "id": "940GZZLUMED",
+                "name": "Mile End Underground Station"
+              },
+              {
+                "id": "940GZZLUBLG",
+                "name": "Bethnal Green Underground Station"
+              },
+              {
+                "id": "940GZZLULVT",
+                "name": "Liverpool Street Underground Station"
+              },
+              {
+                "id": "940GZZLUBNK",
+                "name": "Bank Underground Station"
+              }
+            ]
+          },
+          "duration": 12
+        }
+      ],
+      "fare": {
+        "totalCost": 310,
+        "fares": [
+          {
+            "lowZone": 1,
+            "highZone": 2,
+            "cost": 310,
+            "chargeProfileName": "Inbound CF",
+            "isHopperFare": false,
+            "chargeLevel": "Off Peak",
+            "peak": 360,
+            "offPeak": 310,
+            "taps": [
+              {
+                "atcoCode": "940GZZLUSTD",
+                "tapDetails": {
+                  "modeType": "Rail",
+                  "validationType": "None",
+                  "tapTimestamp": "2026-11-04T09:32:00+00:00"
+                }
+              },
+              {
+                "atcoCode": "940GZZLUBNK",
+                "tapDetails": {
+                  "modeType": "Rail",
+                  "validationType": "None",
+                  "tapTimestamp": "2026-11-04T09:44:00+00:00"
+                }
+              }
+            ]
+          }
+        ],
+        "caveats": []
+      }
+    }
+  ]
+}

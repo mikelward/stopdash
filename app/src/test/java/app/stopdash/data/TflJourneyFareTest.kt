@@ -22,8 +22,58 @@ class TflJourneyFareTest {
         val routes = routes("journey_results_kings_cross_to_waterloo.json")
         assertTrue("the fixture's routes were read", routes.isNotEmpty())
         routes.forEach { route ->
-            assertEquals(TripFare(pence = 300, level = TripFare.Level.OFF_PEAK, pinkReader = false), route.fare)
+            val fare = checkNotNull(route.fare)
+            assertEquals(300, fare.pence)
+            assertEquals(TripFare.Level.OFF_PEAK, fare.level)
+            assertFalse(fare.pinkReader)
         }
+    }
+
+    @Test
+    fun `a train the Planner charges off-peak before half past nine is charged peak`() {
+        // Recorded for a Wednesday: the Planner charges 09:28 and 09:30 off-peak alike (£3.10),
+        // where TfL charges touching in before 09:30 at peak (£3.60).
+        val routes = routes("journey_results_stratford_to_bank_peak_edge.json")
+        assertEquals(3, routes.size)
+        val fares = routes.map { checkNotNull(it.fare) }
+        assertEquals(listOf(360, 310, 310), fares.map { it.pence })
+        assertEquals(listOf(TripFare.Level.PEAK, TripFare.Level.OFF_PEAK, TripFare.Level.OFF_PEAK), fares.map { it.level })
+        // Each charge keeps both prices and its touch-in, for a card to charge at its live boarding.
+        val part = fares[0].parts.single()
+        assertEquals(360, part.peak)
+        assertEquals(310, part.offPeak)
+        assertTrue(part.counterflow)
+        assertEquals(routes[0].rides.single().departure, part.tapIn)
+    }
+
+    @Test
+    fun `an unreadable touch-in time is reported and leaves the Planner's charge`() {
+        val heard = mutableListOf<String>()
+        val dto = TflJourneyFareDto(
+            totalCost = 310,
+            fares = listOf(
+                TflFareDto(
+                    chargeLevel = "Off Peak",
+                    cost = 310,
+                    peak = 360,
+                    offPeak = 310,
+                    taps = listOf(TflFareTapDto(TflFareTapDetailsDto("2026-11-04T09:28:00"))),
+                ),
+            ),
+        )
+        val fare = checkNotNull(dto.toFareOrNull { heard += it::class.simpleName.orEmpty() })
+        assertEquals(listOf("DateTimeParseException"), heard)
+        assertEquals(310, fare.pence)
+        assertEquals(TripFare.Level.OFF_PEAK, fare.level)
+        assertNull(fare.parts.single().tapIn)
+    }
+
+    @Test
+    fun `a bus charge has no prices to move between`() {
+        val part = TflFareDto(chargeLevel = "", cost = 175).toPart()
+        assertNull(part.peak)
+        assertNull(part.offPeak)
+        assertNull(part.tapIn)
     }
 
     @Test
