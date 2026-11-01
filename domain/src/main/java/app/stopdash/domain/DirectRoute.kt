@@ -1,7 +1,6 @@
 package app.stopdash.domain
 
 import androidx.annotation.WorkerThread
-import java.time.Duration
 
 /**
  * A Direct row's ride as a route of its trip (SPEC *Direct to a place*): the Planner's ride between the row's
@@ -64,10 +63,7 @@ object DirectRoute {
      * limit: a Direct row can leave from a stop a mile off, further than the rider chose to walk.
      */
     @WorkerThread
-    fun walksWithin(route: TripRoute, maxWalk: MaxWalk): Boolean {
-        val most = Duration.ofMinutes(maxWalk.minutes.toLong())
-        return route.legs.none { it.isWalk && it.run > most }
-    }
+    fun walksWithin(route: TripRoute, maxWalk: MaxWalk): Boolean = maxWalk.allows(route)
 
     private fun meters(a: Coordinates, b: Coordinates): Double =
         NearestStops.distanceMeters(a.latitude, a.longitude, b.latitude, b.longitude)

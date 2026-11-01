@@ -661,6 +661,20 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a bus fare is still read from a route left out for its walk`() = runTest {
+        // The priced route walks 19 min to its bus, past a 15 min limit: left out, its fare still prices the 10 (Codex, #1251).
+        val walk = """{ "departureTime": "2026-09-27T08:41:00", "arrivalTime": "2026-09-27T09:00:00",
+          "mode": { "id": "walking", "name": "walking" },
+          "departurePoint": { "naptanId": "940GZZLUKSX", "commonName": "King's Cross" },
+          "arrivalPoint": { "naptanId": "490000001A", "commonName": "King's Cross" } }, """
+        val routes = clientBy { request ->
+            (if (request.fewestChanges()) busAnswer("10") else busAnswer("10", "30", pence = 175).replace("\"legs\": [ ", "\"legs\": [ $walk")) to HttpStatusCode.OK
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), maxWalk = MaxWalk.FIFTEEN)
+        assertEquals(listOf(listOf("10")), routes.map { route -> route.rides.map { it.lineId } })
+        assertEquals(listOf(TripFare(175)), routes.map { it.fare })
+    }
+
+    @Test
     fun `a route the quickest answer left unpriced keeps the price another answer gave the same route`() = runTest {
         // The kept copy is the quickest's: the price comes over from the other's, whatever the route rides.
         val routes = clientBy { request ->
@@ -853,7 +867,8 @@ class JourneyPlannerTest {
         }
         val from = TripOrigin.Here(Coordinates(51.5282, -0.1337))
         val to = TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's")
-        val routes = planner(index::stationOf).fewestChangesVia(from, to, "490G000672")
+        // Its 24 min walk to St Pancras asked for under a 30 min limit, as the default then was.
+        val routes = planner(index::stationOf).fewestChangesVia(from, to, "490G000672", maxWalk = MaxWalk.THIRTY)
         assertEquals(3, routes.size)
         assertEquals(emptyList<String>(), warnings.untimed())
         val thameslink = routes.filter { route -> route.rides.single().lineId == "thameslink" }
@@ -868,7 +883,7 @@ class JourneyPlannerTest {
         }
         // With no index to place the platform, those routes can't be read, as before.
         warnings.clear()
-        assertEquals(listOf("46"), planner { null }.fewestChangesVia(from, to, "490G000672").map { it.rides.single().lineId })
+        assertEquals(listOf("46"), planner { null }.fewestChangesVia(from, to, "490G000672", maxWalk = MaxWalk.THIRTY).map { it.rides.single().lineId })
         assertEquals(listOf("journey planner (fewest changes via a stop): 2 of 3 routes unreadable"), warnings.untimed())
     }
 
@@ -1072,7 +1087,7 @@ class JourneyPlannerTest {
                 request.leastWalking() -> walkOnly(25, 12)
                 else -> walkOnly(12)
             } to HttpStatusCode.OK
-        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), maxWalk = MaxWalk.THIRTY)
         assertEquals(listOf(12L, 20L, 25L), routes.map { it.legs.single().run.toMinutes() })
     }
 
@@ -1085,10 +1100,30 @@ class JourneyPlannerTest {
                 request.busOnly() -> busAnswer("10", pence = 175)
                 else -> walkOnly(12)
             } to HttpStatusCode.OK
-        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), maxWalk = MaxWalk.THIRTY)
         // Merged in that order, each kept where it came; the list sorts them as always.
         assertEquals(listOf(emptyList<String>(), emptyList(), emptyList(), listOf("10")), routes.map { route -> route.rides.map { it.lineId } })
         assertEquals(TripFare(175), routes.last().fare)
+    }
+
+    @Test
+    fun `routes walking past the max walk are left out, even where none walks within it`() = runTest {
+        val warnings = mutableListOf<String>()
+        // The Planner sent 15 min, offering a 19 min walk beside a 12 (maintainer's report, 2026-11-01).
+        val routes = clientBy(warn = { synchronized(warnings) { warnings += it } }) { request ->
+            (if (request.fewestChanges()) walkOnly(19, 12) else walkOnly(12)) to HttpStatusCode.OK
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), maxWalk = MaxWalk.FIFTEEN)
+        assertEquals(listOf(12L), routes.map { it.legs.single().run.toMinutes() })
+        assertTrue(warnings.any { it == "journey planner: left out 1 of 2 routes walking past 15 min" })
+        // None within it: none offered, the rider's limit standing (Codex, #1251: a fallback per answer kept long walks
+        // a trip's other destinations beat).
+        val long = clientBy { walkOnly(19) to HttpStatusCode.OK }
+            .journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), maxWalk = MaxWalk.FIFTEEN)
+        assertEquals(emptyList<TripRoute>(), long)
+        // Nor does a request beside the plan.
+        val via = clientBy { walkOnly(19) to HttpStatusCode.OK }
+            .fewestChangesVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "940GZZLUBST", maxWalk = MaxWalk.FIFTEEN)
+        assertEquals(emptyList<TripRoute>(), via)
     }
 
     @Test

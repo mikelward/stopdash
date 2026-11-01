@@ -224,7 +224,7 @@ class KtorTflClient(
                                 settled++
                                 val routes = answer.getOrNull() ?: return@withLock
                                 sofar[index] = routes
-                                if (settled < asks.size) landed(finished(sofar.filterNotNull(), from, to))
+                                if (settled < asks.size) landed(finished(sofar.filterNotNull(), from, to, maxWalk))
                             }
                         }
                 }
@@ -244,7 +244,7 @@ class KtorTflClient(
         }
         if (answers.none { it.isSuccess }) throw checkNotNull(answers.first().exceptionOrNull())
         // A bus route one request left unpriced takes the bus fare another priced ([BusFare]).
-        return finished(answers.mapNotNull { it.getOrNull() }, from, to)
+        return finished(answers.mapNotNull { it.getOrNull() }, from, to, maxWalk)
     }
 
     // One request, for the fewest changes via one stop ([FinalStop]): its failure is the caller's to handle.
@@ -258,7 +258,7 @@ class KtorTflClient(
         modes: TripModes,
         at: TripTime?,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via, at = at)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via, at = at)), from, to, maxWalk)
 
     // One request, for the quickest routes via a bus stop towards the destination ([TowardStops]): its
     // failure is the caller's to handle, the Planner's 404 for no route through the stop among them.
@@ -273,7 +273,7 @@ class KtorTflClient(
         at: TripTime?,
         sent: () -> Unit,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, at = at, sent = sent)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, at = at, sent = sent)), from, to, maxWalk)
 
     // One request, for the fewest changes from one stop to another ([DirectRoute]): its failure is the caller's to handle.
     override suspend fun fewestChangesBetween(
@@ -286,7 +286,7 @@ class KtorTflClient(
     ): List<TripRoute> {
         val from = TripOrigin.Stop(fromStop)
         val to = TripDestination.Stop(toStop)
-        return finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, between = true)), from, to)
+        return finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, between = true)), from, to, maxWalk)
     }
 
     // One request, for the quickest routes with [leaveOut]'s modes left out ([AroundDelays]): its failure is
@@ -301,13 +301,26 @@ class KtorTflClient(
         modes: TripModes,
         via: String?,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, leaveOut = leaveOut)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, leaveOut = leaveOut)), from, to, maxWalk)
 
-    // The routes a plan's [answers] give, as the trip reads them: merged, each unpriced bus route the fare it
-    // can be sure of ([fillFares]), and named [between] its ends. A pass over every route and leg, so on the
+    // The routes a plan's [answers] give, as the trip reads them: merged, each unpriced bus route the fare it can
+    // be sure of ([fillFares], from every route, so one left out still prices the rest), those walking past
+    // [maxWalk] left out ([MaxWalk.within]), and named [between] its ends. A pass over every route and leg, so on the
     // decode dispatcher rather than the caller's thread (AGENTS.md *Main thread*; Codex, #860).
-    private suspend fun finished(answers: List<List<TripRoute>>, from: TripOrigin, to: TripDestination): List<TripRoute> =
-        withContext(decodeDispatcher) { fillFares(answers.reduce(::mergedRoutes)).between(from, to) }
+    private suspend fun finished(
+        answers: List<List<TripRoute>>,
+        from: TripOrigin,
+        to: TripDestination,
+        maxWalk: MaxWalk,
+    ): List<TripRoute> =
+        withContext(decodeDispatcher) {
+            val merged = fillFares(answers.reduce(::mergedRoutes))
+            val within = maxWalk.within(merged)
+            // Counts only: a bug report then tells a route the Planner offered from one left out here.
+            val dropped = merged.size - within.size
+            if (dropped > 0) warn("journey planner: left out $dropped of ${merged.size} routes walking past ${maxWalk.minutes} min")
+            within.between(from, to)
+        }
 
     // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that serves the
     // trip best, the same position the nearby lookup already sends (SPEC *Trips with a change*). Never

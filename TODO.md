@@ -2180,6 +2180,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             *Max walk* in Settings and as a dropdown under the walking speed atop a trip (10–60 min, default 20 since 2026-10-03, 30 before; it was
             a fixed 15). Each plan also asks the Planner for the fewest changes beside the quickest,
             merged, since its three quickest routes are often one route at three departures.
+            - [x] **Held to on the device** (maintainer's report, 2026-11-01): the Planner returned 16 and 19 min
+                  walks under 15, so routes walking past the limit are left out as they're read (#1251).
+            - [ ] **Say when the limit left a trip with no routes**: "No routes" alone doesn't say a longer walk
+                  would find one; name the limit (or offer the next) where routes were left out for it.
       - [x] **One row of walk choices** (maintainer, 2026-10-07): walking speed, max walk and
             step-free as one row of dropdown chips atop a trip's routes, not a full-width row each.
       - [x] **Direct trains to a favorite place** (maintainer, 2026-10-07): atop the trip a place chip
