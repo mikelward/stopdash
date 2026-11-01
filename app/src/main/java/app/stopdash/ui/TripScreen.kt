@@ -2617,7 +2617,7 @@ private fun RouteList(
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
                                 CardHeader(card, rideLines, shown.statuses, shown.rideModes, columnPx?.let { with(density) { it.toDp() } })
-                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.startForms, shown.stopForms, shown.rideStepFree)
+                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } }, shown.startForms, shown.stopForms, shown.rideStepFree, shown.endWalk, shown.endForms)
                             }
                         }
                         if (onLongPress != null) {
@@ -2961,13 +2961,30 @@ internal fun linesHeadway(
 internal fun walkToStart(route: TripRoute, access: Duration): Duration =
     route.legs.takeWhile { it.isWalk }.fold(access) { total, walk -> total.plus(walk.run) }
 
+/** A walk after the last ride shorter than this is left off its card: the stop it gets off at is all but there. */
+internal val END_WALK_SHOWN: Duration = Duration.ofMinutes(5)
+
+/**
+ * The walk after [route]'s last ride to where it ends, whole minutes, and where that is, when it takes at least
+ * [END_WALK_SHOWN] (maintainer, 2026-11-01: a long last walk was missing from the card); null for a shorter one,
+ * or a route on foot alone.
+ */
+@WorkerThread
+internal fun walkToEnd(route: TripRoute): Pair<Duration, String>? {
+    if (route.rides.isEmpty()) return null
+    val walks = route.legs.takeLastWhile { it.isWalk }
+    val total = walks.fold(Duration.ZERO) { sum, walk -> sum.plus(walk.run) }
+    val to = walks.lastOrNull()?.toName?.takeIf { it.isNotBlank() } ?: return null
+    return if (total.toMinutes() >= END_WALK_SHOWN.toMinutes()) total to to else null
+}
+
 /**
  * Under a card's header, the [walk] to the first ride's stop when there is one (maintainer,
  * 2026-09-27: it says why a train too soon to reach is grayed), then a row per ride of its best
  * route: the ride's line pill (the first ride's lines as one cut pill) and the stop it gets off at,
  * the first ride's also with [times], every line's trains together, and each later one's with how
- * often it runs; a stop's name is cut before the times are. Walks between rides are left out; the
- * route's own page has them.
+ * often it runs; a stop's name is cut before the times are; then the [endWalk] after the last ride where it's
+ * long enough to matter ([walkToEnd]). Walks between rides are left out; the route's own page has them.
  */
 @Composable
 private fun RideStops(
@@ -2989,6 +3006,9 @@ private fun RideStops(
     // On a step-free trip, where each ride has lost its way on or off to a lift out, said on the worker
     // ([TripCardView.rideStepFree]): its ⚠ carries it too.
     rideStepFree: List<String?> = emptyList(),
+    // The walk after the last ride and where it ends, in the forms its name shortens through ([TripCardView.endWalk]).
+    endWalk: Duration? = null,
+    endForms: List<String>? = null,
 ) {
     val rides = card.first().route.rides
     val density = LocalDensity.current
@@ -3082,6 +3102,32 @@ private fun RideStops(
                             .then(if (times.shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description }),
                     )
                 }
+            }
+        }
+        // The walk at the end, laid out as the walk at the start: walker, where it ends, and its minutes.
+        if (endWalk != null && endForms != null) {
+            val endMinutes = endWalk.toMinutes().toInt()
+            val description = stringResource(R.string.trip_walk, endForms.first(), endMinutes)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.testTag("walkToEnd").clearAndSetSemantics { contentDescription = description },
+            ) {
+                PillColumn(Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_walk),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp.withText()),
+                    )
+                }
+                ShortenedText(endForms, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
+                Text(
+                    text = stringResource(R.string.trip_walk_minutes, endMinutes),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
             }
         }
     }

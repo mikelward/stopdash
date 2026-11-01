@@ -1403,6 +1403,24 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_long_walk_after_the_last_ride_has_its_own_row() {
+        // Via Canada Water, 7 min on foot from Canary Wharf to the square: its card says so after the Jubilee's row.
+        // Via Whitechapel, 2 min on foot: too short to say, the stop it gets off at all but there.
+        val square = "" to "Canada Square"
+        val walked = planned.copy(
+            routes = listOf(
+                viaCanadaWater.copy(legs = viaCanadaWater.legs + leg(TripLeg.WALKING, "", "", canaryWharf, square, 26, 33, 1)),
+                viaWhitechapel.copy(legs = viaWhitechapel.legs + leg(TripLeg.WALKING, "", "", canaryWharfXr, square, 23, 25, 1)),
+                viaStratford,
+            ),
+        )
+        show(walked)
+        composeRule.onAllNodesWithTag("walkToEnd", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("walkToEnd", useUnmergedTree = true).assertContentDescriptionEquals("Walk to Canada Square (7 min)")
+        captureSnapshot("trip-routes-walk-to-end.png")
+    }
+
+    @Test
     fun trip_routes_with_fares() {
         // Two routes the Planner priced and one it didn't (via Stratford): that card shows no fare, never a guess.
         val priced = planned.copy(

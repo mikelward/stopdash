@@ -2176,7 +2176,10 @@ rows below start their stop names) and duration · arrival at the row's end, set
 row per ride names **where it gets off** — its line pill (the first ride's lines as the same cut
 pill), the stop, and a ⚠ just before the times when that line is disrupted, where the main
 screen's rows put it (maintainer, 2026-09-28) — so cards riding the same lines but changing at different stations read apart
-(maintainer, 2026-09-27); walks between rides are left to the route's page. The first ride's row
+(maintainer, 2026-09-27); walks between rides are left to the route's page. The **walk at the end**, after
+the last ride, gets a row like the first walk's (walker, where it ends, "(7 min)") when it takes 5 minutes or
+more, so a card ending a long walk from where it gets off says so; a shorter one is left off, the stop all but
+there (maintainer, 2026-11-01). The first ride's row
 also carries its **live times**, every line on the card together in time order ("1 · 3 · 5 min"):
 each is a way to the same change, so only when matters, not which line, and the card stays four
 rows tall rather than growing a row per line (maintainer, 2026-09-27, replacing a live row per
