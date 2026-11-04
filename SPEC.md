@@ -3507,7 +3507,7 @@ as it was.
   the ride has stops the alert says won't be served and the ride calls at none of them. Only the words
   TfL's bus alerts are seen to use count (maintainer, 2026-10-01): a stretch ("not serving stops
   between 'A' and 'B'", "the stops from 'A' (E) to 'B' will not be served", "missing stops from A 'F'
-  to B 'T'", a later notice's "continue to miss the same stops from A 'L' to B 'G'" (maintainer, 2026-10-16),
+  to B 'T'", "will miss stops between A and B" (maintainer, 2026-11-04), a later notice's "continue to miss the same stops from A 'L' to B 'G'" (maintainer, 2026-10-16),
   "bus stops from 'A' to 'B' will be missed", "the 'Hail & Ride' section from A to B are not being
   served", "diverted from A to B via C Street", "diverted between A and B" (maintainer, 2026-10-17), the
   roads after "via" being where buses run instead), stops one by one ("missing the stop 'A'",
@@ -3516,7 +3516,9 @@ as it was.
   before it, on every route of the line, so it can only keep an alert). A stop is named as the route
   lists it, give or take "Station" and a cross street before a slash in the alert ("King William Street
   / Monument Station (G)" for "Monument"), or by the part of its listed name after the slash where the
-  alert gives the stop's letter ("Moorgate Station (L)" for "Finsbury Square / Moorgate"), or as its
+  alert gives the stop's letter ("Moorgate Station (L)" for "Finsbury Square / Moorgate"), or by the station
+  after its slash in TfL's short form where the alert writes "Station" out ("Oxford Circus Station" for "Great
+  Titchfield St / Oxford Circus Stn"; maintainer, 2026-11-04), or as its
   sign reads, the slash unspaced and either part with "Station" ("'Bank Station/King William Street'"
   for "Bank / King William Street"; maintainer, 2026-10-02: a route lists its stops without
   "Station", so no stop quoted with its cross street had matched). Any other wording places

@@ -46,6 +46,11 @@ object AlertStops {
                 // be the road or the station, not the stop listed under another street's name.
                 Patterns.of("""${place(name).pattern}$STATION'?$LETTER""", ignoreCase = true).findAll(haystack)
                     .any { haystack[it.range.first].isUpperCase() }
+            } || crossStations(stop.name).any { name ->
+                // Or as the station the stop's own sign names after its slash ("Great Titchfield St / Oxford
+                // Circus Stn"), the alert saying "Station" too: both name the station, never a road.
+                Patterns.of("""${place(name).pattern}$NAMED_STATION'?$STOP_LETTER""", ignoreCase = true).findAll(haystack)
+                    .any { haystack[it.range.first].isUpperCase() }
             }
         }.mapTo(LinkedHashSet(), RouteStop::id)
     }
@@ -263,8 +268,23 @@ object AlertStops {
     private fun ref(name: String, quoted: Boolean = true): String {
         val open = if (quoted) "'?" else ""
         val own = """$open$CROSSED(?:${names(name).joinToString("|") { place(it).pattern }})$STATION'?$STOP_LETTER"""
-        val cross = crossNames(name).takeIf { it.isNotEmpty() } ?: return "(?:$own)"
-        return """(?:$own|$open$CROSSED(?:${cross.joinToString("|") { place(it).pattern }})$STATION'?$LETTER)"""
+        val station = crossStations(name).map { place(it).pattern }
+        val atStation = if (station.isEmpty()) "" else """|$open$CROSSED(?:${station.joinToString("|")})$NAMED_STATION'?$STOP_LETTER"""
+        val cross = crossNames(name).takeIf { it.isNotEmpty() } ?: return "(?:$own$atStation)"
+        return """(?:$own|$open$CROSSED(?:${cross.joinToString("|") { place(it).pattern }})$STATION'?$LETTER$atStation)"""
+    }
+
+    // The station a bus stop's listed name says it serves after its slash, in TfL's short form ("Great
+    // Titchfield St / Oxford Circus Stn", which [cleanStopName] leaves as it is): an alert calls the stop by
+    // it, "Station" written out ("will miss stops between Tottenham Court Road Station and Oxford Circus
+    // Station", TfL's wording, 2026-11-04). Unlike [crossNames], no letter is needed after it, as "Station"
+    // on both sides rules out the road ([mentioned]).
+    private fun crossStations(name: String): Set<String> {
+        val primaries = names(name)
+        return name.split("/").drop(1)
+            .mapNotNull { SHORT_STATION.matchEntire(it.trim())?.groupValues?.get(1) }
+            .map { normalize(it).replace("'", "") }
+            .filterTo(LinkedHashSet()) { it.length >= MIN_NAME && it !in primaries }
     }
 
     // Whether [name] appears in [haystack] as a place — not as part of one of the [longer] names of
@@ -402,6 +422,12 @@ object AlertStops {
     // A word "Station" an alert adds to a stop's name ("Moorgate Station" for a route's "Moorgate").
     private const val STATION = """(?:\s+station)?"""
 
+    // The word "Station" after a station a stop's sign names ([crossStations]): required, unlike [STATION].
+    private const val NAMED_STATION = """\s+station\b"""
+
+    // A bus stop's cross part naming the station it serves in TfL's short form: "Oxford Circus Stn".
+    private val SHORT_STATION = Regex("""(.*\S)\s+stn\.?""", RegexOption.IGNORE_CASE)
+
     // The cross street an alert may put before a stop's name, with its slash: "King William Street / ".
     private const val CROSSED = """(?:[\p{L}\p{N}][\p{L}\p{N}'&.\-]*(?:\s+[\p{L}\p{N}&][\p{L}\p{N}'&.\-]*){0,5}\s+/\s+)?"""
 
@@ -427,6 +453,9 @@ object AlertStops {
         """\b(?:the\s+)?(?:bus\s+)?stops\s+between\s+FROM\s+and\s+TO\s+$NOT_SERVED""",
         """\bmissing\s+(?:the\s+)?(?:stops\s+from\s+)?FROM\s+to\s+TO""",
         """\bmissing\s+(?:the\s+)?stops\s+between\s+FROM\s+and\s+TO""",
+        // "98 N98 N207 390 will miss stops between Tottenham Court Road Station and Oxford Circus Station"
+        // (TfL's wording, 2026-11-04). Not "will miss stops from … to …", not seen from TfL.
+        """\bwill\s+miss\s+(?:the\s+)?stops\s+between\s+FROM\s+and\s+TO""",
         """\bcontinue\s+to\s+miss\s+the\s+same\s+stops\s+from\s+FROM\s+to\s+TO""",
         // A diversion off the route between two of its stops: "Buses towards North End are diverted from
         // A to B via C Street and D Street" (TfL's wording, 2026-10-17). The roads it goes by are read

@@ -738,6 +738,28 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a bus missing stops far down its route is off a ride at the near end`() {
+        // A rider on the 390's north end was shown an Oxford Street closure (maintainer, 2026-11-04). TfL's
+        // wording and the route's Oxford Street stops as TfL lists them; the ride's stops made up.
+        val route = LineSequence(
+            listOf(LineRoute("North End - Victoria", listOf("n1", "n2", "n3", "g", "t", "o", "j", "s"))),
+            mapOf(
+                "n1" to "North End", "n2" to "Alpha Road", "n3" to "Beta Road", "g" to "Goodge Street", "t" to "Tottenham Court Road",
+                "o" to "Great Titchfield St/Oxford Circus Stn", "j" to "Oxford Street/John Lewis", "s" to "Selfridges",
+            ),
+        )
+        val alert = "Oxford Street (East)  W1W  Routes  55  73  98  99  N8  N25  N55  N73  N98  N207: Due to nightly crane " +
+            "operations Oxford Street will be closed between Tottenham Court Road and Great Portland Street 22:00-06:00 " +
+            "3-5 November. Buses will be diverted. 98 N98 N207 99 will miss stops between Tottenham Court Road Station " +
+            "and Oxford Circus Station."
+        assertTrue(offRide(bus("n1", "n3"), sole(alert), route))
+        // A ride into the stretch is on it.
+        assertFalse(offRide(bus("n1", "o"), sole(alert), route))
+        assertFalse(offRide(bus("n1", "t"), sole(alert), route))
+        assertTrue(offRide(bus("n1", "g"), sole(alert), route))
+    }
+
+    @Test
     fun `a bus diverted at the far end of its route is off a ride at the near end`() {
         // A trip at one end of a bus route flagged a diversion at the other (maintainer, 2026-10-17).
         // TfL's wording, the roads and the ride's stops made up.
