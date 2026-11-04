@@ -778,6 +778,22 @@ class AlertStopsTest {
     }
 
     @Test
+    fun `a stretch names its end by the station a stop's sign gives in short`() {
+        // TfL's wording (2026-11-04); the route lists the stop as "Great Titchfield St / Oxford Circus Stn".
+        val alert = "Oxford Street (East)  W1W  Routes  55  73  98  390  N8  N25  N55  N73  N98  N207: Due to nightly crane " +
+            "operations Oxford Street will be closed between Tottenham Court Road and Great Portland Street 22:00-06:00 " +
+            "3-5 November. Buses will be diverted. 98 N98 N207 390 will miss stops between Tottenham Court Road Station " +
+            "and Oxford Circus Station."
+        val route = stops("Goodge Street", "Stephen Street", "Tottenham Court Road", "Great Titchfield St/Oxford Circus Stn", "Oxford Street/John Lewis", "Selfridges")
+        assertEquals(setOf("S2", "S3"), AlertStops.stretched(alert, route))
+        // The other way, the stop's own name is the station's.
+        val back = stops("Selfridges", "Oxford Circus/John Lewis", "Great Titchfield St/Oxford Circus Stn", "Tottenham Court Road", "Goodge Street")
+        assertEquals(setOf("S1", "S2", "S3"), AlertStops.stretched(alert, back))
+        // Without "Station" it may be the road, as any cross street's name is.
+        assertEquals(emptySet<String>(), AlertStops.mentioned("Buses are diverted via Oxford Circus.", route))
+    }
+
+    @Test
     fun `a clause naming more stops than it reads places nothing`() {
         // C and D are listed with A and B as not served, though no verb repeats for them (Codex, PR #455).
         val route = stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road", "Echo Road")
