@@ -162,6 +162,13 @@ object AlertStart {
     // A [TIME] on its own.
     private val CLOCK = Regex(TIME)
 
+    /**
+     * How many times of day [text] gives, in any form read here ("22:00", "22.00", "2200"): a four-figure
+     * year counts too, which only errs toward more.
+     */
+    @WorkerThread
+    fun timeCount(text: String): Int = CLOCK.findAll(text).count()
+
     // "12/10", "12/10/2026", "12.10.26": a day and month in figures.
     private val NUMERIC_DATE = Regex("(?<![\\d:])\\d{1,2}[/.]\\d{1,2}(?:[/.]\\d{2,4})?(?![\\d:])")
 

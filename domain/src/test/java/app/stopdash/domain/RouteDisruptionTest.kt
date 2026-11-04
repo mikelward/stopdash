@@ -738,6 +738,47 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `an alert running only at some hours is no signal for a ride outside them`() {
+        // A rider was shown a 22:00-06:00 closure at 11:10 (maintainer, 2026-11-04). t0 is 09:00 in London.
+        val nightly = LineStatus("red", 6, "Severe Delays", "Severe delays 22:00-06:00 25-27 September.", soleAlert = true)
+        val statuses = mapOf("red" to nightly, "blue" to good("blue"))
+        var offHours = 0
+        assertEquals(
+            emptyList<Signal>(),
+            RouteDisruption.signals(trip, waiting, statuses, emptyMap(), emptyMap(), emptyMap(), emptySet(), at(3), offHours = { offHours++ }),
+        )
+        assertEquals(1, offHours)
+        // At night, it is.
+        assertEquals(listOf("red"), signals(statuses = statuses, now = at(13 * 60 + 30)).map { (it as Signal.Line).lineId })
+        // A ride due off within half an hour of the work starting meets it, should it run late (21:20 to 21:40).
+        val late = trip.copy(route = TripRoute(listOf(ride.copy(departure = at(12 * 60 + 20), arrival = at(12 * 60 + 40)), walk, second)))
+        assertEquals(listOf("red"), signals(late, statuses = statuses, now = at(12 * 60 + 15)).map { (it as Signal.Line).lineId })
+        // Daytime hours, likewise: a ride at 09:03 misses work from 10:00, and one at 10:30 meets it.
+        val daytime = mapOf("red" to nightly.copy(fullText = "Severe delays 10:00-16:00 25-27 September."), "blue" to good("blue"))
+        assertEquals(emptyList<Signal>(), signals(statuses = daytime))
+        assertEquals(listOf("red"), signals(statuses = daytime, now = at(90)).map { (it as Signal.Line).lineId })
+        // An alert out of hours standing in for one dismissed gives way to the line's next, an all-day one
+        // behind it still a signal (Codex on #1256).
+        val several = mapOf(
+            "red" to status("red", 4, "Suspended").copy(
+                underWay = listOf(
+                    LineAlert(4, "Suspended", "Suspended on the line"),
+                    LineAlert(5, "Part Closure", "Closed 22:00-06:00 25-27 September."),
+                    LineAlert(6, "Severe Delays", "Severe Delays on the line"),
+                ),
+            ),
+            "blue" to good("blue"),
+        )
+        val suspension = DismissedAlert.ofLineStatus((signals(statuses = several).single() as Signal.Line).status)
+        assertEquals(
+            listOf("Severe Delays"),
+            signals(statuses = several, dismissed = setOf(suspension)).map { (it as Signal.Line).status.description },
+        )
+        // With other alerts under way whose words weren't kept, those may run all day.
+        assertEquals(listOf("red"), signals(statuses = mapOf("red" to nightly.copy(soleAlert = false), "blue" to good("blue"))).map { (it as Signal.Line).lineId })
+    }
+
+    @Test
     fun `a bus missing stops far down its route is off a ride at the near end`() {
         // A rider on the 390's north end was shown an Oxford Street closure (maintainer, 2026-11-04). TfL's
         // wording and the route's Oxford Street stops as TfL lists them; the ride's stops made up.

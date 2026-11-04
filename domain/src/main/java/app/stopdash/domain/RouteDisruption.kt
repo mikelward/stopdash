@@ -652,11 +652,11 @@ object RouteDisruption {
                     // Only one that would sound: minor delays never alert, wherever they are, nor one the rider
                     // let go of on this trip with Keep going (Codex on #519).
                     val tier = tierOf(alert.severity)
-                    tier != null && weighable(alert, directions) && DismissedAlert.ofLineStatus(alert) !in dismissed &&
+                    tier != null && weighable(alert, directions) && DismissedAlert.ofLineStatus(alert) !in dismissed && !outOfHours(alert, ride, now) &&
                         Signal.Line(i, ride.lineId, ride.lineName, alert, tier).dismissKey !in trip.disruptionsDismissed
                 } }
             }
-            lineSignal(i, ride, way, dismissedOn(trip, i, way, dismissed))
+            inHoursSignal(i, ride, way, dismissedOn(trip, i, way, dismissed), now)
                 ?.takeIf { !it.placed && placeable(it.status) }?.let { ride.lineId }
         }
     }
@@ -673,6 +673,8 @@ object RouteDisruption {
         now: Instant,
         // The coming lines' routes, by line, where had: what places a bus alert by the stops it names ([offRide]).
         sequences: Map<String, LineSequence> = emptyMap(),
+        // Told, by its leg, of each line alert left out for running only at hours the ride isn't out in ([outOfHours]).
+        offHours: (legIndex: Int) -> Unit = {},
         // Told, by its leg, of each line alert left out for being off the ride, for the log: once an alert.
         leftOff: (legIndex: Int) -> Unit = {},
     ): List<Signal> {
@@ -682,6 +684,7 @@ object RouteDisruption {
             // The leg as the rider takes it ([rideAt]): another line's train followed is checked, named
             // and placed as that line, on its own stretch (Codex, PR #451).
             val ride = rideAt(trip, i, leg)
+            fun inHours(alert: LineStatus) = !outOfHours(alert, ride, now).also { if (it) offHours(i) }
             val status = shown[ride.lineId] ?: return@flatMap emptyList()
             val way = directions[i]?.let(status::forDirection) ?: status
             val sequence = sequences[ride.lineId]
@@ -698,7 +701,7 @@ object RouteDisruption {
                 // Each alert left out is told, for the log (Codex on #519).
                 repeat(alertsOf(way).size - each.size) { leftOff(i) }
                 val calls = rideCalls(ride)
-                return@flatMap each.filter { DismissedAlert.ofLineStatus(it) !in dismissed }.mapNotNull { alert ->
+                return@flatMap each.filter { DismissedAlert.ofLineStatus(it) !in dismissed && inHours(it) }.mapNotNull { alert ->
                     val tier = tierOf(alert.severity)
                     val onRide = tier != Tier.HIGH && way.closures.any { closure ->
                         closure.severity == alert.severity && closure.description == alert.description &&
@@ -708,7 +711,7 @@ object RouteDisruption {
                     else tier?.let { Signal.Line(i, ride.lineId, ride.lineName, alert, it) }
                 }
             }
-            val signal = lineSignal(i, ride, way, dismissedOn(trip, i, way, dismissed)) ?: return@flatMap emptyList()
+            val signal = inHoursSignal(i, ride, way, dismissedOn(trip, i, way, dismissed), now) { offHours(i) } ?: return@flatMap emptyList()
             if (signal.placed) return@flatMap listOf(signal)
             if (offRide(rideEnd, signal.status, sequence)) {
                 leftOff(i)
@@ -718,6 +721,46 @@ object RouteDisruption {
         }
         return ordered(lines + stopSignals(trip, progress, closures, places, dismissed, now))
     }
+
+    /**
+     * Whether a line's alert ([status]) runs only at hours of the day ([AlertHours]) that [ride] isn't out
+     * in, from [now] until it's due off and [HOURS_SLACK] after: the ride's times against the alert's, whatever
+     * the time of day (maintainer, 2026-11-04: a 22:00-06:00 closure shown on a ride at 11:10). Only the line's sole alert, whose words are the whole story: with others
+     * under way whose words weren't kept, those may run all day. One with no hours read runs all day.
+     */
+    @WorkerThread
+    fun outOfHours(status: LineStatus, ride: TripLeg, now: Instant): Boolean {
+        if (!status.soleAlert) return false
+        val hours = AlertHours.of(status.fullText) ?: return false
+        return !hours.overlaps(now, maxOf(now, ride.arrival).plus(HOURS_SLACK))
+    }
+
+    /**
+     * [lineSignal] for coming leg [index] ([ride], its line's [status]), its alert in force while the ride is
+     * out ([outOfHours]): one out of hours is passed over, as a dismissed one is, for the line's next, so an
+     * all-day alert behind it still stands (Codex on #1256). Each passed over is told ([passed]). Null when
+     * none is left.
+     */
+    @WorkerThread
+    fun inHoursSignal(index: Int, ride: TripLeg, status: LineStatus, dismissed: Set<DismissedAlert>, now: Instant, passed: () -> Unit = {}): Signal.Line? {
+        var gone = dismissed
+        // Each pass leaves one more alert out, so it ends once the line's alerts run out.
+        repeat(status.underWay.size + status.closures.size + 2) {
+            val signal = lineSignal(index, ride, status, gone) ?: return null
+            if (!outOfHours(signal.status, ride, now)) return signal
+            passed()
+            val next = gone + DismissedAlert.ofLineStatus(signal.status)
+            if (next == gone) return null
+            gone = next
+        }
+        return null
+    }
+
+    /**
+     * How long past a ride's planned arrival an alert's hours ([outOfHours]) still count: a ride running
+     * late may meet work that starts after it was due off.
+     */
+    val HOURS_SLACK: Duration = Duration.ofMinutes(30)
 
     /**
      * How soon the rider must be able to board a ride at a change for its board to be read for a train

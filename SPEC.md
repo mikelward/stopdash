@@ -3498,7 +3498,12 @@ as it was.
   fixes go on being asked for until then, or until the rider taps Keep going on it, which lets it go for
   that ride (a battery cost only while it stands); its alert,
   like every one, stands only while the trip's answer is live, and is back with the next refresh that works. Only a change is watched so:
-  arriving ends the trip, so the last stop isn't yet (`TODO.md`). Minor delays and the like never alert. A **bus** line's alert
+  arriving ends the trip, so the last stop isn't yet (`TODO.md`). Minor delays and the like never alert. A line's alert whose
+  work runs only at **hours of the day** its text gives with its days ("22:00-06:00 3-5 November", "nightly 20:00-05:00
+  12-17 October"), its only times, is left out of a ride whose own times, from now until it's due off and half an hour
+  after, don't meet them, by day or past midnight, and the debug log says so (maintainer, 2026-11-04: a 22:00-06:00
+  closure was shown on a ride at 11:10). Other times in the text, or the line's other alerts' words not kept, keep it
+  all day. A **bus** line's alert
   that names stops only off the rider's part of the route is left out, and the debug log says so
   (maintainer, 2026-10-01); a trip's cards, lines and disruptions row leave it out the same way, the
   line then reading as a good service with its work to come (maintainer, 2026-10-17): TfL gives a bus diversion's stretch only as prose ("not serving stops
