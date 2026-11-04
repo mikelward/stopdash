@@ -134,10 +134,11 @@ internal class RouteDisruptionChecks(
         val unnamed = withContext(io) { RouteDisruption.stationNotes(trip, progress, current, places, cleared, at) }
         val notePlaces = withContext(io) { named(unnamed, places) }
         var leftOff = 0
+        var offHours = 0
         // Every alert of every coming line weighed against the ride, and how long what's found stands: on
         // [io], never the caller's (the main) thread (Codex on #519).
         val found = withContext(io) {
-            val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at, sequences) { leftOff++ }
+            val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at, sequences, leftOff = { leftOff++ }, offHours = { offHours++ })
             fun staleAt(stamp: Instant) = at.plus(Staleness.remainingUntilStale(SteadyClock.age(stamp, at).toKotlinDuration()).toJavaDuration())
             // Each note stands no longer than its stop's check, nor than its notices in force there.
             val notes = (if (notePlaces === places) unnamed else RouteDisruption.stationNotes(trip, progress, current, notePlaces, cleared, at))
@@ -190,6 +191,7 @@ internal class RouteDisruptionChecks(
         }
         // Said, never quietly dropped (principle 1): which stops it named stays out of the log.
         if (leftOff > 0) warn("on the way: $leftOff line alert(s) left out, naming only stops off the ride")
+        if (offHours > 0) warn("on the way: $offHours line alert(s) left out, running only at hours the ride isn't out")
         // Every line asked about, as it came: one with no status here couldn't be checked.
         return found.copy(
             lines = RouteDisruption.LinesChecked(lines.toSet(), statuses?.statuses.orEmpty(), statuses?.at, ats = statuses?.ats.orEmpty()),
