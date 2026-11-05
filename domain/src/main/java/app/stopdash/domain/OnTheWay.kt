@@ -3124,6 +3124,30 @@ object OnTheWay {
         else Step(trip.legIndex, trip.onBoardSeen && trip.leg?.isWalk == false)
 
     /**
+     * Whether [rider] is seen where [step] of [trip] starts, to let go of a step the rider chose with Back or Next
+     * (maintainer, 2026-11-05: "stick my location to that leg's start until it sees me there"): within
+     * [AT_STOP_WITHIN_METERS] of its leg's start (a ride's boarding stop, or a walk's start, from where the leg before
+     * it ends when the Planner leaves it out), or on board a ride, placed along it ([placeAlong]), which they reached
+     * only through its start. Boarding a ride, only its stop: Back to it says they aren't on the train a fix along it
+     * may still place them on. [positions] are the ride's stops' ([ridePositions]), none for a walk; [on] is the ride as
+     * the line followed runs it ([ridden]), whose own stops place a rider on board. False where the start isn't known.
+     */
+    /**
+     * Where [step] of [trip] starts as the plan places it: its leg's own start, or where the leg before it ends. Null
+     * where neither is placed; a ride's stop may still be placed by its line's route ([ridePositions]).
+     */
+    fun stepStart(trip: ActiveTrip, step: Step): Coordinates? =
+        trip.route.legs.getOrNull(step.leg)?.fromAt ?: trip.route.legs.getOrNull(step.leg - 1)?.toAt
+
+    @WorkerThread
+    fun seenAtStepStart(trip: ActiveTrip, step: Step, rider: LocationFix, positions: Map<String, Coordinates>, on: TripLeg? = null): Boolean {
+        val leg = on ?: trip.route.legs.getOrNull(step.leg) ?: return false
+        val start = (if (leg.isWalk) null else positions[leg.fromId]) ?: stepStart(trip, step)
+        if (start != null && near(rider, start, AT_STOP_WITHIN_METERS)) return true
+        return step.onBoard && !leg.isWalk && placeAlong(leg, rider, positions) != null
+    }
+
+    /**
      * How many of [trip]'s steps are behind the rider, in order ([steps]): those before theirs, or
      * all of them from an arrival kept because forgetting the trip failed, which is past the last
      * step rather than at none (Codex, PR #384).

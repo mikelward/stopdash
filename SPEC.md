@@ -3200,6 +3200,11 @@ as it was.
   calls with the boarding stop behind them, and never taken back as left behind: that check only
   second-guesses the trip's own assumption, not their word. A "get off soon" said for the leg left is
   taken back; Back, or a tap on an earlier step, goes back to it, so a mistaken tap can be undone.
+  A step chosen with Next, Back or a tap holds the rider's location at where it starts until they're seen
+  there (maintainer, 2026-11-05): a fix from where they were when they tapped can't undo the tap. Seen at
+  the walk's start or the boarding stop, or on board anywhere along the ride, the trip follows their
+  location again; it lets go too once the trip moves on from that step by itself. A walk whose start the
+  plan doesn't place isn't held: there's nowhere to see them.
   Back straight after Next moved them off a ride they were on puts them back on it as it was, on its
   train or still on none named, rather than looking for one afresh at a stop they left minutes ago
   (while the app keeps running). Next, Back or a tap never moves the trip straight to

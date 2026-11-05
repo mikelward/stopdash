@@ -5695,6 +5695,11 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A step chosen with Next or Back holds only in memory** (autopilot, 2026-11-05). A restart follows
+  location again at once, as for any other in-memory sighting; a walk whose start the Planner leaves unplaced,
+  with nothing before it placed either, isn't held at all, with nowhere to see the rider. Boarding a ride lets go only at its stop, not
+  along the ride: Back to it says they aren't on that train. Alternatives: save the hold with the trip; let it go
+  after a time.
 - [ ] **An exit is chosen by the walk on's heading, within 60 degrees, for a walk of 150 m or more** (autopilot,
   2026-11-05). Each named exit carries one bearing, read from the drawing and the streets (King's Cross: 180 for
   the tube ticket hall, 0 for the Northern ticket hall), not TfL's entrance positions, which don't say which

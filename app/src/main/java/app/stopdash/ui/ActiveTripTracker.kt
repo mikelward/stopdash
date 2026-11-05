@@ -830,6 +830,15 @@ class ActiveTripTracker(
             // #997).
             pastSeen = null
             stationClear = null
+            // Where the rider is is held to where the step they chose starts until they're seen there ([holding]): a walk
+            // whose start isn't placed, with nowhere to see them, isn't held, its distance measured from them as before.
+            val chosen = OnTheWay.stepOf(moved)
+            if (moved.route.legs.getOrNull(chosen.leg)?.isWalk == false || OnTheWay.stepStart(moved, chosen) != null) {
+                heldStep = HeldStep(moved.startedAt, chosen)
+                warn("on the way: step chosen: location held to its start until seen there")
+            } else {
+                heldStep = null
+            }
             refollow()
             // The step moved to has no answer of its own yet: the last one's isn't passed off as its
             // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
@@ -1189,10 +1198,24 @@ class ActiveTripTracker(
         // Each line's route too ([routesRead]).
         routesRead = HashMap()
         try {
+            // On a step the rider chose, not yet seen where it starts, no fix moves the trip or places them ([holding]).
+            val holdFrom = elapsed()
+            val held = holding(fresh?.takeIf { (it.ageMillis ?: 0) <= OnTheWay.FIX_FRESH_WITHIN_MILLIS })
+            // Each fix aged by the route read that took ([holding]; Codex, #1267), as [step] ages them by its own reads.
+            val heldFor = Duration.ofMillis(elapsed() - holdFrom)
             // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
             expireFix()
             try {
-                if (step(fresh, boards, placing, leaving)) step(null, boards)
+                if (held) {
+                    if (step(null, boards)) step(null, boards)
+                } else if (
+                    step(
+                        fresh?.let { aged(it, heldFor) }, boards,
+                        placing?.let { aged(it, heldFor, OnTheWay.RIDE_FIX_WITHIN_MILLIS) }, leaving?.let { aged(it, heldFor) },
+                    )
+                ) {
+                    step(null, boards)
+                }
             } finally {
                 expireFix()
             }
@@ -1210,7 +1233,7 @@ class ActiveTripTracker(
                 }
             }
             // A fix given too old to place anyone but on a ride ([placing]) settles nothing else.
-            val given = rider?.takeIf { (it.ageMillis ?: 0) <= OnTheWay.FIX_FRESH_WITHIN_MILLIS && !boundsOnly }
+            val given = rider?.takeIf { (it.ageMillis ?: 0) <= OnTheWay.FIX_FRESH_WITHIN_MILLIS && !boundsOnly && !held }
             // Seen past where they got off a ride, or back from it (maintainer, 2026-10-06): kept with the trip.
             notePast(given?.takeIf { allowed }, asked)
             // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
@@ -1491,6 +1514,12 @@ class ActiveTripTracker(
                 // on (a step) came from somewhere the rider no longer is (Codex, #542).
                 if (arrived.isBefore(trip.legStartedAt)) return@withLock
                 val walking = _progress.value as? TripProgress.Walking ?: return@withLock
+                // A walk the rider chose, not yet seen where it starts, isn't measured from where they are: a fix
+                // there lets it go, and measures it ([holding]; Codex, #1267).
+                heldStep?.takeIf { it.startedAt == trip.startedAt && it.step == OnTheWay.stepOf(trip) }?.let { hold ->
+                    val sure = OnTheWay.usableFix(aged) ?: return@withLock
+                    if (!letGoAt(trip, hold, sure, emptyMap())) return@withLock
+                }
                 // One that came on the walk but was taken just before it began (on the ride, say) is where
                 // the rider likely still is, not where they're seen on it: an estimate, never in place of
                 // a distance a fix on the walk gave (Codex, #542).
@@ -1603,6 +1632,7 @@ class ActiveTripTracker(
         // A sighting is never one of two for another trip's ride (Codex, #993).
         pastSeen = null
         stationClear = null
+        heldStep = null
     }
 
     // The newest precise fix taken within [ESTIMATE_WITHIN], the trip's own or the app's remembered one,
@@ -1926,7 +1956,15 @@ class ActiveTripTracker(
                 else -> {
                     // Aged as it's read, just after this.
                     val recentAt = elapsed()
-                    val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.walkLeft(next, fix, walkedTo) }?.let { pointWay(next, it, fix, recentAt) } }
+                    // A walk the rider chose, not yet seen where it starts, is measured from there, never from a fix
+                    // taken where they were before they chose it ([holding]; Codex, #1267).
+                    val start = heldStep?.takeIf { it.startedAt == next.startedAt && it.step == OnTheWay.stepOf(next) }?.let { OnTheWay.stepStart(next, it.step) }
+                    val guessed = if (start != null) {
+                        val there = LocationFix(start, isFallback = false, accuracyMeters = 0f, ageMillis = 0)
+                        withContext(compute) { OnTheWay.walkLeft(next, there, walkedTo) }
+                    } else {
+                        recentFix()?.let { fix -> withContext(compute) { OnTheWay.walkLeft(next, fix, walkedTo) }?.let { pointWay(next, it, fix, recentAt) } }
+                    }
                     walking.copy(metersLeft = guessed?.meters, estimated = guessed != null, bearing = guessed?.bearing)
                 }
             }
@@ -2160,6 +2198,41 @@ class ActiveTripTracker(
     private class PastSeen(val startedAt: Instant, val legIndex: Int, val stop: Int)
 
     @Volatile private var pastSeen: PastSeen? = null
+
+    // The step the rider last chose with Back or Next ([goTo]), on the trip that started at [startedAt], while they
+    // haven't been seen where it starts: until then their location is taken to be there (maintainer, 2026-11-05),
+    // so a fix from where they were before can't undo the tap. In memory only: a restart follows location again.
+    private class HeldStep(val startedAt: Instant, val step: OnTheWay.Step)
+
+    @Volatile private var heldStep: HeldStep? = null
+
+    // Whether the trip is still held at the step the rider chose ([heldStep]): it hasn't moved on from it, and [rider]
+    // (sure, [OnTheWay.usableFix]) isn't seen where it starts ([OnTheWay.seenAtStepStart]). Let go of, and said, once
+    // it is, so this refresh follows location again.
+    private suspend fun holding(rider: LocationFix?): Boolean {
+        val hold = heldStep ?: return false
+        val trip = _trip.value
+        if (trip == null || trip.startedAt != hold.startedAt || OnTheWay.stepOf(trip) != hold.step) {
+            heldStep = null
+            return false
+        }
+        if (rider?.let(OnTheWay::usableFix) == null) return true
+        // On board, the ride as the line followed runs it: another line's train goes by its own stops (Codex, #1267).
+        val leg = OnTheWay.ridden(trip)?.takeIf { hold.step.onBoard && trip.legIndex == hold.step.leg } ?: trip.route.legs.getOrNull(hold.step.leg) ?: return true
+        val reading = elapsed()
+        val positions = if (leg.isWalk) emptyMap() else routeOf(leg.lineId)?.let { route -> withContext(compute) { OnTheWay.ridePositions(leg, route) } }.orEmpty()
+        // Aged by the route's read: after a slow TfL, a fix fresh before it may be where the rider was (Codex, #1267).
+        val fix = aged(rider, Duration.ofMillis(elapsed() - reading))?.let(OnTheWay::usableFix) ?: return true
+        return !withContext(compute) { letGoAt(trip, hold, fix, positions, leg) }
+    }
+
+    // Lets go of [hold] where [fix] sees the rider where its step starts ([OnTheWay.seenAtStepStart]), and says so.
+    private fun letGoAt(trip: ActiveTrip, hold: HeldStep, fix: LocationFix, positions: Map<String, Coordinates>, on: TripLeg? = null): Boolean {
+        if (!OnTheWay.seenAtStepStart(trip, hold.step, fix, positions, on)) return false
+        heldStep = null
+        warn("on the way: seen where the chosen step starts: following location again")
+        return true
+    }
 
     // [trip] counted on past its train's next call by a vague [rider], aged by the reads since [seenAt]
     // ([OnTheWay.vaguePastCalls]); null when it moves nothing, or the route can't be read. Logged by stops, never a place.
