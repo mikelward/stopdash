@@ -2067,8 +2067,10 @@ tier by the earliest end-to-end arrival, worked out leg by leg from live trains 
 goes ahead of a live route only when it is sooner even at the latest end of its range (below). The
 first route is therefore the fastest one StopDash can vouch for, never an estimate that could turn
 out later. A bold header says
-so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fewest changes; the
-earliest shown on a tie), or **Fastest · Simplest** heads one card that is both (maintainer,
+so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fewest changes; of
+several, the one getting there first, by the minute, wherever it's listed, so an estimate listed below
+a live route isn't passed over for a slower ride, maintainer, 2026-11-05; the earliest shown on a tie or
+where none has an arrival), or **Fastest · Simplest** heads one card that is both (maintainer,
 2026-09-30), so the trade between them reads at a glance. Neither heads a lone card, Fastest never a
 card whose arrival is withheld, nor one a card below gets there before, in an earlier minute
 (maintainer, 2026-10-16: an estimated route ranked below a live bus for want of a live train read sooner
