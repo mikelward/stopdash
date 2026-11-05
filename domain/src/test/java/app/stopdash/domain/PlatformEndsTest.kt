@@ -72,6 +72,23 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `the second batch reads as its drawings show`() {
+        // Oxford Circus: the Victoria and Bakerloo lines going the same way share an island.
+        val victoriaNorth = ride("victoria", "940GZZLUVIC", "940GZZLUGPK", oxfordCircus)
+        assertEquals(Spot.ANY, spot(victoriaNorth, change("bakerloo", oxfordCircus, "940GZZLURGP")))
+        // The other way is the other island, which the drawing reaches from more than one place: nothing.
+        assertNull(spot(victoriaNorth, change("bakerloo", oxfordCircus, "940GZZLUPCC")))
+        assertEquals(Spot.ANY, spot(ride("bakerloo", "940GZZLUMYB", "940GZZLURGP", oxfordCircus), change("victoria", oxfordCircus, "940GZZLUGPK")))
+        // Holborn: the way to the Piccadilly line is midway along the Central line's platforms.
+        assertEquals(Spot.MIDDLE, spot(ride("central", "940GZZLUOXC", tottenhamCourtRoad, "940GZZLUHBN"), change("piccadilly", "940GZZLUHBN", "940GZZLURSQ")))
+        // Embankment's Bakerloo line: midway to the District line.
+        assertEquals(Spot.MIDDLE, spot(ride("bakerloo", "940GZZLULBN", "940GZZLUWLO", "940GZZLUEMB"), change("district", "940GZZLUEMB", "940GZZLUWSM")))
+        // Embankment's Northern line: midway, either way.
+        assertEquals(Spot.MIDDLE, spot(ride("northern", "940GZZLUKNG", "940GZZLUWLO", "940GZZLUEMB"), change("bakerloo", "940GZZLUEMB", "940GZZLUCHX")))
+        assertEquals(Spot.MIDDLE, spot(ride("northern", leicesterSquare, "940GZZLUCHX", "940GZZLUEMB"), change("bakerloo", "940GZZLUEMB", "940GZZLUWLO")))
+    }
+
+    @Test
     fun `a way midway along is the middle either way`() {
         // Warren Street's Victoria line: the escalators land midway along.
         assertEquals(Spot.MIDDLE, spot(ride("victoria", kingsCross, euston, warrenStreet), change("northern", warrenStreet, goodgeStreet)))
