@@ -3879,6 +3879,26 @@ fixes; and with the app open, location every few seconds while a fix could move 
 rider moves, with the screen already on (none standing still, none once no fix is wanted), and the
 lookup up to every 10 s instead of 30. Nothing new leaves the device but the followed train's TfL id.
 
+#### Where to stand
+
+While the rider waits for a train or changes onto one, the step says where on it to ride so the change or the
+way out is close when they get off: "Due in 3 min · Back of train", "3 min to change · Middle of train"
+(maintainer, 2026-11-05). The phone, its notification and the watch say it alike; the widget shows no
+trip steps. It's the next ride's line where the rider changes in the same station, else the way out.
+
+The facts are read by hand from TfL's station layout drawings (the 2015 axonometrics, as published by
+ianvisits.co.uk): for a line's platforms at a station, the station each end leads toward and whether each
+way off leaves from one end or the middle. Only the facts are kept, never the drawings (maintainer,
+2026-11-05). Front and back follow from where the train comes in, the stop before on the ride: the end
+it comes in at is the back. A change onto a line whose branches stop on different platforms goes by the
+next train's first stop after the station, which says the branch and the way (at Euston, the Northern
+line's Bank branch is across the platform from the Victoria line going the same way, its Charing Cross
+branch through the passages at one end). A change across the platform says "Any carriage" (maintainer,
+2026-11-05): it answers where to ride as the others do. A station not read yet, one rebuilt since 2015, a
+change the drawing doesn't place, or a train from neither end says nothing, never a guess.
+Every fact a drawing shows is recorded, even one the app can't use yet. The table grows a few stations at a
+time, each entry saying what its drawing shows so it can be checked.
+
 ### Disruptions
 
 A departure time is worse than useless if the service is cancelled or the stop is

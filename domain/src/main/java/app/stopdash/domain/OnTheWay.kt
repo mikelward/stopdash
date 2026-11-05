@@ -136,7 +136,7 @@ sealed interface TripProgress {
      * on the line named [lineName]: the leg's own, or another of its lines the train followed is on
      * ([OnTheWay.followedLineName]), which is the one the rider boards.
      */
-    data class Waiting(val leg: TripLeg, val due: Instant?, val lineName: String = leg.lineName) : TripProgress
+    data class Waiting(val leg: TripLeg, val due: Instant?, val lineName: String = leg.lineName, val stand: PlatformEnds.Spot? = null) : TripProgress
 
     /**
      * On [leg]'s train: next at [nextStop] (null when its name isn't known), getting off in [stopsLeft] stops (counting the stop
@@ -174,7 +174,7 @@ sealed interface TripProgress {
      * Changing onto [leg], a ride straight after another, until about [until]: the change time the
      * Planner allows (as the route shows it), with no walk leg of its own.
      */
-    data class Changing(val leg: TripLeg, val until: Instant) : TripProgress
+    data class Changing(val leg: TripLeg, val until: Instant, val stand: PlatformEnds.Spot? = null) : TripProgress
 
     /**
      * On foot along [leg] (a walk to a change or the destination), until about [until]: the walk to
@@ -789,7 +789,18 @@ object OnTheWay {
         } else {
             calls
         }
-        return advanceAlong(on, ahead, now, atBoarding, arriving)
+        return withStand(advanceAlong(on, ahead, now, atBoarding, arriving))
+    }
+
+    // [step] with where to ride on the ride the rider is about to board ([PlatformEnds.standAt]): the step names
+    // it while they wait for it or change onto it.
+    private fun withStand(step: Pair<ActiveTrip, TripProgress>): Pair<ActiveTrip, TripProgress> {
+        val (trip, progress) = step
+        return trip to when (progress) {
+            is TripProgress.Waiting -> progress.copy(stand = PlatformEnds.standAt(trip, trip.legIndex))
+            is TripProgress.Changing -> progress.copy(stand = PlatformEnds.standAt(trip, trip.legIndex))
+            else -> progress
+        }
     }
 
     /**
