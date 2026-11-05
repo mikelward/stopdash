@@ -5678,13 +5678,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 - [ ] **Where to stand: grow the table** (maintainer, 2026-11-05; SPEC *Where to stand*). Read more stations
   off TfL's 2015 layout drawings into `PlatformEnds.TABLE`, the busiest interchanges first (King's Cross,
-  Baker Street; read so far: Mile End, Kennington, Finsbury Park, Stockwell, Green Park, Piccadilly Circus, Euston, Leicester Square, Warren Street's Victoria
+  Baker Street; read so far: Elephant & Castle, Highbury & Islington, Notting Hill Gate, Mile End, Kennington, Finsbury Park, Stockwell, Green Park, Piccadilly Circus, Euston, Leicester Square, Warren Street's Victoria
   line, Holborn, Embankment's Bakerloo and Northern lines, Oxford Circus's cross-platform pairs), leaving out any rebuilt
   since 2015 (Bank, Tottenham Court Road, Bond Street, Liverpool Street, Paddington, Farringdon,
   Whitechapel, Victoria) until read from how they are now. Record every fact a drawing shows, even one the app
   can't use yet, so it's there when the app can. At King's Cross the deep-level changes are read (the southern
   ends, maintainer, 2026-11-05); the sub-surface lines and the main line stations wait for exits chosen by
-  destination. Baker Street isn't read: its drawing doesn't say which way each of the Jubilee and Bakerloo
+  destination. Camden Town isn't read: each pair of its platforms meets the lower concourse at two places along it.
+  Baker Street isn't read: its drawing doesn't say which way each of the Jubilee and Bakerloo
   platforms runs, which decides what's across the platform.
 - [x] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). Done: each named
   exit (`PlatformEnds.exitTo`) has the bearing it leads out toward (`PlatformEnds.EXITS`), and the trip takes

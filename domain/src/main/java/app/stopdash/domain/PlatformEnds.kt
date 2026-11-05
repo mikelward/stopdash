@@ -161,6 +161,8 @@ object PlatformEnds {
     private const val ARSENAL = "940GZZLUASL"
     private const val BOND_STREET = "940GZZLUBND"
     private const val BETHNAL_GREEN = "940GZZLUBLG"
+    private const val BAYSWATER = "940GZZLUBWT"
+    private const val BOROUGH = "940GZZLUBOR"
     private const val BOW_ROAD = "940GZZLUBWR"
     private const val BRIXTON = "940GZZLUBXN"
     private const val CALEDONIAN_ROAD = "940GZZLUCRD"
@@ -178,9 +180,14 @@ object PlatformEnds {
     private const val HYDE_PARK_CORNER = "940GZZLUHPC"
     private const val VICTORIA = "940GZZLUVIC"
     private const val WESTMINSTER = "940GZZLUWSM"
+    private const val HIGH_STREET_KENSINGTON = "940GZZLUHSK"
     private const val HOLBORN = "940GZZLUHBN"
+    private const val HOLLAND_PARK = "940GZZLUHPK"
     private const val KENNINGTON = "940GZZLUKNG"
+    private const val LAMBETH_NORTH = "940GZZLULBN"
     private const val MILE_END = "940GZZLUMED"
+    private const val NOTTING_HILL_GATE = "940GZZLUNHG"
+    private const val QUEENSWAY = "940GZZLUQWY"
     private const val PICCADILLY_CIRCUS = "940GZZLUPCC"
     private const val REGENTS_PARK = "940GZZLURGP"
     private const val RUSSELL_SQUARE = "940GZZLURSQ"
@@ -200,6 +207,13 @@ object PlatformEnds {
      * against it; a station rebuilt since 2015 is left out until it's read from how it is now.
      */
     val TABLE: List<Platforms> = listOf(
+        // Elephant & Castle, Northern line, platforms 1 and 2: the passage to the Bakerloo line leaves from the north
+        // (Borough) end; the Northern ticket hall's lifts are at the other end, and the Bakerloo's at this one, so the way
+        // out isn't read.
+        Platforms(ELEPHANT_AND_CASTLE, "northern", BOROUGH, KENNINGTON, mapOf("bakerloo" to End.A)),
+        // Elephant & Castle, Bakerloo line, platforms 3 and 4, where the line ends: the passage to the Northern line is at
+        // the buffer end, the front of a train in from Lambeth North. Its ticket hall's lifts land partway along.
+        Platforms(ELEPHANT_AND_CASTLE, "bakerloo", LAMBETH_NORTH, "", mapOf("northern" to End.B)),
         // Euston, Northern line (Charing Cross branch), platforms 1 and 2: the passages to the Victoria line and the
         // Bank branch, and escalators 7 and 8 up to the ticket hall, leave from the Mornington Crescent end; the
         // Warren Street end leads only to a disused passage.
@@ -253,6 +267,10 @@ object PlatformEnds {
         // Green Park, Jubilee line, platforms 5 and 6: the escalators to the middle concourse and the passage to the
         // Victoria line are at the Bond Street end. The Piccadilly line is reached two ways, so it isn't read.
         Platforms(GREEN_PARK, "jubilee", BOND_STREET, WESTMINSTER, mapOf(EXIT to End.A, "victoria" to End.A)),
+        // Highbury & Islington, Victoria line, platforms 3 to 6: both pairs connect at the south (King's Cross) end, to
+        // the lower concourse, the ticket hall and the Overground's platforms. (Each shares an island with the Moorgate
+        // trains going the same way, not read: they're National Rail.)
+        Platforms(HIGHBURY, "victoria", KINGS_CROSS, FINSBURY_PARK, mapOf(EXIT to End.A, "mildmay" to End.A, "windrush" to End.A)),
         // Holborn, Central line, platforms 1 and 2: the passages to the escalators, up to the ticket hall and down to
         // the Piccadilly line, meet the platforms midway.
         Platforms(HOLBORN, "central", TOTTENHAM_COURT_ROAD, CHANCERY_LANE, mapOf(EXIT to End.MIDDLE, "piccadilly" to End.MIDDLE)),
@@ -313,6 +331,13 @@ object PlatformEnds {
         Platforms(MILE_END, "district", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", BETHNAL_GREEN) to End.ACROSS), arriving = BOW_ROAD),
         Platforms(MILE_END, "hammersmith-city", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", STRATFORD) to End.ACROSS), arriving = STEPNEY_GREEN),
         Platforms(MILE_END, "hammersmith-city", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", BETHNAL_GREEN) to End.ACROSS), arriving = BOW_ROAD),
+        // Notting Hill Gate, Central line, platforms 3 and 4: the escalators and the lower concourse to the ticket hall
+        // and the District and Circle lines join at the east (Queensway) end.
+        Platforms(NOTTING_HILL_GATE, "central", QUEENSWAY, HOLLAND_PARK, mapOf(EXIT to End.A, "district" to End.A, "circle" to End.A)),
+        // Notting Hill Gate, District and Circle lines, platforms 1 and 2: the stairs to the lower concourse are at the
+        // Bayswater end.
+        Platforms(NOTTING_HILL_GATE, "district", BAYSWATER, HIGH_STREET_KENSINGTON, mapOf(EXIT to End.A, "central" to End.A)),
+        Platforms(NOTTING_HILL_GATE, "circle", BAYSWATER, HIGH_STREET_KENSINGTON, mapOf(EXIT to End.A, "central" to End.A)),
         // Oxford Circus, Bakerloo and Victoria lines: each direction's two share an island, Victoria northbound
         // (platform 6, toward Warren Street) beside Bakerloo northbound (4, toward Regent's Park), Bakerloo southbound
         // (3, toward Piccadilly Circus) beside Victoria southbound (5, toward Green Park). Its exits and the Central
