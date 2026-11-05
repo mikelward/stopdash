@@ -5678,11 +5678,21 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 - [ ] **Where to stand: grow the table** (maintainer, 2026-11-05; SPEC *Where to stand*). Read more stations
   off TfL's 2015 layout drawings into `PlatformEnds.TABLE`, the busiest interchanges first (King's Cross,
-  Baker Street; read so far: Green Park, Piccadilly Circus, Euston, Leicester Square, Warren Street's Victoria
+  Baker Street; read so far: Finsbury Park, Stockwell, Green Park, Piccadilly Circus, Euston, Leicester Square, Warren Street's Victoria
   line, Holborn, Embankment's Bakerloo and Northern lines, Oxford Circus's cross-platform pairs), leaving out any rebuilt
   since 2015 (Bank, Tottenham Court Road, Bond Street, Liverpool Street, Paddington, Farringdon,
   Whitechapel, Victoria) until read from how they are now. Record every fact a drawing shows, even one the app
-  can't use yet, so it's there when the app can. A change onto a line with branches on different platforms
+  can't use yet, so it's there when the app can. At King's Cross the deep-level changes are read (the southern
+  ends, maintainer, 2026-11-05); the sub-surface lines and the main line stations wait for exits chosen by
+  destination. Baker Street isn't read: its drawing doesn't say which way each of the Jubilee and Bakerloo
+  platforms runs, which decides what's across the platform.
+- [ ] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). A big station's
+  best exit depends on the destination: at King's Cross, southbound on the Northern line, the back (the Northern
+  ticket hall) for Granary Square, Regent's Canal, Pancras Square or Coal Drops Yard, the front for Euston Road;
+  for the sub-surface lines and the main line, it depends on King's Cross or St Pancras International.
+  The table records such exits by name (`PlatformEnds.exitTo`); give each a position (TfL's station entrances,
+  or the ticket hall's) and pick the one nearest the trip's walk on, or its destination where the ride ends the
+  trip. Until then only the station's one `EXIT` is looked up. A change onto a line with branches on different platforms
   is keyed by the next train's first stop (`PlatformEnds.toward`), and one held to trains from one side by
   `arriving`, as Euston's are; a change across the platform is `End.ACROSS`, said "Any carriage".
 

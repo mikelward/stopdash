@@ -52,6 +52,14 @@ object PlatformEnds {
      */
     fun toward(lineId: String, stopId: String): String = "$lineId>$stopId"
 
+    /**
+     * A key of [Platforms.ways] for one of a station's exits, by the ticket hall or street it leads to, where the station
+     * has several and the best depends on where the rider is going (King's Cross: the Northern ticket hall for Granary
+     * Square, the tube ticket hall for Euston Road). Recorded as read, but not looked up until the exit can be chosen by
+     * the walk on (`TODO.md`, *Where to stand: choose the exit by where the rider is going*); [EXIT] is looked up meanwhile.
+     */
+    fun exitTo(name: String): String = "$EXIT:$name"
+
     /** Where the facts were read: TfL's station layout drawings as published in 2015. */
     const val SOURCE = "TfL station layout axonometrics, 2015, via ianvisits.co.uk/articles/3d-maps-of-every-underground-station-ab-14630"
 
@@ -104,7 +112,19 @@ object PlatformEnds {
     private const val CHARING_CROSS = "940GZZLUCHX"
     private const val COVENT_GARDEN = "940GZZLUCGN"
     private const val EMBANKMENT = "940GZZLUEMB"
+    private const val ANGEL = "940GZZLUAGL"
+    private const val ARSENAL = "940GZZLUASL"
     private const val BOND_STREET = "940GZZLUBND"
+    private const val BRIXTON = "940GZZLUBXN"
+    private const val CALEDONIAN_ROAD = "940GZZLUCRD"
+    private const val CLAPHAM_NORTH = "940GZZLUCPN"
+    private const val FINSBURY_PARK = "940GZZLUFPK"
+    private const val HIGHBURY = "940GZZLUHAI"
+    private const val MANOR_HOUSE = "940GZZLUMRH"
+    private const val OVAL = "940GZZLUOVL"
+    private const val SEVEN_SISTERS = "940GZZLUSVS"
+    private const val STOCKWELL = "940GZZLUSKW"
+    private const val VAUXHALL = "940GZZLUVXL"
     private const val GREEN_PARK = "940GZZLUGPK"
     private const val HYDE_PARK_CORNER = "940GZZLUHPC"
     private const val VICTORIA = "940GZZLUVIC"
@@ -163,6 +183,13 @@ object PlatformEnds {
             EMBANKMENT, "northern", CHARING_CROSS, WATERLOO,
             mapOf(EXIT to End.MIDDLE, "bakerloo" to End.MIDDLE, "district" to End.MIDDLE, "circle" to End.MIDDLE),
         ),
+        // Finsbury Park, Victoria and Piccadilly lines: each direction's two share an island, northbound on platforms 1
+        // (Piccadilly, toward Manor House) and 2 (Victoria, toward Seven Sisters), southbound on 3 (Piccadilly, toward
+        // Arsenal) and 4 (Victoria, toward Highbury & Islington). The ways out leave from more than one place along them.
+        Platforms(FINSBURY_PARK, "victoria", HIGHBURY, SEVEN_SISTERS, mapOf(toward("piccadilly", MANOR_HOUSE) to End.ACROSS), arriving = HIGHBURY),
+        Platforms(FINSBURY_PARK, "victoria", HIGHBURY, SEVEN_SISTERS, mapOf(toward("piccadilly", ARSENAL) to End.ACROSS), arriving = SEVEN_SISTERS),
+        Platforms(FINSBURY_PARK, "piccadilly", ARSENAL, MANOR_HOUSE, mapOf(toward("victoria", SEVEN_SISTERS) to End.ACROSS), arriving = ARSENAL),
+        Platforms(FINSBURY_PARK, "piccadilly", ARSENAL, MANOR_HOUSE, mapOf(toward("victoria", HIGHBURY) to End.ACROSS), arriving = MANOR_HOUSE),
         // Green Park, Victoria line, platforms 3 and 4: the subway to the Piccadilly line starts at the Oxford Circus
         // end, the passage to the Jubilee line at the Victoria end. Escalators C land partway along, so the way out
         // isn't read.
@@ -180,6 +207,30 @@ object PlatformEnds {
         // Holborn, Piccadilly line, platforms 3 and 4: the cross passages to the lower concourse and its escalators
         // meet the platforms midway.
         Platforms(HOLBORN, "piccadilly", COVENT_GARDEN, RUSSELL_SQUARE, mapOf(EXIT to End.MIDDLE, "central" to End.MIDDLE)),
+        // King's Cross St Pancras, deep-level lines: the cross-passage stairs joining the Victoria, Piccadilly and
+        // Northern lines sit at each one's southern end (maintainer, 2026-11-05), as the drawing shows. The sub-surface
+        // lines and the main line stations depend on which (King's Cross or St Pancras International), so they wait for
+        // exits chosen by destination.
+        // Northern line, platforms 7 and 8: escalators at the Angel end lead down to the Victoria and Piccadilly lines
+        // and up to the tube ticket hall on Euston Road; the Euston end (the drawing's "west end") leads to the Northern
+        // ticket hall, the way to King's Cross's north side (Granary Square, Regent's Canal, Pancras Square, Coal Drops
+        // Yard; maintainer, 2026-11-05). The other lines can also be reached through the Northern ticket hall, but only
+        // up and down again.
+        Platforms(
+            KINGS_CROSS, "northern", EUSTON, ANGEL,
+            mapOf(
+                "victoria" to End.B,
+                "piccadilly" to End.B,
+                exitTo("tube-ticket-hall") to End.B,
+                exitTo("northern-ticket-hall") to End.A,
+            ),
+        ),
+        // Victoria line, platforms 3 and 4, running east to west: the stairs to the Piccadilly and Northern lines are at
+        // the Euston (west) end, beside the Piccadilly line's south end.
+        Platforms(KINGS_CROSS, "victoria", EUSTON, HIGHBURY, mapOf("piccadilly" to End.A, "northern" to End.A)),
+        // Piccadilly line, platforms 5 and 6: the stairs to the Victoria and Northern lines are at the south (Russell
+        // Square) end.
+        Platforms(KINGS_CROSS, "piccadilly", RUSSELL_SQUARE, CALEDONIAN_ROAD, mapOf("victoria" to End.A, "northern" to End.A)),
         // Leicester Square, Northern line, platforms 3 and 4: the escalators to the ticket hall and the subway to
         // the Piccadilly line leave from the south (Charing Cross) end.
         Platforms(LEICESTER_SQUARE, "northern", CHARING_CROSS, TOTTENHAM_COURT_ROAD, mapOf("piccadilly" to End.A, EXIT to End.A)),
@@ -195,6 +246,16 @@ object PlatformEnds {
         // and the mid concourse, to each other and to escalators 1 to 11, meet both pairs of platforms midway.
         Platforms(PICCADILLY_CIRCUS, "bakerloo", OXFORD_CIRCUS, CHARING_CROSS, mapOf(EXIT to End.MIDDLE, "piccadilly" to End.MIDDLE)),
         Platforms(PICCADILLY_CIRCUS, "piccadilly", GREEN_PARK, LEICESTER_SQUARE, mapOf(EXIT to End.MIDDLE, "bakerloo" to End.MIDDLE)),
+        // Stockwell, Victoria and Northern lines: each direction's two share an island, northbound on platforms 1
+        // (Victoria, toward Vauxhall) and 2 (Northern, toward Oval), southbound on 3 (Northern, toward Clapham North) and
+        // 4 (Victoria, toward Brixton). Both islands' escalators to the ticket hall are at the north end: Vauxhall's on
+        // the Victoria line, Oval's on the Northern.
+        Platforms(STOCKWELL, "victoria", VAUXHALL, BRIXTON, mapOf(EXIT to End.A)),
+        Platforms(STOCKWELL, "victoria", VAUXHALL, BRIXTON, mapOf(toward("northern", OVAL) to End.ACROSS), arriving = BRIXTON),
+        Platforms(STOCKWELL, "victoria", VAUXHALL, BRIXTON, mapOf(toward("northern", CLAPHAM_NORTH) to End.ACROSS), arriving = VAUXHALL),
+        Platforms(STOCKWELL, "northern", OVAL, CLAPHAM_NORTH, mapOf(EXIT to End.A)),
+        Platforms(STOCKWELL, "northern", OVAL, CLAPHAM_NORTH, mapOf(toward("victoria", VAUXHALL) to End.ACROSS), arriving = CLAPHAM_NORTH),
+        Platforms(STOCKWELL, "northern", OVAL, CLAPHAM_NORTH, mapOf(toward("victoria", BRIXTON) to End.ACROSS), arriving = OVAL),
         // Warren Street, Victoria line, platforms 3 and 4: escalators 7 and 9, the only way off, land midway along.
         Platforms(WARREN_STREET, "victoria", EUSTON, OXFORD_CIRCUS, mapOf("northern" to End.MIDDLE, EXIT to End.MIDDLE)),
     )

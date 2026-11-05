@@ -105,6 +105,37 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `finsbury park and stockwell change across the platform the same way`() {
+        val finsburyPark = "940GZZLUFPK"
+        // Victoria northbound, in from Highbury & Islington: the Piccadilly line northbound is across the platform.
+        val north = ride("victoria", kingsCross, "940GZZLUHAI", finsburyPark)
+        assertEquals(Spot.ANY, spot(north, change("piccadilly", finsburyPark, "940GZZLUMRH")))
+        // Southbound Piccadilly is the other island, reached from more than one place: nothing.
+        assertNull(spot(north, change("piccadilly", finsburyPark, "940GZZLUASL")))
+        val stockwell = "940GZZLUSKW"
+        // Northern line southbound, in from Oval: the Victoria line toward Brixton is across; the exit is at the Oval
+        // end, the back.
+        val south = ride("northern", "940GZZLUKNG", "940GZZLUOVL", stockwell)
+        assertEquals(Spot.ANY, spot(south, change("victoria", stockwell, "940GZZLUBXN")))
+        assertEquals(Spot.BACK, spot(south))
+        // Victoria line northbound, in from Brixton: the exit is at the Vauxhall end, the front.
+        assertEquals(Spot.FRONT, spot(ride("victoria", "940GZZLUBXN", stockwell)))
+    }
+
+    @Test
+    fun `king's cross on the northern line`() {
+        // Southbound, in from Euston: the Victoria line is at the Angel end, the front.
+        val south = ride("northern", camdenTown, euston, kingsCross)
+        assertEquals(Spot.FRONT, spot(south, change("victoria", kingsCross, "940GZZLUHAI")))
+        // Its exits are told apart by where they lead, which isn't chosen yet: a plain exit says nothing.
+        assertNull(spot(south))
+        // The deep-level changes are at the southern ends (maintainer, 2026-11-05): the Piccadilly line northbound, in
+        // from Russell Square, has them at the back; the Victoria line westbound, in from Highbury, at the front.
+        assertEquals(Spot.BACK, spot(ride("piccadilly", "940GZZLUHBN", "940GZZLURSQ", kingsCross), change("victoria", kingsCross, euston)))
+        assertEquals(Spot.FRONT, spot(ride("victoria", "940GZZLUFPK", "940GZZLUHAI", kingsCross), change("northern", kingsCross, "940GZZLUAGL")))
+    }
+
+    @Test
     fun `piccadilly circus is midway on both lines`() {
         assertEquals(Spot.MIDDLE, spot(ride("bakerloo", "940GZZLUEMB", "940GZZLUCHX", "940GZZLUPCC"), change("piccadilly", "940GZZLUPCC", "940GZZLUGPK")))
         assertEquals(Spot.MIDDLE, spot(ride("piccadilly", "940GZZLUHPC", "940GZZLUGPK", "940GZZLUPCC")))
