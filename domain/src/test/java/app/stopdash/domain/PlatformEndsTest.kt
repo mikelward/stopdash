@@ -176,6 +176,20 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `mile end and kennington change across the platform the same way`() {
+        val mileEnd = "940GZZLUMED"
+        val eastbound = ride("central", "940GZZLULST", "940GZZLUBLG", mileEnd)
+        assertEquals(Spot.ANY, spot(eastbound, change("district", mileEnd, "940GZZLUBWR")))
+        assertNull(spot(eastbound, change("district", mileEnd, "940GZZLUSGN")))
+        assertEquals(Spot.ANY, spot(ride("hammersmith-city", "940GZZLUBWR", mileEnd), change("central", mileEnd, "940GZZLUBLG")))
+        val kennington = "940GZZLUKNG"
+        // Northbound from Oval on the Charing Cross branch, changing to the Bank branch: across the platform.
+        assertEquals(Spot.ANY, spot(ride("northern", "940GZZLUSKW", "940GZZLUOVL", kennington), change("northern", kennington, "940GZZLUEAC")))
+        // Southbound from Waterloo, changing for Oval: across the platform.
+        assertEquals(Spot.ANY, spot(ride("northern", "940GZZLUEMB", "940GZZLUWLO", kennington), change("northern", kennington, "940GZZLUOVL")))
+    }
+
+    @Test
     fun `piccadilly circus is midway on both lines`() {
         assertEquals(Spot.MIDDLE, spot(ride("bakerloo", "940GZZLUEMB", "940GZZLUCHX", "940GZZLUPCC"), change("piccadilly", "940GZZLUPCC", "940GZZLUGPK")))
         assertEquals(Spot.MIDDLE, spot(ride("piccadilly", "940GZZLUHPC", "940GZZLUGPK", "940GZZLUPCC")))

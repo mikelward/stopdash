@@ -160,6 +160,8 @@ object PlatformEnds {
     private const val ANGEL = "940GZZLUAGL"
     private const val ARSENAL = "940GZZLUASL"
     private const val BOND_STREET = "940GZZLUBND"
+    private const val BETHNAL_GREEN = "940GZZLUBLG"
+    private const val BOW_ROAD = "940GZZLUBWR"
     private const val BRIXTON = "940GZZLUBXN"
     private const val CALEDONIAN_ROAD = "940GZZLUCRD"
     private const val CLAPHAM_NORTH = "940GZZLUCPN"
@@ -168,18 +170,23 @@ object PlatformEnds {
     private const val MANOR_HOUSE = "940GZZLUMRH"
     private const val OVAL = "940GZZLUOVL"
     private const val SEVEN_SISTERS = "940GZZLUSVS"
+    private const val STEPNEY_GREEN = "940GZZLUSGN"
     private const val STOCKWELL = "940GZZLUSKW"
+    private const val STRATFORD = "940GZZLUSTD"
     private const val VAUXHALL = "940GZZLUVXL"
     private const val GREEN_PARK = "940GZZLUGPK"
     private const val HYDE_PARK_CORNER = "940GZZLUHPC"
     private const val VICTORIA = "940GZZLUVIC"
     private const val WESTMINSTER = "940GZZLUWSM"
     private const val HOLBORN = "940GZZLUHBN"
+    private const val KENNINGTON = "940GZZLUKNG"
+    private const val MILE_END = "940GZZLUMED"
     private const val PICCADILLY_CIRCUS = "940GZZLUPCC"
     private const val REGENTS_PARK = "940GZZLURGP"
     private const val RUSSELL_SQUARE = "940GZZLURSQ"
     private const val WATERLOO = "940GZZLUWLO"
     private const val CAMDEN_TOWN = "940GZZLUCTN"
+    private const val ELEPHANT_AND_CASTLE = "940GZZLUEAC"
     private const val EUSTON = "940GZZLUEUS"
     private const val KINGS_CROSS = "940GZZLUKSX"
     private const val LEICESTER_SQUARE = "940GZZLULSQ"
@@ -252,6 +259,14 @@ object PlatformEnds {
         // Holborn, Piccadilly line, platforms 3 and 4: the cross passages to the lower concourse and its escalators
         // meet the platforms midway.
         Platforms(HOLBORN, "piccadilly", COVENT_GARDEN, RUSSELL_SQUARE, mapOf(EXIT to End.MIDDLE, "central" to End.MIDDLE)),
+        // Kennington, Northern line: northbound, the Charing Cross branch (platform 1, toward Waterloo) and the Bank
+        // branch (3, toward Elephant & Castle) share an island; southbound, both branches' platforms toward Oval (2 and 4)
+        // share the other. A change of branch the same way is across the platform. (The 2015 drawing is before the
+        // Battersea branch, so only Oval is read southbound.)
+        Platforms(KENNINGTON, "northern", OVAL, WATERLOO, mapOf(toward("northern", ELEPHANT_AND_CASTLE) to End.ACROSS), arriving = OVAL),
+        Platforms(KENNINGTON, "northern", OVAL, ELEPHANT_AND_CASTLE, mapOf(toward("northern", WATERLOO) to End.ACROSS), arriving = OVAL),
+        Platforms(KENNINGTON, "northern", WATERLOO, OVAL, mapOf(toward("northern", OVAL) to End.ACROSS), arriving = WATERLOO),
+        Platforms(KENNINGTON, "northern", ELEPHANT_AND_CASTLE, OVAL, mapOf(toward("northern", OVAL) to End.ACROSS), arriving = ELEPHANT_AND_CASTLE),
         // King's Cross St Pancras, deep-level lines: the cross-passage stairs joining the Victoria, Piccadilly and
         // Northern lines sit at each one's southern end (maintainer, 2026-11-05), as the drawing shows. The sub-surface
         // lines and the main line stations depend on which (King's Cross or St Pancras International), so they wait for
@@ -288,6 +303,16 @@ object PlatformEnds {
         // Leicester Square, Northern line, platforms 3 and 4: the escalators to the ticket hall and the subway to
         // the Piccadilly line leave from the south (Charing Cross) end.
         Platforms(LEICESTER_SQUARE, "northern", CHARING_CROSS, TOTTENHAM_COURT_ROAD, mapOf("piccadilly" to End.A, EXIT to End.A)),
+        // Mile End: each direction's Central and District / Hammersmith & City platforms share an island, eastbound on
+        // platforms 4 (Central, toward Stratford) and 3 (toward Bow Road), westbound on 1 (Central, toward Bethnal Green)
+        // and 2 (toward Stepney Green). The stairs to the ticket hall land from about a quarter to halfway along from the
+        // west end, so the way out isn't read.
+        Platforms(MILE_END, "central", BETHNAL_GREEN, STRATFORD, mapOf(toward("district", BOW_ROAD) to End.ACROSS, toward("hammersmith-city", BOW_ROAD) to End.ACROSS), arriving = BETHNAL_GREEN),
+        Platforms(MILE_END, "central", BETHNAL_GREEN, STRATFORD, mapOf(toward("district", STEPNEY_GREEN) to End.ACROSS, toward("hammersmith-city", STEPNEY_GREEN) to End.ACROSS), arriving = STRATFORD),
+        Platforms(MILE_END, "district", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", STRATFORD) to End.ACROSS), arriving = STEPNEY_GREEN),
+        Platforms(MILE_END, "district", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", BETHNAL_GREEN) to End.ACROSS), arriving = BOW_ROAD),
+        Platforms(MILE_END, "hammersmith-city", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", STRATFORD) to End.ACROSS), arriving = STEPNEY_GREEN),
+        Platforms(MILE_END, "hammersmith-city", STEPNEY_GREEN, BOW_ROAD, mapOf(toward("central", BETHNAL_GREEN) to End.ACROSS), arriving = BOW_ROAD),
         // Oxford Circus, Bakerloo and Victoria lines: each direction's two share an island, Victoria northbound
         // (platform 6, toward Warren Street) beside Bakerloo northbound (4, toward Regent's Park), Bakerloo southbound
         // (3, toward Piccadilly Circus) beside Victoria southbound (5, toward Green Park). Its exits and the Central
