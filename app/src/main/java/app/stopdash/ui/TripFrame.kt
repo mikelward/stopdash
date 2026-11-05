@@ -178,7 +178,8 @@ internal fun tripFrame(
     // through a change made since [shown] was worked out ([ShownRoutes.notStepFreeOf]).
     val notStepFree = shown?.notStepFreeOf(state.routes.orEmpty()).orEmpty()
     val timed = tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs, notStepFree = notStepFree)
-    // Those whose trains through a change are predicted ([TripTiming.withoutUnvouchedLegs]).
+    // Those whose trains through a change are predicted, or run every few minutes past their predictions
+    // ([TripTiming.withoutUnvouchedLegs]).
     // By identity: an estimate's equality would go over its whole route.
     val vouched = timed.orEmpty().filterTo(java.util.Collections.newSetFromMap(java.util.IdentityHashMap())) {
         TripTiming.withoutUnvouchedLegs(listOf(it), plannedLegs).isNotEmpty()

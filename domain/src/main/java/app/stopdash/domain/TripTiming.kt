@@ -170,9 +170,10 @@ object TripTiming {
         predicted: (Int) -> Int = { live(it)?.size ?: 0 },
         // Whether leg [index] carries the Planner's own times. One it didn't plan (a train through a
         // change, [RideLines.through]) carries the times of the rides it replaces as a placeholder,
-        // which belong to other lines, so only a live train times it. So does one whose Planner line
-        // another line stands in for while it isn't itself checked as running ([otherLine]): its
-        // times are a service that can't be relied on.
+        // which belong to other lines, so only a live train times it, or, past its predictions, a line
+        // its trains show running every few minutes, boarded as the rider gets there. So does one whose
+        // Planner line another line stands in for while it isn't itself checked as running ([otherLine]):
+        // its times are a service that can't be relied on.
         timetabled: (Int) -> Boolean = { true },
         stops: TripClosures.Standing = TripClosures.Standing.OPEN,
         // Whether another line, checked as running, can take leg [index]'s ride between the same
@@ -256,7 +257,16 @@ object TripTiming {
                 (frequentAt(leg.mode, refreshed(index)) || frequentBySchedule(index, ready))
             return when {
                 train != null -> Timed(LegTiming(train.expectedArrival, train.expectedArrival.plus(leg.run), train, true), Basis.LIVE)
-                !timetabled(index) -> unknown()
+                // No Planner times to go by (a train through a change, [RideLines.through]), but a line every few
+                // minutes, judged on the trains that take this very ride, is boarded as the rider gets there, as
+                // a planned ride's is past its predictions: the through route ranked an estimate, not withheld
+                // beside the Planner's route over the same tracks with a change (maintainer, 2026-11-05).
+                !timetabled(index) -> if (frequent()) {
+                    waits = true
+                    Timed(LegTiming(ready, ready.plus(leg.run), null, false, running = true), Basis.ESTIMATED, onArrival = true)
+                } else {
+                    unknown()
+                }
                 // The Planner's own train while the rider can make it, unless the line runs every few
                 // minutes and that train leaves more than a gap after the rider gets there: the
                 // Planner planned the trip leaving later, and an earlier train is the one they'd take
@@ -513,14 +523,16 @@ object TripTiming {
 
     /**
      * [estimates] without a route that rides a leg the Planner didn't plan ([planned], every leg of
-     * its routes) on anything but a live train StopDash vouches for: a train through a change
-     * ([RideLines.through]) is offered only when one is predicted, never on the Planner times it
-     * carries as a placeholder, which belong to other lines.
+     * its routes) on anything but a live train StopDash vouches for, or, past its predictions, trains
+     * through that its live trains show running every few minutes, boarded as the rider gets there
+     * ([estimate]): a train through a change ([RideLines.through]) is never offered on the Planner
+     * times it carries as a placeholder, which belong to other lines.
      */
     fun withoutUnvouchedLegs(estimates: List<Estimate>, planned: Set<TripLeg>): List<Estimate> =
         estimates.filter { estimate ->
             estimate.route.legs.withIndex().all { (index, leg) ->
-                leg.isWalk || leg in planned || estimate.legs.getOrNull(index)?.train != null
+                val timing = estimate.legs.getOrNull(index)
+                leg.isWalk || leg in planned || timing?.train != null || (timing?.running == true && timing.arrive != null)
             }
         }
 

@@ -96,6 +96,21 @@ class TripThroughRoutesTest {
     }
 
     @Test
+    fun `a train through past its predictions, every few minutes, is listed as an estimate`() {
+        // Blue to Dale every 3 min, but the rider reaches Aston at 12, after the last one predicted.
+        val frequent = state(throughIn = null).let { s ->
+            s.copy(live = s.live + ("Aston" to TripViewModel.StopLive(listOf(train("red", "Red End", 1), train("blue", "Ely", 2)) + listOf(1L, 4L, 7L, 10L).map { train("blue", "Dale", it) }, now)))
+        }
+        val trip = withThroughRoutes(frequent, StepFree.ANY, sequences)
+        val planned = frequent.routes.orEmpty().flatMapTo(HashSet()) { it.legs }
+        val listed = TripTiming.withoutUnvouchedLegs(tripEstimates(trip, now, Duration.ofMinutes(12), sequences).orEmpty(), planned)
+        // Boarded at 12, on board the two rides' 2 + 6 min: at Cole by 20, an estimate, not left off the list (Codex, #1266).
+        val through = listed.single { estimate -> estimate.route.rides.map { it.lineId } == listOf("blue") }
+        assertEquals(TripTiming.Basis.ESTIMATED, through.basis)
+        assertEquals(at(20), through.arrival)
+    }
+
+    @Test
     fun `a change that's faster stays, first, with the train through after it`() {
         // Blue to Dale leaves Aston in 20: at Cole by 28, after the change's 15.
         val listed = listed(state(throughIn = 20))
