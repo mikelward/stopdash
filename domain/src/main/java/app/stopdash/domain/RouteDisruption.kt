@@ -911,6 +911,7 @@ object RouteDisruption {
         now: Instant,
     ): List<StationNote> {
         if (progress == TripProgress.Arrived) return emptyList()
+        val closures = ridden(trip, progress, closures)
         val legOf = comingStops(trip, progress).reversed().associate { it.value.id to it.index }
         // The coming stops at each interchange, whose cards fold into one at the first of them.
         val atHub = legOf.keys.groupBy { places[it]?.hub.orEmpty() }
@@ -981,6 +982,7 @@ object RouteDisruption {
     ): List<DepartureRow> {
         val coming = comingStops(trip, progress).distinctBy { it.value.id }
         if (coming.isEmpty()) return emptyList()
+        val closures = ridden(trip, progress, closures)
         val names = stopNames(trip)
         val rows = coming.flatMap { (_, end) ->
             val notices = closures[end.id]?.takeIf { it.isNotEmpty() } ?: return@flatMap emptyList()
@@ -992,6 +994,16 @@ object RouteDisruption {
             DepartureRows.across(listOf(stop), now).filter { it.stopDisruption != null }
         }
         return DepartureRows.stopStatusFolded(rows)
+    }
+
+    /**
+     * [closures] as the coming stops' lines read them ([NoticeLines.keptFor]): a Metropolitan line delay
+     * TfL files at King's Cross St. Pancras is no part of a Northern line ride ending there.
+     */
+    private fun ridden(trip: ActiveTrip, progress: TripProgress?, closures: Map<String, List<StopDisruption>>): Map<String, List<StopDisruption>> {
+        val lines = TripClosures.linesAt(comingStops(trip, progress).map { it.value })
+        val names = stopNames(trip)
+        return closures.mapValues { (id, notices) -> NoticeLines.keptFor(notices, lines[id].orEmpty(), names[id].orEmpty()) }
     }
 
     /** Where the stop [stopId] of [trip] sits, as a dismissal of its notice is keyed ([stopPlaceKey]). */

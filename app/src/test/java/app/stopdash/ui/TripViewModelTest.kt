@@ -7291,6 +7291,16 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a route's closure cards leave out another line's notice at its stops`() {
+        val northern = TripRoute(listOf(leg("northern", "A", "B", 5, 15)))
+        val met = StopDisruption("Metropolitan Line: Minor delays between Wembley Park and Aldgate. GOOD SERVICE on the rest of the line.")
+        val lift = StopDisruption("Lift out of service to the street")
+        val state = TripViewModel.State(closures = mapOf("B" to listOf(met, lift)))
+        assertEquals("Lift out of service to the street", routeClosures(northern, state, now, emptySet()).getValue("B").stopDisruption)
+        assertEquals(emptyMap<String, DepartureRow>(), routeClosures(northern, state.copy(closures = mapOf("B" to listOf(met))), now, emptySet()))
+    }
+
+    @Test
     fun `the trip's row carries each stop's notice once, in TfL's words, for its lines page`() {
         val lift = listOf(StopDisruption("Lift out of service to the westbound platform"))
         val other = TripRoute(listOf(leg("green", "A", "D", 5, 20), leg("blue", "D", "C", 22, 35)))

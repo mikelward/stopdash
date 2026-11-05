@@ -68,6 +68,24 @@ class TripClosuresTest {
     }
 
     @Test
+    fun `another line's closure at a stop doesn't close a ride on its own line`() {
+        val northern = TripRoute(listOf(leg("northern", "A", "B")))
+        val circleShut = listOf(StopDisruption("Circle Line: Station closed due to strike action"))
+        val checked = mapOf("A" to emptyList<StopDisruption>())
+        assertEquals(TripClosures.Standing.OPEN, TripClosures.standing(northern, checked + ("B" to circleShut), emptySet(), now))
+        // The Circle line's own ride there is closed by it, and a station-wide closure closes either.
+        val circle = TripRoute(listOf(leg("circle", "A", "B")))
+        assertEquals(TripClosures.Standing.CLOSED, TripClosures.standing(circle, checked + ("B" to circleShut), emptySet(), now))
+        assertEquals(TripClosures.Standing.CLOSED, TripClosures.standing(northern, checked + ("B" to closed), emptySet(), now))
+    }
+
+    @Test
+    fun `a stop's lines are those ridden there, none where a walk alone uses it`() {
+        val ends = listOf(TripClosures.End("A", lineId = "northern"), TripClosures.End("A", lineId = "victoria"), TripClosures.End("B"))
+        assertEquals(mapOf("A" to setOf("northern", "victoria"), "B" to emptySet<String>()), TripClosures.linesAt(ends))
+    }
+
+    @Test
     fun `a moved stop, a lift out or a closure not yet in force leaves the route open`() {
         val moved = listOf(StopDisruption("Bus stop moved to the other side of the junction"))
         val lift = listOf(StopDisruption("Lift out of order"))

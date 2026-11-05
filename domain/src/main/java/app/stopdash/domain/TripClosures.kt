@@ -39,6 +39,13 @@ object TripClosures {
         return all.filterNot { it.lineId.isEmpty() && it.id in ridden }.distinctBy { it.id to it.lineId }
     }
 
+    /**
+     * The lines each of [ends] is ridden at, by stop id, for its notices to be read by them
+     * ([NoticeLines.keptFor]): none for a stop a walk alone uses, whose every notice counts.
+     */
+    fun linesAt(ends: List<End>): Map<String, Set<String>> =
+        ends.groupBy { it.id }.mapValues { (_, at) -> if (at.any { it.lineId.isBlank() }) emptySet() else at.mapTo(HashSet()) { it.lineId } }
+
     /** How a route stands by its stops' checks, as [TripTiming.rank] tiers it. */
     enum class Standing { OPEN, UNCHECKED, CLOSED }
 
@@ -73,7 +80,8 @@ object TripClosures {
      * a pair's poles can miss the one the bus uses. The trip's ranking and a leg's line page both
      * judge a stop this way, so they never disagree.
      *
-     * CLOSED when the stop has a notice in force that says it's closed ([ClosedNotice]): a moved stop
+     * CLOSED when the stop has a notice in force that says it's closed ([ClosedNotice]), unless it's about
+     * other lines than [End.lineId] only ([NoticeLines.aboutOtherLines]): a moved stop
      * or a lift out leaves it open, as only the notice's own words can close it. UNCHECKED when the
      * ride isn't placed, or the stop has no check of its own in [closures] (whichever stop the trip
      * asked about: a pole of a pair, a stand a bus was placed on, or one a route rewritten to its
@@ -96,7 +104,9 @@ object TripClosures {
         used: String? = end.id,
     ): Standing {
         val at = used ?: return Standing.UNCHECKED
-        if (closedAt(closures[at].orEmpty(), now)) return Standing.CLOSED
+        // A notice about other lines only ("Circle line: No service …" at a Northern line ride's stop) doesn't close it.
+        val notices = NoticeLines.keptFor(closures[at].orEmpty(), listOfNotNull(end.lineId.ifBlank { null }))
+        if (closedAt(notices, now)) return Standing.CLOSED
         return if (at !in unknown && at in closures) Standing.OPEN else Standing.UNCHECKED
     }
 

@@ -2353,6 +2353,11 @@ until its line's route shows which, the route isn't vouched for there, and once 
 the bus uses counts, by a check of its own. A bus station's stand the line's route puts the bus at, in
 place of the one the Planner named, is checked too once the route shows it, and until then the route
 isn't vouched for there.
+Each stop's notices are read by the lines the route rides there, as a favorite journey's far end is: TfL files
+a line's status at every station on its disrupted stretch ("Metropolitan Line: Minor delays …" at King's Cross
+St. Pancras), so one opening with lines, none of them ridden there, is no part of the route — not on its cards,
+its lines page, its trip notification, nor in what closes it; one opening with no line, or at a stop only a walk
+uses, still counts (maintainer, 2026-11-05).
 A notice shows as the list's closure card on the open route, where
 the ride boards or gets off, and as the ⚠ on the list card's ride. A failed check keeps the last known
 notice and claims nothing new. Routes sort

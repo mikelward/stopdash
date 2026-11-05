@@ -151,6 +151,7 @@ import app.stopdash.domain.AlertStart
 import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.NoticeLines
 import app.stopdash.domain.PartClosure
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
@@ -3709,8 +3710,12 @@ internal fun routeClosureRows(
     val names = (others + route.legs).flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
     val rides = route.rides + others
     val ends = TripClosures.ends(route) + others.flatMap { listOf(TripClosures.End(it.fromId, lineId = it.lineId), TripClosures.End(it.toId, lineId = it.lineId)) }
+    // Each stop's notices as the lines ridden there read them: a Metropolitan line delay TfL files at King's
+    // Cross St. Pancras is no part of a Northern line ride ending there ([NoticeLines.keptFor]).
+    val lines = TripClosures.linesAt(ends)
     val rows = ends.distinctBy { it.id }.flatMap { end ->
-        val notices = state.closures[end.id]?.takeIf { it.isNotEmpty() } ?: return@flatMap emptyList()
+        val notices = NoticeLines.keptFor(state.closures[end.id].orEmpty(), lines[end.id].orEmpty(), names[end.id].orEmpty())
+            .takeIf { it.isNotEmpty() } ?: return@flatMap emptyList()
         // The route data of a line that calls there, any ride's that has loaded (at a change, one may
         // have failed while the other came in); none for a stop only a walk uses.
         val sequence = rides.filter { it.fromId == end.id || it.toId == end.id }.firstNotNullOfOrNull { sequences[it.lineId] }
