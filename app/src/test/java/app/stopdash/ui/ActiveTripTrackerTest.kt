@@ -4388,6 +4388,94 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a step chosen with Back holds until the rider is seen where it starts`() = runTest {
+        // Maintainer, 2026-11-05: Next or Back sticks the rider's location to the step's start until it sees them
+        // there, then follows location again. Synthetic positions: Z where the walk starts, A the station 1 km on.
+        val z = app.stopdash.domain.Coordinates(51.49, -0.12)
+        val a = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10), fromAt = z, toAt = a)
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 12))
+        trains["3"] = listOf(call("A", 12), call("B", 15), call("C", 19))
+        tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = a))), "C", readyAt = now)
+        now = at(2)
+        tracker.goTo(Step(0), Step(1))
+        // Seen near A, waiting there.
+        tracker.refresh(fixAt(51.499))
+        tracker.goTo(Step(1), Step(0))
+        assertEquals(0, tracker.trip.value?.legIndex)
+        // The walk is measured from Z, where they chose to be, not from near A (Codex, #1267).
+        assertEquals(1112.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 10.0)
+        // Still at A, where they were when they tapped Back: the walk they chose stays.
+        tracker.refresh(fixAt(51.5))
+        assertEquals(0, tracker.trip.value?.legIndex)
+        // Nor is the walk measured from there between refreshes (Codex, #1267).
+        val before = (tracker.progress.value as TripProgress.Walking).metersLeft
+        tracker.onFix(fixAt(51.499))
+        assertEquals(before, (tracker.progress.value as TripProgress.Walking).metersLeft)
+        // Seen at Z, where the walk starts, between refreshes: location is followed again, measuring the walk from
+        // there, and A then ends it.
+        tracker.onFix(fixAt(51.49))
+        assertEquals(1112.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 10.0)
+        assertTrue(logged.contains("on the way: seen where the chosen step starts: following location again"))
+        tracker.refresh(fixAt(51.49))
+        assertEquals(0, tracker.trip.value?.legIndex)
+        tracker.refresh(fixAt(51.5))
+        assertEquals(1, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `Back off a train holds the rider at the platform until seen there`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("3", 6), train("4", 12))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        trains["4"] = listOf(call("A", 12), call("B", 15), call("C", 19))
+        now = at(5)
+        tracker.start(TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12)))), "C", readyAt = now)
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        now = at(10)
+        // Back: not on it after all, though a fix still places them at B, along the ride.
+        tracker.goTo(Step(0, onBoard = true), Step(0))
+        tracker.refresh(fixAt(51.51))
+        assertEquals(Step(0), OnTheWay.stepOf(tracker.trip.value!!))
+        // A fix at A gone stale while the route was read is no sighting there (Codex, #1267).
+        sequenceTakes = 15_000L
+        tracker.refresh(fixAt(51.5))
+        assertFalse(logged.contains("on the way: seen where the chosen step starts: following location again"))
+        sequenceTakes = 0L
+        // Seen at A, where boarding starts: location is followed again, and B then puts them on board.
+        tracker.refresh(fixAt(51.5))
+        assertTrue(logged.contains("on the way: seen where the chosen step starts: following location again"))
+        now = at(16)
+        tracker.refresh(fixAt(51.51))
+        assertEquals(Step(0, onBoard = true), OnTheWay.stepOf(tracker.trip.value!!))
+    }
+
+    @Test
+    fun `On board another of the ride's lines, its own stops let go of the hold`() = runTest {
+        // Purple runs from A to C by X, a street west of red's B (Codex, #1267).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        sequences["purple"] = app.stopdash.domain.LineSequence(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "X", "C"))),
+            stopNames = mapOf("A" to "A", "X" to "X", "C" to "C"),
+            stopPositions = mapOf("A" to (51.5 to -0.12), "X" to (51.51 to -0.135), "C" to (51.52 to -0.12)),
+        )
+        offered["red"] = listOf(ride, purpleRide)
+        departures["A"] = listOf(Departure("purple", "Purple", "outbound", "C", null, at(6), "tube", vehicleId = "P"))
+        trains["P"] = listOf(call("A", 6), call("X", 8), call("C", 12))
+        now = at(5)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(purpleRide, tracker.trip.value?.vehicleLeg)
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        now = at(8)
+        tracker.refresh(fixAt(51.51, -0.135))
+        assertTrue(logged.contains("on the way: seen where the chosen step starts: following location again"))
+    }
+
+    @Test
     fun `Next from boarding puts the rider on board the train followed`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
