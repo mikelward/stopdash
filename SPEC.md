@@ -3896,7 +3896,11 @@ line's Bank branch is across the platform from the Victoria line going the same 
 branch through the passages at one end). A change across the platform says "Any carriage" (maintainer,
 2026-11-05): it answers where to ride as the others do. A station not read yet, one rebuilt since 2015, a
 change the drawing doesn't place, or a train from neither end says nothing, never a guess.
-Every fact a drawing shows is recorded, even one the app can't use yet. The table grows a few stations at a
+Every fact a drawing shows is recorded, even one the app can't use yet. Where a station has several exits and
+the best depends on where the rider is going (King's Cross: the Northern ticket hall north to Granary Square,
+the tube ticket hall south to Euston Road; maintainer, 2026-11-05), each exit is recorded with the way it leads
+out, and the trip takes the one the walk on heads toward, within 60 degrees, for a walk of 150 m or more. A walk
+between two exits, too short to tell, or not placed says nothing. The table grows a few stations at a
 time, each entry saying what its drawing shows so it can be checked.
 
 ### Disruptions
