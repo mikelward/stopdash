@@ -84,6 +84,22 @@ class RouteLabelsTest {
     }
 
     @Test
+    fun `of several with the fewest rides the one getting there first is simplest, wherever it's listed`() {
+        // An estimate listed below a live route it may not beat still arrives sooner: a slower ride isn't simpler.
+        val estimate = card(1, 32).copy(basis = TripTiming.Basis.ESTIMATED)
+        assertEquals(
+            listOf(fastest, none, none, simplest),
+            routeLabels(listOf(card(2, 30), card(1, 34), card(3, 36), estimate)),
+        )
+        // Withheld, it has no arrival to be first by: the earliest shown with one is.
+        assertEquals(
+            listOf(fastest, simplest, none),
+            routeLabels(listOf(card(2, 30), card(1, 34), card(1, null))),
+        )
+        assertEquals(listOf(fastest, simplest, none), routeLabels(listOf(card(2, 30), card(1, null), card(1, null))))
+    }
+
+    @Test
     fun `none is simplest when every card rides as often`() {
         assertEquals(listOf(fastest, none, none), routeLabels(listOf(card(2, 30), card(2, 34), card(2, 36))))
     }

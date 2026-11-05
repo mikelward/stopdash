@@ -27,8 +27,12 @@ data class HeadedCard(val index: Int, val header: List<RouteLabel>)
  *   minutes it shows from now (maintainer, 2026-10-16: arrival time is what matters), so cards
  *   arriving in the same minute tie, and midnight or the clock change can't make a later one read
  *   as sooner.
- * - **Simplest** is the card with the fewest rides, the earliest shown where several tie, and only
- *   when the cards don't all ride the same number of times: otherwise none is simpler.
+ * - **Simplest** is the card with the fewest rides, and only when the cards don't all ride the same
+ *   number of times: otherwise none is simpler. Of several with as few, the one getting there first,
+ *   by the minute, whatever the order shown: a list orders an estimate below a live route it may not
+ *   beat, but that's no reason to call a slower ride simpler (maintainer, 2026-11-05: a ride and a
+ *   20-minute walk took it from the train straight there, listed lower as an estimate). The earliest
+ *   shown on a tie, or where none of them has an arrival to give.
  * - **Least walking** is every card walking least by the Planner's times, all of them where several
  *   tie, the first card included (maintainer, 2026-10-04: "Fastest · Least walking" on the top card
  *   when it walks as little as any), and only when the cards don't all walk as much: otherwise none
@@ -49,7 +53,12 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
         labels[0] += RouteLabel.FASTEST
     }
     val rides = cards.map { it.route.rides.size }
-    rides.indexOf(rides.min()).takeIf { rides.min() < rides.max() }?.let { labels[it] += RouteLabel.SIMPLEST }
+    if (rides.min() < rides.max()) {
+        val fewest = rides.indices.filter { rides[it] == rides.min() }
+        val soonest = fewest.filter { cards[it].arrival != null }
+            .minByOrNull { checkNotNull(cards[it].arrival).truncatedTo(ChronoUnit.MINUTES) }
+        labels[soonest ?: fewest.first()] += RouteLabel.SIMPLEST
+    }
     val walking = cards.map { it.route.walking }
     val least = walking.min()
     if (least < walking.max()) walking.forEachIndexed { i, walk -> if (walk == least) labels[i] += RouteLabel.LEAST_WALKING }
