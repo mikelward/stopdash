@@ -37,6 +37,14 @@ object NoticeLines {
         return scope.isNotEmpty() && scope.none { it in lineIds }
     }
 
+    /**
+     * [notices] as a stop reached on [lineIds] reads them: less each about other lines only
+     * ([aboutOtherLines]). All of them where no line is known (a stop only a walk uses).
+     */
+    @WorkerThread
+    fun keptFor(notices: List<StopDisruption>, lineIds: Collection<String>, stopName: String = ""): List<StopDisruption> =
+        if (lineIds.isEmpty()) notices else notices.filterNot { aboutOtherLines(it.description, lineIds, stopName) }
+
     // The lines [text] opens with, or null when it opens with none.
     private fun leading(text: String): Set<String>? {
         val run = LINE_RUN.find(text)?.takeIf { it.range.first == 0 } ?: return null

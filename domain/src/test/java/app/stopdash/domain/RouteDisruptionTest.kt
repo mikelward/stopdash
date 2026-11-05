@@ -420,6 +420,20 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a coming station's notice about another line only is no note and no signal`() {
+        val northern = ActiveTrip(TripRoute(listOf(ride.copy(lineId = "northern", lineName = "Northern"))), "C", startedAt = t0)
+        val closures = mapOf(
+            "C" to listOf(
+                StopDisruption("Metropolitan Line: Minor delays between Wembley Park and Aldgate due to an earlier faulty train."),
+                StopDisruption("Circle Line: Station closed due to strike action"),
+            ),
+        )
+        val progress = TripProgress.Waiting(northern.route.legs.single(), at(5))
+        assertEquals(emptyList<RouteDisruption.StationNote>(), RouteDisruption.stationNotes(northern, progress, closures, emptyMap(), emptySet(), at(3)))
+        assertEquals(emptyList<DepartureRow>(), RouteDisruption.closureCards(northern, progress, closures, emptyMap(), at(3)))
+    }
+
+    @Test
     fun `a coming station's notice that neither closes nor moves it is a note, never a signal`() {
         val closures = mapOf(
             "C" to listOf(StopDisruption("Station closed due to strike action")),

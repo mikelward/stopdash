@@ -86,4 +86,13 @@ class NoticeLinesTest {
         assertFalse(NoticeLines.aboutOtherLines("Station closed due to a fire alert.", listOf("northern")))
         assertFalse(NoticeLines.aboutOtherLines("Circle Line: No service.", emptyList()))
     }
+
+    @Test
+    fun `a stop's notices are kept for the lines ridden there, every one with none known`() {
+        val met = StopDisruption("Metropolitan Line: Minor delays between Wembley Park and Aldgate. GOOD SERVICE on the rest of the line.")
+        val lift = StopDisruption("Lift out of service to the Northern line platforms")
+        assertEquals(listOf(lift), NoticeLines.keptFor(listOf(met, lift), setOf("northern")))
+        assertEquals(listOf(met, lift), NoticeLines.keptFor(listOf(met, lift), setOf("metropolitan")))
+        assertEquals(listOf(met, lift), NoticeLines.keptFor(listOf(met, lift), emptySet()))
+    }
 }
