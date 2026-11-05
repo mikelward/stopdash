@@ -5686,18 +5686,19 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   ends, maintainer, 2026-11-05); the sub-surface lines and the main line stations wait for exits chosen by
   destination. Baker Street isn't read: its drawing doesn't say which way each of the Jubilee and Bakerloo
   platforms runs, which decides what's across the platform.
-- [ ] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). A big station's
-  best exit depends on the destination: at King's Cross, southbound on the Northern line, the back (the Northern
-  ticket hall) for Granary Square, Regent's Canal, Pancras Square or Coal Drops Yard, the front for Euston Road;
-  for the sub-surface lines and the main line, it depends on King's Cross or St Pancras International.
-  The table records such exits by name (`PlatformEnds.exitTo`); give each a position (TfL's station entrances,
-  or the ticket hall's) and pick the one nearest the trip's walk on, or its destination where the ride ends the
-  trip. Until then only the station's one `EXIT` is looked up. A change onto a line with branches on different platforms
-  is keyed by the next train's first stop (`PlatformEnds.toward`), and one held to trains from one side by
-  `arriving`, as Euston's are; a change across the platform is `End.ACROSS`, said "Any carriage".
+- [x] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). Done: each named
+  exit (`PlatformEnds.exitTo`) has the bearing it leads out toward (`PlatformEnds.EXITS`), and the trip takes
+  the one the walk on heads toward (`exitToward`). King's Cross's two are in, from the Northern and Piccadilly
+  lines; the sub-surface lines (their ticket hall is by Euston Road) and the main line stations (King's Cross or
+  St Pancras International) are next to record the same way, once their platforms' ends are read.
 
 ## Decisions needing review
 
+- [ ] **An exit is chosen by the walk on's heading, within 60 degrees, for a walk of 150 m or more** (autopilot,
+  2026-11-05). Each named exit carries one bearing, read from the drawing and the streets (King's Cross: 180 for
+  the tube ticket hall, 0 for the Northern ticket hall), not TfL's entrance positions, which don't say which
+  ticket hall they belong to. Alternatives: a wider or narrower window; positions per entrance once mapped to
+  ticket halls; the trip's destination rather than the walk's end where they differ.
 - [ ] **Where to stand reads "Front of train" after the step's time** (2026-11-05). Three spots only (front,
   middle, back): the drawings aren't to scale, so a carriage number would be a guess. The first entries
   (Euston's three platform pairs and their cross-platform islands, Leicester Square's Northern line, Warren

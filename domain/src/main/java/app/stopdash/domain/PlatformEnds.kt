@@ -55,10 +55,42 @@ object PlatformEnds {
     /**
      * A key of [Platforms.ways] for one of a station's exits, by the ticket hall or street it leads to, where the station
      * has several and the best depends on where the rider is going (King's Cross: the Northern ticket hall for Granary
-     * Square, the tube ticket hall for Euston Road). Recorded as read, but not looked up until the exit can be chosen by
-     * the walk on (`TODO.md`, *Where to stand: choose the exit by where the rider is going*); [EXIT] is looked up meanwhile.
+     * Square, the tube ticket hall for Euston Road; maintainer, 2026-11-05). Chosen by the walk on ([exitToward]), before
+     * the station's one [EXIT].
      */
     fun exitTo(name: String): String = "$EXIT:$name"
+
+    /**
+     * Each station's named exits ([exitTo]) and the compass bearing each leads out toward, in degrees from north, as its
+     * drawing and the streets around it place them: what [exitToward] matches the walk on against.
+     */
+    val EXITS: Map<String, Map<String, Double>> = mapOf(
+        // King's Cross St Pancras: the tube ticket hall comes up on Euston Road, to the south; the Northern ticket hall,
+        // serving the Northern and Piccadilly lines beside the tunnel to St Pancras, is at the Regent's Canal end and
+        // leads north, to Granary Square, Regent's Canal, Pancras Square and Coal Drops Yard (maintainer, 2026-11-05).
+        // The sub-surface lines' ticket hall is by Euston Road too; their platforms aren't read yet.
+        "940GZZLUKSX" to mapOf("tube-ticket-hall" to 180.0, "northern-ticket-hall" to 0.0),
+    )
+
+    /** How far from an exit's bearing the walk on can head and still be through it ([exitToward]). */
+    const val EXIT_WITHIN_DEGREES = 60.0
+
+    /** How far the walk on must go for its heading to choose an exit ([exitToward]): nearer, any exit will do. */
+    const val EXIT_FROM_METERS = 150.0
+
+    /**
+     * Which of [exits] (a station's, [EXITS]) the walk from [from] to [to] leaves by: the one whose bearing is within
+     * [EXIT_WITHIN_DEGREES] of the walk's, where it's the only one and the walk goes at least [EXIT_FROM_METERS]. Null
+     * otherwise: a walk off between two exits, or too short to tell, says nothing (SPEC principle 1).
+     */
+    fun exitToward(exits: Map<String, Double>, from: Coordinates, to: Coordinates): String? {
+        if (NearestStops.distanceMeters(from.latitude, from.longitude, to.latitude, to.longitude) < EXIT_FROM_METERS) return null
+        val heading = Compass.bearingDegrees(from.latitude, from.longitude, to.latitude, to.longitude)
+        return exits.filterValues { bearing -> angleBetween(heading, bearing) <= EXIT_WITHIN_DEGREES }.keys.singleOrNull()
+    }
+
+    // The smaller angle between two bearings, in degrees.
+    private fun angleBetween(a: Double, b: Double): Double = ((a - b) % 360.0 + 360.0).let { minOf(it % 360.0, 360.0 - it % 360.0) }
 
     /** Where the facts were read: TfL's station layout drawings as published in 2015. */
     const val SOURCE = "TfL station layout axonometrics, 2015, via ianvisits.co.uk/articles/3d-maps-of-every-underground-station-ab-14630"
@@ -86,9 +118,22 @@ object PlatformEnds {
             // A ride from another stop, with no walk between: where it's reached from isn't known.
             else -> return null
         }
-        // The next ride's line toward its first stop after the station (its branch and way), then the line alone.
+        // The next ride's line toward its first stop after the station (its branch and way), then the line alone. Leaving
+        // the station, the exit the walk on heads for, where the station has several ([exitToward]), then its one exit.
         val ways = if (next == null) {
-            listOf(EXIT)
+            val walkOn = onward?.takeIf { it.isWalk }
+            val from = ride.toAt ?: walkOn?.fromAt
+            // Where the walk on ends: its own position where given; else the next ride's stop, a public one; else, where it
+            // ends the trip, the trip's destination place, already kept with the trip. The Planner keeps no walk's end, as
+            // it can be the rider's own place (Codex, #1261), so this never adds one.
+            val to = walkOn?.let { walk ->
+                walk.toAt
+                    ?: legs.getOrNull(index + 2)?.takeIf { !it.isWalk }?.fromAt
+                    ?: trip.destinations.filterIsInstance<TripDestination.Place>().singleOrNull()?.coordinate?.takeIf { index + 1 == legs.lastIndex }
+            }
+            val named = station.firstNotNullOfOrNull { EXITS[it] }?.takeIf { from != null && to != null }
+                ?.let { exitToward(it, checkNotNull(from), checkNotNull(to)) }
+            listOfNotNull(named?.let(::exitTo), EXIT)
         } else {
             val first = RouteDisruption.rideCalls(next).dropWhile { it in station || it == next.fromId || it == next.fromArea }.firstOrNull()
             listOfNotNull(first?.let { toward(next.lineId, it) }, next.lineId)
@@ -228,9 +273,18 @@ object PlatformEnds {
         // Victoria line, platforms 3 and 4, running east to west: the stairs to the Piccadilly and Northern lines are at
         // the Euston (west) end, beside the Piccadilly line's south end.
         Platforms(KINGS_CROSS, "victoria", EUSTON, HIGHBURY, mapOf("piccadilly" to End.A, "northern" to End.A)),
-        // Piccadilly line, platforms 5 and 6: the stairs to the Victoria and Northern lines are at the south (Russell
-        // Square) end.
-        Platforms(KINGS_CROSS, "piccadilly", RUSSELL_SQUARE, CALEDONIAN_ROAD, mapOf("victoria" to End.A, "northern" to End.A)),
+        // Piccadilly line, platforms 5 and 6: the stairs to the Victoria and Northern lines and the escalators to the tube
+        // ticket hall are at the south (Russell Square) end; the escalators at the north (Caledonian Road) end go up to the
+        // Northern ticket hall (maintainer, 2026-11-05).
+        Platforms(
+            KINGS_CROSS, "piccadilly", RUSSELL_SQUARE, CALEDONIAN_ROAD,
+            mapOf(
+                "victoria" to End.A,
+                "northern" to End.A,
+                exitTo("tube-ticket-hall") to End.A,
+                exitTo("northern-ticket-hall") to End.B,
+            ),
+        ),
         // Leicester Square, Northern line, platforms 3 and 4: the escalators to the ticket hall and the subway to
         // the Piccadilly line leave from the south (Charing Cross) end.
         Platforms(LEICESTER_SQUARE, "northern", CHARING_CROSS, TOTTENHAM_COURT_ROAD, mapOf("piccadilly" to End.A, EXIT to End.A)),

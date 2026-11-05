@@ -127,12 +127,52 @@ class PlatformEndsTest {
         // Southbound, in from Euston: the Victoria line is at the Angel end, the front.
         val south = ride("northern", camdenTown, euston, kingsCross)
         assertEquals(Spot.FRONT, spot(south, change("victoria", kingsCross, "940GZZLUHAI")))
-        // Its exits are told apart by where they lead, which isn't chosen yet: a plain exit says nothing.
+        // Its exits are told apart by where they lead: with no walk on to choose by, nothing.
         assertNull(spot(south))
+        // Walking on north (Granary Square): the Northern ticket hall, at the Euston end, the back (maintainer,
+        // 2026-11-05). South (Euston Road): the tube ticket hall, at the Angel end, the front. Major places only.
+        val at = Coordinates(51.5308, -0.1238)
+        val arrived = south.copy(toAt = at)
+        fun walkTo(lat: Double, lon: Double) = TripLeg(TripLeg.WALKING, "", "", kingsCross, kingsCross, "there", "there", at(10), at(20), fromAt = at, toAt = Coordinates(lat, lon))
+        assertEquals(Spot.BACK, spot(arrived, walkTo(51.5352, -0.1255)))
+        assertEquals(Spot.FRONT, spot(arrived, walkTo(51.5268, -0.1240)))
+        // East or west, between the two, or too near to tell: nothing.
+        assertNull(spot(arrived, walkTo(51.5308, -0.1150)))
+        assertNull(spot(arrived, walkTo(51.5310, -0.1238)))
+        // As the Planner gives a walk, with no end position (Codex, #1261): its end is the trip's destination place, or
+        // the next ride's stop.
+        val bare = walkTo(51.5352, -0.1255).copy(toAt = null)
+        val toPlace = ActiveTrip(
+            TripRoute(listOf(arrived, bare)), "Granary Square", startedAt = t0,
+            destinations = listOf(TripDestination.Place(Coordinates(51.5352, -0.1255), "Granary Square")),
+        )
+        assertEquals(Spot.BACK, PlatformEnds.standAt(toPlace, 0))
+        val onToBus = TripLeg("bus", "73", "73", "490000000X", "Euston Road", "490000000Y", "Oxford Street", at(25), at(40), fromAt = Coordinates(51.5268, -0.1240))
+        assertEquals(Spot.FRONT, spot(arrived, bare, onToBus))
+        // No position anywhere: nothing.
+        assertNull(spot(arrived, bare))
+        // The Piccadilly line southbound, in from Caledonian Road, walking on north: the Northern ticket hall is at that
+        // end, the back.
+        val piccadilly = ride("piccadilly", "940GZZLUHWY", "940GZZLUCRD", kingsCross).copy(toAt = at)
+        assertEquals(Spot.BACK, spot(piccadilly, walkTo(51.5352, -0.1255)))
+        assertEquals(Spot.FRONT, spot(piccadilly, walkTo(51.5268, -0.1240)))
         // The deep-level changes are at the southern ends (maintainer, 2026-11-05): the Piccadilly line northbound, in
         // from Russell Square, has them at the back; the Victoria line westbound, in from Highbury, at the front.
         assertEquals(Spot.BACK, spot(ride("piccadilly", "940GZZLUHBN", "940GZZLURSQ", kingsCross), change("victoria", kingsCross, euston)))
         assertEquals(Spot.FRONT, spot(ride("victoria", "940GZZLUFPK", "940GZZLUHAI", kingsCross), change("northern", kingsCross, "940GZZLUAGL")))
+    }
+
+    @Test
+    fun `an exit is chosen by the bearing it leads out toward`() {
+        val exits = mapOf("north" to 0.0, "south" to 180.0)
+        val from = Coordinates(51.5308, -0.1238)
+        assertEquals("north", PlatformEnds.exitToward(exits, from, Coordinates(51.5340, -0.1210)))
+        assertEquals("south", PlatformEnds.exitToward(exits, from, Coordinates(51.5270, -0.1270)))
+        // Across north, wrapping past 360 degrees.
+        assertEquals("north", PlatformEnds.exitToward(exits, from, Coordinates(51.5340, -0.1270)))
+        assertNull(PlatformEnds.exitToward(exits, from, Coordinates(51.5308, -0.1100)))
+        // Two exits within reach of the heading: neither.
+        assertNull(PlatformEnds.exitToward(mapOf("a" to 0.0, "b" to 40.0), from, Coordinates(51.5340, -0.1230)))
     }
 
     @Test
