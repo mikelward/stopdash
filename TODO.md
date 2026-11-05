@@ -5676,8 +5676,22 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       sharply; marked unknown until the surface is picked) and its degraded/offline behavior
       before implementation, per *Cost and reliability*.
 
+- [ ] **Where to stand: grow the table** (maintainer, 2026-11-05; SPEC *Where to stand*). Read more stations
+  off TfL's 2015 layout drawings into `PlatformEnds.TABLE`, the busiest interchanges first (King's Cross,
+  Oxford Circus, Green Park, Baker Street, Holborn, Embankment, Piccadilly Circus), leaving out any rebuilt
+  since 2015 (Bank, Tottenham Court Road, Bond Street, Liverpool Street, Paddington, Farringdon,
+  Whitechapel, Victoria) until read from how they are now. Record every fact a drawing shows, even one the app
+  can't use yet, so it's there when the app can. A change onto a line with branches on different platforms
+  is keyed by the next train's first stop (`PlatformEnds.toward`), and one held to trains from one side by
+  `arriving`, as Euston's are; a change across the platform is `End.ACROSS`, said "Any carriage".
+
 ## Decisions needing review
 
+- [ ] **Where to stand reads "Front of train" after the step's time** (2026-11-05). Three spots only (front,
+  middle, back): the drawings aren't to scale, so a carriage number would be a guess. The first entries
+  (Euston's three platform pairs and their cross-platform islands, Leicester Square's Northern line, Warren
+  Street's Victoria line) were read from the drawings, not checked on a platform; each says what its drawing
+  shows. A change across the platform says "Any carriage" (maintainer, 2026-11-05).
 - [x] **Drive sync's Settings switch names no Google account and says when it last synced as a clock
   time** (autopilot, 2026-10-23; debug builds only until the Data Safety form; kept to try first, maintainer,
   2026-10-23: "Let's try it like this first"). The `drive.appdata` grant alone doesn't say which account it

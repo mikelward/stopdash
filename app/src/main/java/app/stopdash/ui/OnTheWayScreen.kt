@@ -106,6 +106,7 @@ import app.stopdash.domain.rideStopList
 import app.stopdash.domain.withRouteStops
 import app.stopdash.domain.TflException
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.PlatformEnds
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.RouteDisruptionAlert
@@ -2122,7 +2123,7 @@ internal fun nextStepText(
         is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.lineName, place(progress.leg.fromName)) to
             // As the boards count it ([Countdown.minutes]): the train due here is often on the board
             // below, and the two must never read a minute apart.
-            (progress.due?.let { resources.getString(R.string.on_the_way_due, Countdown.minutes(it, now).toInt()) } ?: resources.getString(finding(progress.leg)))
+            withStand(resources, progress.due?.let { resources.getString(R.string.on_the_way_due, Countdown.minutes(it, now).toInt()) } ?: resources.getString(finding(progress.leg)), progress.stand)
         // Only taken to be on board, their train having left (maintainer, 2026-09-29): still on the
         // platform looks the same underground, so the step is still the ride, its board below, until
         // location or their word says they're on. A stop or two from getting off, it says so all the same.
@@ -2135,7 +2136,7 @@ internal fun nextStepText(
             // the boards count, never estimated from the plan beyond TfL's predictions.
             rideStopsText(resources, progress, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
         is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, place(progress.leg.fromName)) to
-            resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
+            withStand(resources, resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until)), progress.stand)
         // The walk to the destination can run past its time ([OnTheWay.walksToEnd]): no "About 0 min" then.
         is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, place(progress.leg.toName)) to
             (if (progress.until.isAfter(now)) resources.getString(R.string.on_the_way_walk_time, minutesUntil(now, progress.until)) else "")
@@ -2143,6 +2144,18 @@ internal fun nextStepText(
         TripProgress.Arrived -> resources.getString(R.string.on_the_way_arrived) to ""
         null -> resources.getString(R.string.on_the_way) to resources.getString(R.string.on_the_way_finding)
     }
+}
+
+// [detail] with where on the train to ride, where it's known ([PlatformEnds.standAt]; SPEC *Where to stand*).
+private fun withStand(resources: Resources, detail: String, stand: PlatformEnds.Spot?): String {
+    val where = when (stand) {
+        PlatformEnds.Spot.FRONT -> R.string.on_the_way_stand_front
+        PlatformEnds.Spot.MIDDLE -> R.string.on_the_way_stand_middle
+        PlatformEnds.Spot.BACK -> R.string.on_the_way_stand_back
+        PlatformEnds.Spot.ANY -> R.string.on_the_way_stand_any
+        null -> return detail
+    }
+    return resources.getString(R.string.on_the_way_with_stand, detail, resources.getString(where))
 }
 
 /**

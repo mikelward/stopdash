@@ -1421,6 +1421,14 @@
     <!-- %1$s the line ("Jubilee"), %2$s the stop. -->
     <string name="on_the_way_board">Board %1$s at %2$s</string>
     <string name="on_the_way_due">Due in %1$d min</string>
+    <!-- TODO: translate. Where on the train to ride so the change or the way out is close when the rider gets
+         off (PlatformEnds), after the step's time: "Due in 3 min · Back of train". -->
+    <string name="on_the_way_with_stand" tools:ignore="MissingTranslation">%1$s · %2$s</string>
+    <string name="on_the_way_stand_front" tools:ignore="MissingTranslation">Front of train</string>
+    <string name="on_the_way_stand_middle" tools:ignore="MissingTranslation">Middle of train</string>
+    <string name="on_the_way_stand_back" tools:ignore="MissingTranslation">Back of train</string>
+    <!-- A change across the platform: every door is near (maintainer, 2026-11-05). "Carriage" everywhere, as TfL says it: never "coach" or "car". -->
+    <string name="on_the_way_stand_any" tools:ignore="MissingTranslation">Any carriage</string>
     <!-- The trip's status-bar chip (a Live Update), counting down to the next thing: "4 min". -->
     <string name="on_the_way_chip_minutes">%1$d min</string>
     <!-- Where the next train goes, before the step's time in the trip's notification: "➔ Stratford". -->

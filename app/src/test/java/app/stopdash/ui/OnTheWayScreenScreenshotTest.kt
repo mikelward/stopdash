@@ -52,6 +52,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.PlatformEnds
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.ui.theme.StopDashTheme
@@ -2702,6 +2703,20 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithText("4 stops", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Updating…").assertDoesNotExist()
         captureSnapshot("on-the-way-checking.png")
+    }
+
+    @Test
+    fun where_to_ride_follows_the_step_time() {
+        val resources = composeRule.activity.resources
+        // Where on the train to ride, from the station's layout ([PlatformEnds]), after the step's own time, on
+        // the phone, its notification and the watch alike, which all read the step this way.
+        assertEquals("Due in 4 min · Back of train", nextStepText(resources, TripProgress.Waiting(mildmay, at(4), stand = PlatformEnds.Spot.BACK), now).second)
+        assertEquals("3 min to change · Front of train", nextStepText(resources, TripProgress.Changing(mildmay, at(3), stand = PlatformEnds.Spot.FRONT), now).second)
+        assertEquals("Due in 4 min · Middle of train", nextStepText(resources, TripProgress.Waiting(mildmay, at(4), stand = PlatformEnds.Spot.MIDDLE), now).second)
+        // A change across the platform (maintainer, 2026-11-05).
+        assertEquals("Due in 4 min · Any carriage", nextStepText(resources, TripProgress.Waiting(mildmay, at(4), stand = PlatformEnds.Spot.ANY), now).second)
+        // Not known: the time alone.
+        assertEquals("Due in 4 min", nextStepText(resources, TripProgress.Waiting(mildmay, at(4)), now).second)
     }
 
     @Test
