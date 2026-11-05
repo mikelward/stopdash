@@ -89,6 +89,28 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `green park's ways are at the ends its drawing shows`() {
+        val greenPark = "940GZZLUGPK"
+        // Victoria line southbound, in from Oxford Circus: the Jubilee line is at the Victoria end, the front.
+        assertEquals(Spot.FRONT, spot(ride("victoria", warrenStreet, oxfordCircus, greenPark), change("jubilee", greenPark, "940GZZLUWSM")))
+        // Northbound, in from Victoria: the Piccadilly line is at the Oxford Circus end, the front.
+        assertEquals(Spot.FRONT, spot(ride("victoria", "940GZZLUPCO", "940GZZLUVIC", greenPark), change("piccadilly", greenPark, "940GZZLUHPC")))
+        // Piccadilly line eastbound, in from Hyde Park Corner: the exit is at that end, the back.
+        assertEquals(Spot.BACK, spot(ride("piccadilly", "940GZZLUKNB", "940GZZLUHPC", greenPark)))
+        // Jubilee line westbound, in from Westminster: the Victoria line is at the Bond Street end, the front.
+        assertEquals(Spot.FRONT, spot(ride("jubilee", "940GZZLUWLO", "940GZZLUWSM", greenPark), change("victoria", greenPark, oxfordCircus)))
+        // Ways it reaches more than one way say nothing.
+        assertNull(spot(ride("jubilee", "940GZZLUWLO", "940GZZLUWSM", greenPark), change("piccadilly", greenPark, "940GZZLUHPC")))
+        assertNull(spot(ride("victoria", warrenStreet, oxfordCircus, greenPark)))
+    }
+
+    @Test
+    fun `piccadilly circus is midway on both lines`() {
+        assertEquals(Spot.MIDDLE, spot(ride("bakerloo", "940GZZLUEMB", "940GZZLUCHX", "940GZZLUPCC"), change("piccadilly", "940GZZLUPCC", "940GZZLUGPK")))
+        assertEquals(Spot.MIDDLE, spot(ride("piccadilly", "940GZZLUHPC", "940GZZLUGPK", "940GZZLUPCC")))
+    }
+
+    @Test
     fun `a way midway along is the middle either way`() {
         // Warren Street's Victoria line: the escalators land midway along.
         assertEquals(Spot.MIDDLE, spot(ride("victoria", kingsCross, euston, warrenStreet), change("northern", warrenStreet, goodgeStreet)))

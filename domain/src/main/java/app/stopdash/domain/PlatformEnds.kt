@@ -104,7 +104,11 @@ object PlatformEnds {
     private const val CHARING_CROSS = "940GZZLUCHX"
     private const val COVENT_GARDEN = "940GZZLUCGN"
     private const val EMBANKMENT = "940GZZLUEMB"
+    private const val BOND_STREET = "940GZZLUBND"
     private const val GREEN_PARK = "940GZZLUGPK"
+    private const val HYDE_PARK_CORNER = "940GZZLUHPC"
+    private const val VICTORIA = "940GZZLUVIC"
+    private const val WESTMINSTER = "940GZZLUWSM"
     private const val HOLBORN = "940GZZLUHBN"
     private const val PICCADILLY_CIRCUS = "940GZZLUPCC"
     private const val REGENTS_PARK = "940GZZLURGP"
@@ -159,6 +163,17 @@ object PlatformEnds {
             EMBANKMENT, "northern", CHARING_CROSS, WATERLOO,
             mapOf(EXIT to End.MIDDLE, "bakerloo" to End.MIDDLE, "district" to End.MIDDLE, "circle" to End.MIDDLE),
         ),
+        // Green Park, Victoria line, platforms 3 and 4: the subway to the Piccadilly line starts at the Oxford Circus
+        // end, the passage to the Jubilee line at the Victoria end. Escalators C land partway along, so the way out
+        // isn't read.
+        Platforms(GREEN_PARK, "victoria", OXFORD_CIRCUS, VICTORIA, mapOf("piccadilly" to End.A, "jubilee" to End.B)),
+        // Green Park, Piccadilly line, platforms 1 and 2: the subway to the Victoria line and the escalators to the
+        // ticket hall leave from the Hyde Park Corner end. The Jubilee line is reached two ways (that subway, or the
+        // passage past the lift from nearer the Piccadilly Circus end), so it isn't read.
+        Platforms(GREEN_PARK, "piccadilly", HYDE_PARK_CORNER, PICCADILLY_CIRCUS, mapOf(EXIT to End.A, "victoria" to End.A)),
+        // Green Park, Jubilee line, platforms 5 and 6: the escalators to the middle concourse and the passage to the
+        // Victoria line are at the Bond Street end. The Piccadilly line is reached two ways, so it isn't read.
+        Platforms(GREEN_PARK, "jubilee", BOND_STREET, WESTMINSTER, mapOf(EXIT to End.A, "victoria" to End.A)),
         // Holborn, Central line, platforms 1 and 2: the passages to the escalators, up to the ticket hall and down to
         // the Piccadilly line, meet the platforms midway.
         Platforms(HOLBORN, "central", TOTTENHAM_COURT_ROAD, CHANCERY_LANE, mapOf(EXIT to End.MIDDLE, "piccadilly" to End.MIDDLE)),
@@ -176,6 +191,10 @@ object PlatformEnds {
         Platforms(OXFORD_CIRCUS, "victoria", GREEN_PARK, WARREN_STREET, mapOf(toward("bakerloo", PICCADILLY_CIRCUS) to End.ACROSS), arriving = WARREN_STREET),
         Platforms(OXFORD_CIRCUS, "bakerloo", PICCADILLY_CIRCUS, REGENTS_PARK, mapOf(toward("victoria", WARREN_STREET) to End.ACROSS), arriving = PICCADILLY_CIRCUS),
         Platforms(OXFORD_CIRCUS, "bakerloo", PICCADILLY_CIRCUS, REGENTS_PARK, mapOf(toward("victoria", GREEN_PARK) to End.ACROSS), arriving = REGENTS_PARK),
+        // Piccadilly Circus, Bakerloo line, platforms 1 and 2, and Piccadilly line, platforms 3 and 4: the overbridges
+        // and the mid concourse, to each other and to escalators 1 to 11, meet both pairs of platforms midway.
+        Platforms(PICCADILLY_CIRCUS, "bakerloo", OXFORD_CIRCUS, CHARING_CROSS, mapOf(EXIT to End.MIDDLE, "piccadilly" to End.MIDDLE)),
+        Platforms(PICCADILLY_CIRCUS, "piccadilly", GREEN_PARK, LEICESTER_SQUARE, mapOf(EXIT to End.MIDDLE, "bakerloo" to End.MIDDLE)),
         // Warren Street, Victoria line, platforms 3 and 4: escalators 7 and 9, the only way off, land midway along.
         Platforms(WARREN_STREET, "victoria", EUSTON, OXFORD_CIRCUS, mapOf("northern" to End.MIDDLE, EXIT to End.MIDDLE)),
     )
