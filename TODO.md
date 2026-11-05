@@ -5678,7 +5678,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 - [ ] **Where to stand: grow the table** (maintainer, 2026-11-05; SPEC *Where to stand*). Read more stations
   off TfL's 2015 layout drawings into `PlatformEnds.TABLE`, the busiest interchanges first (King's Cross,
-  Oxford Circus, Green Park, Baker Street, Holborn, Embankment, Piccadilly Circus), leaving out any rebuilt
+  Green Park, Baker Street, Piccadilly Circus; read so far: Euston, Leicester Square, Warren Street's Victoria
+  line, Holborn, Embankment's Bakerloo and Northern lines, Oxford Circus's cross-platform pairs), leaving out any rebuilt
   since 2015 (Bank, Tottenham Court Road, Bond Street, Liverpool Street, Paddington, Farringdon,
   Whitechapel, Victoria) until read from how they are now. Record every fact a drawing shows, even one the app
   can't use yet, so it's there when the app can. A change onto a line with branches on different platforms

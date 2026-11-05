@@ -100,7 +100,16 @@ object PlatformEnds {
     }
 
     // TfL station ids, for reading the table.
+    private const val CHANCERY_LANE = "940GZZLUCHL"
     private const val CHARING_CROSS = "940GZZLUCHX"
+    private const val COVENT_GARDEN = "940GZZLUCGN"
+    private const val EMBANKMENT = "940GZZLUEMB"
+    private const val GREEN_PARK = "940GZZLUGPK"
+    private const val HOLBORN = "940GZZLUHBN"
+    private const val PICCADILLY_CIRCUS = "940GZZLUPCC"
+    private const val REGENTS_PARK = "940GZZLURGP"
+    private const val RUSSELL_SQUARE = "940GZZLURSQ"
+    private const val WATERLOO = "940GZZLUWLO"
     private const val CAMDEN_TOWN = "940GZZLUCTN"
     private const val EUSTON = "940GZZLUEUS"
     private const val KINGS_CROSS = "940GZZLUKSX"
@@ -136,9 +145,37 @@ object PlatformEnds {
         // Camden Town; platform 5 (southbound, in from King's Cross) with its platform 6, toward King's Cross.
         Platforms(EUSTON, "victoria", WARREN_STREET, KINGS_CROSS, mapOf(toward("northern", CAMDEN_TOWN) to End.ACROSS), arriving = WARREN_STREET),
         Platforms(EUSTON, "victoria", WARREN_STREET, KINGS_CROSS, mapOf(toward("northern", KINGS_CROSS) to End.ACROSS), arriving = KINGS_CROSS),
+        // Embankment, Bakerloo line, platforms 5 and 6: both interchange passages, to escalators 1 and 2 up to the
+        // Northern line, the District and Circle lines and the ticket hall, meet the platforms midway.
+        Platforms(
+            EMBANKMENT, "bakerloo", CHARING_CROSS, WATERLOO,
+            mapOf(EXIT to End.MIDDLE, "northern" to End.MIDDLE, "district" to End.MIDDLE, "circle" to End.MIDDLE),
+        ),
+        // Embankment, Northern line: on platform 3 (northbound) the passages to the Bakerloo line, the District and
+        // Circle lines and escalators 8 and 10 leave midway. On platform 4 (southbound) escalators 5 and 6 land from
+        // about a fifth to halfway along from the Charing Cross end: nearer the middle than either end (maintainer,
+        // 2026-11-05).
+        Platforms(
+            EMBANKMENT, "northern", CHARING_CROSS, WATERLOO,
+            mapOf(EXIT to End.MIDDLE, "bakerloo" to End.MIDDLE, "district" to End.MIDDLE, "circle" to End.MIDDLE),
+        ),
+        // Holborn, Central line, platforms 1 and 2: the passages to the escalators, up to the ticket hall and down to
+        // the Piccadilly line, meet the platforms midway.
+        Platforms(HOLBORN, "central", TOTTENHAM_COURT_ROAD, CHANCERY_LANE, mapOf(EXIT to End.MIDDLE, "piccadilly" to End.MIDDLE)),
+        // Holborn, Piccadilly line, platforms 3 and 4: the cross passages to the lower concourse and its escalators
+        // meet the platforms midway.
+        Platforms(HOLBORN, "piccadilly", COVENT_GARDEN, RUSSELL_SQUARE, mapOf(EXIT to End.MIDDLE, "central" to End.MIDDLE)),
         // Leicester Square, Northern line, platforms 3 and 4: the escalators to the ticket hall and the subway to
         // the Piccadilly line leave from the south (Charing Cross) end.
         Platforms(LEICESTER_SQUARE, "northern", CHARING_CROSS, TOTTENHAM_COURT_ROAD, mapOf("piccadilly" to End.A, EXIT to End.A)),
+        // Oxford Circus, Bakerloo and Victoria lines: each direction's two share an island, Victoria northbound
+        // (platform 6, toward Warren Street) beside Bakerloo northbound (4, toward Regent's Park), Bakerloo southbound
+        // (3, toward Piccadilly Circus) beside Victoria southbound (5, toward Green Park). Its exits and the Central
+        // line are reached from more than one place along them, so those aren't read.
+        Platforms(OXFORD_CIRCUS, "victoria", GREEN_PARK, WARREN_STREET, mapOf(toward("bakerloo", REGENTS_PARK) to End.ACROSS), arriving = GREEN_PARK),
+        Platforms(OXFORD_CIRCUS, "victoria", GREEN_PARK, WARREN_STREET, mapOf(toward("bakerloo", PICCADILLY_CIRCUS) to End.ACROSS), arriving = WARREN_STREET),
+        Platforms(OXFORD_CIRCUS, "bakerloo", PICCADILLY_CIRCUS, REGENTS_PARK, mapOf(toward("victoria", WARREN_STREET) to End.ACROSS), arriving = PICCADILLY_CIRCUS),
+        Platforms(OXFORD_CIRCUS, "bakerloo", PICCADILLY_CIRCUS, REGENTS_PARK, mapOf(toward("victoria", GREEN_PARK) to End.ACROSS), arriving = REGENTS_PARK),
         // Warren Street, Victoria line, platforms 3 and 4: escalators 7 and 9, the only way off, land midway along.
         Platforms(WARREN_STREET, "victoria", EUSTON, OXFORD_CIRCUS, mapOf("northern" to End.MIDDLE, EXIT to End.MIDDLE)),
     )
