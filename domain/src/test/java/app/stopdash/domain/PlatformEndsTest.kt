@@ -136,6 +136,13 @@ class PlatformEndsTest {
         fun walkTo(lat: Double, lon: Double) = TripLeg(TripLeg.WALKING, "", "", kingsCross, kingsCross, "there", "there", at(10), at(20), fromAt = at, toAt = Coordinates(lat, lon))
         assertEquals(Spot.BACK, spot(arrived, walkTo(51.5352, -0.1255)))
         assertEquals(Spot.FRONT, spot(arrived, walkTo(51.5268, -0.1240)))
+        // Named as the station's signs name it, where known (maintainer, 2026-11-05): the Northern ticket hall's is
+        // Regent's Canal; the tube ticket hall's wording isn't recorded, so it goes unnamed.
+        fun stand(vararg legs: TripLeg) = PlatformEnds.stand(ActiveTrip(TripRoute(legs.toList()), "There", startedAt = t0), 0)
+        assertEquals(PlatformEnds.Stand(Spot.BACK, "Regent's Canal"), stand(arrived, walkTo(51.5352, -0.1255)))
+        assertEquals(PlatformEnds.Stand(Spot.FRONT, null), stand(arrived, walkTo(51.5268, -0.1240)))
+        // A change is never named for an exit. The name is said getting off (TripProgress.Riding.exitSign).
+        assertEquals(PlatformEnds.Stand(Spot.FRONT, null), stand(south, change("victoria", kingsCross, "940GZZLUHAI")))
         // East or west, between the two, or too near to tell: nothing.
         assertNull(spot(arrived, walkTo(51.5308, -0.1150)))
         assertNull(spot(arrived, walkTo(51.5310, -0.1238)))
@@ -164,7 +171,7 @@ class PlatformEndsTest {
 
     @Test
     fun `an exit is chosen by the bearing it leads out toward`() {
-        val exits = mapOf("north" to 0.0, "south" to 180.0)
+        val exits = mapOf("north" to PlatformEnds.Exit(0.0), "south" to PlatformEnds.Exit(180.0))
         val from = Coordinates(51.5308, -0.1238)
         assertEquals("north", PlatformEnds.exitToward(exits, from, Coordinates(51.5340, -0.1210)))
         assertEquals("south", PlatformEnds.exitToward(exits, from, Coordinates(51.5270, -0.1270)))
@@ -172,7 +179,7 @@ class PlatformEndsTest {
         assertEquals("north", PlatformEnds.exitToward(exits, from, Coordinates(51.5340, -0.1270)))
         assertNull(PlatformEnds.exitToward(exits, from, Coordinates(51.5308, -0.1100)))
         // Two exits within reach of the heading: neither.
-        assertNull(PlatformEnds.exitToward(mapOf("a" to 0.0, "b" to 40.0), from, Coordinates(51.5340, -0.1230)))
+        assertNull(PlatformEnds.exitToward(mapOf("a" to PlatformEnds.Exit(0.0), "b" to PlatformEnds.Exit(40.0)), from, Coordinates(51.5340, -0.1230)))
     }
 
     @Test

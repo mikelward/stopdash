@@ -61,15 +61,21 @@ object PlatformEnds {
     fun exitTo(name: String): String = "$EXIT:$name"
 
     /**
-     * Each station's named exits ([exitTo]) and the compass bearing each leads out toward, in degrees from north, as its
-     * drawing and the streets around it place them: what [exitToward] matches the walk on against.
+     * One of a station's named exits: the compass [bearing] it leads out toward, in degrees from north, as its drawing and
+     * the streets around it place it, and the [sign] the station's own signs give it ("Regent's Canal"), where known: a
+     * place name, said as the signs say it, never a guess.
      */
-    val EXITS: Map<String, Map<String, Double>> = mapOf(
+    data class Exit(val bearing: Double, val sign: String? = null)
+
+    /** Each station's named exits ([exitTo], [Exit]): what [exitToward] matches the walk on against. */
+    val EXITS: Map<String, Map<String, Exit>> = mapOf(
         // King's Cross St Pancras: the tube ticket hall comes up on Euston Road, to the south; the Northern ticket hall,
         // serving the Northern and Piccadilly lines beside the tunnel to St Pancras, is at the Regent's Canal end and
         // leads north, to Granary Square, Regent's Canal, Pancras Square and Coal Drops Yard (maintainer, 2026-11-05).
         // The sub-surface lines' ticket hall is by Euston Road too; their platforms aren't read yet.
-        "940GZZLUKSX" to mapOf("tube-ticket-hall" to 180.0, "northern-ticket-hall" to 0.0),
+        // Its signs call the Northern ticket hall's way out Regent's Canal (maintainer, 2026-11-05); the tube ticket hall's
+        // wording isn't recorded yet.
+        "940GZZLUKSX" to mapOf("tube-ticket-hall" to Exit(180.0), "northern-ticket-hall" to Exit(0.0, sign = "Regent's Canal")),
     )
 
     /** How far from an exit's bearing the walk on can head and still be through it ([exitToward]). */
@@ -83,10 +89,10 @@ object PlatformEnds {
      * [EXIT_WITHIN_DEGREES] of the walk's, where it's the only one and the walk goes at least [EXIT_FROM_METERS]. Null
      * otherwise: a walk off between two exits, or too short to tell, says nothing (SPEC principle 1).
      */
-    fun exitToward(exits: Map<String, Double>, from: Coordinates, to: Coordinates): String? {
+    fun exitToward(exits: Map<String, Exit>, from: Coordinates, to: Coordinates): String? {
         if (NearestStops.distanceMeters(from.latitude, from.longitude, to.latitude, to.longitude) < EXIT_FROM_METERS) return null
         val heading = Compass.bearingDegrees(from.latitude, from.longitude, to.latitude, to.longitude)
-        return exits.filterValues { bearing -> angleBetween(heading, bearing) <= EXIT_WITHIN_DEGREES }.keys.singleOrNull()
+        return exits.filterValues { exit -> angleBetween(heading, exit.bearing) <= EXIT_WITHIN_DEGREES }.keys.singleOrNull()
     }
 
     // The smaller angle between two bearings, in degrees.
@@ -95,12 +101,20 @@ object PlatformEnds {
     /** Where the facts were read: TfL's station layout drawings as published in 2015. */
     const val SOURCE = "TfL station layout axonometrics, 2015, via ianvisits.co.uk/articles/3d-maps-of-every-underground-station-ab-14630"
 
+    /** Where to ride ([spot]), and the sign of the exit it's for ([Exit.sign]) where it's one of a station's named exits. */
+    data class Stand(val spot: Spot, val exitSign: String? = null)
+
+    /** Where to ride on [trip]'s ride [index] ([stand]), without the exit's sign. */
+    @WorkerThread
+    fun standAt(trip: ActiveTrip, index: Int, table: List<Platforms> = TABLE): Spot? = stand(trip, index, table)?.spot
+
     /**
      * Where to ride on [trip]'s ride [index] to be near what comes after it: the next ride's line where the rider
-     * changes at the same station, else the way out. Null where it isn't known (see [PlatformEnds]).
+     * changes at the same station, else the way out, with the sign of the exit where it's a named one the walk on heads
+     * for. Null where it isn't known (see [PlatformEnds]).
      */
     @WorkerThread
-    fun standAt(trip: ActiveTrip, index: Int, table: List<Platforms> = TABLE): Spot? {
+    fun stand(trip: ActiveTrip, index: Int, table: List<Platforms> = TABLE): Stand? {
         val legs = trip.route.legs
         // The ride as the rider takes it ([RouteDisruption.rideAt]): another line's train followed comes in its own way.
         val ride = legs.getOrNull(index)?.takeIf { !it.isWalk }?.let { RouteDisruption.rideAt(trip, index, it) } ?: return null
@@ -118,6 +132,7 @@ object PlatformEnds {
             // A ride from another stop, with no walk between: where it's reached from isn't known.
             else -> return null
         }
+        var exitSign: String? = null
         // The next ride's line toward its first stop after the station (its branch and way), then the line alone. Leaving
         // the station, the exit the walk on heads for, where the station has several ([exitToward]), then its one exit.
         val ways = if (next == null) {
@@ -131,8 +146,9 @@ object PlatformEnds {
                     ?: legs.getOrNull(index + 2)?.takeIf { !it.isWalk }?.fromAt
                     ?: trip.destinations.filterIsInstance<TripDestination.Place>().singleOrNull()?.coordinate?.takeIf { index + 1 == legs.lastIndex }
             }
-            val named = station.firstNotNullOfOrNull { EXITS[it] }?.takeIf { from != null && to != null }
-                ?.let { exitToward(it, checkNotNull(from), checkNotNull(to)) }
+            val exits = station.firstNotNullOfOrNull { EXITS[it] }
+            val named = exits?.takeIf { from != null && to != null }?.let { exitToward(it, checkNotNull(from), checkNotNull(to)) }
+            named?.let { exitSign = exits[it]?.sign }
             listOfNotNull(named?.let(::exitTo), EXIT)
         } else {
             val first = RouteDisruption.rideCalls(next).dropWhile { it in station || it == next.fromId || it == next.fromArea }.firstOrNull()
@@ -141,15 +157,19 @@ object PlatformEnds {
         val here = table.filter { it.stationId in station && it.lineId == ride.lineId && prev in setOf(it.endA, it.endB) }
         // An entry held to trains from this side first, then the platforms' own.
         val candidates = here.filter { it.arriving == prev } + here.filter { it.arriving == null }
-        val (platforms, end) = ways.firstNotNullOfOrNull { way -> candidates.firstNotNullOfOrNull { p -> p.ways[way]?.let { p to it } } } ?: return null
+        val (way, platforms, end) = ways.firstNotNullOfOrNull { way ->
+            candidates.firstNotNullOfOrNull { p -> p.ways[way]?.let { Triple(way, p, it) } }
+        } ?: return null
         // The train comes in at the end toward the stop before, so its front stops at the other.
         val inAtA = prev == platforms.endA
-        return when (end) {
+        val spot = when (end) {
             End.ACROSS -> Spot.ANY
             End.MIDDLE -> Spot.MIDDLE
             End.A -> if (inAtA) Spot.BACK else Spot.FRONT
             End.B -> if (inAtA) Spot.FRONT else Spot.BACK
         }
+        // The exit's sign only where it's the named exit that was found, never the station's one exit.
+        return Stand(spot, exitSign.takeIf { way != EXIT })
     }
 
     // TfL station ids, for reading the table.

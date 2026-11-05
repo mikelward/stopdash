@@ -157,6 +157,9 @@ sealed interface TripProgress {
         val getOffSoon: Boolean,
         val seen: Boolean = true,
         val byPosition: Boolean = false,
+        // The sign of the exit to take where the ride gets off, where it's one of the station's named exits
+        // ([PlatformEnds.Stand]): said as the rider gets off, where boarding says only where to ride (maintainer, 2026-11-05).
+        val exitSign: String? = null,
     ) : TripProgress {
         /**
          * [nextStop] with its common words shortened, and at its floor ([DestinationAbbreviations]): the forms the
@@ -799,6 +802,8 @@ object OnTheWay {
         return trip to when (progress) {
             is TripProgress.Waiting -> progress.copy(stand = PlatformEnds.standAt(trip, trip.legIndex))
             is TripProgress.Changing -> progress.copy(stand = PlatformEnds.standAt(trip, trip.legIndex))
+            // The exit to take, said where the rider gets off; where to ride was said as they boarded.
+            is TripProgress.Riding -> PlatformEnds.stand(trip, trip.legIndex)?.exitSign?.let { progress.copy(exitSign = it) } ?: progress
             else -> progress
         }
     }
