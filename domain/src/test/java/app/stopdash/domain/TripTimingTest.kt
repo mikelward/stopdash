@@ -837,6 +837,27 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a leg the Planner didn't plan, past its predictions on a frequent line, is boarded on arrival`() {
+        // The train through a change from A, every 3 min, but the rider reaches A at 12, past them all.
+        val through = leg("blue", "A", "C", departs = 5, arrives = 30)
+        val route = TripRoute(listOf(walk("Here", "A", 0, 12), through))
+        val frequent = listOf(0L, 3L, 6L, 9L).map { train("blue", it) }
+        val estimate = TripTiming.estimate(route, now, Duration.ZERO, { if (it == 1) frequent else null }, timetabled = { it != 1 })
+        // An estimate, boarded at 12 and on board the ride's 25 min, not withheld for want of Planner times.
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
+        assertEquals(at(37), estimate.arrival)
+        assertEquals(Duration.ofMinutes(3), estimate.slack)
+        // And offered: the list's cards keep it beside the Planner's routes (Codex, #1266).
+        assertEquals(listOf(estimate), TripTiming.withoutUnvouchedLegs(listOf(estimate), setOf(route.legs[0])))
+        // Infrequent, nothing says when the next comes: still withheld.
+        val sparse = listOf(train("blue", 0), train("blue", 11))
+        val withheld = TripTiming.estimate(route, now, Duration.ZERO, { if (it == 1) sparse else null }, timetabled = { it != 1 })
+        assertEquals(TripTiming.Basis.UNKNOWN, withheld.basis)
+        assertEquals(TripTiming.Reason.INFREQUENT, withheld.withheld?.reason)
+        assertTrue(TripTiming.withoutUnvouchedLegs(listOf(withheld), setOf(route.legs[0])).isEmpty())
+    }
+
+    @Test
     fun `the walk to the first stop is estimated at the Planner's pace`() {
         assertEquals(Duration.ZERO, TripTiming.accessWalk(0.0))
         // 400 m * 1.4 / 1.25 m/s = 448 s: rounded up to 8 min.

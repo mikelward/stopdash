@@ -2137,8 +2137,10 @@ goes the whole way. It is found as the other lines are (the boarding stop's arri
 routes, no request added), its trains are checked on the way like any ride's, so a train for the
 other branch isn't offered, and it is timed and ranked like the Planner's routes. It is offered only
 while a train through is predicted: the Planner has no times for it, and the times of the two rides
-it replaces belong to other trains. Once opened it stays, as below, its arrival withheld while none
-is predicted. A walk between the
+it replaces belong to other trains. Past the trains predicted, it's boarded as the rider gets there
+where the trains through show it running every few minutes (below), an estimate as a planned ride is
+past its predictions, never withheld beside the Planner's route over the same tracks with a change
+(maintainer, 2026-11-05). Once opened it stays, as below, its arrival withheld while nothing times it. A walk between the
 rides is a change of station, so those stay as planned. **A route with more changes is listed only
 when it gets there sooner or walks 5 minutes or more less** (maintainer, 2026-09-28; walking 2026-10-03): one that another route with fewer changes
 beats or ties, without walking that much more, while StopDash stands behind that route at least as far (usable, then unchecked, then
