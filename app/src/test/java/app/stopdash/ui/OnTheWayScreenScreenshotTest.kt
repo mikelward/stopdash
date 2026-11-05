@@ -2715,6 +2715,10 @@ class OnTheWayScreenScreenshotTest {
         assertEquals("Due in 4 min · Middle of train", nextStepText(resources, TripProgress.Waiting(mildmay, at(4), stand = PlatformEnds.Spot.MIDDLE), now).second)
         // A change across the platform (maintainer, 2026-11-05).
         assertEquals("Due in 4 min · Any carriage", nextStepText(resources, TripProgress.Waiting(mildmay, at(4), stand = PlatformEnds.Spot.ANY), now).second)
+        // The exit is said getting off, not boarding (maintainer, 2026-11-05): only once the stop is next.
+        val ridingOff = TripProgress.Riding(mildmay, null, 1, null, getOffSoon = true, exitSign = "Regent's Canal")
+        assertEquals("Next stop · Regent's Canal exit", nextStepText(resources, ridingOff, now).second)
+        assertEquals("4 stops", nextStepText(resources, ridingOff.copy(stopsLeft = 4, getOffSoon = false), now).second)
         // Not known: the time alone.
         assertEquals("Due in 4 min", nextStepText(resources, TripProgress.Waiting(mildmay, at(4)), now).second)
     }

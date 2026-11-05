@@ -3905,7 +3905,9 @@ Every fact a drawing shows is recorded, even one the app can't use yet. Where a 
 the best depends on where the rider is going (King's Cross: the Northern ticket hall north to Granary Square,
 the tube ticket hall south to Euston Road; maintainer, 2026-11-05), each exit is recorded with the way it leads
 out, and the trip takes the one the walk on heads toward, within 60 degrees, for a walk of 150 m or more. A walk
-between two exits, too short to tell, or not placed says nothing. The table grows a few stations at a
+between two exits, too short to tell, or not placed says nothing. Only what's needed when it's needed (maintainer,
+2026-11-05): boarding says where to ride ("Back of train"); getting off, where the station's signs name that exit,
+the step names it as they do ("Next stop · Regent's Canal exit"). An exit whose sign isn't recorded goes unnamed. The table grows a few stations at a
 time, each entry saying what its drawing shows so it can be checked.
 
 ### Disruptions

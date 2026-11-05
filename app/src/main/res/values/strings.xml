@@ -1429,6 +1429,9 @@
     <string name="on_the_way_stand_back" tools:ignore="MissingTranslation">Back of train</string>
     <!-- A change across the platform: every door is near (maintainer, 2026-11-05). "Carriage" everywhere, as TfL says it: never "coach" or "car". -->
     <string name="on_the_way_stand_any" tools:ignore="MissingTranslation">Any carriage</string>
+    <!-- TODO: translate. Getting off, the exit to take as the station's signs name it (PlatformEnds), after the stops left:
+         "Next stop · Regent's Canal exit". -->
+    <string name="on_the_way_exit_sign" tools:ignore="MissingTranslation">%1$s exit</string>
     <!-- The trip's status-bar chip (a Live Update), counting down to the next thing: "4 min". -->
     <string name="on_the_way_chip_minutes">%1$d min</string>
     <!-- Where the next train goes, before the step's time in the trip's notification: "➔ Stratford". -->

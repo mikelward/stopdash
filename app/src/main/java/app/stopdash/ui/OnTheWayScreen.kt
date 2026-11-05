@@ -2134,7 +2134,15 @@ internal fun nextStepText(
         is TripProgress.Riding -> resources.getString(if (progress.getOffSoon) R.string.get_off_soon_title else R.string.on_the_way_ride_to, place(progress.leg.toName)) to
             // The time left on the ride, where the stop is predicted (maintainer, 2026-09-29): counted as
             // the boards count, never estimated from the plan beyond TfL's predictions.
-            rideStopsText(resources, progress, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
+            rideStopsText(resources, progress, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() }).let { stops ->
+                // Getting off, the exit to take, as the station's signs name it ([TripProgress.Riding.exitSign]).
+                val exit = progress.exitSign?.takeIf { progress.getOffSoon }?.let { resources.getString(R.string.on_the_way_exit_sign, it) }
+                when {
+                    exit == null -> stops
+                    stops.isEmpty() -> exit
+                    else -> resources.getString(R.string.on_the_way_with_stand, stops, exit)
+                }
+            }
         is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, place(progress.leg.fromName)) to
             withStand(resources, resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until)), progress.stand)
         // The walk to the destination can run past its time ([OnTheWay.walksToEnd]): no "About 0 min" then.
