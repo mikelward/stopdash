@@ -190,6 +190,22 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `elephant and castle, highbury and notting hill gate`() {
+        val elephant = "940GZZLUEAC"
+        // Northern line southbound, in from Borough: the Bakerloo line is at that end, the back.
+        assertEquals(Spot.BACK, spot(ride("northern", "940GZZLULBR", "940GZZLUBOR", elephant), change("bakerloo", elephant, "940GZZLULBN")))
+        // Bakerloo line, in from Lambeth North to where it ends: the Northern line is at the front.
+        assertEquals(Spot.FRONT, spot(ride("bakerloo", "940GZZLUWLO", "940GZZLULBN", elephant), change("northern", elephant, "940GZZLUKNG")))
+        // Victoria line southbound into Highbury & Islington, from Finsbury Park: the way out is at the King's Cross end.
+        assertEquals(Spot.FRONT, spot(ride("victoria", "940GZZLUSVS", "940GZZLUFPK", "940GZZLUHAI")))
+        val nottingHill = "940GZZLUNHG"
+        // Central line eastbound, in from Holland Park: the District and Circle lines are at the Queensway end, the front.
+        assertEquals(Spot.FRONT, spot(ride("central", "940GZZLUSBC", "940GZZLUHPK", nottingHill), change("circle", nottingHill, "940GZZLUBWT")))
+        // Circle line, in from Bayswater: the way out is at that end, the back.
+        assertEquals(Spot.BACK, spot(ride("circle", "940GZZLUPAC", "940GZZLUBWT", nottingHill)))
+    }
+
+    @Test
     fun `piccadilly circus is midway on both lines`() {
         assertEquals(Spot.MIDDLE, spot(ride("bakerloo", "940GZZLUEMB", "940GZZLUCHX", "940GZZLUPCC"), change("piccadilly", "940GZZLUPCC", "940GZZLUGPK")))
         assertEquals(Spot.MIDDLE, spot(ride("piccadilly", "940GZZLUHPC", "940GZZLUGPK", "940GZZLUPCC")))
