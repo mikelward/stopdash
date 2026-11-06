@@ -5702,8 +5702,11 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   Above ground, 32 stations are read from OpenStreetMap (`scripts/read_platforms_osm.py`, run by the
   platforms-osm workflow), kept only where every platform's stairs, escalators or lifts agree; checked
   first against the drawings' stations, about fifteen agreed and three didn't (Barbican, Colliers Wood,
-  Euston's Northern line). Not yet: stations with several lines or routes through different platforms, the
-  ends of lines, and those where OpenStreetMap maps no stairs or several ways off.
+  Euston's Northern line). Stations with several lines are read line by line, from the routes that name each
+  platform (Barons Court, Paddington's Hammersmith & City platforms, West Ham, Willesden Green); High Street
+  Kensington and South Kensington are left out, their reading doubtful. The ends of lines are left out: their
+  main way out is often level off the buffer end, which OpenStreetMap's stairs miss. Not yet: stations where
+  OpenStreetMap names no line on the platforms, or maps no stairs or several ways off.
   The 2015 drawings rarely mark which way a route runs, so a station left out for having ways up at both ends
   may be readable once its way out is known (from the maintainer, or TfL's step-free and station maps).
 - [x] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). Done: each named

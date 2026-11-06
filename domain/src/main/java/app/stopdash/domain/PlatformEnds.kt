@@ -232,6 +232,11 @@ object PlatformEnds {
     private const val OXFORD_CIRCUS = "940GZZLUOXC"
     private const val TOTTENHAM_COURT_ROAD = "940GZZLUTCR"
     private const val WARREN_STREET = "940GZZLUWRR"
+    private const val DOLLIS_HILL = "940GZZLUDOH"
+    private const val EDGWARE_ROAD_CIRCLE = "940GZZLUERC"
+    private const val PLAISTOW = "940GZZLUPLW"
+    private const val WEST_HAM = "940GZZLUWHM"
+    private const val WEST_KENSINGTON = "940GZZLUWKN"
     private const val ALPERTON = "940GZZLUALP"
     private const val BARKING = "940GZZLUBKG"
     private const val BOSTON_MANOR = "940GZZLUBOS"
@@ -958,5 +963,21 @@ object PlatformEnds {
         Platforms(WEST_HAMPSTEAD, "jubilee", FINCHLEY_ROAD, KILBURN, mapOf(EXIT to End.B)),
         // Wimbledon Park: the way up at the Southfields end.
         Platforms(WIMBLEDON_PARK, "district", SOUTHFIELDS, WIMBLEDON, mapOf(EXIT to End.A)),
+        // Read from OpenStreetMap the same way, line by line where several lines stop: each line's own platforms, as the
+        // routes that stop at them name them, all agreeing.
+        // Barons Court, District line: the way up at the West Kensington end.
+        Platforms(BARONS_COURT, "district", HAMMERSMITH_DISTRICT, WEST_KENSINGTON, mapOf(EXIT to End.B)),
+        // Barons Court, Piccadilly line: the way up at the Earl's Court end.
+        Platforms(BARONS_COURT, "piccadilly", EARLS_COURT, HAMMERSMITH_DISTRICT, mapOf(EXIT to End.A)),
+        // Paddington, Circle line: the way up between the Royal Oak end and the middle.
+        Platforms(PADDINGTON_HC, "circle", EDGWARE_ROAD_CIRCLE, ROYAL_OAK, mapOf(EXIT to End.B_MIDDLE)),
+        // Paddington, Hammersmith & City line: the way up between the Royal Oak end and the middle.
+        Platforms(PADDINGTON_HC, "hammersmith-city", EDGWARE_ROAD_CIRCLE, ROYAL_OAK, mapOf(EXIT to End.B_MIDDLE)),
+        // West Ham, District line: the way up at the Bromley-by-Bow end.
+        Platforms(WEST_HAM, "district", BROMLEY_BY_BOW, PLAISTOW, mapOf(EXIT to End.A)),
+        // West Ham, Hammersmith & City line: the way up at the Bromley-by-Bow end.
+        Platforms(WEST_HAM, "hammersmith-city", BROMLEY_BY_BOW, PLAISTOW, mapOf(EXIT to End.A)),
+        // Willesden Green, Jubilee line: the way up at the Kilburn end.
+        Platforms(WILLESDEN_GREEN, "jubilee", DOLLIS_HILL, KILBURN, mapOf(EXIT to End.B)),
     )
 }
