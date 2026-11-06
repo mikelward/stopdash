@@ -277,6 +277,14 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `stations above ground read from OpenStreetMap`() {
+        // West Brompton: the way up at the Earl's Court end, the front coming from Fulham Broadway.
+        assertEquals(Spot.FRONT, spot(ride("district", "940GZZLUPSG", "940GZZLUFBY", "940GZZLUWBN")))
+        // Wimbledon Park: at the Southfields end, the back coming from there.
+        assertEquals(Spot.BACK, spot(ride("district", "940GZZLUEPY", "940GZZLUSFS", "940GZZLUWIP")))
+    }
+
+    @Test
     fun `nothing is said where it isn't known`() {
         // A station not read, a ride with no calls given, or a walk.
         assertNull(spot(ride("piccadilly", kingsCross, "940GZZLUCAR", "940GZZLUHWY")))

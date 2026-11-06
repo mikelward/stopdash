@@ -232,6 +232,69 @@ object PlatformEnds {
     private const val OXFORD_CIRCUS = "940GZZLUOXC"
     private const val TOTTENHAM_COURT_ROAD = "940GZZLUTCR"
     private const val WARREN_STREET = "940GZZLUWRR"
+    private const val ALPERTON = "940GZZLUALP"
+    private const val BARKING = "940GZZLUBKG"
+    private const val BOSTON_MANOR = "940GZZLUBOS"
+    private const val CHIGWELL = "940GZZLUCWL"
+    private const val DAGENHAM_EAST = "940GZZLUDGE"
+    private const val DAGENHAM_HEATHWAY = "940GZZLUDGY"
+    private const val EAST_HAM = "940GZZLUEHM"
+    private const val EAST_PUTNEY = "940GZZLUEPY"
+    private const val ELM_PARK = "940GZZLUEPK"
+    private const val GOLDHAWK_ROAD = "940GZZLUGHK"
+    private const val GRANGE_HILL = "940GZZLUGGH"
+    private const val GREENFORD = "940GZZLUGFD"
+    private const val HAINAULT = "940GZZLUHLT"
+    private const val HAMMERSMITH_HC = "940GZZLUHSC"
+    private const val HAMMERSMITH_DISTRICT = "940GZZLUHSD"
+    private const val HANGER_LANE = "940GZZLUHGR"
+    private const val HARLESDEN = "940GZZLUHSN"
+    private const val HARROW_ON_THE_HILL = "940GZZLUHOH"
+    private const val HILLINGDON = "940GZZLUHGD"
+    private const val HORNCHURCH = "940GZZLUHCH"
+    private const val HOUNSLOW_EAST = "940GZZLUHWE"
+    private const val ICKENHAM = "940GZZLUICK"
+    private const val KENSAL_GREEN = "940GZZLUKSL"
+    private const val KENTON = "940GZZLUKEN"
+    private const val KILBURN = "940GZZLUKBN"
+    private const val LADBROKE_GROVE = "940GZZLULAD"
+    private const val LATIMER_ROAD = "940GZZLULRD"
+    private const val LEYTON = "940GZZLULYN"
+    private const val NORTHFIELDS = "940GZZLUNFD"
+    private const val NORTHOLT = "940GZZLUNHT"
+    private const val NORTHWICK_PARK = "940GZZLUNKP"
+    private const val NORTH_EALING = "940GZZLUNEN"
+    private const val NORTH_WEMBLEY = "940GZZLUNWY"
+    private const val OSTERLEY = "940GZZLUOSY"
+    private const val PADDINGTON_HC = "940GZZLUPAH"
+    private const val PARK_ROYAL = "940GZZLUPKR"
+    private const val PERIVALE = "940GZZLUPVL"
+    private const val PRESTON_ROAD = "940GZZLUPRD"
+    private const val PUTNEY_BRIDGE = "940GZZLUPYB"
+    private const val RAVENSCOURT_PARK = "940GZZLURVP"
+    private const val ROYAL_OAK = "940GZZLURYO"
+    private const val RUISLIP = "940GZZLURSP"
+    private const val SHEPHERDS_BUSH_MARKET = "940GZZLUSBM"
+    private const val SNARESBROOK = "940GZZLUSNB"
+    private const val SOUTHFIELDS = "940GZZLUSFS"
+    private const val SOUTH_EALING = "940GZZLUSEA"
+    private const val SOUTH_KENTON = "940GZZLUSKT"
+    private const val SOUTH_RUISLIP = "940GZZLUSRP"
+    private const val SOUTH_WOODFORD = "940GZZLUSWF"
+    private const val STAMFORD_BROOK = "940GZZLUSFB"
+    private const val STONEBRIDGE_PARK = "940GZZLUSGP"
+    private const val UPMINSTER = "940GZZLUUPM"
+    private const val UPMINSTER_BRIDGE = "940GZZLUUPB"
+    private const val UPTON_PARK = "940GZZLUUPK"
+    private const val WEMBLEY_CENTRAL = "940GZZLUWYC"
+    private const val WESTBOURNE_PARK = "940GZZLUWSP"
+    private const val WEST_HAMPSTEAD = "940GZZLUWHP"
+    private const val WILLESDEN_GREEN = "940GZZLUWIG"
+    private const val WILLESDEN_JUNCTION = "940GZZLUWJN"
+    private const val WIMBLEDON = "940GZZLUWIM"
+    private const val WIMBLEDON_PARK = "940GZZLUWIP"
+    private const val WOODFORD = "940GZZLUWOF"
+    private const val WOOD_LANE = "940GZZLUWLA"
     private const val ARNOS_GROVE = "940GZZLUASG"
     private const val BANK = "940GZZLUBNK"
     private const val BLACKFRIARS = "940GZZLUBKF"
@@ -822,5 +885,78 @@ object PlatformEnds {
         // platforms, reached by cross-passages about 31% (platform 1) and 40% (platform 2) of the way from the Bounds
         // Green end; the cross-passage near the Turnpike Lane end only links the two platforms.
         Platforms(WOOD_GREEN, "piccadilly", BOUNDS_GREEN, TURNPIKE_LANE, mapOf(EXIT to End.A_MIDDLE)),
+        // Read from OpenStreetMap (ODbL; © OpenStreetMap contributors), not a drawing: stations above ground, each kept only
+        // where every platform's stairs, escalators or lifts meet it in the same fifth of its length. One line through each,
+        // two ends. Checked first against the stations read from the drawings: about fifteen agreed, three didn't.
+        // Bounds Green: the way up midway along.
+        Platforms(BOUNDS_GREEN, "piccadilly", ARNOS_GROVE, WOOD_GREEN, mapOf(EXIT to End.MIDDLE)),
+        // Boston Manor: the way up at the Northfields end.
+        Platforms(BOSTON_MANOR, "piccadilly", NORTHFIELDS, OSTERLEY, mapOf(EXIT to End.A)),
+        // Dagenham East: the way up at the Elm Park end.
+        Platforms(DAGENHAM_EAST, "district", DAGENHAM_HEATHWAY, ELM_PARK, mapOf(EXIT to End.B)),
+        // East Ham: the way up at the Upton Park end.
+        Platforms(EAST_HAM, "district", BARKING, UPTON_PARK, mapOf(EXIT to End.B)),
+        Platforms(EAST_HAM, "hammersmith-city", BARKING, UPTON_PARK, mapOf(EXIT to End.B)),
+        // East Putney: the way up at the Southfields end.
+        Platforms(EAST_PUTNEY, "district", PUTNEY_BRIDGE, SOUTHFIELDS, mapOf(EXIT to End.B)),
+        // Greenford: the way up at the Northolt end.
+        Platforms(GREENFORD, "central", NORTHOLT, PERIVALE, mapOf(EXIT to End.A)),
+        // Grange Hill: the way up at the Chigwell end.
+        Platforms(GRANGE_HILL, "central", CHIGWELL, HAINAULT, mapOf(EXIT to End.A)),
+        // Goldhawk Road: the way up at the Shepherd's Bush Market end.
+        Platforms(GOLDHAWK_ROAD, "circle", HAMMERSMITH_HC, SHEPHERDS_BUSH_MARKET, mapOf(EXIT to End.B)),
+        Platforms(GOLDHAWK_ROAD, "hammersmith-city", HAMMERSMITH_HC, SHEPHERDS_BUSH_MARKET, mapOf(EXIT to End.B)),
+        // Harlesden: the way up at the Willesden Junction end.
+        Platforms(HARLESDEN, "bakerloo", STONEBRIDGE_PARK, WILLESDEN_JUNCTION, mapOf(EXIT to End.B)),
+        // Hounslow Central: the way up at the Hounslow West end.
+        Platforms(HOUNSLOW_CENTRAL, "piccadilly", HOUNSLOW_EAST, HOUNSLOW_WEST, mapOf(EXIT to End.B)),
+        // Ickenham: the way up at the Ruislip end.
+        Platforms(ICKENHAM, "metropolitan", HILLINGDON, RUISLIP, mapOf(EXIT to End.B)),
+        Platforms(ICKENHAM, "piccadilly", HILLINGDON, RUISLIP, mapOf(EXIT to End.B)),
+        // Kilburn: the way up at the West Hampstead end.
+        Platforms(KILBURN, "jubilee", WEST_HAMPSTEAD, WILLESDEN_GREEN, mapOf(EXIT to End.A)),
+        // Kensal Green: the way up at the Willesden Junction end.
+        Platforms(KENSAL_GREEN, "bakerloo", QUEENS_PARK, WILLESDEN_JUNCTION, mapOf(EXIT to End.B)),
+        // Latimer Road: the way up at the Ladbroke Grove end.
+        Platforms(LATIMER_ROAD, "circle", LADBROKE_GROVE, WOOD_LANE, mapOf(EXIT to End.A)),
+        Platforms(LATIMER_ROAD, "hammersmith-city", LADBROKE_GROVE, WOOD_LANE, mapOf(EXIT to End.A)),
+        // Leyton: the way up at the Stratford end.
+        Platforms(LEYTON, "central", LEYTONSTONE, STRATFORD, mapOf(EXIT to End.B)),
+        // Northfields: the way up at the Boston Manor end.
+        Platforms(NORTHFIELDS, "piccadilly", BOSTON_MANOR, SOUTH_EALING, mapOf(EXIT to End.A)),
+        // Northolt: the way up at the Greenford end.
+        Platforms(NORTHOLT, "central", GREENFORD, SOUTH_RUISLIP, mapOf(EXIT to End.A)),
+        // Northwick Park: the way up between the Harrow-on-the-Hill end and the middle.
+        Platforms(NORTHWICK_PARK, "metropolitan", HARROW_ON_THE_HILL, PRESTON_ROAD, mapOf(EXIT to End.A_MIDDLE)),
+        // North Wembley: the way up at the South Kenton end.
+        Platforms(NORTH_WEMBLEY, "bakerloo", SOUTH_KENTON, WEMBLEY_CENTRAL, mapOf(EXIT to End.A)),
+        // Osterley: the way up at the Hounslow East end.
+        Platforms(OSTERLEY, "piccadilly", BOSTON_MANOR, HOUNSLOW_EAST, mapOf(EXIT to End.B)),
+        // Park Royal: the way up at the Alperton end.
+        Platforms(PARK_ROYAL, "piccadilly", ALPERTON, NORTH_EALING, mapOf(EXIT to End.A)),
+        // Perivale: the way up at the Greenford end.
+        Platforms(PERIVALE, "central", GREENFORD, HANGER_LANE, mapOf(EXIT to End.A)),
+        // Queen's Park: the way up at the Kilburn Park end.
+        Platforms(QUEENS_PARK, "bakerloo", KILBURN_PARK, KENSAL_GREEN, mapOf(EXIT to End.A)),
+        // Ravenscourt Park: the way up between the Stamford Brook end and the middle.
+        Platforms(RAVENSCOURT_PARK, "district", HAMMERSMITH_DISTRICT, STAMFORD_BROOK, mapOf(EXIT to End.B_MIDDLE)),
+        // Royal Oak: the way up at the Westbourne Park end.
+        Platforms(ROYAL_OAK, "circle", PADDINGTON_HC, WESTBOURNE_PARK, mapOf(EXIT to End.B)),
+        Platforms(ROYAL_OAK, "hammersmith-city", PADDINGTON_HC, WESTBOURNE_PARK, mapOf(EXIT to End.B)),
+        // Shepherd's Bush Market: the way up at the Goldhawk Road end.
+        Platforms(SHEPHERDS_BUSH_MARKET, "circle", GOLDHAWK_ROAD, WOOD_LANE, mapOf(EXIT to End.A)),
+        Platforms(SHEPHERDS_BUSH_MARKET, "hammersmith-city", GOLDHAWK_ROAD, WOOD_LANE, mapOf(EXIT to End.A)),
+        // South Kenton: the way up at the Kenton end.
+        Platforms(SOUTH_KENTON, "bakerloo", KENTON, NORTH_WEMBLEY, mapOf(EXIT to End.A)),
+        // South Woodford: the way up at the Woodford end.
+        Platforms(SOUTH_WOODFORD, "central", SNARESBROOK, WOODFORD, mapOf(EXIT to End.B)),
+        // Upminster Bridge: the way up at the Upminster end.
+        Platforms(UPMINSTER_BRIDGE, "district", HORNCHURCH, UPMINSTER, mapOf(EXIT to End.B)),
+        // West Brompton: the way up at the Earl's Court end.
+        Platforms(WEST_BROMPTON, "district", EARLS_COURT, FULHAM_BROADWAY, mapOf(EXIT to End.A)),
+        // West Hampstead: the way up at the Kilburn end.
+        Platforms(WEST_HAMPSTEAD, "jubilee", FINCHLEY_ROAD, KILBURN, mapOf(EXIT to End.B)),
+        // Wimbledon Park: the way up at the Southfields end.
+        Platforms(WIMBLEDON_PARK, "district", SOUTHFIELDS, WIMBLEDON, mapOf(EXIT to End.A)),
     )
 }

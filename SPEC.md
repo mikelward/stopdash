@@ -3903,7 +3903,9 @@ or rides on from a stop outside the station with no walk between (a bus from the
 
 The facts are read by hand from TfL's station layout drawings (the 2015 axonometrics, as published by
 ianvisits.co.uk): for a line's platforms at a station, the station each end leads toward and whether each
-way off leaves from one end or the middle. Only the facts are kept, never the drawings (maintainer,
+way off leaves from one end or the middle. Stations above ground, which have no drawing, are read from
+OpenStreetMap (maintainer, 2026-11-06; the app already credits it), only where every platform's stairs,
+escalators or lifts meet it in the same fifth of its length. Only the facts are kept, never the drawings (maintainer,
 2026-11-05). Front and back follow from where the train comes in, the stop before on the ride: the end
 it comes in at is the back. A change onto a line whose branches stop on different platforms goes by the
 next train's first stop after the station, which says the branch and the way (at Euston, the Northern
