@@ -160,7 +160,7 @@ class PlatformEndsTest {
         assertNull(spot(arrived, bare))
         // The Piccadilly line southbound, in from Caledonian Road, walking on north: the Northern ticket hall is at that
         // end, the back.
-        val piccadilly = ride("piccadilly", "940GZZLUHWY", "940GZZLUCRD", kingsCross).copy(toAt = at)
+        val piccadilly = ride("piccadilly", "940GZZLUHWY", "940GZZLUCAR", kingsCross).copy(toAt = at)
         assertEquals(Spot.BACK, spot(piccadilly, walkTo(51.5352, -0.1255)))
         assertEquals(Spot.FRONT, spot(piccadilly, walkTo(51.5268, -0.1240)))
         // The deep-level changes are at the southern ends (maintainer, 2026-11-05): the Piccadilly line northbound, in
@@ -243,9 +243,31 @@ class PlatformEndsTest {
     }
 
     @Test
+    fun `highgate's way up is midway, and a bus from the street leaves by it`() {
+        val highgate = "940GZZLUHGT"
+        // Northbound from King's Cross, then the 134 from a stop on the street, the Planner giving no walk between.
+        val bus = TripLeg("bus", "134", "134", "490000000X", "Bus stop", "490000000Y", "Further", at(12), at(20), path = listOf("490000000Y"))
+        assertEquals(Spot.MIDDLE, spot(ride("northern", kingsCross, "940GZZLUACY", highgate), bus))
+        assertEquals(Spot.MIDDLE, spot(ride("northern", "940GZZLUFYC", "940GZZLUEFY", highgate)))
+    }
+
+    @Test
+    fun `the third batch reads as its drawings show`() {
+        // Angel: the way up is at the King's Cross end, the front coming from Old Street.
+        assertEquals(Spot.FRONT, spot(ride("northern", "940GZZLUMGT", "940GZZLUODS", "940GZZLUAGL")))
+        assertEquals(Spot.BACK, spot(ride("northern", euston, kingsCross, "940GZZLUAGL")))
+        // Gloucester Road: the Piccadilly line and the way up are at the South Kensington end.
+        assertEquals(Spot.FRONT, spot(ride("circle", "940GZZLUHSK", "940GZZLUGTR"), change("piccadilly", "940GZZLUGTR", "940GZZLUSKS")))
+        // Baker Street's Jubilee line: the sub-surface lines and the way up, midway.
+        assertEquals(Spot.MIDDLE, spot(ride("jubilee", "940GZZLUBND", "940GZZLUBST"), change("metropolitan", "940GZZLUBST", "940GZZLUFYR")))
+        // Hyde Park Corner: the way up is at the Green Park end.
+        assertEquals(Spot.BACK, spot(ride("piccadilly", "940GZZLUGPK", "940GZZLUHPC")))
+    }
+
+    @Test
     fun `nothing is said where it isn't known`() {
         // A station not read, a ride with no calls given, or a walk.
-        assertNull(spot(ride("northern", euston, warrenStreet, goodgeStreet)))
+        assertNull(spot(ride("northern", camdenTown, "940GZZLUBZP", "940GZZLUHTD")))
         assertNull(spot(ride("northern", warrenStreet, euston).copy(path = emptyList())))
         assertNull(spot(walk(euston)))
         // A train coming from somewhere neither end leads to can't be placed.
