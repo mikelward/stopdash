@@ -5685,8 +5685,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   can't use yet, so it's there when the app can. At King's Cross the deep-level changes are read (the southern
   ends, maintainer, 2026-11-05); the sub-surface lines and the main line stations wait for exits chosen by
   destination. Camden Town isn't read: each pair of its platforms meets the lower concourse at two places along it.
-  Since 2026-11-06 (maintainer: "for all stations") the rest of the drawings are being read in batches: Highgate,
-  then Aldgate to Kentish Town (Angel, Archway, Arsenal, Balham, Barbican, Bayswater, Bermondsey, Bethnal Green,
+  Since 2026-11-06 (maintainer: "for all stations") the rest of the drawings are being read in batches:
+  Aldgate to Kentish Town (Angel, Archway, Arsenal, Balham, Barbican, Bayswater, Bermondsey, Bethnal Green,
   Blackhorse Road, Borough, Bow Road, Caledonian Road, Cannon Street, Chalk Farm, Chancery Lane, Charing Cross,
   the Clapham stations, Colliers Wood, Earl's Court's Piccadilly line, Edgware Road's Bakerloo, Euston Square,
   Fulham Broadway, Gants Hill, Gloucester Road, Goodge Street, Great Portland Street, Holland Park, Hyde Park
@@ -5698,7 +5698,7 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   terminus whose far end has no station (Brixton, Heathrow Terminal 4), or a station rebuilt since 2015 (Bank,
   Bond Street, London Bridge, Liverpool Street, Moorgate, Paddington, Tottenham Court Road, Victoria, Whitechapel).
   Baker Street's deep-level platforms meet its concourse at several places along them, so it's left out too.
-  Some stations run one-way routes in and out (Archway, maintainer, 2026-11-06): the table follows the way out.
+  Some stations run one-way routes in and out (Archway): the table follows the way out.
   The 2015 drawings rarely mark which way a route runs, so a station left out for having ways up at both ends
   may be readable once its way out is known (from the maintainer, or TfL's step-free and station maps).
 - [x] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). Done: each named
