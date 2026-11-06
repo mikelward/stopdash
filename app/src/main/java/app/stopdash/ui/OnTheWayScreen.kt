@@ -2158,7 +2158,9 @@ internal fun nextStepText(
 private fun withStand(resources: Resources, detail: String, stand: PlatformEnds.Spot?): String {
     val where = when (stand) {
         PlatformEnds.Spot.FRONT -> R.string.on_the_way_stand_front
+        PlatformEnds.Spot.FRONT_MIDDLE -> R.string.on_the_way_stand_front_middle
         PlatformEnds.Spot.MIDDLE -> R.string.on_the_way_stand_middle
+        PlatformEnds.Spot.BACK_MIDDLE -> R.string.on_the_way_stand_back_middle
         PlatformEnds.Spot.BACK -> R.string.on_the_way_stand_back
         PlatformEnds.Spot.ANY -> R.string.on_the_way_stand_any
         null -> return detail
