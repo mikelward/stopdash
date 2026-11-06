@@ -5685,8 +5685,20 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   can't use yet, so it's there when the app can. At King's Cross the deep-level changes are read (the southern
   ends, maintainer, 2026-11-05); the sub-surface lines and the main line stations wait for exits chosen by
   destination. Camden Town isn't read: each pair of its platforms meets the lower concourse at two places along it.
-  Baker Street isn't read: its drawing doesn't say which way each of the Jubilee and Bakerloo
-  platforms runs, which decides what's across the platform.
+  Baker Street's Jubilee and Bakerloo lines are read for their way up and the sub-surface lines (midway), not
+  the change between them: the drawing doesn't say which deep-level platform is which line.
+  Since 2026-11-06 (maintainer: "for all stations") the rest of the drawings are being read in batches: Highgate,
+  then Aldgate to Kentish Town (Angel, Archway, Arsenal, Balham, Barbican, Bayswater, Bermondsey, Bethnal Green,
+  Blackhorse Road, Borough, Bow Road, Caledonian Road, Cannon Street, Chalk Farm, Chancery Lane, Charing Cross,
+  the Clapham stations, Colliers Wood, Earl's Court's Piccadilly line, Edgware Road's Bakerloo, Euston Square,
+  Fulham Broadway, Gants Hill, Gloucester Road, Goodge Street, Great Portland Street, Holland Park, Hyde Park
+  Corner). Left out, each for a reason it gives: a way up at both ends or along the platform (Knightsbridge,
+  Heathrow 1,2,3, Canary Wharf and others), one landing on the line between an end and the middle (Hampstead,
+  Hatton Cross, Hounslow West, Swiss Cottage), a drawing too unclear (Covent Garden, Belsize Park, Holloway
+  Road), or a terminus whose far end has no station (Brixton). Next: Kilburn Park to Wood Green.
+  Some stations run one-way routes in and out (Archway, maintainer, 2026-11-06): the table follows the way out.
+  The 2015 drawings rarely mark which way a route runs, so a station left out for having ways up at both ends
+  may be readable once its way out is known (from the maintainer, or TfL's step-free and station maps).
 - [x] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). Done: each named
   exit (`PlatformEnds.exitTo`) has the bearing it leads out toward (`PlatformEnds.EXITS`), and the trip takes
   the one the walk on heads toward (`exitToward`). King's Cross's two are in, from the Northern and Piccadilly
@@ -5709,7 +5721,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   middle, back): the drawings aren't to scale, so a carriage number would be a guess. The first entries
   (Euston's three platform pairs and their cross-platform islands, Leicester Square's Northern line, Warren
   Street's Victoria line) were read from the drawings, not checked on a platform; each says what its drawing
-  shows. A change across the platform says "Any carriage" (maintainer, 2026-11-05).
+  shows. From 2026-11-06 the rest were read in parallel batches by helpers given the same rules, spot-checked
+  against a drawing (Angel) before merging; a way up in roughly the middle third reads as the middle, and some
+  sit near that line (Archway, Aldgate, Blackhorse Road, Chancery Lane's platform 1). A change across the platform says "Any carriage" (maintainer, 2026-11-05).
 - [x] **Drive sync's Settings switch names no Google account and says when it last synced as a clock
   time** (autopilot, 2026-10-23; debug builds only until the Data Safety form; kept to try first, maintainer,
   2026-10-23: "Let's try it like this first"). The `drive.appdata` grant alone doesn't say which account it

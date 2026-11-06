@@ -3898,7 +3898,8 @@ lookup up to every 10 s instead of 30. Nothing new leaves the device but the fol
 While the rider waits for a train or changes onto one, the step says where on it to ride so the change or the
 way out is close when they get off: "Due in 3 min · Back of train", "3 min to change · Middle of train"
 (maintainer, 2026-11-05). The phone, its notification and the watch say it alike; the widget shows no
-trip steps. It's the next ride's line where the rider changes in the same station, else the way out.
+trip steps. It's the next ride's line where the rider changes in the same station, else the way out, whether the trip walks on
+or rides on from a stop outside the station with no walk between (a bus from the street; maintainer, 2026-11-06).
 
 The facts are read by hand from TfL's station layout drawings (the 2015 axonometrics, as published by
 ianvisits.co.uk): for a line's platforms at a station, the station each end leads toward and whether each
