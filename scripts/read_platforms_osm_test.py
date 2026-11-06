@@ -45,11 +45,13 @@ class Rows(unittest.TestCase):
         stations = [("940GZZLUXXX", "Example", (51.5005, -0.12))]
         station = nearest(stations, A, 300)
         nodes = [(1, A), (2, (51.50033, -0.12)), (3, B)]
-        out = rows([(station, 42, {"ref": "1"}, nodes)], {2: {"steps"}}, set())
+        routes = {42: {"Example line: A → B", "Example line: B → A"}}
+        out = rows([(station, 42, {"ref": "1"}, nodes)], {2: {"steps"}}, set(), routes)
         cols = out[0].split("\t")
         self.assertEqual(cols[0], "940GZZLUXXX")
         self.assertEqual(cols[3], "1")
         self.assertEqual(cols[8], "steps@0.33")
+        self.assertEqual(cols[9], "Example line: A → B|Example line: B → A")
 
 
 if __name__ == "__main__":
