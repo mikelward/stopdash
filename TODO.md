@@ -5699,6 +5699,11 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   Bond Street, London Bridge, Liverpool Street, Moorgate, Paddington, Tottenham Court Road, Victoria, Whitechapel).
   Baker Street's deep-level platforms meet its concourse at several places along them, so it's left out too.
   Some stations run one-way routes in and out (Archway): the table follows the way out.
+  Above ground, 32 stations are read from OpenStreetMap (`scripts/read_platforms_osm.py`, run by the
+  platforms-osm workflow), kept only where every platform's stairs, escalators or lifts agree; checked
+  first against the drawings' stations, about fifteen agreed and three didn't (Barbican, Colliers Wood,
+  Euston's Northern line). Not yet: stations with several lines or routes through different platforms, the
+  ends of lines, and those where OpenStreetMap maps no stairs or several ways off.
   The 2015 drawings rarely mark which way a route runs, so a station left out for having ways up at both ends
   may be readable once its way out is known (from the maintainer, or TfL's step-free and station maps).
 - [x] **Where to stand: choose the exit by where the rider is going** (maintainer, 2026-11-05). Done: each named
