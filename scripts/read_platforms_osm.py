@@ -11,10 +11,12 @@ app reads: the table stays read by hand.
 
 Each output line, tab-separated:
 
-    station_id  station_name  way_id  ref  level  length_m  end1_lat,end1_lon  end2_lat,end2_lon  joins
+    station_id  station_name  way_id  ref  level  length_m  end1_lat,end1_lon  end2_lat,end2_lon  joins  routes
 
 - joins: each way off as `kind@fraction` (0 at end1, 1 at end2), kind being the OpenStreetMap feature
   (`steps`, `escalator`, `footway`, `corridor`, `elevator`, `entrance`), comma-separated.
+- routes: the subway and train routes that list the platform as one of their stops' platforms, by name,
+  `|`-separated, so a station several lines run through can be read line by line.
 
 Source: OpenStreetMap (ODbL), Geofabrik's Greater London extract, checked against Geofabrik's MD5 sum.
 Stations: the bundled stops (`app/src/main/assets/stations/stops.tsv`). Needs `osmium` (pyosmium).
@@ -108,7 +110,7 @@ def read_osm(path, stations):
     """(platforms, connector nodes, entrance nodes) from the extract at [path], near [stations]."""
     import osmium
 
-    platforms, connectors, entrances = [], {}, set()
+    platforms, connectors, entrances, routes = [], {}, set(), {}
 
     class Handler(osmium.SimpleHandler):
         def node(self, n):
@@ -136,11 +138,20 @@ def read_osm(path, stations):
                 for ref, _ in nodes:
                     connectors.setdefault(ref, set()).add(kind)
 
+        def relation(self, r):
+            tags = dict(r.tags)
+            if tags.get("type") != "route" or tags.get("route") not in ("subway", "train", "light_rail"):
+                return
+            name = tags.get("name") or tags.get("ref") or ""
+            for m in r.members:
+                if m.type == "w" and m.role.startswith("platform"):
+                    routes.setdefault(m.ref, set()).add(name.replace("|", "/"))
+
     Handler().apply_file(path, locations=True)
-    return platforms, connectors, entrances
+    return platforms, connectors, entrances, routes
 
 
-def rows(platforms, connectors, entrances):
+def rows(platforms, connectors, entrances, routes=None):
     """The output lines, sorted by station then way."""
     out = []
     for (_, sid, name), way_id, tags, nodes in platforms:
@@ -157,6 +168,7 @@ def rows(platforms, connectors, entrances):
             str(round(meters(*ends))),
             f"{ends[0][0]:.5f},{ends[0][1]:.5f}", f"{ends[1][0]:.5f},{ends[1][1]:.5f}",
             ",".join(f"{kind}@{f:.2f}" for f, kind in sorted(joins)),
+            "|".join(sorted((routes or {}).get(way_id, ()))),
         ]))
     return sorted(out)
 
