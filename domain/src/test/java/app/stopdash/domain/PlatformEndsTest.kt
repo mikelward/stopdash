@@ -243,12 +243,11 @@ class PlatformEndsTest {
     }
 
     @Test
-    fun `highgate's way up is midway, and a bus from the street leaves by it`() {
-        val highgate = "940GZZLUHGT"
-        // Northbound from King's Cross, then the 134 from a stop on the street, the Planner giving no walk between.
-        val bus = TripLeg("bus", "134", "134", "490000000X", "Bus stop", "490000000Y", "Further", at(12), at(20), path = listOf("490000000Y"))
-        assertEquals(Spot.MIDDLE, spot(ride("northern", kingsCross, "940GZZLUACY", highgate), bus))
-        assertEquals(Spot.MIDDLE, spot(ride("northern", "940GZZLUFYC", "940GZZLUEFY", highgate)))
+    fun `a bus from the street leaves by the way out`() {
+        // A synthetic bus from a stop on the street, the Planner giving no walk between: Balham's way up is midway.
+        val bus = TripLeg("bus", "1", "1", "490000000X", "Bus stop", "490000000Y", "Further", at(12), at(20), path = listOf("490000000Y"))
+        assertEquals(Spot.MIDDLE, spot(ride("northern", "940GZZLUCPC", "940GZZLUCPS", "940GZZLUBLM"), bus))
+        assertEquals(Spot.MIDDLE, spot(ride("northern", "940GZZLUEFY", "940GZZLUHGT")))
     }
 
     @Test

@@ -479,7 +479,7 @@ object PlatformEnds {
         Platforms(WARREN_STREET, "victoria", EUSTON, OXFORD_CIRCUS, mapOf("northern" to End.MIDDLE, EXIT to End.MIDDLE)),
         // Archway, Northern line, platforms 1 and 2: two routes off, the stairs from the escalator concourse (about 17% to
         // 36% of the way from the Highgate end) and the stair and lift route at the Highgate end. The station runs one-way
-        // routes in and out (maintainer, 2026-11-06) and the drawing doesn't say which is which, so between the Highgate
+        // routes in and out and the drawing doesn't say which is which, so between the Highgate
         // end and the middle, near either.
         Platforms(ARCHWAY, "northern", HIGHGATE, TUFNELL_PARK, mapOf(EXIT to End.A_MIDDLE)),
         // Aldgate, Circle line, platforms 1 to 4: the ticket hall overbridge crosses the tracks about a third of the
