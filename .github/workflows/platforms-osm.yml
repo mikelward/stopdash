@@ -1,0 +1,49 @@
+name: platforms-osm
+
+# Reads where the ways off London Underground platforms meet them from OpenStreetMap (Geofabrik's
+# Greater London extract), for a person to read into PlatformEnds by hand (SPEC *Where to stand*): the
+# stations above ground have no TfL layout drawing. It prints the result to the log and keeps it as an
+# artifact; it commits nothing, and the app reads nothing it writes.
+#
+# Cost and reliability (AGENTS.md): 0 pounds; one Geofabrik extract (about 120 MB, checked against its
+# MD5 sum) and a few minutes of Actions time a run, only when started by hand or when its script or this
+# workflow changes; nothing the app sends, so no Play Data Safety or battery change.
+on:
+  pull_request:
+    paths:
+      - scripts/read_platforms_osm.py
+      - scripts/read_platforms_osm_test.py
+      - .github/workflows/platforms-osm.yml
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: platforms-osm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  read:
+    name: read platforms from OpenStreetMap
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the reader
+        run: python3 -m pip install --no-cache-dir osmium==4.3.2
+      - name: Test the reader
+        run: python3 scripts/read_platforms_osm_test.py
+      - name: Read the platforms
+        run: python3 scripts/read_platforms_osm.py --out build/platforms_osm.tsv
+      - name: Print them
+        run: cat build/platforms_osm.tsv
+      - name: Keep them
+        uses: actions/upload-artifact@v4
+        with:
+          name: platforms-osm
+          path: build/platforms_osm.tsv
+          if-no-files-found: error
