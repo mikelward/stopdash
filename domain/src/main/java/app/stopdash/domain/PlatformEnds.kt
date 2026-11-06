@@ -16,14 +16,18 @@ import androidx.annotation.WorkerThread
  * (SPEC principle 1).
  */
 object PlatformEnds {
-    /** Where on the train to ride: [ANY] for a change across the platform, which every door is near. */
-    enum class Spot { FRONT, MIDDLE, BACK, ANY }
+    /**
+     * Where on the train to ride: [ANY] for a change across the platform, which every door is near; [FRONT_MIDDLE] and
+     * [BACK_MIDDLE] for a way off about a third of the way along, between an end and the middle (maintainer, 2026-11-06).
+     */
+    enum class Spot { FRONT, FRONT_MIDDLE, MIDDLE, BACK_MIDDLE, BACK, ANY }
 
     /**
-     * Which part of a platform a way leaves from: the end toward [Platforms.endA], the middle, or toward [Platforms.endB];
-     * or [ACROSS], the other side of the same platform: any carriage.
+     * Which part of a platform a way leaves from, by where it meets the platform from the [Platforms.endA] end: [A] in
+     * its first fifth, [A_MIDDLE] in its second, [MIDDLE] in the middle fifth, [B_MIDDLE] and [B] likewise from the
+     * [Platforms.endB] end; or [ACROSS], the other side of the same platform: any carriage.
      */
-    enum class End { A, MIDDLE, B, ACROSS }
+    enum class End { A, A_MIDDLE, MIDDLE, B_MIDDLE, B, ACROSS }
 
     /**
      * A line's platforms at a station: [stationId] (TfL's `940G…`), [lineId], the stations each end leads
@@ -168,6 +172,8 @@ object PlatformEnds {
             End.ACROSS -> Spot.ANY
             End.MIDDLE -> Spot.MIDDLE
             End.A -> if (inAtA) Spot.BACK else Spot.FRONT
+            End.A_MIDDLE -> if (inAtA) Spot.BACK_MIDDLE else Spot.FRONT_MIDDLE
+            End.B_MIDDLE -> if (inAtA) Spot.FRONT_MIDDLE else Spot.BACK_MIDDLE
             End.B -> if (inAtA) Spot.FRONT else Spot.BACK
         }
         // The exit's sign only where it's the named exit that was found, never the station's one exit.
@@ -226,6 +232,38 @@ object PlatformEnds {
     private const val OXFORD_CIRCUS = "940GZZLUOXC"
     private const val TOTTENHAM_COURT_ROAD = "940GZZLUTCR"
     private const val WARREN_STREET = "940GZZLUWRR"
+    private const val ARNOS_GROVE = "940GZZLUASG"
+    private const val BANK = "940GZZLUBNK"
+    private const val BLACKFRIARS = "940GZZLUBKF"
+    private const val BOUNDS_GREEN = "940GZZLUBDS"
+    private const val FINCHLEY_ROAD = "940GZZLUFYR"
+    private const val GOLDERS_GREEN = "940GZZLUGGN"
+    private const val HAMPSTEAD = "940GZZLUHTD"
+    private const val HATTON_CROSS = "940GZZLUHNX"
+    private const val HEATHROW_123 = "940GZZLUHRC"
+    private const val HOUNSLOW_CENTRAL = "940GZZLUHWC"
+    private const val HOUNSLOW_WEST = "940GZZLUHWT"
+    private const val KENTISH_TOWN = "940GZZLUKSH"
+    private const val KILBURN_PARK = "940GZZLUKPK"
+    private const val LANCASTER_GATE = "940GZZLULGT"
+    private const val LEYTONSTONE = "940GZZLULYS"
+    private const val MAIDA_VALE = "940GZZLUMVL"
+    private const val MARBLE_ARCH = "940GZZLUMBA"
+    private const val MORDEN = "940GZZLUMDN"
+    private const val OAKWOOD = "940GZZLUOAK"
+    private const val PIMLICO = "940GZZLUPCO"
+    private const val QUEENS_PARK = "940GZZLUQPS"
+    private const val SLOANE_SQUARE = "940GZZLUSSQ"
+    private const val SOUTHGATE = "940GZZLUSGT"
+    private const val SOUTHWARK = "940GZZLUSWK"
+    private const val SWISS_COTTAGE = "940GZZLUSWC"
+    private const val TEMPLE = "940GZZLUTMP"
+    private const val TURNPIKE_LANE = "940GZZLUTPN"
+    private const val WANSTEAD = "940GZZLUWSD"
+    private const val WARWICK_AVENUE = "940GZZLUWKA"
+    private const val WHITECHAPEL = "940GZZLUWPL"
+    private const val WHITE_CITY = "940GZZLUWCY"
+    private const val WOOD_GREEN = "940GZZLUWOG"
     private const val ALDGATE = "940GZZLUALD"
     private const val BAKER_STREET = "940GZZLUBST"
     private const val BALHAM = "940GZZLUBLM"
@@ -439,63 +477,60 @@ object PlatformEnds {
         Platforms(STOCKWELL, "northern", OVAL, CLAPHAM_NORTH, mapOf(toward("victoria", BRIXTON) to End.ACROSS), arriving = OVAL),
         // Warren Street, Victoria line, platforms 3 and 4: escalators 7 and 9, the only way off, land midway along.
         Platforms(WARREN_STREET, "victoria", EUSTON, OXFORD_CIRCUS, mapOf("northern" to End.MIDDLE, EXIT to End.MIDDLE)),
-        // Baker Street, Jubilee line, deep-level platforms (7 to 10): the escalators to the Jubilee and Bakerloo ticket
-        // hall and the stairs up to the Metropolitan line platforms (and on to the Circle and Hammersmith & City
-        // platforms 5 and 6) all leave from the middle concourse over the central area of the platforms. The drawing
-        // does not say which deep platform is which line, so the cross-platform Bakerloo change is not recorded.
-        Platforms(BAKER_STREET, "jubilee", ST_JOHNS_WOOD, BOND_STREET, mapOf(EXIT to End.MIDDLE, "metropolitan" to End.MIDDLE, "circle" to End.MIDDLE, "hammersmith-city" to End.MIDDLE)),
-        // Baker Street, Bakerloo line, deep-level platforms (7 to 10): the escalators to the Jubilee and Bakerloo
-        // ticket hall and the stairs up to the Metropolitan line platforms (and on to the Circle and Hammersmith & City
-        // platforms 5 and 6) all leave from the middle concourse over the central area of the platforms.
-        Platforms(BAKER_STREET, "bakerloo", MARYLEBONE, REGENTS_PARK, mapOf(EXIT to End.MIDDLE, "metropolitan" to End.MIDDLE, "circle" to End.MIDDLE, "hammersmith-city" to End.MIDDLE)),
+        // Archway, Northern line, platforms 1 and 2: two routes off, the stairs from the escalator concourse (about 17% to
+        // 36% of the way from the Highgate end) and the stair and lift route at the Highgate end. The station runs one-way
+        // routes in and out (maintainer, 2026-11-06) and the drawing doesn't say which is which, so between the Highgate
+        // end and the middle, near either.
+        Platforms(ARCHWAY, "northern", HIGHGATE, TUFNELL_PARK, mapOf(EXIT to End.A_MIDDLE)),
         // Aldgate, Circle line, platforms 1 to 4: the ticket hall overbridge crosses the tracks about a third of the
-        // way from the north (Liverpool Street) end, with stairs down to the islands landing on both sides of it,
-        // around the middle of the platforms.
-        Platforms(ALDGATE, "circle", LIVERPOOL_STREET, TOWER_HILL, mapOf(EXIT to End.MIDDLE)),
+        // way from the north (Liverpool Street) end; its stairs land on the islands about 28% (northward flights) and
+        // 50% (southward flights) of the way from that end.
+        Platforms(ALDGATE, "circle", LIVERPOOL_STREET, TOWER_HILL, mapOf(EXIT to End.A_MIDDLE)),
         // Angel, Northern line, platforms 1 (southbound, to Old Street) and 2 (northbound, to King's Cross): the
-        // escalators from the main concourse reach the platforms at their west (King's Cross) end.
+        // escalators from the main concourse reach the platforms at their west (King's Cross) end, within the first 5%
+        // of their length.
         Platforms(ANGEL, "northern", KINGS_CROSS, OLD_STREET, mapOf(EXIT to End.A)),
-        // Archway, Northern line, platforms 1 (northbound, to Highgate) and 2 (southbound, to Tufnell Park): the stairs
-        // from the escalator concourse land in the Highgate half of the platforms, and a further stair route (to the
-        // lift) leaves from the Highgate end.
-        Platforms(ARCHWAY, "northern", HIGHGATE, TUFNELL_PARK, mapOf(EXIT to End.A)),
-        // Arsenal, Piccadilly line, platforms 1 (eastbound, to Finsbury Park) and 2 (westbound, to Holloway Road): the
-        // inclined passage from the ticket hall comes down by stairs near the middle of the platforms.
-        Platforms(ARSENAL, "piccadilly", FINSBURY_PARK, HOLLOWAY_ROAD, mapOf(EXIT to End.MIDDLE)),
+        // Arsenal, Piccadilly line, platform 2 (westbound, to Holloway Road): the first of the two passages from the
+        // ticket hall comes down by stairs about 47% of the way from the east (Finsbury Park) end.
+        Platforms(ARSENAL, "piccadilly", FINSBURY_PARK, HOLLOWAY_ROAD, mapOf(EXIT to End.MIDDLE), arriving = FINSBURY_PARK),
+        // Arsenal, Piccadilly line, platform 1 (eastbound, to Finsbury Park): the second passage from the ticket hall
+        // comes down by stairs about 72% of the way from the east (Finsbury Park) end, toward the Holloway Road end.
+        Platforms(ARSENAL, "piccadilly", FINSBURY_PARK, HOLLOWAY_ROAD, mapOf(EXIT to End.B_MIDDLE), arriving = HOLLOWAY_ROAD),
         // Balham, Northern line, platforms 1 (northbound, to Clapham South) and 2 (southbound, to Tooting Bec):
-        // escalators 1 and 3 land between the two platforms near their middle. The ticket hall also leads to Balham
-        // National Rail station.
+        // escalators 1 and 3 land between the platforms, with cross-passages to both about 42 to 58% of the way from
+        // the Tooting Bec end. The ticket hall also leads to Balham National Rail station.
         Platforms(BALHAM, "northern", CLAPHAM_SOUTH, TOOTING_BEC, mapOf(EXIT to End.MIDDLE)),
         // Barbican, Circle line, platforms 1 (eastbound, to Moorgate) and 2 (westbound, to Farringdon): the overbridge
-        // and stairs to the ticket hall are at the east (Moorgate) end.
+        // and stairs to the ticket hall are at the east (Moorgate) end, beyond 90% of the platform length.
         Platforms(BARBICAN, "circle", MOORGATE, FARRINGDON, mapOf(EXIT to End.A)),
         // Barbican, Hammersmith & City line, platforms 1 (eastbound, to Moorgate) and 2 (westbound, to Farringdon): the
-        // overbridge and stairs to the ticket hall are at the east (Moorgate) end.
+        // overbridge and stairs to the ticket hall are at the east (Moorgate) end, beyond 90% of the platform length.
         Platforms(BARBICAN, "hammersmith-city", MOORGATE, FARRINGDON, mapOf(EXIT to End.A)),
         // Barbican, Metropolitan line, platforms 1 (eastbound, to Moorgate) and 2 (westbound, to Farringdon): the
-        // overbridge and stairs to the ticket hall are at the east (Moorgate) end.
+        // overbridge and stairs to the ticket hall are at the east (Moorgate) end, beyond 90% of the platform length.
         Platforms(BARBICAN, "metropolitan", MOORGATE, FARRINGDON, mapOf(EXIT to End.A)),
         // Bayswater, Circle line, platforms 1 (westbound, to Notting Hill Gate) and 2 (eastbound, to Paddington): the
-        // stairs to the ticket hall and overbridge are at the east (Paddington) end of both platforms.
+        // stairs to the ticket hall and overbridge rise from the east (Paddington) end of both platforms.
         Platforms(BAYSWATER, "circle", PADDINGTON, NOTTING_HILL_GATE, mapOf(EXIT to End.A)),
         // Bayswater, District line, platforms 1 (westbound, to Notting Hill Gate) and 2 (eastbound, to Paddington): the
-        // stairs to the ticket hall and overbridge are at the east (Paddington) end of both platforms.
+        // stairs to the ticket hall and overbridge rise from the east (Paddington) end of both platforms.
         Platforms(BAYSWATER, "district", PADDINGTON, NOTTING_HILL_GATE, mapOf(EXIT to End.A)),
         // Bermondsey, Jubilee line, platforms 1 (westbound, to London Bridge) and 2 (eastbound, to Canada Water): the
-        // escalators from the lower ticket hall come down into the central area of the station box, near the middle of
-        // the platforms.
-        Platforms(BERMONDSEY, "jubilee", LONDON_BRIDGE, CANADA_WATER, mapOf(EXIT to End.MIDDLE)),
+        // escalators from the lower ticket hall come down into the station box between the platforms, about 70% of the
+        // way from the west (London Bridge) end.
+        Platforms(BERMONDSEY, "jubilee", LONDON_BRIDGE, CANADA_WATER, mapOf(EXIT to End.B_MIDDLE)),
         // Bethnal Green, Central line, platforms 1 (westbound, to Liverpool Street) and 2 (eastbound, to Mile End): the
-        // escalators to the ticket hall land between the platforms a little west of their middle, with cross-passages
-        // to both.
-        Platforms(BETHNAL_GREEN, "central", LIVERPOOL_STREET, MILE_END, mapOf(EXIT to End.MIDDLE)),
+        // escalators to the ticket hall land between the platforms, with cross-passages about 30 to 40% of the way from
+        // the west (Liverpool Street) end.
+        Platforms(BETHNAL_GREEN, "central", LIVERPOOL_STREET, MILE_END, mapOf(EXIT to End.A_MIDDLE)),
         // Blackhorse Road, Victoria line, platforms 1 (northbound, to Walthamstow Central) and 2 (southbound, to
-        // Tottenham Hale): the escalators to the ticket hall land between the platforms just north of their middle. The
-        // ticket hall also serves the Overground station.
+        // Tottenham Hale): the escalators to the ticket hall land within the island, with passages about 52 to 64% of
+        // the way from the Tottenham Hale end. The ticket hall also serves the Overground station.
         Platforms(BLACKHORSE_ROAD, "victoria", WALTHAMSTOW_CENTRAL, TOTTENHAM_HALE, mapOf(EXIT to End.MIDDLE)),
         // Borough, Northern line, platforms 1 and 2: the passage and stairs from the lower concourse (lifts to the
-        // ticket hall) reach both platforms about midway along; platform 1 northbound to London Bridge, platform 2
-        // southbound to Elephant & Castle.
+        // ticket hall) reach both platforms about midway along (measured about 0.55 of the length from the London
+        // Bridge end on platform 2, and 0.39 to 0.51 on platform 1 depending on where its south end is read); platform
+        // 1 northbound to London Bridge, platform 2 southbound to Elephant & Castle.
         Platforms(BOROUGH, "northern", LONDON_BRIDGE, ELEPHANT_AND_CASTLE, mapOf(EXIT to End.MIDDLE)),
         // Bow Road, District line, platforms 1 and 2: the stairs up to the ticket hall leave from the east end of both
         // platforms, the Bromley-by-Bow end; platform 2 eastbound, platform 1 westbound to Mile End.
@@ -503,26 +538,30 @@ object PlatformEnds {
         // Bow Road, Hammersmith & City line, platforms 1 and 2: the stairs up to the ticket hall leave from the east
         // end of both platforms, the Bromley-by-Bow end; platform 2 eastbound, platform 1 westbound to Mile End.
         Platforms(BOW_ROAD, "hammersmith-city", BROMLEY_BY_BOW, MILE_END, mapOf(EXIT to End.A)),
-        // Caledonian Road, Piccadilly line, platforms 1 and 2: the lifts to the ticket hall land midway along both
-        // platforms (a spiral stair lands a little east of them); platform 1 eastbound to Holloway Road, platform 2
-        // westbound to King's Cross.
+        // Caledonian Road, Piccadilly line, platforms 1 and 2: the passages to the lifts up to the ticket hall meet
+        // both platforms at about 40-60% of their length from the Holloway Road end (measured 0.49 to 0.55); a second
+        // passage (marked A) and a spiral stair meet them about 28% from the Holloway Road end, unmarked as the way
+        // out, so the lifts are graded; platform 1 eastbound to Holloway Road, platform 2 westbound to King's Cross.
         Platforms(CALEDONIAN_ROAD, "piccadilly", HOLLOWAY_ROAD, KINGS_CROSS, mapOf(EXIT to End.MIDDLE)),
-        // Cannon Street, Circle line, platforms 1 and 2: the ticket hall sits midway along, opening off platform 1
-        // (westbound to Mansion House) and reached from platform 2 (eastbound to Monument) by stairs and a footbridge a
-        // little east of the middle. Cannon Street National Rail station is above.
+        // Cannon Street, Circle line, platforms 1 and 2: the ticket hall opens along the middle stretch of platform 1
+        // (westbound to Mansion House), and the footbridge stairs land on platform 2 (eastbound to Monument) about
+        // 43-46% of its length from the Monument end. Cannon Street National Rail station is above.
         Platforms(CANNON_STREET, "circle", MONUMENT, MANSION_HOUSE, mapOf(EXIT to End.MIDDLE)),
-        // Cannon Street, District line, platforms 1 and 2: the ticket hall sits midway along, opening off platform 1
-        // (westbound to Mansion House) and reached from platform 2 (eastbound to Monument) by stairs and a footbridge a
-        // little east of the middle. Cannon Street National Rail station is above.
+        // Cannon Street, District line, platforms 1 and 2: the ticket hall opens along the middle stretch of platform 1
+        // (westbound to Mansion House), and the footbridge stairs land on platform 2 (eastbound to Monument) about
+        // 43-46% of its length from the Monument end. Cannon Street National Rail station is above.
         Platforms(CANNON_STREET, "district", MONUMENT, MANSION_HOUSE, mapOf(EXIT to End.MIDDLE)),
         // Chalk Farm, Northern line, platforms 1 and 2: the stairs to the lifts and spiral stair up to the ticket hall
         // leave from the Belsize Park end of both platforms; platform 1 northbound to Belsize Park, platform 2
         // southbound to Camden Town.
         Platforms(CHALK_FARM, "northern", BELSIZE_PARK, CAMDEN_TOWN, mapOf(EXIT to End.A)),
-        // Chancery Lane, Central line, platforms 1 and 2: the escalators to the ticket hall leave from the middle
-        // concourse at the east end of platform 2 (eastbound to St. Paul's) and from the lower concourse off the
-        // eastern part of platform 1 (westbound to Holborn).
-        Platforms(CHANCERY_LANE, "central", ST_PAULS, HOLBORN, mapOf(EXIT to End.A)),
+        // Chancery Lane, Central line, platform 2 (eastbound to St. Paul's): the escalators to the middle concourse and
+        // ticket hall leave from the east end of the platform, about 5-10% of its length from the St. Paul's end.
+        Platforms(CHANCERY_LANE, "central", ST_PAULS, HOLBORN, mapOf(EXIT to End.A), arriving = HOLBORN),
+        // Chancery Lane, Central line, platform 1 (westbound to Holborn): the passage to the lower concourse and the
+        // escalators up leaves about 28% of the platform's length from the St. Paul's (east) end. Unlabeled cross
+        // passages near the west third lead only to platform 2 and a shaft, not to the ticket hall.
+        Platforms(CHANCERY_LANE, "central", ST_PAULS, HOLBORN, mapOf(EXIT to End.A_MIDDLE), arriving = ST_PAULS),
         // Charing Cross, Northern line, platforms 5 and 6: both platforms open at their south-east (Embankment) end
         // onto the Northern line ticket hall and escalators D, which also lead down the interchange passage to the
         // former Jubilee concourse and the Bakerloo line; platform 6 southbound to Embankment, platform 5 northbound to
@@ -533,66 +572,255 @@ object PlatformEnds {
         // platform 2 southbound to Clapham South.
         Platforms(CLAPHAM_COMMON, "northern", CLAPHAM_SOUTH, CLAPHAM_NORTH, mapOf(EXIT to End.A)),
         // Clapham North, Northern line, platforms 1 and 2: one island platform; the lower concourse and the stairs up
-        // to the ticket hall join it at the Clapham Common end.
+        // to the ticket hall join it at the very Clapham Common end (about 100% from the Stockwell end).
         Platforms(CLAPHAM_NORTH, "northern", CLAPHAM_COMMON, STOCKWELL, mapOf(EXIT to End.A)),
         // Clapham South, Northern line, platforms 1 and 2: two separate platform tunnels; the escalators to the ticket
-        // hall and the cross passages to both platforms are at the Balham end.
+        // hall meet platform 1 at its Balham end, and the cross passages reach platform 2 within about 8-17% of its
+        // Balham end.
         Platforms(CLAPHAM_SOUTH, "northern", BALHAM, CLAPHAM_COMMON, mapOf(EXIT to End.A)),
         // Colliers Wood, Northern line, platforms 1 and 2: the escalators to the ticket hall land in a cross passage
-        // between the two platforms about halfway along them.
+        // between the two platforms about 47% of the way from the South Wimbledon end.
         Platforms(COLLIERS_WOOD, "northern", SOUTH_WIMBLEDON, TOOTING_BROADWAY, mapOf(EXIT to End.MIDDLE)),
-        // Earl's Court, Piccadilly line, platforms 5 and 6: the escalators up to the lower concourse, which has the
-        // stairs up to District platforms 1 and 2 and 3 and 4, land at the Barons Court (west) end. A lift shaft sits
-        // about a third of the way along from that end, so the way out is left out.
+        // Covent Garden, Piccadilly line, platform 2 (eastbound, trains from Leicester Square): the only way off is the
+        // stairs up to the overbridge, about 23% of the way from the Leicester Square end, which leads over platform 1
+        // to the lower circulating area and the lifts. The platforms carry no direction labels; platform 2 being
+        // eastbound comes from the app's step-free platform data and matches left-hand running.
+        Platforms(COVENT_GARDEN, "piccadilly", LEICESTER_SQUARE, HOLBORN, mapOf(EXIT to End.A_MIDDLE), arriving = LEICESTER_SQUARE),
+        // Covent Garden, Piccadilly line, platform 1 (westbound, trains from Holborn): the lower circulating area and
+        // the lifts open off the platform about 42-52% of the way from the Leicester Square end.
+        Platforms(COVENT_GARDEN, "piccadilly", LEICESTER_SQUARE, HOLBORN, mapOf(EXIT to End.MIDDLE), arriving = HOLBORN),
+        // Earl's Court, Piccadilly line, platforms 5 and 6: one island; the escalators up to the lower concourse, which
+        // has the stairs up to District platforms 1 and 2 and 3 and 4, land about 15-20% of the way from the Barons
+        // Court (west) end. A lift shaft sits about 43% of the way along, so the way out is left out.
         Platforms(EARLS_COURT, "piccadilly", BARONS_COURT, GLOUCESTER_ROAD, mapOf("district" to End.A)),
-        // Edgware Road (Bakerloo), Bakerloo line, platforms 1 and 2: the lifts and lower concourse cross the platforms
-        // about halfway along, with stairs down to both platforms there.
+        // Edgware Road (Bakerloo), Bakerloo line, platforms 1 and 2: the lifts and lower concourse cross the platforms,
+        // with stairs down to both platforms about 39-63% of the way from the Marylebone end.
         Platforms(EDGWARE_ROAD, "bakerloo", MARYLEBONE, PADDINGTON, mapOf(EXIT to End.MIDDLE)),
-        // Euston Square, Circle line, platforms 1 and 2: the stairs up to the ticket hall (entrances A and B) are at
-        // the Great Portland Street (west) end of both platforms.
+        // Euston Square, Circle line, platforms 1 and 2: the ticket hall (entrances A and B) bridges the platforms near
+        // the Great Portland Street (west) end, with the stairs meeting them about 18-21% of the way along.
         Platforms(EUSTON_SQUARE, "circle", GREAT_PORTLAND_STREET, KINGS_CROSS, mapOf(EXIT to End.A)),
-        // Euston Square, Hammersmith & City line, platforms 1 and 2: the stairs up to the ticket hall (entrances A and
-        // B) are at the Great Portland Street (west) end of both platforms.
+        // Euston Square, Hammersmith & City line, platforms 1 and 2: the ticket hall (entrances A and B) bridges the
+        // platforms near the Great Portland Street (west) end, with the stairs meeting them about 18-21% of the way
+        // along.
         Platforms(EUSTON_SQUARE, "hammersmith-city", GREAT_PORTLAND_STREET, KINGS_CROSS, mapOf(EXIT to End.A)),
-        // Euston Square, Metropolitan line, platforms 1 and 2: the stairs up to the ticket hall (entrances A and B) are
-        // at the Great Portland Street (west) end of both platforms.
+        // Euston Square, Metropolitan line, platforms 1 and 2: the ticket hall (entrances A and B) bridges the
+        // platforms near the Great Portland Street (west) end, with the stairs meeting them about 18-21% of the way
+        // along.
         Platforms(EUSTON_SQUARE, "metropolitan", GREAT_PORTLAND_STREET, KINGS_CROSS, mapOf(EXIT to End.A)),
         // Fulham Broadway, District line, platforms 1 and 2: the stairs up to the ticket hall and shopping arcade
-        // (entrance A) land in the central area of the platforms; the overbridge at the Parsons Green (south) end and
-        // the stairs at the West Brompton (north) end are marked as emergency stairs.
+        // (entrance A) land about 42-47% of the way from the Parsons Green (south) end; the overbridge at the south end
+        // and the stairs at the West Brompton (north) end are marked as emergency stairs.
         Platforms(FULHAM_BROADWAY, "district", PARSONS_GREEN, WEST_BROMPTON, mapOf(EXIT to End.MIDDLE)),
-        // Gants Hill, Central line, platforms 1 and 2: a concourse runs between the two platforms, and the escalators
-        // up to the ticket hall leave from its Newbury Park (east) end.
+        // Gants Hill, Central line, platforms 1 and 2: a concourse runs between the two platforms along their eastern
+        // half, and the escalators up to the ticket hall leave from its Newbury Park (east) end, about 90% of the way
+        // from the Redbridge end.
         Platforms(GANTS_HILL, "central", NEWBURY_PARK, REDBRIDGE, mapOf(EXIT to End.A)),
         // Gloucester Road, Circle line, platforms 2 and 3: the stairs up to the ticket hall are at the South Kensington
-        // (east) end, as is the way down (stairs, spiral stair and lifts) to Piccadilly platforms 4 and 5.
+        // (east) end, as is the way down (stairs, spiral stair and lifts) to Piccadilly platforms 4 and 5. The
+        // footbridge at the west end only links the platforms.
         Platforms(GLOUCESTER_ROAD, "circle", SOUTH_KENSINGTON, HIGH_STREET_KENSINGTON, mapOf(EXIT to End.A, "piccadilly" to End.A)),
         // Gloucester Road, District line, platforms 1 and 3: the stairs up to the ticket hall are at the South
         // Kensington (east) end, as is the way down (stairs, spiral stair and lifts) to Piccadilly platforms 4 and 5.
+        // The footbridge at the west end only links the platforms.
         Platforms(GLOUCESTER_ROAD, "district", SOUTH_KENSINGTON, EARLS_COURT, mapOf(EXIT to End.A, "piccadilly" to End.A)),
         // Gloucester Road, Piccadilly line, platforms 4 and 5: the stairs, spiral stair and lifts up to the ticket hall
         // and the District and Circle platforms are at the South Kensington (east) end.
         Platforms(GLOUCESTER_ROAD, "piccadilly", SOUTH_KENSINGTON, EARLS_COURT, mapOf(EXIT to End.A, "district" to End.A, "circle" to End.A)),
         // Goodge Street, Northern line, platforms 1 and 2: the lifts and spiral stairs reach a lower concourse beside
-        // the tracks whose cross passages and stairs meet both platforms near their midpoint (platform 1 northbound to
-        // Warren Street, platform 2 southbound to Tottenham Court Road).
+        // the tracks whose cross passages and stairs meet the platforms about halfway along (platform 1 northbound to
+        // Warren Street about 55% from the Warren Street end; platform 2 southbound to Tottenham Court Road about
+        // 50-70%).
         Platforms(GOODGE_STREET, "northern", WARREN_STREET, TOTTENHAM_COURT_ROAD, mapOf(EXIT to End.MIDDLE)),
-        // Great Portland Street, Circle line, platforms 1 and 2: the stairs from the ticket hall land midway along both
-        // platforms (platform 2 eastbound to Euston Square, platform 1 westbound to Baker Street); an overbridge just
-        // west of them also links the platforms.
-        Platforms(GREAT_PORTLAND_STREET, "circle", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.MIDDLE)),
-        // Great Portland Street, Hammersmith & City line, platforms 1 and 2: the stairs from the ticket hall land
-        // midway along both platforms (platform 2 eastbound to Euston Square, platform 1 westbound to Baker Street).
-        Platforms(GREAT_PORTLAND_STREET, "hammersmith-city", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.MIDDLE)),
-        // Great Portland Street, Metropolitan line, platforms 1 and 2: the stairs from the ticket hall land midway
-        // along both platforms (platform 2 eastbound to Euston Square, platform 1 westbound to Baker Street).
-        Platforms(GREAT_PORTLAND_STREET, "metropolitan", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.MIDDLE)),
+        // Great Portland Street, Circle line, platform 2 (eastbound to Euston Square): the ramped stairs from the
+        // ticket hall land about 55% along from the Baker Street end; an overbridge further west links the two
+        // platforms.
+        Platforms(GREAT_PORTLAND_STREET, "circle", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.MIDDLE), arriving = BAKER_STREET),
+        // Great Portland Street, Circle line, platform 1 (westbound to Baker Street): the ramped stairs from the ticket
+        // hall land about 35% along from the Baker Street end, beside a subway to the south side.
+        Platforms(GREAT_PORTLAND_STREET, "circle", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.A_MIDDLE), arriving = EUSTON_SQUARE),
+        // Great Portland Street, Hammersmith & City line, platform 2 (eastbound to Euston Square): the ramped stairs
+        // from the ticket hall land about 55% along from the Baker Street end.
+        Platforms(GREAT_PORTLAND_STREET, "hammersmith-city", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.MIDDLE), arriving = BAKER_STREET),
+        // Great Portland Street, Hammersmith & City line, platform 1 (westbound to Baker Street): the ramped stairs
+        // from the ticket hall land about 35% along from the Baker Street end.
+        Platforms(GREAT_PORTLAND_STREET, "hammersmith-city", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.A_MIDDLE), arriving = EUSTON_SQUARE),
+        // Great Portland Street, Metropolitan line, platform 2 (eastbound to Euston Square): the ramped stairs from the
+        // ticket hall land about 55% along from the Baker Street end.
+        Platforms(GREAT_PORTLAND_STREET, "metropolitan", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.MIDDLE), arriving = BAKER_STREET),
+        // Great Portland Street, Metropolitan line, platform 1 (westbound to Baker Street): the ramped stairs from the
+        // ticket hall land about 35% along from the Baker Street end.
+        Platforms(GREAT_PORTLAND_STREET, "metropolitan", BAKER_STREET, EUSTON_SQUARE, mapOf(EXIT to End.A_MIDDLE), arriving = EUSTON_SQUARE),
+        // Hampstead, Northern line, platforms 1 and 2: two passages from the lift concourse drop by stairs to the
+        // platforms about 37% and 60% along from the Golders Green end (platform 1 northbound to Golders Green,
+        // platform 2 southbound to Belsize Park); the drawing does not show which platform each serves.
+        Platforms(HAMPSTEAD, "northern", GOLDERS_GREEN, BELSIZE_PARK, mapOf(EXIT to End.MIDDLE)),
+        // Hatton Cross, Piccadilly line, platforms 1 and 2 (island): the stairs from the ticket hall land on the
+        // eastern part of the island, about 60-80% along from the west end (platform 1 westbound to Heathrow, labeled
+        // Terminal 4; platform 2 eastbound to Hounslow West).
+        Platforms(HATTON_CROSS, "piccadilly", HEATHROW_123, HOUNSLOW_WEST, mapOf(EXIT to End.B_MIDDLE)),
         // Holland Park, Central line, platforms 1 and 2: the lifts from the ticket hall come down to two passages that
-        // meet the platforms near their midpoint (platform 2 eastbound to Notting Hill Gate, platform 1 westbound to
-        // Shepherd's Bush).
+        // meet the platforms just past halfway, about 52-53% from the west end (platform 2 eastbound to Notting Hill
+        // Gate, platform 1 westbound to Shepherd's Bush).
         Platforms(HOLLAND_PARK, "central", NOTTING_HILL_GATE, SHEPHERDS_BUSH, mapOf(EXIT to End.MIDDLE)),
+        // Hounslow West, Piccadilly line, platforms 1 and 2 (island): the stairs from the walkway overbridge land about
+        // 25-42% along from the west end (platform 1 westbound to Hatton Cross, platform 2 eastbound to Hounslow
+        // Central).
+        Platforms(HOUNSLOW_WEST, "piccadilly", HATTON_CROSS, HOUNSLOW_CENTRAL, mapOf(EXIT to End.A_MIDDLE)),
         // Hyde Park Corner, Piccadilly line, platforms 1 and 2: the escalators to the ticket hall rise from the east
         // end of both platforms, the end toward Green Park; nothing leaves the west (Knightsbridge) end.
         Platforms(HYDE_PARK_CORNER, "piccadilly", GREEN_PARK, KNIGHTSBRIDGE, mapOf(EXIT to End.A)),
+        // Kentish Town, Northern line, platform 1 (northbound to Tufnell Park): the escalators from the ticket hall
+        // come down onto platform 1 about 39% along from the Camden Town end; the deeper southbound platform 2 is
+        // reached by stairs from that landing, and the drawing does not show where they meet it.
+        Platforms(KENTISH_TOWN, "northern", CAMDEN_TOWN, TUFNELL_PARK, mapOf(EXIT to End.A_MIDDLE), arriving = CAMDEN_TOWN),
+        // Kilburn Park, Bakerloo line, platforms 1 and 2: the escalators to the ticket hall rise from a passage between
+        // the two platforms about a third of the way along from the south (Maida Vale) end (about 33% on platform 2,
+        // 38% on platform 1); no other way off.
+        Platforms(KILBURN_PARK, "bakerloo", MAIDA_VALE, QUEENS_PARK, mapOf(EXIT to End.A_MIDDLE)),
+        // Lambeth North, Bakerloo line, platforms 1 and 2: both platforms end at the west (Waterloo) end in the lower
+        // concourse, with the lifts and stairs up to the ticket hall; nothing at the Elephant & Castle end.
+        Platforms(LAMBETH_NORTH, "bakerloo", WATERLOO, ELEPHANT_AND_CASTLE, mapOf(EXIT to End.A)),
+        // Lancaster Gate, Central line, platforms 1 and 2: stairs from both platforms, about 10 to 20% along from the
+        // west (Queensway) end, climb to the lower concourse and the lifts to the ticket hall.
+        Platforms(LANCASTER_GATE, "central", QUEENSWAY, MARBLE_ARCH, mapOf(EXIT to End.A)),
+        // Maida Vale, Bakerloo line, platform 2 (southbound): the platforms are staggered; the escalators to the ticket
+        // hall land at the north (Kilburn Park) end of platform 2, within its first tenth.
+        Platforms(MAIDA_VALE, "bakerloo", KILBURN_PARK, WARWICK_AVENUE, mapOf(EXIT to End.A), arriving = KILBURN_PARK),
+        // Maida Vale, Bakerloo line, platform 1 (northbound): the escalators to the ticket hall land about 45% along
+        // platform 1 from its north (Kilburn Park) end.
+        Platforms(MAIDA_VALE, "bakerloo", KILBURN_PARK, WARWICK_AVENUE, mapOf(EXIT to End.MIDDLE), arriving = WARWICK_AVENUE),
+        // Manor House, Piccadilly line, platforms 1 and 2: the escalators to the ticket hall rise from a passage
+        // between the platforms about midway along (about 44% from the south end on platform 2, about 58% on platform
+        // 1); the ticket hall leads to street stairs 1 to 7.
+        Platforms(MANOR_HOUSE, "piccadilly", TURNPIKE_LANE, FINSBURY_PARK, mapOf(EXIT to End.MIDDLE)),
+        // Mansion House, Circle line, platforms 1 to 3: the only ways off are toward the east (Cannon Street) end:
+        // eastbound platform 3 meets the passageway to the ticket hall at its east end, and a footbridge from that
+        // passageway lands on the westbound island (platforms 1 and 2) about a fifth of the way from its east end;
+        // nothing at the west (Blackfriars) end.
+        Platforms(MANSION_HOUSE, "circle", CANNON_STREET, BLACKFRIARS, mapOf(EXIT to End.A)),
+        // Mansion House, District line, platforms 1 to 3: the only ways off are toward the east (Cannon Street) end:
+        // eastbound platform 3 meets the passageway to the ticket hall at its east end, and a footbridge from that
+        // passageway lands on the westbound island (platforms 1 and 2) about a fifth of the way from its east end;
+        // nothing at the west (Blackfriars) end.
+        Platforms(MANSION_HOUSE, "district", CANNON_STREET, BLACKFRIARS, mapOf(EXIT to End.A)),
+        // Marble Arch, Central line, platforms 1 and 2: escalators 1 and 3 to the ticket hall rise from a concourse
+        // between the platforms, reached by stairs about 48% along from the west (Lancaster Gate) end.
+        Platforms(MARBLE_ARCH, "central", LANCASTER_GATE, BOND_STREET, mapOf(EXIT to End.MIDDLE)),
+        // Marylebone, Bakerloo line, platforms 1 and 2: two overbridges about 48% along the platforms from the west end
+        // meet a lower concourse with spiral stairs, and a passage leads to escalators 1 and 3 up to the ticket hall
+        // (and the National Rail station).
+        Platforms(MARYLEBONE, "bakerloo", EDGWARE_ROAD, BAKER_STREET, mapOf(EXIT to End.MIDDLE)),
+        // Oval, Northern line, platform 1 (northbound, to Kennington): the lower concourse meets platform 1 only at its
+        // north (Kennington) end, about 93% along from the Stockwell end, labeled "Lower concourse & platform 1 (north
+        // end)"; the escalators to the ticket hall rise from there.
+        Platforms(OVAL, "northern", KENNINGTON, STOCKWELL, mapOf(EXIT to End.A), arriving = STOCKWELL),
+        // Oval, Northern line, platform 2 (southbound, to Stockwell): two passages from the lower concourse reach
+        // platform 2 at about 10% and 36% along from its Stockwell end, so the spot between them is graded between the
+        // Stockwell end and the middle.
+        Platforms(OVAL, "northern", KENNINGTON, STOCKWELL, mapOf(EXIT to End.B_MIDDLE), arriving = KENNINGTON),
+        // Pimlico, Victoria line, platforms 1 (northbound, to Victoria) and 2 (southbound, to Vauxhall): both platforms
+        // open, through pillared gaps about 29% along from the east (Vauxhall) end, onto the short concourse at the
+        // foot of the escalators to the ticket hall; cross passages farther west lead only between the platforms.
+        Platforms(PIMLICO, "victoria", VAUXHALL, VICTORIA, mapOf(EXIT to End.A_MIDDLE)),
+        // Queensway, Central line, platforms 1 (westbound, to Notting Hill Gate) and 2 (eastbound, to Lancaster Gate):
+        // the lower concourse to the lifts and spiral stairs meets both platforms by stairs about 62% along from the
+        // Notting Hill Gate end (the stairs span about 50% to 75%).
+        Platforms(QUEENSWAY, "central", NOTTING_HILL_GATE, LANCASTER_GATE, mapOf(EXIT to End.B_MIDDLE)),
+        // Redbridge, Central line, platforms 1 (westbound, to Wanstead) and 2 (eastbound, to Gants Hill): one island
+        // platform; the only stairs, up to the ticket hall, are at its west (Wanstead) end, about 3% along.
+        Platforms(REDBRIDGE, "central", WANSTEAD, GANTS_HILL, mapOf(EXIT to End.A)),
+        // Regent's Park, Bakerloo line, platforms 1 (northbound, to Baker Street) and 2 (southbound, to Oxford Circus):
+        // two passages from the lower concourse (spiral stairs and lifts to the ticket hall) reach each platform at
+        // about 45% and 65% along from the Baker Street end; the spot between them is graded middle.
+        Platforms(REGENTS_PARK, "bakerloo", BAKER_STREET, OXFORD_CIRCUS, mapOf(EXIT to End.MIDDLE)),
+        // Russell Square, Piccadilly line, platforms 1 and 2: the interchange passageways from the lifts and the spiral
+        // staircase reach both platforms at about 75% to 90% along from the north end, by stairs at the south end
+        // (toward Holborn, by the drawing's north-up compass; the drawing has no "to" labels).
+        Platforms(RUSSELL_SQUARE, "piccadilly", HOLBORN, KINGS_CROSS, mapOf(EXIT to End.A)),
+        // Shepherd's Bush, Central line, platforms 1 (westbound, to White City) and 2 (eastbound, to Holland Park): the
+        // passages from the lower concourse and escalators to the ticket hall meet the island platform only at its west
+        // (White City) end.
+        Platforms(SHEPHERDS_BUSH, "central", WHITE_CITY, HOLLAND_PARK, mapOf(EXIT to End.A)),
+        // Sloane Square, Circle line, platforms 1 (westbound, to South Kensington) and 2 (eastbound, to Victoria): both
+        // escalator banks to the ticket hall land at the very west (South Kensington) end of their platforms.
+        Platforms(SLOANE_SQUARE, "circle", SOUTH_KENSINGTON, VICTORIA, mapOf(EXIT to End.A)),
+        // Sloane Square, District line, platforms 1 (westbound, to South Kensington) and 2 (eastbound, to Victoria):
+        // both escalator banks to the ticket hall land at the very west (South Kensington) end of their platforms.
+        Platforms(SLOANE_SQUARE, "district", SOUTH_KENSINGTON, VICTORIA, mapOf(EXIT to End.A)),
+        // South Wimbledon, Northern line, platforms 1 (northbound, to Colliers Wood) and 2 (southbound, to Morden): the
+        // escalators from the ticket hall land at a cross passage that meets platform 1 about 46% and platform 2 about
+        // 42% along from the Colliers Wood end; a second cross passage at the Morden end only links the platforms.
+        Platforms(SOUTH_WIMBLEDON, "northern", COLLIERS_WOOD, MORDEN, mapOf(EXIT to End.MIDDLE)),
+        // Southgate, Piccadilly line, platforms 1 and 2: the escalators from the ticket hall come down to a concourse
+        // between the two platforms, about 45% of the way along both from the Arnos Grove end; the only other cross
+        // passage, at the Arnos Grove end, has no way out.
+        Platforms(SOUTHGATE, "piccadilly", ARNOS_GROVE, OAKWOOD, mapOf(EXIT to End.MIDDLE)),
+        // Southwark, Jubilee line, platforms 1 and 2: escalators 4 to 6 rise from the lower-level central concourse,
+        // about 45% of the way along both platforms from the London Bridge end, to the intermediate concourse that
+        // leads to both the main ticket hall and the Waterloo East ticket hall (for Network Rail at Waterloo East); the
+        // stairs at each end are emergency stairs.
+        Platforms(SOUTHWARK, "jubilee", LONDON_BRIDGE, WATERLOO, mapOf(EXIT to End.MIDDLE)),
+        // St. John's Wood, Jubilee line, platforms 1 and 2: the escalators from the ticket hall land in a cross passage
+        // between the platforms about 55% of the way along both from the Swiss Cottage end; the cross passage at the
+        // Swiss Cottage end has no way out.
+        Platforms(ST_JOHNS_WOOD, "jubilee", SWISS_COTTAGE, BAKER_STREET, mapOf(EXIT to End.MIDDLE)),
+        // St. Paul's, Central line, platform 1 (westbound): it opens at its east end, about 10% of the way along from
+        // the Bank end, into the middle concourse, which leads to the escalators to the ticket hall.
+        Platforms(ST_PAULS, "central", BANK, CHANCERY_LANE, mapOf(EXIT to End.A), arriving = BANK),
+        // St. Paul's, Central line, platform 2 (eastbound, below platform 1): openings into the lower concourse and
+        // stairs up to the middle concourse and the escalators are about 30% of the way along from the Bank end; the
+        // passage at its west end is the draught relief tunnel.
+        Platforms(ST_PAULS, "central", BANK, CHANCERY_LANE, mapOf(EXIT to End.A_MIDDLE), arriving = CHANCERY_LANE),
+        // Stepney Green, District line, platforms 1 and 2: the stairs up to the ticket hall and the overbridge are at
+        // the east (Mile End) end of both platforms (about 80% and 85% of the way along from the west end).
+        Platforms(STEPNEY_GREEN, "district", MILE_END, WHITECHAPEL, mapOf(EXIT to End.A)),
+        // Stepney Green, Hammersmith & City line, platforms 1 and 2: the stairs up to the ticket hall and the
+        // overbridge are at the east (Mile End) end of both platforms (about 80% and 85% of the way along from the west
+        // end).
+        Platforms(STEPNEY_GREEN, "hammersmith-city", MILE_END, WHITECHAPEL, mapOf(EXIT to End.A)),
+        // Swiss Cottage, Jubilee line, platforms 1 and 2: the escalators to the ticket hall leave from a concourse
+        // between the platforms about a third of the way along both from the Finchley Road end.
+        Platforms(SWISS_COTTAGE, "jubilee", FINCHLEY_ROAD, ST_JOHNS_WOOD, mapOf(EXIT to End.A_MIDDLE)),
+        // Temple, Circle line, platforms 1 and 2: the only stairs, up to the ticket hall, are at the east (Blackfriars)
+        // end of both platforms (85% or more of the way along from the west end).
+        Platforms(TEMPLE, "circle", BLACKFRIARS, EMBANKMENT, mapOf(EXIT to End.A)),
+        // Temple, District line, platforms 1 and 2: the only stairs, up to the ticket hall, are at the east
+        // (Blackfriars) end of both platforms (85% or more of the way along from the west end).
+        Platforms(TEMPLE, "district", BLACKFRIARS, EMBANKMENT, mapOf(EXIT to End.A)),
+        // Tooting Bec, Northern line, platforms 1 and 2: the escalators to the ticket hall leave from a concourse
+        // between the platforms about halfway along them.
+        Platforms(TOOTING_BEC, "northern", BALHAM, TOOTING_BROADWAY, mapOf(EXIT to End.MIDDLE)),
+        // Tooting Broadway, Northern line, platform 1 (northbound): the two cross passages to the escalator concourse
+        // meet it about 15% and 35% of the way along from the Colliers Wood end, with the escalator foot about a third
+        // of the way along; the cross passage at the Tooting Bec end has no way out.
+        Platforms(TOOTING_BROADWAY, "northern", COLLIERS_WOOD, TOOTING_BEC, mapOf(EXIT to End.A_MIDDLE), arriving = COLLIERS_WOOD),
+        // Tooting Broadway, Northern line, platform 2 (southbound): the two cross passages to the escalator concourse
+        // meet it about 30% and 50% of the way along from the Colliers Wood end, with the escalator foot about 45% of
+        // the way along; the cross passage at the Tooting Bec end has no way out.
+        Platforms(TOOTING_BROADWAY, "northern", COLLIERS_WOOD, TOOTING_BEC, mapOf(EXIT to End.MIDDLE), arriving = TOOTING_BEC),
+        // Tufnell Park, Northern line, platforms 1 and 2: stairs from 45% to 55% of the way along both platforms
+        // (northbound platform 1 is above southbound platform 2) lead down to the lower concourse and the lifts to the
+        // ticket hall.
+        Platforms(TUFNELL_PARK, "northern", ARCHWAY, KENTISH_TOWN, mapOf(EXIT to End.MIDDLE)),
+        // Turnpike Lane, Piccadilly line, platforms 1 and 2: the single bank of escalators to the ticket hall lands in
+        // cross-passages between the platforms about 63-67% of the way from the Wood Green end, toward Manor House; no
+        // other way off the platforms is drawn (subway B passes over the platform tunnels without connecting).
+        Platforms(TURNPIKE_LANE, "piccadilly", WOOD_GREEN, MANOR_HOUSE, mapOf(EXIT to End.B_MIDDLE)),
+        // Walthamstow Central, Victoria line, platforms 1 and 2: terminus island platform; the only way off is the
+        // escalator at the east (sidings) end, away from Blackhorse Road, up to the concourse, the bus station passage
+        // C and the National Rail entrances.
+        Platforms(WALTHAMSTOW_CENTRAL, "victoria", BLACKHORSE_ROAD, "", mapOf(EXIT to End.B)),
+        // Wanstead, Central line, platforms 1 and 2: the only escalators to the ticket hall land in a short concourse
+        // between the platforms, reached by cross-passages about 43-52% of the way from the Leytonstone end; platform 1
+        // is westbound to Leytonstone, platform 2 eastbound to Redbridge.
+        Platforms(WANSTEAD, "central", LEYTONSTONE, REDBRIDGE, mapOf(EXIT to End.MIDDLE)),
+        // Warwick Avenue, Bakerloo line, platforms 1 and 2: the only escalators to the ticket hall (entrances A and B)
+        // land between the platforms, with cross-passages beside them, about 44-50% of the way from the Maida Vale end;
+        // platform 1 is northbound to Maida Vale, platform 2 southbound to Paddington.
+        Platforms(WARWICK_AVENUE, "bakerloo", MAIDA_VALE, PADDINGTON, mapOf(EXIT to End.MIDDLE)),
+        // Wood Green, Piccadilly line, platforms 1 and 2: the only escalators to the ticket hall land between the
+        // platforms, reached by cross-passages about 31% (platform 1) and 40% (platform 2) of the way from the Bounds
+        // Green end; the cross-passage near the Turnpike Lane end only links the two platforms.
+        Platforms(WOOD_GREEN, "piccadilly", BOUNDS_GREEN, TURNPIKE_LANE, mapOf(EXIT to End.A_MIDDLE)),
     )
 }

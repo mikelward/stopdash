@@ -3909,7 +3909,8 @@ it comes in at is the back. A change onto a line whose branches stop on differen
 next train's first stop after the station, which says the branch and the way (at Euston, the Northern
 line's Bank branch is across the platform from the Victoria line going the same way, its Charing Cross
 branch through the passages at one end). A change across the platform says "Any carriage" (maintainer,
-2026-11-05): it answers where to ride as the others do. A station not read yet, one rebuilt since 2015, a
+2026-11-05): it answers where to ride as the others do. A way off about a third of the way along, between an end
+and the middle, says so: "Back/middle of train" (maintainer, 2026-11-06), read as fifths of the platform. A station not read yet, one rebuilt since 2015, a
 change the drawing doesn't place, or a train from neither end says nothing, never a guess.
 Every fact a drawing shows is recorded, even one the app can't use yet. Where a station has several exits and
 the best depends on where the rider is going (King's Cross: the Northern ticket hall north to Granary Square,

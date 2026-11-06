@@ -1426,6 +1426,10 @@
     <string name="on_the_way_with_stand" tools:ignore="MissingTranslation">%1$s · %2$s</string>
     <string name="on_the_way_stand_front" tools:ignore="MissingTranslation">Front of train</string>
     <string name="on_the_way_stand_middle" tools:ignore="MissingTranslation">Middle of train</string>
+    <!-- About a third of the way along the train, between its front and the middle (maintainer, 2026-11-06). -->
+    <string name="on_the_way_stand_front_middle" tools:ignore="MissingTranslation">Front/middle of train</string>
+    <!-- About a third of the way along the train, between its back and the middle (maintainer, 2026-11-06). -->
+    <string name="on_the_way_stand_back_middle" tools:ignore="MissingTranslation">Back/middle of train</string>
     <string name="on_the_way_stand_back" tools:ignore="MissingTranslation">Back of train</string>
     <!-- A change across the platform: every door is near (maintainer, 2026-11-05). "Carriage" everywhere, as TfL says it: never "coach" or "car". -->
     <string name="on_the_way_stand_any" tools:ignore="MissingTranslation">Any carriage</string>

@@ -258,16 +258,29 @@ class PlatformEndsTest {
         assertEquals(Spot.BACK, spot(ride("northern", euston, kingsCross, "940GZZLUAGL")))
         // Gloucester Road: the Piccadilly line and the way up are at the South Kensington end.
         assertEquals(Spot.FRONT, spot(ride("circle", "940GZZLUHSK", "940GZZLUGTR"), change("piccadilly", "940GZZLUGTR", "940GZZLUSKS")))
-        // Baker Street's Jubilee line: the sub-surface lines and the way up, midway.
-        assertEquals(Spot.MIDDLE, spot(ride("jubilee", "940GZZLUBND", "940GZZLUBST"), change("metropolitan", "940GZZLUBST", "940GZZLUFYR")))
+        // Swiss Cottage: the way up about a third of the way from the Finchley Road end, the front coming from St John's Wood.
+        assertEquals(Spot.FRONT_MIDDLE, spot(ride("jubilee", "940GZZLUBST", "940GZZLUSJW", "940GZZLUSWC")))
+        // Walthamstow Central, the end of the line: the way up is at the far end, the front.
+        assertEquals(Spot.FRONT, spot(ride("victoria", "940GZZLUTMH", "940GZZLUBLR", "940GZZLUWWL")))
+        // Archway, between the Highgate end and the middle: the front coming from Tufnell Park.
+        assertEquals(Spot.FRONT_MIDDLE, spot(ride("northern", camdenTown, "940GZZLUKSH", "940GZZLUTFP", "940GZZLUACY")))
         // Hyde Park Corner: the way up is at the Green Park end.
         assertEquals(Spot.BACK, spot(ride("piccadilly", "940GZZLUGPK", "940GZZLUHPC")))
     }
 
     @Test
+    fun `a way a third of the way along is between an end and the middle`() {
+        // Maintainer, 2026-11-06: "Back/middle of train" where the way off is about a third along.
+        val table = listOf(PlatformEnds.Platforms(euston, "northern", camdenTown, kingsCross, mapOf(PlatformEnds.EXIT to PlatformEnds.End.A_MIDDLE)))
+        val trip = { leg: TripLeg -> ActiveTrip(TripRoute(listOf(leg)), "There", startedAt = t0) }
+        assertEquals(Spot.BACK_MIDDLE, PlatformEnds.standAt(trip(ride("northern", "940GZZLUCFM", camdenTown, euston)), 0, table))
+        assertEquals(Spot.FRONT_MIDDLE, PlatformEnds.standAt(trip(ride("northern", "940GZZLUAGL", kingsCross, euston)), 0, table))
+    }
+
+    @Test
     fun `nothing is said where it isn't known`() {
         // A station not read, a ride with no calls given, or a walk.
-        assertNull(spot(ride("northern", camdenTown, "940GZZLUBZP", "940GZZLUHTD")))
+        assertNull(spot(ride("piccadilly", kingsCross, "940GZZLUCAR", "940GZZLUHWY")))
         assertNull(spot(ride("northern", warrenStreet, euston).copy(path = emptyList())))
         assertNull(spot(walk(euston)))
         // A train coming from somewhere neither end leads to can't be placed.
