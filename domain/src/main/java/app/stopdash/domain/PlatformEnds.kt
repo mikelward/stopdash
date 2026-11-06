@@ -478,9 +478,9 @@ object PlatformEnds {
         // Warren Street, Victoria line, platforms 3 and 4: escalators 7 and 9, the only way off, land midway along.
         Platforms(WARREN_STREET, "victoria", EUSTON, OXFORD_CIRCUS, mapOf("northern" to End.MIDDLE, EXIT to End.MIDDLE)),
         // Archway, Northern line, platforms 1 and 2: two routes off, the stairs from the escalator concourse (about 17% to
-        // 36% of the way from the Highgate end) and the stair and lift route at the Highgate end. The station runs one-way
-        // routes in and out (maintainer, 2026-11-06) and the drawing doesn't say which is which, so between the Highgate
-        // end and the middle, near either.
+        // 36% of the way from the Highgate end) and a second stair route nearer the middle. The station runs them one way
+        // (maintainer, 2026-11-06): the way out is the stairs about a third of the way from the front going north, the
+        // Highgate end; the ones about halfway along are marked no entry for riders leaving.
         Platforms(ARCHWAY, "northern", HIGHGATE, TUFNELL_PARK, mapOf(EXIT to End.A_MIDDLE)),
         // Aldgate, Circle line, platforms 1 to 4: the ticket hall overbridge crosses the tracks about a third of the
         // way from the north (Liverpool Street) end; its stairs land on the islands about 28% (northward flights) and
