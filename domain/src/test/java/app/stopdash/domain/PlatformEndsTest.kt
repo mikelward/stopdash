@@ -282,6 +282,9 @@ class PlatformEndsTest {
         assertEquals(Spot.FRONT, spot(ride("district", "940GZZLUPSG", "940GZZLUFBY", "940GZZLUWBN")))
         // Wimbledon Park: at the Southfields end, the back coming from there.
         assertEquals(Spot.BACK, spot(ride("district", "940GZZLUEPY", "940GZZLUSFS", "940GZZLUWIP")))
+        // Barons Court, line by line: both lines' way up at the east end, the front coming from Hammersmith.
+        assertEquals(Spot.FRONT, spot(ride("district", "940GZZLURVP", "940GZZLUHSD", "940GZZLUBSC")))
+        assertEquals(Spot.FRONT, spot(ride("piccadilly", "940GZZLUACT", "940GZZLUHSD", "940GZZLUBSC")))
     }
 
     @Test
