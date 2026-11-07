@@ -2366,6 +2366,16 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun the_card_says_where_to_ride_beside_the_time() {
+        // Timed, the card's time stands in for the step's words, which carried where to ride: it stays, beside the time
+        // (maintainer, 2026-11-07: "Where's the carriage end guidance?").
+        show(trip, TripProgress.Waiting(mildmay, at(4), stand = PlatformEnds.Spot.MIDDLE))
+        onCard("Middle of train").assertIsDisplayed()
+        onCard("4 min · 08:06").assertIsDisplayed()
+        captureSnapshot("on-the-way-waiting-where-to-stand.png")
+    }
+
+    @Test
     fun the_cards_next_stop_is_left_out_rather_than_a_bare_ellipsis() {
         // So narrow not even its first letter fits beside the count and the time: the count alone, never "· …".
         composeRule.setContent {

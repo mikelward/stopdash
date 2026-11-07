@@ -1574,14 +1574,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       (`dev-docs/station-model.md`, `Terminating.nearer`'s row): the filter judges by the stop or
       station of TfL's destination id, from the bundled membership every surface reads alike. That
       replaces the snapshot and fetch-time alternatives once weighed here (Codex on #890).
-- [ ] **A trip starting at a terminus can't follow the train it shows** (Codex, #729). The trip's
+- [x] **A trip starting at a terminus can't follow the train it shows** (Codex, #729). Done: a train whose
+      calls end at the boarding stop, where its line's route starts and reaches the rider's stop, is awaited from
+      its arrival (`OnTheWay.turnsBack`) until its own calls show the run out. The trip's
       board now lists a terminus's arriving trains as the departures they become ([Turnback]), but
       the trip checks a train by its own calls from TfL, which until it leaves are still its inbound
       ones, ending at the boarding station; so none passes and the trip says it can't find the train,
       as it did before #729 (when those trains read as going nowhere). A train with no vehicle id
       can't be asked after at all. To weigh: accept a turnback at the boarding stop by the line's route
       out of it until its own calls show the outbound run, then follow those.
-- [ ] **A route's walks don't follow its bus to the pole it really uses** (Codex, #869). Placing a
+- [ ] **Place the trip's buses off the main thread** (Codex on #1277). `TripScreen`'s `placed()` runs in composition
+      (`remember(planned, routeSequences)`): each bus leg to its poles by its line's route (`onPoles`), and since
+      #1277 the walks either side with it (`walksFollowBuses`), one pass over a few routes' legs. Moving it onto the
+      page's worker means the placement number the frame's hold compares (Codex, #529) comes from that worker too.
+- [x] **A route's walks don't follow its bus to the pole it really uses** (Codex, #869). Done: a walk meeting a
+      moved bus moves with it (`walksFollowBuses`), its time kept as the Planner's, a road's width being seconds. Placing a
       bus leg on the pole or stand its line uses ([onPoles]) moves the ride's ends but leaves the walks
       either side as they were: still to and from the stop the Planner named, timed from there. True of
       the Planner's own routes as much as of a Direct row's ride (whose boarding pole is the row's own,
