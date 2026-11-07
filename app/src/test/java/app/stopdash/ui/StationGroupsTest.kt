@@ -81,6 +81,25 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a station of two records is headed by their shortest name, shortened as a station's is`() {
+        // The low-level record nearest, as St Pancras's Thameslink platforms can be.
+        val low = StopGroup(stopName = "Example International LL", key = "l", showHeader = true,
+            rows = listOf(row("L1", "H1").copy(stopName = "Example International LL")), placeKey = "H1")
+        val main = StopGroup(stopName = "Example International", key = "m", showHeader = true,
+            rows = listOf(row("M1", "H1").copy(stopName = "Example International")), placeKey = "H1")
+        val layout = StationLayout.of(
+            groups = listOf(low, main),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = emptyList(),
+            starred = emptySet(),
+            placeDistanceMeters = emptyMap(),
+            stopClusterIds = emptyMap(),
+            stopDistanceMeters = mapOf("L1" to 100.0, "M1" to 150.0),
+        )
+        assertEquals("Example Intl", layout.names.getValue(groupStation(low)))
+    }
+
+    @Test
     fun `an unmeasured station goes last, and stations as near keep their order`() {
         val unmeasured = group("c", "C1", "C")
         val first = group("a", "A1", "A")
