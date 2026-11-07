@@ -1816,7 +1816,10 @@ internal fun NextStep(
         LocalConfiguration.current // Read again on a configuration change (locale, font scale).
         rideStopsLeft(LocalContext.current.resources, progress)
     } else {
-        ""
+        // Timed, where to ride stands beside the time, as the notification and the watch say it after theirs: the
+        // card's time takes the place of the step's words, which carried it (maintainer, 2026-11-07).
+        LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+        standWords(LocalContext.current.resources, stepStand(progress)).orEmpty()
     }
     // A ride's stops left beside its next stop, the stop in the longest of its forms that fits and cut with "…"
     // where none does, the count held still (maintainer, 2026-10-07). Untimed too, where the step's words are the stops:
@@ -2155,7 +2158,18 @@ internal fun nextStepText(
 }
 
 // [detail] with where on the train to ride, where it's known ([PlatformEnds.standAt]; SPEC *Where to stand*).
-private fun withStand(resources: Resources, detail: String, stand: PlatformEnds.Spot?): String {
+private fun withStand(resources: Resources, detail: String, stand: PlatformEnds.Spot?): String =
+    standWords(resources, stand)?.let { resources.getString(R.string.on_the_way_with_stand, detail, it) } ?: detail
+
+// Where on the train to ride a step that boards one says ([TripProgress.Waiting.stand], [TripProgress.Changing.stand]).
+internal fun stepStand(progress: TripProgress?): PlatformEnds.Spot? = when (progress) {
+    is TripProgress.Waiting -> progress.stand
+    is TripProgress.Changing -> progress.stand
+    else -> null
+}
+
+// [stand] in words ("Back of train"), or null where it isn't known.
+internal fun standWords(resources: Resources, stand: PlatformEnds.Spot?): String? {
     val where = when (stand) {
         PlatformEnds.Spot.FRONT -> R.string.on_the_way_stand_front
         PlatformEnds.Spot.FRONT_MIDDLE -> R.string.on_the_way_stand_front_middle
@@ -2163,9 +2177,9 @@ private fun withStand(resources: Resources, detail: String, stand: PlatformEnds.
         PlatformEnds.Spot.BACK_MIDDLE -> R.string.on_the_way_stand_back_middle
         PlatformEnds.Spot.BACK -> R.string.on_the_way_stand_back
         PlatformEnds.Spot.ANY -> R.string.on_the_way_stand_any
-        null -> return detail
+        null -> return null
     }
-    return resources.getString(R.string.on_the_way_with_stand, detail, resources.getString(where))
+    return resources.getString(where)
 }
 
 /**
