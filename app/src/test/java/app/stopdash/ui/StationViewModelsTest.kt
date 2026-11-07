@@ -1152,6 +1152,17 @@ class StationViewModelsTest {
         override fun iterator(): Iterator<T> = items.iterator().also { walked.note() }
     }
 
+    // [items], safe across threads as the search's own is, noting the thread of each walk through it in
+    // [walked]; adding, taking away and a lookup aren't walks.
+    private class WalkedRemovals(private val walked: ThreadRecorder) : AbstractMutableSet<String>() {
+        private val items: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+        override val size: Int get() = items.size
+        override fun add(element: String): Boolean = items.add(element)
+        override fun remove(element: String): Boolean = items.remove(element)
+        override fun contains(element: String): Boolean = element in items
+        override fun iterator(): MutableIterator<String> = items.iterator().also { walked.note() }
+    }
+
     // A search model over [saved] whose io and compute are [worker], a thread of its own, while the main
     // thread is this test's: kept in [store], so clearing it stops the model before the worker stops.
     private fun searchOnWorker(
@@ -1161,13 +1172,14 @@ class StationViewModelsTest {
         loadYours: suspend () -> YourStops,
         loadPlaces: suspend () -> List<FavoritePlace>?,
         recordRemove: suspend (SearchEntry) -> Boolean = { true },
+        removing: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet(),
     ) = ViewModelProvider.create(
         store,
         viewModelFactory {
             initializer {
                 StationSearchViewModel(
                     saved, loadYours = loadYours, loadPlaces = loadPlaces, recordRemove = recordRemove,
-                    io = worker, compute = worker,
+                    io = worker, compute = worker, removing = removing,
                 )
             }
         },
@@ -1220,11 +1232,14 @@ class StationViewModelsTest {
     fun `a removal confirmed on the main thread while a worker reads is filtered on the worker`() = runTest {
         // AGENTS.md *Main thread*: the read has begun on the worker when the rider confirms a removal on
         // the main thread. The read's filter runs again for it on the worker, and its publish waits for
-        // the main thread, so the row stays gone (Codex on #1275 and #745).
+        // the main thread, so the row stays gone (Codex on #1275 and #745). The removals waiting on their
+        // writes grow with each one confirmed, so they're walked on the worker too, never the main thread,
+        // as is a read begun while one waits (Codex on #1275).
         val worker = TestWorker("worker")
         val store = ViewModelStore()
         val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
         val walked = ThreadRecorder()
+        val removalsWalked = ThreadRecorder()
         val gate = CompletableDeferred<Unit>()
         val writing = CompletableDeferred<Unit>()
         try {
@@ -1237,6 +1252,7 @@ class StationViewModelsTest {
                 },
                 loadPlaces = { emptyList() },
                 recordRemove = { writing.await(); true },
+                removing = WalkedRemovals(removalsWalked),
             )
             runCurrent()
             worker.flush()
@@ -1259,6 +1275,21 @@ class StationViewModelsTest {
             assertEquals(listOf(oxford), vm.state.value.recentStations)
             assertTrue(walked.threads().isNotEmpty())
             assertEquals(setOf("worker"), walked.threads().toSet())
+            assertTrue(removalsWalked.threads().isNotEmpty())
+            assertEquals(setOf("worker"), removalsWalked.threads().toSet())
+            // A read begun while Bank's write still waits takes the removals as they stand on the worker too,
+            // and still leaves Bank out.
+            removalsWalked.clear()
+            vm.refreshYours()
+            repeat(10) {
+                advanceUntilIdle()
+                worker.flush()
+            }
+            advanceUntilIdle()
+            assertFalse(vm.state.value.yoursReading)
+            assertEquals(listOf<SearchEntry>(SearchEntry.Stop(oxford)), vm.state.value.recent)
+            assertTrue(removalsWalked.threads().isNotEmpty())
+            assertEquals(setOf("worker"), removalsWalked.threads().toSet())
         } finally {
             gate.complete(Unit)
             writing.complete(Unit)
