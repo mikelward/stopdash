@@ -434,6 +434,23 @@ object OnTheWay {
      * stop predicted after boarding is on the leg's path; one whose calls end its run there doesn't
      * ([VehicleCall.endsRun]).
      */
+    /**
+     * Whether a train whose [calls] end at [leg]'s boarding stop turns back there into the ride: the stop is where one
+     * of its line's routes ([sequence]) starts, that route reaching where the rider gets off, and its calls go no
+     * further. At a terminus TfL lists a train's calls on its way in until it leaves again (Codex, #729): its board
+     * shows it as the departure it becomes ([Turnback]), and until its own calls show that run, the wait is taken from
+     * its arrival there. Null [sequence], the route not read, says no.
+     */
+    fun turnsBack(leg: TripLeg, calls: List<VehicleCall>, sequence: LineSequence?): Boolean {
+        if (!endsAtBoarding(leg, calls) || sequence == null) return false
+        val from = setOf(leg.fromId, leg.fromArea).filter { it.isNotBlank() }
+        val to = setOf(leg.toId, leg.toArea).filter { it.isNotBlank() }
+        return sequence.routes.any { route -> route.stopIds.firstOrNull() in from && route.stopIds.drop(1).any { it in to } }
+    }
+
+    /** Whether a train's [calls] end at [leg]'s boarding stop: one turning back there ([turnsBack]), or going no further. */
+    fun endsAtBoarding(leg: TripLeg, calls: List<VehicleCall>): Boolean = calls.lastOrNull()?.let { callsFrom(it, leg) } == true
+
     fun runsAlong(leg: TripLeg, calls: List<VehicleCall>, heading: String? = null): Boolean {
         val on = calls.indexOfFirst { callsFrom(it, leg) }
         if (on < 0) return false
@@ -766,6 +783,8 @@ object OnTheWay {
         now: Instant,
         atBoarding: Boolean = false,
         arriving: Arrival = Arrival.NONE,
+        // The followed train turns back at the boarding stop into the ride ([turnsBack]).
+        turnsBack: Boolean = false,
     ): Pair<ActiveTrip, TripProgress> {
         val trip = withEndStanding(given, calls, arriving)
         // Checked against the ride as the followed train's line runs it ([ridden]).
@@ -792,7 +811,7 @@ object OnTheWay {
         } else {
             calls
         }
-        return withStand(advanceAlong(on, ahead, now, atBoarding, arriving))
+        return withStand(advanceAlong(on, ahead, now, atBoarding, arriving, turnsBack))
     }
 
     // [step] with where to ride on the ride the rider is about to board ([PlatformEnds.standAt]): the step names
@@ -830,6 +849,7 @@ object OnTheWay {
         now: Instant,
         atBoarding: Boolean,
         arriving: Arrival,
+        turnsBack: Boolean = false,
     ): Pair<ActiveTrip, TripProgress> {
         val leg = trip.leg ?: return trip to TripProgress.Arrived
         if (leg.isWalk) {
@@ -853,6 +873,13 @@ object OnTheWay {
         // ([ActiveTrip.boardsAt], kept up to date as it runs late): a call there a lap later is a
         // loop coming round again, after the rider's ride. Once on board, the rider stays on it
         // whatever it calls at next.
+        if (!trip.boarded && turnsBack) {
+            // Turning back here into the ride ([turnsBack]): its last call is its arrival at the boarding stop, whatever
+            // of the ride's stops it calls at on the way in, which aren't an earlier lap (Codex on #1277).
+            val due = calls.last().expected
+            if (due.isBefore(trip.legStartedAt)) return trip to TripProgress.Lost(leg)
+            return trip.copy(boardsAt = due) to TripProgress.Waiting(leg, due, followedLineName(trip))
+        }
         if (!trip.boarded) {
             val (boarding, heldFrom) = upcomingBoarding(trip, on, calls, now, atBoarding)
             // A train due at the boarding stop before the rider can be there (revised earlier) isn't

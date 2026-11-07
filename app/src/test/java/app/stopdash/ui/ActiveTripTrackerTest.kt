@@ -2432,6 +2432,44 @@ class ActiveTripTrackerTest {
         app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, longitude), isFallback = false, accuracyMeters = accuracy, ageMillis = 1_000L)
 
     @Test
+    fun `a trip from the end of the line follows a train still on its way in`() = runTest {
+        // Codex on #729: at a terminus TfL lists a train's calls on its way in, ending where the rider boards, until it
+        // leaves again; the board shows it as the departure it becomes. Red's route starts at A.
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("3", 6))
+        // On its way in through the ride's own stops, the other way: not an earlier lap of the ride (Codex on #1277).
+        trains["3"] = listOf(call("C", 1), call("B", 3), call("A", 6))
+        now = at(0)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Waiting(ride, at(6)), tracker.progress.value)
+        // Running ten minutes late into A with its line's route unreadable: the step stands, never a ride under way.
+        trains["3"] = listOf(call("B", 13), call("A", 16))
+        now = at(2)
+        routeFails = true
+        tracker.refresh()
+        assertEquals(TripProgress.Waiting(ride, at(6)), tracker.progress.value)
+        // Its last time no longer stood behind as live (Codex on #1277).
+        assertTrue(tracker.failed.value)
+        assertNull(tracker.updatedAt.value)
+        routeFails = false
+        // Its route read: its arrival there is the wait.
+        tracker.refresh()
+        assertEquals(TripProgress.Waiting(ride, at(16)), tracker.progress.value)
+        trains["3"] = listOf(call("X", 3), call("A", 6))
+        // Its calls now show the run out: followed on it as any other train.
+        trains["3"] = listOf(call("A", 7), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.refresh()
+        assertEquals(TripProgress.Waiting(ride, at(7)), tracker.progress.value)
+        // A train ending at A where A isn't where its line starts is going nowhere: not one to wait for.
+        val ends = TripLeg("tube", "red", "Red", "B", "B", "C", "C", at(5), at(15), path = listOf("C"))
+        assertFalse(OnTheWay.turnsBack(ends, listOf(call("A", 3), call("B", 6)), redLine))
+    }
+
+    @Test
     fun `a train taken as boarded by leaving is let go by a sure fix away from the stop and the line`() = runTest {
         // Maintainer's report, 2026-11-01: the train left, so the trip told them "next stop" while sure fixes had
         // them on the street beside the station all along.

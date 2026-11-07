@@ -718,7 +718,9 @@ a line it's on (a tube, DLR, Overground, Elizabeth line or tram terminus, from t
 index), a train bound for that very station reads as bound for the line's **far end**
 ("Brixton"), or "Check Front of Train" where the line runs on to more than one (Morden); is
 listed **once**; and sits under its **compass direction** ("Southbound") rather than a platform it
-may not use. Its time is still when TfL expects it at the platform. A train turned short at a
+may not use. Its time is still when TfL expects it at the platform. A trip boarding there follows it
+too: until TfL lists the run it becomes, its wait is taken from its arrival, where the line's route starts
+at the station and reaches where the rider gets off (Codex on #729). A train turned short at a
 station the line runs through is not relabeled: it goes nowhere, and stays hidden. A line whose predictions were all left
 out gets no "No departures" status row either, since it has departures, just none that help.
 
