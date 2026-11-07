@@ -1849,24 +1849,7 @@ class ActiveTripTracker(
         // off soon"), and only the failure is said (Codex, PR #449).
         val positional = failed && OnTheWay.ridingUnmatched(trip)
         if (failed && !positional) {
-            // Nothing new is known: the step stands as it was, not Lost, and the last answer is no
-            // longer stood behind on any surface (its time, stops left and get off soon wait).
-            _failed.value = true
-            _updatedAt.value = null
-            // The last answer's time stays only for the step it answered.
-            if (answeredStep(trip) != answeredFor) _answeredAt.value = null
-            // A "time to board" counting down to a time no longer stood behind comes down with it
-            // (D4), for good: it has been heard, and bringing it back could bring back one the rider
-            // swiped away, which nothing here can see once the refresh has failed (Codex, PR #440).
-            if (boardUp) {
-                onBoardSoonDone()
-                boardUp = false
-            }
-            // The step as it was, unless a fix just moved the trip on: left behind (finding a train,
-            // never the ride the rider isn't on), or seen at the stop they walked to (waiting there,
-            // never still walking).
-            val same = trip.vehicleId == before.vehicleId && trip.vehicleLeg == before.vehicleLeg && trip.legIndex == before.legIndex
-            keep(trip, _progress.value?.takeIf { same } ?: standing(trip, now))
+            stoodStill(trip, before, now)
             return false
         }
         // Still seen at the boarding stop, by the fix this refresh took (aged by the reads since): the
@@ -1875,7 +1858,20 @@ class ActiveTripTracker(
         // With today's lifts: an end moved to a station whose lift has gone out since, mid-ride or while the trip was
         // kept, is worked out again from the route as planned ([OnTheWay.advance]).
         val arriving = arrivingOf(trip)
-        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding, arriving)
+        // Waiting at a terminus for a train still on its way in, which turns back into the ride ([OnTheWay.turnsBack]).
+        val ridden = OnTheWay.ridden(trip)?.takeIf { !it.isWalk }
+        val inbound = !trip.boarded && calls != null && ridden != null && OnTheWay.endsAtBoarding(ridden, calls)
+        val route = if (inbound) routeOf(checkNotNull(ridden).lineId) else null
+        if (inbound && route == null && checkNotNull(ridden).lineId in routeFailed) {
+            // Its route not read, whether it turns back can't be told: the step stands, never taken from its calls on the
+            // way in, which would put the rider on board (Codex on #1277).
+            // As any failed refresh: the last answer no longer stood behind, its countdown down (Codex on #1277).
+            warn("on the way: a train's calls end at the boarding stop and line ${ridden.lineId}'s route couldn't be read: step kept")
+            stoodStill(trip, before, now)
+            return false
+        }
+        val turnsBack = inbound && OnTheWay.turnsBack(checkNotNull(ridden), checkNotNull(calls), route)
+        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding, arriving, turnsBack)
         if (doubted && next.legIndex != trip.legIndex) {
             // A train that may not be theirs doesn't end their ride while that waits to be confirmed: the step
             // stands as it was this refresh (Codex, #997).
@@ -2190,6 +2186,27 @@ class ActiveTripTracker(
     @Volatile private var stationClear: Triple<Instant, Int, String>? = null
 
     // Which trip, ride and train a sighting at a station is kept for ([stationClear]).
+    // A refresh that learned nothing it can stand behind: the step stands as it was, not Lost, and the last answer is no
+    // longer stood behind on any surface (its time, stops left and get off soon wait).
+    private suspend fun stoodStill(trip: ActiveTrip, before: ActiveTrip, now: Instant) {
+        _failed.value = true
+        _updatedAt.value = null
+        // The last answer's time stays only for the step it answered.
+        if (answeredStep(trip) != answeredFor) _answeredAt.value = null
+        // A "time to board" counting down to a time no longer stood behind comes down with it
+        // (D4), for good: it has been heard, and bringing it back could bring back one the rider
+        // swiped away, which nothing here can see once the refresh has failed (Codex, PR #440).
+        if (boardUp) {
+            onBoardSoonDone()
+            boardUp = false
+        }
+        // The step as it was, unless a fix just moved the trip on: left behind (finding a train,
+        // never the ride the rider isn't on), or seen at the stop they walked to (waiting there,
+        // never still walking).
+        val same = trip.vehicleId == before.vehicleId && trip.vehicleLeg == before.vehicleLeg && trip.legIndex == before.legIndex
+        keep(trip, _progress.value?.takeIf { same } ?: standing(trip, now))
+    }
+
     private fun stationKey(trip: ActiveTrip) = Triple(trip.startedAt, trip.legIndex, trip.vehicleId)
 
     // Where the last refresh's fix saw the rider past their train's next call ([seenPastCalls]): the trip (by when it
@@ -2813,13 +2830,16 @@ class ActiveTripTracker(
             // Judged on each way its line takes the ride, the plan's first: a train up the other branch
             // reaches the same stop by its own stops ([OnTheWay.branchWays], maintainer, 2026-10-09).
             val on = ways.firstOrNull { on ->
+                // At a terminus, a train still on its way in turns back into the ride ([OnTheWay.turnsBack]; Codex, #729):
+                // its calls end where the rider boards until it leaves again.
+                val back = !trip.boarded && OnTheWay.turnsBack(on, calls, routeOf(train.lineId))
                 // On board by their word, it may have just left the stop, its call there gone from TfL's
                 // list: then it's judged from where it is ([OnTheWay.runsOn]).
-                val runs = OnTheWay.runsAlong(on, calls, heading = train.destination) ||
+                val runs = back || OnTheWay.runsAlong(on, calls, heading = train.destination) ||
                     (trip.boarded && OnTheWay.runsOn(on, calls, heading = train.destination))
                 // Its own calls may have it leave before the rider can be there, however the board
                 // shows it: then it's no train of theirs, and the next is tried now, not next refresh.
-                runs && OnTheWay.advance(OnTheWay.follow(trip, train, on), calls, now, arriving = arriving).second !is TripProgress.Lost
+                runs && OnTheWay.advance(OnTheWay.follow(trip, train, on), calls, now, arriving = arriving, turnsBack = back).second !is TripProgress.Lost
             } ?: continue
             return Pick(Triple(train, on, calls))
         }

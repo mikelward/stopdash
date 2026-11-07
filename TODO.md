@@ -1574,7 +1574,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       (`dev-docs/station-model.md`, `Terminating.nearer`'s row): the filter judges by the stop or
       station of TfL's destination id, from the bundled membership every surface reads alike. That
       replaces the snapshot and fetch-time alternatives once weighed here (Codex on #890).
-- [ ] **A trip starting at a terminus can't follow the train it shows** (Codex, #729). The trip's
+- [x] **A trip starting at a terminus can't follow the train it shows** (Codex, #729). Done: a train whose
+      calls end at the boarding stop, where its line's route starts and reaches the rider's stop, is awaited from
+      its arrival (`OnTheWay.turnsBack`) until its own calls show the run out. The trip's
       board now lists a terminus's arriving trains as the departures they become ([Turnback]), but
       the trip checks a train by its own calls from TfL, which until it leaves are still its inbound
       ones, ending at the boarding station; so none passes and the trip says it can't find the train,
