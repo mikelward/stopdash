@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-11-04
+last_modified: 2026-11-07
 ---
 
 # StopDash
@@ -159,12 +159,33 @@ Shared by every mikelward repo and the user-level agent config; canonical in mik
 - **CI failures**. Read the failed step's log first; CI builds the PR merged with `main`.
 - **Screenshots**. CI records them, under `en-rGB`; each new screenshot class needs its
   own CI step.
-- **What's new**. Every commit subject ships in Play's release notes: write it for
-  riders. Prefix the rest `ci:`, `test:`, `internal:`, `docs:`, `todo:` or `refactor:`;
-  the docs lane accepts only `docs:` and `todo:`.
-- **After a merge**. Report the new versionCode.
-- **Release notes since N**. Up to five bullets, ranked by what the rider risks without
-  each: wrong information first, polish last.
+- **What's new**. Title every commit like a changelog line (maintainer, 2026-10-23): an
+  imperative verb, then the feature in the rider's plain words (no identifiers), sentence
+  case, ≤ ~70 chars, e.g. `Fix …` for what was broken (`Fix bus stop lists missing train
+  stations`), `Improve …` (`Improve "Get off soon" notification timing`), `Show …`/`Add …`
+  for what's new; an optional parenthetical says how (`Fix National Rail stop lists (using
+  National Rail instead of TfL data)`). Never the scenario or mechanism (that's the body).
+  PR titles and release-note bullets match. Rebase-merges land every subject on `main` and
+  in release notes (Play "What's new", GitHub prerelease `v<versionCode>`).
+- **Prefixes**. Prefix a subject with no user-visible effect, overriding the fleet's list:
+  `ci:`, `docs:` (docs/`*.md`, including `docs/PRIVACY.md`), `todo:` (`TODO.md` alone),
+  `internal:` (build/plumbing; a shipped dependency is bare), `refactor:`,
+  `test:`/`tests:`. Never `build:`: CI doesn't filter it, so it ships. A bare subject means
+  a rider could notice. The docs lane accepts only `docs:` and `todo:`.
+- **500 characters**. Play caps "What's new" there (`deploy` drops subjects past it), so
+  squash supporting commits into the one telling the rider-facing story. Commits touching
+  only `.md` files or root dot-paths (`.github/`, `.gitignore`, …) never ship a bullet.
+- **After a merge**. Report the versionCode (`git rev-list --count origin/main` after an
+  unshallowed refspec fetch): `Need versionCode 72 (b81c23d) or higher to test PR #52's
+  fix`.
+- **Release notes since N**. Up to five `• ` end-user bullets worded as titles, one per
+  feature however many commits built it (read bodies where a subject is unclear), in one
+  code block for commits N+1..`origin/main` (freshly fetched). Rank by what the rider risks
+  without it (maintainer, 2026-10-23): wrong information that could send them the wrong way
+  first (`Fix National Rail stop lists`), polish last (`Improve UI transitions when swiping
+  back`). Skip prefixed/docs/CI commits, dependency bumps unless nothing else changed (then
+  one bullet says libraries were updated), and anything the range itself added then
+  undid; range above, one line below naming what was omitted.
 - **UI**. 4dp grid, the shortest unambiguous copy ("3 min"), standard Material icons.
 - **Line pills**. Official TfL line colors with APCA black or white text; the six named
   Overground lines are hollow pills. Confirmed TfL hexes only.
