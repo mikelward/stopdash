@@ -136,6 +136,12 @@ class StationSearchViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     // Ranks and merges each answer, off the main thread (AGENTS.md *Main thread*).
     private val compute: CoroutineDispatcher = Workers.compute,
+    // The Recent rows whose removal is confirmed but not yet written, by [SearchEntry.key]: every read
+    // published leaves them out, so no read of the file from before a write can list one again, however
+    // the reads and writes interleave (Codex, #745). Each leaves once its write is done. Added to and
+    // taken from on the main thread, walked only on [io]: safe across threads. A test passes its own to
+    // see where it's walked.
+    private val removing: MutableSet<String> = ConcurrentHashMap.newKeySet(),
 ) : ViewModel() {
     data class State(
         val query: String = "",
@@ -226,10 +232,9 @@ class StationSearchViewModel(
     // Taken by each recent-list write in turn ([record]).
     private val recording = Mutex()
 
-    // The Recent rows whose removal is confirmed but not yet written, by [SearchEntry.key]: every read
-    // published leaves them out, so no read of the file from before a write can list one again, however
-    // the reads and writes interleave (Codex, #745). Each leaves once its write is done.
-    private val removing: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    // Bumped on the main thread with each change to [removing], so a read can tell one happened while it
+    // ran by comparing a number, never walking the set there (AGENTS.md *Main thread*).
+    private var removingRevision = 0
 
     // The query the rows on screen ([Result.Matches.entries]) answer, so a search of the same query
     // again (a Retry) adds to them rather than starting the list over.
@@ -423,6 +428,7 @@ class StationSearchViewModel(
         _state.update { it.copy(pendingRemoval = null) }
         // Left out of every read from now until its write is done, whatever else is written meanwhile.
         removing += entry.key
+        removingRevision++
         // Gone from the list at once, filtered on compute, not in the tap (AGENTS.md *Main thread*): apart
         // from the write, since [removing] already keeps every read from listing it.
         val hidden = viewModelScope.launch(compute) {
@@ -451,11 +457,13 @@ class StationSearchViewModel(
                 // let back into reads, so only one begun after the write can publish.
                 reread()
                 removing -= entry.key
+                removingRevision++
             } else {
                 savedState[KEY_REMOVE_FAILED] = true
                 _state.update { it.copy(removeRecentFailed = true) }
                 // Still on the device, so back in reads before the read that lists it again.
                 removing -= entry.key
+                removingRevision++
                 reread()
             }
             rerank()
@@ -513,9 +521,10 @@ class StationSearchViewModel(
         // Started on the main thread, which [savedState] and the publish need; the reads and every walk
         // over the stops run on [io] (AGENTS.md *Main thread*).
         return viewModelScope.async {
-            // The removals confirmed by now, taken on the main thread, where a removal is confirmed: one
-            // confirmed while the read runs has the filter run again before publishing (Codex, #745).
-            var removals = removing.toSet()
+            // Where the removals stand, as a number read on the main thread, where a removal is confirmed;
+            // the set itself is taken on [io] after it. One confirmed while the read runs has moved it, so
+            // the filter runs again before publishing (Codex, #745 and #1275).
+            var revision = removingRevision
             // A question about a removal that process death interrupted, asked again of the row read back;
             // gone if the row is. One asked while this read runs is the screen's already, and kept below.
             val pendingKey = savedState.get<String>(KEY_PENDING_REMOVAL)
@@ -527,17 +536,17 @@ class StationSearchViewModel(
                 // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
                 // distinct from an empty list (genuinely no saved places).
                 val places = timed("favorite places") { loadPlaces() }
-                Triple(unfiltered, places, prepareYours(unfiltered, removals, pendingKey))
+                Triple(unfiltered, places, prepareYours(unfiltered, pendingKey))
             }
             var prepared = first
-            while (removing != removals) {
-                removals = removing.toSet()
-                prepared = withContext(io) { prepareYours(unfiltered, removals, pendingKey) }
+            while (removingRevision != revision) {
+                revision = removingRevision
+                prepared = withContext(io) { prepareYours(unfiltered, pendingKey) }
             }
             val read = prepared.named
             val restoredPending = prepared.restoredPending
             // From here to publishing nothing suspends, on the main thread, where a removal is confirmed:
-            // the removals above are still those confirmed by now (Codex, #745).
+            // the revision above still stands, so the rows left out are those confirmed by now (Codex, #745).
             read.also {
                 if (generation == yoursGeneration) {
                     // Dropped only while it is still the key this read looked for and found no row for.
@@ -567,7 +576,7 @@ class StationSearchViewModel(
         }
     }
 
-    // The user's stops as [readYours] publishes them: without [removals], with the home lists and the
+    // The user's stops as [readYours] publishes them: without [removing] as it stands now, with the home lists and the
     // Recent row [pendingKey] names (null if none, or it's gone). Walks every stop; run on [io].
     private class PreparedYours(
         val named: YourStops,
@@ -577,8 +586,8 @@ class StationSearchViewModel(
     )
 
     @WorkerThread
-    private fun prepareYours(unfiltered: YourStops, removals: Set<String>, pendingKey: String?): PreparedYours {
-        val named = unfiltered.withoutRecent(removals)
+    private fun prepareYours(unfiltered: YourStops, pendingKey: String?): PreparedYours {
+        val named = unfiltered.withoutRecent(removing.toSet())
         return PreparedYours(
             named = named,
             homeStarred = named.homeStarred,
