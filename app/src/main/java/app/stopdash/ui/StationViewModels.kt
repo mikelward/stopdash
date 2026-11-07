@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -509,43 +510,50 @@ class StationSearchViewModel(
 
     private fun readYours(): Deferred<YourStops> {
         val generation = ++yoursGeneration
-        return viewModelScope.async(io) {
-            // A star the device couldn't name may be a listed station: name it from the bundled list.
-            val loaded = timed("saved stops") { loadYours() }
-            val unfiltered = if (loaded.unnamedStarred.isEmpty()) loaded else loaded.namedFrom(index.await())
-            // Read alongside the stops so the To… picker shows both from the same open; independent, so
-            // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
-            // distinct from an empty list (genuinely no saved places).
-            val places = timed("favorite places") { loadPlaces() }
-            // From here to publishing nothing suspends: the removals are those confirmed by now, not when
-            // the read began, so one confirmed while it read stays gone (Codex, #745).
-            val named = unfiltered.withoutRecent(removing.toSet())
-            val homeStarred = named.homeStarred
-            val recentStations = named.homeRecent()
-            // A question about a removal that process death interrupted, asked again of the row read
-            // back; gone if the row is. The key as saved now, so one asked while this read ran is kept.
+        // Started on the main thread, which [savedState] and the publish need; the reads and every walk
+        // over the stops run on [io] (AGENTS.md *Main thread*).
+        return viewModelScope.async {
+            // The removals confirmed by now, taken on the main thread, where a removal is confirmed: one
+            // confirmed while the read runs has the filter run again before publishing (Codex, #745).
+            var removals = removing.toSet()
+            // A question about a removal that process death interrupted, asked again of the row read back;
+            // gone if the row is. One asked while this read runs is the screen's already, and kept below.
             val pendingKey = savedState.get<String>(KEY_PENDING_REMOVAL)
-            val restoredPending = pendingKey?.let { key -> named.recentPicks.firstOrNull { it.key == key } }
-            named.also { read ->
+            val (unfiltered, places, first) = withContext(io) {
+                // A star the device couldn't name may be a listed station: name it from the bundled list.
+                val loaded = timed("saved stops") { loadYours() }
+                val unfiltered = if (loaded.unnamedStarred.isEmpty()) loaded else loaded.namedFrom(index.await())
+                // Read alongside the stops so the To… picker shows both from the same open; independent, so
+                // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
+                // distinct from an empty list (genuinely no saved places).
+                val places = timed("favorite places") { loadPlaces() }
+                Triple(unfiltered, places, prepareYours(unfiltered, removals, pendingKey))
+            }
+            var prepared = first
+            while (removing != removals) {
+                removals = removing.toSet()
+                prepared = withContext(io) { prepareYours(unfiltered, removals, pendingKey) }
+            }
+            val read = prepared.named
+            val restoredPending = prepared.restoredPending
+            // From here to publishing nothing suspends, on the main thread, where a removal is confirmed:
+            // the removals above are still those confirmed by now (Codex, #745).
+            read.also {
                 if (generation == yoursGeneration) {
                     // Dropped only while it is still the key this read looked for and found no row for.
                     if (pendingKey != null && restoredPending == null && savedState.get<String>(KEY_PENDING_REMOVAL) == pendingKey) {
                         savedState.remove<String>(KEY_PENDING_REMOVAL)
                     }
+                    // Still asked at the publish itself: a Cancel or Remove since the read began has dropped
+                    // the key (Codex, #745).
+                    val asked = restoredPending?.takeIf { p -> savedState.get<String>(KEY_PENDING_REMOVAL) == p.key }
                     _state.update {
-                        // Still asked at the publish itself: a Cancel or Remove on the main thread since the
-                        // read began has dropped the key (Codex, #745).
-                        val asked = restoredPending?.takeIf { p -> savedState.get<String>(KEY_PENDING_REMOVAL) == p.key }
-                        // The removals as they stand at the publish itself, inside the atomic update: one
-                        // confirmed on the main thread after the filter above is still left out, and the
-                        // optimistic filter it launches runs after it in any case (Codex, #745).
-                        val shown = read.withoutRecent(removing.toSet())
                         it.copy(
                             pendingRemoval = it.pendingRemoval ?: asked,
                             favorites = read.favorites,
-                            recent = shown.recentPicks,
-                            homeStarred = homeStarred,
-                            recentStations = if (shown === read) recentStations else shown.homeRecent(),
+                            recent = read.recentPicks,
+                            homeStarred = prepared.homeStarred,
+                            recentStations = prepared.recentStations,
                             favoritePlaces = places.orEmpty(),
                             favoritePlacesFailed = places == null,
                             yoursFailed = read.unreadable,
@@ -557,6 +565,26 @@ class StationSearchViewModel(
                 }
             }
         }
+    }
+
+    // The user's stops as [readYours] publishes them: without [removals], with the home lists and the
+    // Recent row [pendingKey] names (null if none, or it's gone). Walks every stop; run on [io].
+    private class PreparedYours(
+        val named: YourStops,
+        val homeStarred: List<StationMatch>,
+        val recentStations: List<StationMatch>,
+        val restoredPending: SearchEntry?,
+    )
+
+    @WorkerThread
+    private fun prepareYours(unfiltered: YourStops, removals: Set<String>, pendingKey: String?): PreparedYours {
+        val named = unfiltered.withoutRecent(removals)
+        return PreparedYours(
+            named = named,
+            homeStarred = named.homeStarred,
+            recentStations = named.homeRecent(),
+            restoredPending = pendingKey?.let { key -> named.recentPicks.firstOrNull { it.key == key } },
+        )
     }
 
     // [index]'s places for [query], searched on [compute]; none, with no hop, when there's no index.
