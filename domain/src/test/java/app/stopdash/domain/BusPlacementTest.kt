@@ -47,6 +47,29 @@ class BusPlacementTest {
     }
 
     @Test
+    fun `the walks either side of a moved bus go with it`() {
+        // Codex on #869: a walk to the Planner's pole across the road, then the bus from the pole it really uses.
+        val bn = Coordinates(51.5001, -0.12)
+        val cn = Coordinates(51.51, -0.12)
+        val road = road.copy(stopPositions = mapOf("Bn" to (bn.latitude to bn.longitude), "Cn" to (cn.latitude to cn.longitude)))
+        val toB = TripLeg(TripLeg.WALKING, "", "", "home", "Home", "Bs", "B", at(10), at(20), toAt = Coordinates(51.5, -0.1202))
+        val onFromC = TripLeg(TripLeg.WALKING, "", "", "Cs", "C", "there", "There", at(30), at(35), fromAt = Coordinates(51.51, -0.1202))
+        val planned = listOf(toB, plannerBus, onFromC)
+        val placed = walksFollowBuses(planned, planned.map { onPoles(it, mapOf("1" to road)) })
+        assertEquals("Bn", placed[0].toId)
+        assertEquals(bn, placed[0].toAt)
+        assertEquals("Cn", placed[2].fromId)
+        assertEquals(cn, placed[2].fromAt)
+        // The walk's own far ends and times stay as planned.
+        assertEquals("home", placed[0].fromId)
+        assertEquals(at(20), placed[0].arrival)
+        // Keyed as planned: an open route is found again once its bus is placed (Codex on #1277).
+        assertEquals(planned.map { boardingKey(it) to alightingKey(it) }, placed.map { boardingKey(it) to alightingKey(it) })
+        // A bus not moved leaves its walks as they were.
+        assertEquals(planned, walksFollowBuses(planned, planned))
+    }
+
+    @Test
     fun `a bus leg whose next stop the Planner gives no id for goes by its first stop with one`() {
         // The northbound route calls at Yn, a stop named for a station, which the Planner names but gives no id.
         val viaY = road.copy(

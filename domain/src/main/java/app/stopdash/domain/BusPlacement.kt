@@ -32,6 +32,27 @@ fun onPoles(leg: TripLeg, sequences: Map<String, LineSequence?>): TripLeg {
     )
 }
 
+/**
+ * [placed], [planned]'s legs with its buses moved to the poles they use ([onPoles]), with each walk meeting a moved
+ * bus moved with it: to the pole it boards at, from the pole it gets off at, so the walk the rider is shown leads to the
+ * side of the road the bus really uses (Codex, #869). Its time stays the Planner's: a road's width is seconds.
+ */
+fun walksFollowBuses(planned: List<TripLeg>, placed: List<TripLeg>): List<TripLeg> = placed.mapIndexed { i, leg ->
+    if (!leg.isWalk) return@mapIndexed leg
+    val next = placed.getOrNull(i + 1)?.takeIf { !it.isWalk && it.fromId != planned.getOrNull(i + 1)?.fromId && leg.toId == planned[i + 1].fromId }
+    val before = placed.getOrNull(i - 1)?.takeIf { !it.isWalk && it.toId != planned.getOrNull(i - 1)?.toId && leg.fromId == planned[i - 1].toId }
+    // The Planner's stop it stands in for kept, as a moved bus keeps it, so the route's keys hold ([boardingKey];
+    // Codex on #1277): an open route is found again once its bus is placed.
+    leg.copy(
+        toId = next?.fromId ?: leg.toId,
+        toAt = next?.fromAt ?: leg.toAt,
+        plannedToId = if (next == null) leg.plannedToId else leg.plannedToId.ifEmpty { leg.toId },
+        fromId = before?.toId ?: leg.fromId,
+        fromAt = before?.toAt ?: leg.fromAt,
+        plannedFromId = if (before == null) leg.plannedFromId else leg.plannedFromId.ifEmpty { leg.fromId },
+    )
+}
+
 /** A [lineId] bus boarding at the route's own stand [standId] in place of the Planner's [plannerId] ([placedStands]). */
 data class PlacedStand(val lineId: String, val plannerId: String, val standId: String)
 

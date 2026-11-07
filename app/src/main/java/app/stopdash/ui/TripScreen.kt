@@ -190,6 +190,7 @@ import app.stopdash.domain.busesSettled
 import app.stopdash.domain.endPole
 import app.stopdash.domain.isStop
 import app.stopdash.domain.onPoles
+import app.stopdash.domain.walksFollowBuses
 import app.stopdash.domain.placedOnPoles
 import app.stopdash.domain.placedStands
 import app.stopdash.domain.withOnlyNotice
@@ -435,12 +436,12 @@ internal fun placed(state: TripViewModel.State, sequences: Map<String, LineSeque
     fun fetched(leg: TripLeg, pole: String) = pole in state.live || pole in state.areaPoles[leg.fromArea].orEmpty()
     var placement = 1
     val placed = routes.map { route ->
-        route.copy(
-            legs = route.legs.map { leg ->
-                (onPoles(leg, sequences).takeIf { it.fromId == leg.fromId || fetched(leg, it.fromId) } ?: leg)
-                    .also { placement = placeLeg(placement, it) }
-            },
-        )
+        val buses = route.legs.map { leg ->
+            (onPoles(leg, sequences).takeIf { it.fromId == leg.fromId || fetched(leg, it.fromId) } ?: leg)
+                .also { placement = placeLeg(placement, it) }
+        }
+        // The walks either side of a moved bus go with it (Codex, #869).
+        route.copy(legs = walksFollowBuses(route.legs, buses))
     }
     return (if (placed == routes) state else state.copy(routes = placed)) to placement
 }
