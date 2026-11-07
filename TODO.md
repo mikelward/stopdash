@@ -1583,7 +1583,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       as it did before #729 (when those trains read as going nowhere). A train with no vehicle id
       can't be asked after at all. To weigh: accept a turnback at the boarding stop by the line's route
       out of it until its own calls show the outbound run, then follow those.
-- [ ] **A route's walks don't follow its bus to the pole it really uses** (Codex, #869). Placing a
+- [ ] **Place the trip's buses off the main thread** (Codex on #1277). `TripScreen`'s `placed()` runs in composition
+      (`remember(planned, routeSequences)`): each bus leg to its poles by its line's route (`onPoles`), and since
+      #1277 the walks either side with it (`walksFollowBuses`), one pass over a few routes' legs. Moving it onto the
+      page's worker means the placement number the frame's hold compares (Codex, #529) comes from that worker too.
+- [x] **A route's walks don't follow its bus to the pole it really uses** (Codex, #869). Done: a walk meeting a
+      moved bus moves with it (`walksFollowBuses`), its time kept as the Planner's, a road's width being seconds. Placing a
       bus leg on the pole or stand its line uses ([onPoles]) moves the ride's ends but leaves the walks
       either side as they were: still to and from the stop the Planner named, timed from there. True of
       the Planner's own routes as much as of a Direct row's ride (whose boarding pole is the row's own,
