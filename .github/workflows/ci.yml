@@ -79,7 +79,7 @@ jobs:
           java-version: "21"
       # ubuntu-latest ships the Android SDK; AGP auto-installs the compileSdk
       # minor platform on the first build.
-      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2  # v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
         with:
           # PR-controlled code must not write the shared cache; only main
           # pushes do.
@@ -271,7 +271,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2  # v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
         with:
           # PR-controlled code must not write the shared cache; only main
           # pushes do.
@@ -710,7 +710,7 @@ jobs:
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2  # v5
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
         with:
           # A malicious PR commit can poison its own branch's cache; lock PRs
           # to read-only so only main pushes write the shared cache.
@@ -792,7 +792,7 @@ jobs:
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2  # v5
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
 
       - name: Require a release keystore
         # A push to main must end in a signed AAB. Without the keystore secret
