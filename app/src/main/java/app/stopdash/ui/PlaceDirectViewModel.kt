@@ -361,12 +361,44 @@ class PlaceDirectViewModel(
         val departing = fetched.filterNotNull().flatMap { stop ->
             stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId }
         }.filter { it.isNotBlank() }.distinct()
+        // The lines TfL lists near the place load first, and their rows show while the rest load: at a busy
+        // interchange every line's route waited on twenty requests (maintainer's report, 2026-11-10). With them,
+        // a line already on show and one whose route is in hand (no request): a row the stops' lists missed
+        // stays where it is while the rest load, never gone and back, nor moved (SPEC principle 4; Codex, #1282).
+        val onShow = (_state.value as? State.Ready)?.rows?.mapTo(HashSet()) { it.row.lineId }.orEmpty()
+        val first = DirectTrips.firstLines(departing, ends) + departing.filter { it in onShow || routes.cached(it, "") != null }
         val (sequences, routesFailed) = coroutineScope {
             // A line answered before the rider's pull is asked again, here and at every look after,
             // never taken from before it; one answered since, by any screen, stands ([linePulls]).
             val early = async { statusesFor(departing, askedAfter = pullCutoff) }
-            sequencesFor(fetched.filterNotNull(), hidden).also { early.await() }
+            sequencesFor(fetched.filterNotNull(), hidden) { it in first }.also { early.await() }
         }
+        if (!show(chosen, stops, open, ends, fetched, sequences, routesFailed, hidden, level, table, stations, pullCutoff)) return
+        if (departing.all { it in first }) return
+        val (rest, restFailed) = sequencesFor(fetched.filterNotNull(), hidden) { it !in first }
+        show(chosen, stops, open, ends, fetched, sequences + rest, routesFailed || restFailed, hidden, level, table, stations, pullCutoff)
+    }
+
+    /**
+     * Works out the rows from [fetched] with the routes in [sequences] (a line absent from it still loading,
+     * so said as [State.Ready.checking]), asks for their statuses and closures, and publishes them, unless a
+     * change overtook the look for [chosen]. False when it did, so nothing more is looked up for it.
+     */
+    private suspend fun show(
+        chosen: Inputs,
+        stops: List<StopRef>,
+        open: List<StopRef>,
+        ends: List<DirectTrips.End>,
+        fetched: List<StopArrivals?>,
+        sequences: Map<String, LineSequence?>,
+        routesFailed: Boolean,
+        hidden: Set<String>,
+        level: StepFree,
+        table: StepFreeAccess?,
+        stations: (String, String) -> Boolean,
+        pullCutoff: Long,
+    ): Boolean {
+        val askedAt = clock()
         // The lines the rows would show, so their status is in hand before they do: a delayed or
         // part-suspended line is said on its row, never shown as running normally.
         val rowLines = PlaceDirect.rows(fetched.filterNotNull(), ends, sequences, chosen.distanceMeters, askedAt, hidden, level, table, stations).rows
@@ -381,7 +413,7 @@ class PlaceDirectViewModel(
         val closures = closureChecks.check(closureIds, closureCache.ask(closuresAt), closuresAt)
         // The rider changed a choice, or moved on, while this look waited: the look that change started
         // is queued behind this one and publishes for it, so this one's rows never stand in for them.
-        if (inputs !== chosen) return
+        if (inputs !== chosen) return false
         // When shown: the fetches and route loads above may have taken a while, so ages, trains gone and
         // countdowns are worked out from now, never from when the look began.
         val now = clock()
@@ -467,6 +499,7 @@ class PlaceDirectViewModel(
             }
             _state.value = next
         }
+        return inputs === chosen
     }
 
     // A stop's notice to say on [row]: its boarding stop's, or, when every stop near the place one of its
@@ -550,10 +583,11 @@ class PlaceDirectViewModel(
 
     // Each departing line's route: absent while loading, null when its load failed (DirectTrips.filter);
     // and whether a load failed in a way a Retry may get past (anything but TfL having no route for it).
-    private suspend fun sequencesFor(stops: List<StopArrivals>, hidden: Set<String>): Pair<Map<String, LineSequence?>, Boolean> {
+    // Only the lines [load] picks.
+    private suspend fun sequencesFor(stops: List<StopArrivals>, hidden: Set<String>, load: (String) -> Boolean): Pair<Map<String, LineSequence?>, Boolean> {
         val lineIds = stops.flatMap { stop ->
             stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId }
-        }.distinct()
+        }.distinct().filter(load)
         val failed = java.util.concurrent.atomic.AtomicBoolean(false)
         val sequences = coroutineScope {
             lineIds.map { lineId ->

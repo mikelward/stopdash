@@ -25,7 +25,7 @@ object PlaceStops {
     /**
      * [stops] within [walkMeters] of [place], nearest first and each once, as [DirectTrips.End]s
      * carrying their interchange, so a station listed under one id and routed through a sibling is
-     * still matched.
+     * still matched, and their lines, so those lines' routes load first ([DirectTrips.firstLines]).
      */
     @WorkerThread
     fun ends(place: Coordinates, stops: List<StopLocation>, walkMeters: Int = WALK_METERS): List<DirectTrips.End> =
@@ -34,7 +34,7 @@ object PlaceStops {
             .filter { (_, meters) -> meters <= walkMeters }
             .sortedBy { (_, meters) -> meters }
             .distinctBy { (stop, _) -> stop.id }
-            .map { (stop, _) -> DirectTrips.End(stop.id, stop.name, stop.interchangeId, stop.clusterId) }
+            .map { (stop, _) -> DirectTrips.End(stop.id, stop.name, stop.interchangeId, stop.clusterId, stop.lines.mapTo(HashSet()) { it.id }) }
             .toList()
 }
 
