@@ -7712,6 +7712,8 @@ class TripViewModelTest {
                     "S\t4900000A1\tB\tStop A\t51.498200\t-0.120000\t490G0A\t\tA\tS\t\t1",
                     "S\t4900000B1\tB\tStop B\t51.502700\t-0.120000\t490G0B\t\tB\tN\t\t2",
                     "S\t4900000C1\tB\tStop C\t51.496400\t-0.120000\t490G0C\t\tC\tS\t\t1",
+                    // Z, about 4.4 km south: where the 1 runs on to, so it heads for the destination.
+                    "S\t4900000Z1\tB\tStop Z\t51.460000\t-0.120000\t490G0Z\t\tZ\tS\t\t1",
                 ).joinToString("\n"),
             ),
         ),

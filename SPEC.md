@@ -2787,10 +2787,13 @@ answers: a bus to a station further down the line was passed over for another bu
 the end of a long walk, which live was 25 minutes away, so the trip offered that bus and the long walk
 and never the one that ran (maintainer's report, 2026-10-15). So a trip **from a position** (the rider's,
 or a *From…* place's) also asks the Planner for the quickest routes **via** the bus stops near them that lie **towards the
-destination**: each bus line's nearest stop within **800 m** (about a ten-minute walk) and within 90°
-either side of the way there, so one stop asks for every line it is the nearest stop of, and a line's
-farther stops, a stop behind the rider, a night bus and a train add none; a stop within 50 m counts
-whichever way it lies, as the fix is that uncertain. At most **three** stops, nearest first, so a
+destination**: each bus line's nearest stop within **800 m** (about a ten-minute walk) whose walk leaves
+the rider no more than **250 m** farther from the destination, so one stop asks for every line it is the
+nearest stop of, and a line's farther stops, a stop behind the rider, a night bus and a train add none.
+A stop off to the side counts (maintainer, 2026-11-10): a bus straight to a station on the way, from a
+stop square to the way there, was never asked while the cut was 90° either side of it. Only a line that goes
+somewhere, one of its stops more than 800 m nearer the destination than the rider, picks a stop, so a
+sideways line can't take a request from one heading there. At most **three** stops, nearest first, so a
 street with many lines can't fan the plan out, and none when the destination is itself within 800 m.
 The stops are found on the device from the bundled stops, so they wait on no answer: the requests go
 out alongside the plan's own four, in parallel. The plan's own four still decide whether the plan
