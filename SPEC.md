@@ -5451,13 +5451,18 @@ Play Data Safety type the nearby action may collect (and so declares), not a cla
 every fix sent is precise.
 
 All of stopdash's persisted config — watched stops, per-stop filters, row stars, starred
-journeys, any saved favorite destinations, the user's `app_key` — and the last-good snapshot (all but
-the crash-report opt-in, which is per install, and the rows paired watches' complications show,
-relearned from the watches still paired) travel through
+journeys, any saved favorite destinations, the user's `app_key` — and the last-good snapshot travel through
 **Android's own backup and device-to-device transfer** — stopdash allows
 both, deliberately, so a phone swap keeps the user's setup rather than losing it
 (maintainer, 2026-09-18; the fleet's "never lose the user's work" over a literal
-never-leaves-the-device wording). This is the platform's user-controlled channel tied to
+never-leaves-the-device wording). What stays behind describes this install or this moment rather
+than the rider's setup (`backup_rules.xml`, `data_extraction_rules.xml`, and the no-backup folder):
+the crash-report and usage-stats opt-in, so a new install asks again; the rows paired watches'
+complications show, relearned from the watches still paired; the stops last found near the rider,
+which the widget and watch show, being where the old phone was; the journey alerts' state (a pause,
+whether Android still offers the notification prompt, what each alert last said or the rider swiped
+away), which is about this phone's notifications; the widget picker's preview record; and Drive
+sync's install id and ledger, so a restored phone never writes as the one it came from. This is the platform's user-controlled channel tied to
 the user's own Google account, not an off-device channel stopdash adds: cost £0, and no
 Play Data Safety change (Android Auto Backup is a platform feature, not data stopdash
 collects or transmits). The guarantee is therefore precise, not absolute — the only **user data**
