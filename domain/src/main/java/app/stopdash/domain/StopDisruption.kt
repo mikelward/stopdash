@@ -220,3 +220,44 @@ private fun flexibleNamePattern(name: String): String? {
     if (tokens.isEmpty()) return null
     return tokens.joinToString(NAME_TOKEN_SEP)
 }
+
+/**
+ * [notices] less TfL's stock advice to "use the next stop or the previous stop to catch your bus", which says nothing
+ * a rider can act on and is wrong where those stops are closed too, as on a diversion (maintainer, 2026-11-10). The
+ * rest of a notice stays: one whose advice was all it said beyond its heading keeps that heading ("Bus Stop Closed"),
+ * so a closure is never hidden. Only that heading goes too, where another of [notices] opens with the same line over
+ * at least its window, which already says it.
+ */
+fun withoutNeighborStopAdvice(notices: List<StopDisruption>): List<StopDisruption> {
+    if (notices.none { NEIGHBOR_STOP_ADVICE.containsMatchIn(normalizeDisruptionText(it.description)) }) return notices
+    val trimmed = notices.map { notice ->
+        val text = normalizeDisruptionText(notice.description)
+        if (!NEIGHBOR_STOP_ADVICE.containsMatchIn(text)) {
+            notice to false
+        } else {
+            notice.copy(description = normalizeDisruptionText(NEIGHBOR_STOP_ADVICE.replace(text, "\n"))) to true
+        }
+    }
+    return trimmed.mapNotNull { (notice, cut) ->
+        when {
+            !cut -> notice
+            notice.description.isEmpty() -> null
+            '\n' !in notice.description && trimmed.any { (other, _) ->
+                val lines = normalizeDisruptionText(other.description).lines()
+                other !== notice && lines.size > 1 && lines.first().equals(notice.description, ignoreCase = true) && other.covers(notice)
+            } -> null
+            else -> notice
+        }
+    }.distinct()
+}
+
+/** Whether this notice's window holds all of [other]'s: an open bound holds any. */
+private fun StopDisruption.covers(other: StopDisruption): Boolean =
+    (validFrom == null || (other.validFrom != null && !other.validFrom.isBefore(validFrom))) &&
+        (validTo == null || (other.validTo != null && !other.validTo.isAfter(validTo)))
+
+/** TfL's advice to use the stop before or after, however its lines are broken. */
+private val NEIGHBOR_STOP_ADVICE = Regex(
+    """please\s+use\s+the\s+(?:next|previous)\s+stop(?:\s+or\s+the\s+(?:next|previous)\s+stop)?\s+to\s+catch\s+your\s+bus\.?""",
+    RegexOption.IGNORE_CASE,
+)

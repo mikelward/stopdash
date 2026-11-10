@@ -4170,7 +4170,10 @@ interchange's name alone doesn't say which of its many stops is shut; several po
 name go by that name; otherwise the place; the group header above it is unchanged. A station's
 closure check covers that station, its own platforms and entrances, and anything recorded against
 its whole interchange, never another member's: TfL answers a station with its whole interchange, and
-a bus stop's "Bus Stop Closed" there isn't the station's. The notice text is **cleaned for display**: TfL's
+a bus stop's "Bus Stop Closed" there isn't the station's. TfL's stock advice to "use the next stop or the previous
+stop to catch your bus" is dropped as it's read: it adds nothing a rider can act on, and is wrong where those stops are
+closed too, as on a diversion (maintainer, 2026-11-10). The closure it came with is kept, its "Bus Stop Closed" heading
+standing alone, unless another notice there opens with the same line over at least its window. The notice text is **cleaned for display**: TfL's
 escaped line breaks (a literal `\n`) become real ones, and where the text *does* lead with the
 station ("&lt;Station&gt; Underground Station: …", a tube closure), that leading repeat is stripped so the heading isn't
 said twice. Whether the text names the stop is not decided by mode, so the strip is by detection

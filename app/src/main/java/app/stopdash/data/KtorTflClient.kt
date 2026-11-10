@@ -32,6 +32,7 @@ import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopZoneSource
 import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.withoutNeighborStopAdvice
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflClient
@@ -1074,7 +1075,7 @@ class KtorTflClient(
                 // Length only: the raw value is TfL's, but a bare fact keeps the log coarse.
                 warn("stop disruption for stop $stopId: unparseable date (${raw.length} chars), window left open")
             }
-        }
+        }.let(::withoutNeighborStopAdvice)
 
     override suspend fun liftsOut(): Set<String> =
         tflRequest { key ->
@@ -1102,7 +1103,7 @@ class KtorTflClient(
                 dto.toStopDisruptionOrNull { raw ->
                     warn("stop disruption for stop $stopId: unparseable date (${raw.length} chars), window left open")
                 }
-            }.distinct()
+            }.distinct().let(::withoutNeighborStopAdvice)
         }
     }
 

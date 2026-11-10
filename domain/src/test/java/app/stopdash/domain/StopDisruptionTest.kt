@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -237,5 +238,28 @@ class StopDisruptionTest {
         // name doesn't match the watched stop, so it stays — best-effort, never mangled.
         val raw = "St Pancras International: No step-free access to the Thameslink platforms."
         assertEquals(raw, cleanDisruptionBody(raw, stopName = "King's Cross St. Pancras"))
+    }
+
+    @Test
+    fun `TfL's advice to use the next or previous stop is dropped, never the closure it came with`() {
+        // As TfL sends it: literal backslash-n and indent spaces between the lines.
+        val advice = StopDisruption("Bus Stop Closed\\n    Please use the next stop\\n    or the previous stop\\n    to catch your bus")
+        val diversion = StopDisruption("Bus Stop Closed\\n    Buses on diversion due to a burst water main.")
+        // Beside a notice saying the same closure, nothing of it is left to say.
+        assertEquals(listOf(diversion), withoutNeighborStopAdvice(listOf(diversion, advice)))
+        // Alone, it still says the stop is closed.
+        assertEquals(listOf(StopDisruption("Bus Stop Closed")), withoutNeighborStopAdvice(listOf(advice)))
+        // Its heading stays where the other notice doesn't hold all its window: the closure may outlast the diversion.
+        val from = Instant.parse("2026-11-10T08:00:00Z")
+        val shorter = diversion.copy(validFrom = from, validTo = from.plusSeconds(3600))
+        val longer = advice.copy(validFrom = from, validTo = from.plusSeconds(7200))
+        assertEquals(listOf(shorter, StopDisruption("Bus Stop Closed", from, from.plusSeconds(7200))), withoutNeighborStopAdvice(listOf(shorter, longer)))
+        // Anything else it says is kept.
+        assertEquals(
+            listOf(StopDisruption("Bus Stop Closed\nRoadworks until Friday")),
+            withoutNeighborStopAdvice(listOf(StopDisruption("Bus Stop Closed\nPlease use the previous stop to catch your bus.\nRoadworks until Friday"))),
+        )
+        // A stop with no such advice keeps its notices as they came.
+        assertEquals(listOf(diversion), withoutNeighborStopAdvice(listOf(diversion)))
     }
 }
