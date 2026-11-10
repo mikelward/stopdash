@@ -90,7 +90,8 @@ internal class TowardRequests(
         } ?: return true
         val asks = withContext(compute) {
             val near = stops.nearby(here.latitude, here.longitude, TowardStops.REACH_METERS, listOf(BUS_STOP_TYPE))
-            TowardStops.of(here, to, HiddenModes.stops(near, hidden))
+            // Every bus stop, for where each nearby line goes: one going nowhere towards the destination takes no request.
+            TowardStops.of(here, to, HiddenModes.stops(near, hidden), stops.busStops())
         }
         if (asks.isEmpty()) return true
         warn("$label via stops towards the destination: ${asks.size} asked")
