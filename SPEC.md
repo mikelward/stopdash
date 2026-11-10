@@ -2657,7 +2657,10 @@ hidden line, or a mode the trip's chips turned off, never shows; a change to any
 nearby set, or a pull looks again at once. Three
 rows show, then "+N more". A line is judged by its route as a trip's leg is, so a departure whose route
 isn't known yet is left out and flagged rather than guessed; with none it says **None**, while routes
-load **Checking…**, and when the place's stops or every origin stop's arrivals couldn't be had, or with
+load **Checking…**. The routes of the lines TfL lists at a stop near the place load first, and their rows
+show before the rest have loaded, as a line found later goes under them (maintainer's report,
+2026-11-10: at a busy interchange every one of twenty lines' routes held back the one train that went
+there); every line is still loaded and judged, so a stop's list never leaves one out. When the place's stops or every origin stop's arrivals couldn't be had, or with
 no rows something a Retry may get didn't come back (a stop's arrivals, a line's route), **Couldn't
 check** with a Retry. A train no Retry can tell (past the calling points its station's board gives, at
 a busy terminus only the next ten; a line TfL has no route for, as Eurostar) doesn't fail the section:

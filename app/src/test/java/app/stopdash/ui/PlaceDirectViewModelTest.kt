@@ -22,6 +22,7 @@ import java.time.Instant
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -345,6 +346,85 @@ class PlaceDirectViewModelTest {
         assertEquals(1, (model.state.value as PlaceDirectViewModel.State.Ready).rows.size)
         // And not asked again for the row once the route says it goes there.
         assertEquals(1, asked.size)
+    }
+
+    @Test
+    fun `a line listed near the place shows its row while other lines' routes still load`() = runBlocking {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        // "bus" runs from Top to Far, nowhere near the place, and its route is slow to come.
+        val bus = LineSequence(listOf(LineRoute("Top ↔ Far", listOf("TOP", "FAR"))), stopNames = mapOf("TOP" to "Top", "FAR" to "Far"))
+        val asked = mutableListOf<String>()
+        val mixed = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked += lineId
+                    if (lineId == "bus") gate.await()
+                    return if (lineId == "bus") bus else rail
+                }
+            },
+            clock = { now },
+        )
+        val model = model(
+            client { listOf(departure("Bottom", 60), Departure("bus", "Bus", "", "Far", null, now.plusSeconds(120), "bus")) },
+            ends = { listOf(DirectTrips.End("BOT", "Bottom", lines = setOf("rail"))) },
+            routes = mixed,
+        )
+        val look = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Unconfined) { model.refresh() }
+        // The bus's route is still loading (held until the gate opens), and the line that calls near the place
+        // already has its row.
+        val early = kotlinx.coroutines.withTimeout(10_000) {
+            model.state.first { it is PlaceDirectViewModel.State.Ready }
+        } as PlaceDirectViewModel.State.Ready
+        assertEquals(listOf("rail"), early.rows.map { it.row.lineId })
+        assertTrue(early.checking)
+        // Loaded first, and every line still loaded: a stop's list never leaves one out.
+        assertEquals("rail", asked.first())
+        gate.complete(Unit)
+        look.join()
+        val done = model.state.value as PlaceDirectViewModel.State.Ready
+        assertEquals(listOf("rail"), done.rows.map { it.row.lineId })
+        assertFalse(done.checking)
+        assertTrue("bus" in asked)
+    }
+
+    @Test
+    fun `a row on show whose line the place's stops don't list stays while another line's route loads`() = runBlocking {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val busAsked = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val bus = LineSequence(listOf(LineRoute("Top ↔ Far", listOf("TOP", "FAR"))), stopNames = mapOf("TOP" to "Top", "FAR" to "Far"))
+        val mixed = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    if (lineId != "bus") return rail
+                    busAsked.complete(Unit)
+                    gate.await()
+                    return bus
+                }
+            },
+            clock = { now },
+        )
+        var withBus = false
+        val model = model(
+            client {
+                listOf(departure("Bottom", 60)) +
+                    if (withBus) listOf(Departure("bus", "Bus", "", "Far", null, now.plusSeconds(120), "bus")) else emptyList()
+            },
+            // The place's stop lists another line only: "rail" is found among the rest.
+            ends = { listOf(DirectTrips.End("BOT", "Bottom", lines = setOf("other"))) },
+            routes = mixed,
+        )
+        model.refresh()
+        assertEquals(listOf("rail"), (model.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.lineId })
+        // A bus turns up whose route is slow to load: the rail row stays on show meanwhile.
+        withBus = true
+        val look = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Unconfined) { model.refresh(pulled = true) }
+        kotlinx.coroutines.withTimeout(10_000) { busAsked.await() }
+        val meanwhile = model.state.value as PlaceDirectViewModel.State.Ready
+        assertEquals(listOf("rail"), meanwhile.rows.map { it.row.lineId })
+        assertTrue(meanwhile.checking)
+        gate.complete(Unit)
+        look.join()
+        assertEquals(listOf("rail"), (model.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.lineId })
     }
 
     @Test

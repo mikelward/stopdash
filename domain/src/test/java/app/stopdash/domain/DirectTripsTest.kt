@@ -333,4 +333,13 @@ class DirectTripsTest {
         assertFalse(result.pending)
         assertFalse(result.unresolved)
     }
+
+    @Test
+    fun `lines listed at the place's stops load first, every line where none is listed`() {
+        val departing = listOf("bus", "rail", "tram")
+        val ends = listOf(DirectTrips.End("A", "A", lines = setOf("rail")), DirectTrips.End("B", "B", lines = setOf("tram", "other")))
+        assertEquals(setOf("rail", "tram"), DirectTrips.firstLines(departing, ends))
+        // No stop's lines known: none is put ahead of the rest.
+        assertEquals(departing.toSet(), DirectTrips.firstLines(departing, listOf(DirectTrips.End("A", "A"))))
+    }
 }

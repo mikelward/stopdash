@@ -11,8 +11,23 @@ import androidx.annotation.WorkerThread
 object DirectTrips {
     /** One of the destination station's stops: its TfL id, name and interchange (blank if none). */
     // [area]: the stop's own cluster ([StopLocation.clusterId], a bus stop's pair of poles), so an avoided
-    // stop area leaves out both poles ([PlaceDirect.rows]).
-    data class End(val id: String, val name: String, val interchangeId: String = "", val area: String = "")
+    // stop area leaves out both poles ([PlaceDirect.rows]). [lines]: the lines TfL lists at the stop, empty where
+    // not known; only an order to load routes in ([firstLines]), never a reason to leave a line out.
+    data class End(val id: String, val name: String, val interchangeId: String = "", val area: String = "", val lines: Set<String> = emptySet())
+
+    /**
+     * Of [departing] (the lines leaving the rider's stops), those whose route to load first: the ones TfL lists
+     * at one of [ends], so the trains most likely to reach the place show before every other line's route
+     * has loaded (a busy interchange's twenty, each a TfL request, held a Thameslink row past the time the
+     * rider had to act on it, maintainer's report, 2026-11-10). Every line, where no end lists any (not
+     * known, so none is put first). Only an order: the rest are loaded after and judged as these are, so a
+     * line a stop's list misses still gets its row (SPEC principle 2).
+     */
+    fun firstLines(departing: Collection<String>, ends: List<End>): Set<String> {
+        val listed = ends.flatMapTo(HashSet()) { it.lines }
+        if (listed.isEmpty()) return departing.toSet()
+        return departing.filterTo(LinkedHashSet()) { it in listed }
+    }
 
     /**
      * What a trip filter kept: the [stops] with only the departures that reach the destination (a
