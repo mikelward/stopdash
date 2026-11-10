@@ -351,6 +351,37 @@ class StationGroupsTest {
     }
 
     @Test
+    fun `a ride's notice the station heads its place with is not drawn again from another of its poles`() {
+        val pole1 = StopGroup(stopName = "Near", key = "n1", showHeader = true, rows = listOf(row("N1", "N")), placeKey = "N")
+        val pole2 = StopGroup(stopName = "Near", key = "n2", showHeader = true, rows = listOf(row("N2", "N")), placeKey = "N")
+        // TfL files the closure against each pole; the list folds it to one copy, kept on the nearest pole.
+        val kept = row("N1", "N").copy(stopDisruption = "Bus Stop Closed")
+        val other = row("N2", "N").copy(stopDisruption = "Bus Stop Closed")
+        val ride = JourneyCard(
+            FavoriteJourney(JourneyEnd("N2", "Near"), JourneyEnd("Z", "Far end"), listOf(LineRef("line", "", ""))),
+            JourneyCardState.Trains(listOf(row("N2", "N").copy(destination = "Far end"))),
+            closures = listOf(listOf(other)),
+            boardingIds = listOf("N2", "N1"),
+            destinationIds = setOf("Z"),
+        )
+        fun notices(shared: Set<Pair<String, String>>) = StationLayout.of(
+            groups = listOf(pole1, pole2),
+            cardOf = { group -> StopCard(group, group.rows.map { emptyList() }) },
+            journeyCards = listOf(ride),
+            starred = emptySet(),
+            placeDistanceMeters = mapOf("N" to 100.0),
+            stopClusterIds = emptyMap(),
+            rideGrouping = app.stopdash.domain.RideGrouping.STATION,
+            closureRows = listOf(kept),
+            sharedNotices = shared,
+        ).rideNotices[ride.journey.key].orEmpty().map { (rows, _) -> rows.first().stopDisruption }
+        // Filed against both poles, it heads the place once: the ride's copy from its other pole is that one.
+        assertEquals(emptyList<String?>(), notices(setOf("N" to "Bus Stop Closed")))
+        // About one pole alone, the list shows it on that pole: the ride's other pole's own is still the ride's to say.
+        assertEquals(listOf("Bus Stop Closed"), notices(emptySet()))
+    }
+
+    @Test
     fun `rides grouped By stop have a group for each stop they board from, each headed by its stop`() {
         val platform1 = StopGroup(
             stopName = "Near", key = "n1", showHeader = true, rows = listOf(row("N1", "N")), placeKey = "N",
