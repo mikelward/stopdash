@@ -1466,7 +1466,7 @@ under the nearer, and a line's row with no trains (a status or "?" row) goes whe
 shows that line: the one National Rail board a station's records share is shown under one of them, so the other's
 empty "No data" row added a second heading of the same name. Everything the list keys by
 station goes by its mode too: a departure, a ride and its trains, a notice (under its own stop's station) and
-the distance (its own mode's nearest stop), so nothing shows under another mode's heading. It shows how far
+the distance (its own mode's nearest stop), so nothing shows under another mode's heading. A ride under its station's heading never repeats a notice the station already shows: one TfL files against every pole of a place heads the place once, whichever pole the ride boards from (bug report, 2026-11-10). It shows how far
 its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**
 of all its departures. The near-me list and a searched
 station's page follow it, each holding its placeholder until the choice is read, so a cold start never shows the list

@@ -3376,7 +3376,7 @@ private fun DepartureList(
     val stationLayout = if (byStation) {
         rememberWorked(
             stationSlot,
-            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters, stationTopology, closureRows),
+            Inputs(listCards, journeyCards, starred, placeDistanceMeters, stopDistanceMeters, stopClusterIds, farther, held, rideGrouping, rideMeters, stationTopology, closureRows, sharedNotices),
             keep = { kept, wanted -> (wanted.parts[0] as ListCards).grownFrom(kept.parts[0] as ListCards) },
         ) {
             StationLayout.of(
@@ -3386,6 +3386,7 @@ private fun DepartureList(
                 stationTopology,
                 closureRows,
                 listCards.mergedStationMeters,
+                sharedNotices,
             )
         }
     } else {
@@ -5180,6 +5181,9 @@ internal class StationLayout(
             // Each station's records whose every row another record lists ([ListCards.mergedStationMeters]): still where
             // the station is nearest (Codex, #1242).
             mergedStationMeters: Map<String, Double> = emptyMap(),
+            // The notices filed against more than one stop of a place, as ([stopPlaceKey], text): the list heads the place
+            // with one copy, kept on whichever pole is nearest, so a ride's copy on another of its poles is that same one.
+            sharedNotices: Set<Pair<String, String>> = emptySet(),
         ): StationLayout {
             fun metersOf(group: StopGroup): Double? =
                 (group.rows.mapNotNull { stopDistanceMeters[it.stopId] } + listOfNotNull(mergedStationMeters[groupStation(group)])).minOrNull()
@@ -5270,15 +5274,24 @@ internal class StationLayout(
             // ride's to show.
             val rideNotices = if (!inCard) emptyMap() else HashMap<String, List<Pair<List<DepartureRow>, String>>>().also { notices ->
                 val listed = closureRows.mapTo(HashSet()) { it.stopId to it.stopDisruption }
+                // A place-wide notice the list heads its place with, whichever pole's copy it kept (bug report, 2026-11-10).
+                val placeWide = closureRows.mapNotNullTo(HashSet()) { row ->
+                    (stopPlaceKey(row) to row.stopDisruption.orEmpty()).takeIf { it in sharedNotices }
+                }
                 val drawnAt = HashMap<String, HashSet<Pair<String, String?>>>()
                 journeyCards.forEach { card ->
                     val station = rideStations[card.journey.key] ?: return@forEach
                     val shown = drawnAt.getOrPut(station) { HashSet() }
                     val boarding = card.boardingIds.toHashSet()
                     notices[card.journey.key] = card.closures.indices.filter { i ->
-                        val notice = card.closures[i].first()
+                        val rows = card.closures[i]
+                        val notice = rows.first()
                         val key = notice.stopId to notice.stopDisruption
-                        !(notice.stopId in boarding && key in listed) && shown.add(key)
+                        val onList = rows.any { row ->
+                            row.stopId in boarding &&
+                                ((row.stopId to row.stopDisruption) in listed || (stopPlaceKey(row) to row.stopDisruption.orEmpty()) in placeWide)
+                        }
+                        !onList && shown.add(key)
                     }.map { i -> card.closures[i] to card.closureTitles[i] }
                 }
             }
