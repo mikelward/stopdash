@@ -1685,10 +1685,10 @@
         },
         {
             "uniqueId": "androidx.navigation3:navigation3-runtime",
-            "artifactVersion": "1.2.0",
+            "artifactVersion": "1.2.1",
             "name": "Androidx Navigation 3 Runtime",
             "description": "Provides the building blocks for a Compose first Navigation solution that easily supports extensions.",
-            "website": "https://developer.android.com/jetpack/androidx/releases/navigation3#1.2.0",
+            "website": "https://developer.android.com/jetpack/androidx/releases/navigation3#1.2.1",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -1710,10 +1710,10 @@
         },
         {
             "uniqueId": "androidx.navigation3:navigation3-ui",
-            "artifactVersion": "1.2.0",
+            "artifactVersion": "1.2.1",
             "name": "Androidx Navigation 3 UI",
             "description": "Provides a Navigation3 display that uses the building blocks from runtime to create a higher level solution.",
-            "website": "https://developer.android.com/jetpack/androidx/releases/navigation3#1.2.0",
+            "website": "https://developer.android.com/jetpack/androidx/releases/navigation3#1.2.1",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -3075,7 +3075,7 @@
         },
         {
             "uniqueId": "com.mikelward.androidlog:logging-android",
-            "artifactVersion": "5.1.95",
+            "artifactVersion": "5.1.99",
             "name": "androidlog logging-android",
             "description": "The Android sinks and bug-report transport for androidlog.",
             "website": "https://github.com/mikelward/androidlog",
@@ -3093,7 +3093,7 @@
         },
         {
             "uniqueId": "com.mikelward.androidlog:logging-core",
-            "artifactVersion": "5.1.95",
+            "artifactVersion": "5.1.99",
             "name": "androidlog logging-core",
             "description": "The privacy floor and ring buffer, testable without Android.",
             "website": "https://github.com/mikelward/androidlog",
