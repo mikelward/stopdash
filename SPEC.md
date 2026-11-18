@@ -4280,10 +4280,10 @@ by its start or a word's, a number by its start then with it inside ("29" lists 
 299, then 129 and N29), never loosely, so a number (or a lettered one, "N25") never brings up a route
 merely sharing its characters.
 Each match shows the line's pill, its name and its mode. The lines are **TfL's own list**, every
-tube, DLR, Overground, Elizabeth line, tram, bus, river bus and cable car line (not National Rail's
-operators, nor coaches), fetched once a day and kept on the device, so typing never waits on the
+tube, DLR, Overground, Elizabeth line, tram, National Rail (Thameslink, Southern…; maintainer,
+2026-11-18), bus, river bus and cable car line (not coaches), fetched once a day and kept on the device, so typing never waits on the
 network: a kept list is up at once, whatever its age, and one a day old is renewed behind it (checked
-each time Lines… comes up); a list that can't be fetched keeps the last one, and with none kept the search says it
+each time Lines… comes up), as is one kept by a build that searched fewer modes; a list that can't be fetched keeps the last one, and with none kept the search says it
 couldn't load the lines, with Retry. A line opened here has no stop of the rider's on its map but the one
 nearest them (*Folding*), and draws the whole line; its status is asked of TfL as the page opens, in detail (the stops each alert
 covers) since no refresh follows to fill them in, so a part closure is drawn on the map at once; the

@@ -79,6 +79,21 @@ class LineCatalogTest {
     }
 
     @Test
+    fun a_list_kept_by_a_build_searching_fewer_modes_is_answered_at_once_and_renewed_behind_it() = runBlocking {
+        // As a build without National Rail kept it: no modes on the file, an hour old.
+        FileLineCatalogStore(file).save(LineCatalogFile(clock.toEpochMilli(), listOf(bus)))
+        clock += Duration.ofHours(1)
+        val thameslink = LineRef("thameslink", "Thameslink", "national-rail")
+        answer = { listOf(bus, thameslink) }
+        val lines = catalog()
+        assertEquals(listOf(bus), lines.lines())
+        assertEquals(listOf(bus, thameslink), lines.refreshed())
+        // Kept with its modes now, so the next one isn't renewed until its day is up.
+        assertNull(catalog().refreshed())
+        assertEquals(1, fetches)
+    }
+
+    @Test
     fun a_list_dated_after_now_is_renewed() = runBlocking {
         catalog().lines()
         clock -= Duration.ofHours(1)
