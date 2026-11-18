@@ -26,6 +26,8 @@ internal class LineCatalog(
     private val store: FileLineCatalogStore,
     private val now: () -> Instant = Instant::now,
     private val warn: (String) -> Unit = {},
+    // The modes [fetch] asks for: a kept list fetched for others (an older build's) is renewed at once.
+    private val modes: List<String> = MODES,
 ) {
     private val lock = Mutex()
     private var held: LineCatalogFile? = null
@@ -40,7 +42,8 @@ internal class LineCatalog(
     }
 
     /**
-     * A new list from TfL if the kept one is a day old (or dated after now), else null: the search shows
+     * A new list from TfL if the kept one is a day old (or dated after now, or fetched for other
+     * [modes]), else null: the search shows
      * the kept one meanwhile and takes this one when it comes. Null too when TfL can't be reached, with
      * the kept list left as it was and the failure logged. Blocking; off the main thread.
      */
@@ -63,14 +66,16 @@ internal class LineCatalog(
     private suspend fun fetchAndKeep(): List<LineRef> {
         val lines = fetch()
         if (lines.isEmpty()) throw IOException("no lines")
-        return LineCatalogFile(now().toEpochMilli(), lines).also {
+        return LineCatalogFile(now().toEpochMilli(), lines, modes).also {
             held = it
             store.save(it)
         }.lines
     }
 
-    // Under a day old by the wall clock; one dated after now is an age that can't be told, so stale.
+    // Under a day old by the wall clock, for the modes asked now; one dated after now is an age that
+    // can't be told, so stale.
     private fun fresh(kept: LineCatalogFile): Boolean {
+        if (kept.modes.toSet() != modes.toSet()) return false
         val age = Duration.between(Instant.ofEpochMilli(kept.fetchedAt), now())
         return !age.isNegative && age < MAX_AGE
     }
@@ -78,13 +83,13 @@ internal class LineCatalog(
     companion object {
         val MAX_AGE: Duration = Duration.ofDays(1)
 
-        /** The modes searched: every line a rider can take and StopDash shows; not National Rail's operators, nor coaches. */
-        val MODES = listOf("tube", "dlr", "overground", "elizabeth-line", "tram", "bus", "river-bus", "cable-car")
+        /** The modes searched: every line a rider can take and StopDash shows, National Rail's operators too; not coaches. */
+        val MODES = listOf("tube", "dlr", "overground", "elizabeth-line", "tram", "national-rail", "bus", "river-bus", "cable-car")
     }
 }
 
-/** A kept list: when it was fetched (epoch milliseconds) and its lines. */
-internal data class LineCatalogFile(val fetchedAt: Long, val lines: List<LineRef>)
+/** A kept list: when it was fetched (epoch milliseconds), its lines, and the modes it was fetched for (none for an older build's). */
+internal data class LineCatalogFile(val fetchedAt: Long, val lines: List<LineRef>, val modes: List<String> = emptyList())
 
 // A line as kept on disk: [LineRef] lives in the pure domain module, which has no serialization.
 @Serializable
@@ -96,7 +101,11 @@ private fun LineRef.persisted() = PersistedCatalogLine(id, name, mode)
 private fun PersistedCatalogLine.toDomain() = LineRef(id, riderLineName(name, mode), mode)
 
 @Serializable
-private data class PersistedLineCatalog(val fetchedAt: Long, val lines: List<PersistedCatalogLine> = emptyList())
+private data class PersistedLineCatalog(
+    val fetchedAt: Long,
+    val lines: List<PersistedCatalogLine> = emptyList(),
+    val modes: List<String> = emptyList(),
+)
 
 /**
  * The kept line list, in one JSON [file] in the app's cache: TfL's public lines, nothing of the
@@ -114,7 +123,7 @@ internal class FileLineCatalogStore(
         if (!file.exists()) return null
         return try {
             json.decodeFromString<PersistedLineCatalog>(file.readText()).let { saved ->
-                LineCatalogFile(saved.fetchedAt, saved.lines.map { it.toDomain() })
+                LineCatalogFile(saved.fetchedAt, saved.lines.map { it.toDomain() }, saved.modes)
             }
         } catch (e: IOException) {
             discard("unreadable", e)
@@ -129,7 +138,7 @@ internal class FileLineCatalogStore(
     fun save(catalog: LineCatalogFile) {
         try {
             tmp.parentFile?.mkdirs()
-            tmp.writeText(json.encodeToString(PersistedLineCatalog(catalog.fetchedAt, catalog.lines.map { it.persisted() })))
+            tmp.writeText(json.encodeToString(PersistedLineCatalog(catalog.fetchedAt, catalog.lines.map { it.persisted() }, catalog.modes)))
             // Replace in one step, so a reader never sees a half-written file.
             if (!tmp.renameTo(file)) warn("line list not saved: rename failed")
         } catch (e: IOException) {
