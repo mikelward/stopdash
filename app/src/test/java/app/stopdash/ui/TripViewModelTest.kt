@@ -4208,6 +4208,31 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `routes that all ride one line are planned once more without its mode`() = runTest(dispatcher) {
+        val warnings = mutableListOf<String>()
+        // Every route the Planner offers rides red; a train to the same change it passed over.
+        val later = TripRoute(listOf(leg("red", "A", "B", 8, 18), leg("blue", "B", "C", 23, 33)))
+        val byRail = TripRoute(listOf(leg("green", "A", "B", 6, 14).copy(mode = "national-rail"), leg("blue", "B", "C", 20, 30)))
+        val planner = FakePlanner(listOf(route, later)).apply { withoutRoutes = listOf(byRail) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, warn = { warnings += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        assertTrue(byRail in trip.state.value.routes.orEmpty())
+        // Logged by the modes left out and how many routes, never a stop or either end.
+        assertEquals(listOf("trip plan without the line every route rides: 1 routes without tube"), warnings.filter { "every route" in it })
+        // A plan whose routes ride different lines asks nothing more.
+        val mixed = FakePlanner(listOf(route, TripRoute(listOf(leg("green", "A", "C", 6, 30).copy(mode = "national-rail")))))
+        TripViewModel(mixed, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher)
+            .also { it.refresh() }
+        advanceUntilIdle()
+        assertEquals(emptyList<Set<String>>(), mixed.withoutAsked)
+    }
+
+    @Test
     fun `a soonest route on a line with severe delays is planned around once, without its mode`() = runTest(dispatcher) {
         val warnings = mutableListOf<String>()
         val bus = TripRoute(listOf(leg("red", "A", "B", 5, 15).copy(mode = "bus", lineId = "43", lineName = "43"), leg("blue", "B", "C", 20, 40)))

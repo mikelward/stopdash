@@ -1573,12 +1573,21 @@ class TripViewModel(
                 val shown = State(routes = answers.flatMap { it.routes }, destinationStops = destinationStops).shownRoutes(hidden).orEmpty()
                 val to = java.util.IdentityHashMap<TripRoute, Answer>()
                 answers.forEach { answer -> answer.routes.forEach { to[it] = answer } }
-                AroundDelays.soonest(shown)?.let { route -> to[route]?.let { it to route } }
+                AroundDelays.soonest(shown)?.let { route -> to[route]?.let { it to route } }?.let { soonest ->
+                    // And, where every route it shows rides one line, that line's mode, for the ways there it passed over.
+                    Triple(soonest.first, soonest.second, AroundDelays.sharedLineModes(shown, modes))
+                }
             }
             if (soonest != null) {
-                val (answer, route) = soonest
+                val (answer, route, shared) = soonest
                 val asked = planAroundDelays(route, from, answer.destination, speed, limit, access, modes, gathered, answer.via) { showGathered() }
                 if (asked == null) viaFailed = true else if (asked.isNotEmpty()) around = setOf(asked)
+                // Asked once more without the one line every route rides, unless the delays' request just left it out.
+                if (asked != null && shared.isNotEmpty() && !asked.containsAll(shared)) {
+                    if (!planWithoutShared(shared, from, answer.destination, speed, limit, access, modes, gathered, answer.via) { showGathered() }) {
+                        viaFailed = true
+                    }
+                }
             }
         } catch (e: CancellationException) {
             _state.update { it.copy(planning = false) }
@@ -1810,6 +1819,37 @@ class TripViewModel(
         gathered += added
         show()
         return leaveOut
+    }
+
+    /**
+     * Asks the Planner once more without [leaveOut], the mode of the one line every route it offered rides
+     * ([AroundDelays.sharedLineModes]), and adds what it finds to [gathered]: a train to the same change it passed over.
+     * False when the request failed; the plan stands without it.
+     */
+    private suspend fun planWithoutShared(
+        leaveOut: Set<String>,
+        from: TripOrigin,
+        destination: TripDestination,
+        speed: WalkingSpeed,
+        limit: MaxWalk,
+        access: StepFree,
+        modes: TripModes,
+        gathered: MutableList<TripRoute>,
+        through: String?,
+        show: suspend () -> Unit,
+    ): Boolean {
+        val answer = try {
+            withContext(io) { planner.quickestWithout(from, destination, leaveOut, speed, limit, access, modes, via = through) }
+        } catch (e: TflException) {
+            warn("trip plan without the line every route rides failed: ${e::class.simpleName}")
+            return false
+        }
+        warn("trip plan without the line every route rides: ${answer.size} routes without ${leaveOut.sorted().joinToString("+")}")
+        // A route already planned (the same legs at the same times) stays once.
+        val added = withContext(compute) { mergedRoutes(gathered.toList(), answer).drop(gathered.size) }
+        gathered += added
+        show()
+        return true
     }
 
     // One answer to a plan's request ([plan]): where it was planned to, the stop the rider picked it was asked via

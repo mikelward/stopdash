@@ -2784,6 +2784,14 @@ predictions stand for little, so a route clear of the delays arriving about as s
 one much sooner still leads. Minor delays change nothing. Failing, it leaves the plan as it was and says
 so in the debug log, which names only the modes left out.
 
+**When every route rides one line** (maintainer's report, 2026-11-18). The Planner can offer three routes
+that all ride the same tube line to a change where a National Rail train would do as well, and never the
+train. So when every route the trip shows rides one line in common, delayed or not, the Planner is asked once
+more without that line's mode, as around delays, and what it finds joins the plan, ranked with the rest; the
+routes on that line stay. Not for a bus in common (a plan already asks for buses alone), nor where the request
+around delays left that mode out already. It costs one more Planner request only on such a plan. Failing, the
+plan stands and the debug log says so, naming only the modes left out.
+
 **Buses towards the destination** (maintainer, 2026-10-15). The Planner ranks on timetable times and
 offers three routes a request, so a bus a few minutes behind another on paper can make none of its
 answers: a bus to a station further down the line was passed over for another bus to the station at
