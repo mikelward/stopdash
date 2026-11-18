@@ -66,4 +66,22 @@ class AroundDelaysTest {
         val onlyBus = ModeGroups.ALL.filter { it.key != "bus" }.fold(TripModes.DEFAULT) { m, g -> m.with(g, ride = false) }
         assertEquals(setOf("bus"), AroundDelays.modesToLeaveOut(tubeThenBus, setOf("43"), onlyBus))
     }
+
+    @Test
+    fun `routes all riding one line ask once more without its mode`() {
+        val viaVictoria = TripRoute(listOf(walk(0, 3), leg("victoria", "tube", 5, 15), leg("38", "bus", 17, 30)))
+        val viaVictoriaLater = TripRoute(listOf(walk(0, 3), leg("victoria", "tube", 8, 18), leg("73", "bus", 20, 34)))
+        assertEquals(setOf("tube"), AroundDelays.sharedLineModes(listOf(viaVictoria, viaVictoriaLater), TripModes.DEFAULT))
+        // A line in common only some ride: the Planner offered other ways already.
+        val byRail = TripRoute(listOf(walk(0, 5), leg("thameslink", "national-rail", 8, 16), leg("38", "bus", 18, 30)))
+        assertEquals(emptySet<String>(), AroundDelays.sharedLineModes(listOf(viaVictoria, byRail), TripModes.DEFAULT))
+        // Every route on one bus: the plan's bus-only request is the other way, so nothing more is asked.
+        val bus = TripRoute(listOf(walk(0, 3), leg("38", "bus", 5, 30)))
+        assertEquals(emptySet<String>(), AroundDelays.sharedLineModes(listOf(bus, bus.copy()), TripModes.DEFAULT))
+        // One route, or one that rides nothing (a walk), isn't a line every way rides.
+        assertEquals(emptySet<String>(), AroundDelays.sharedLineModes(listOf(viaVictoria), TripModes.DEFAULT))
+        assertEquals(emptySet<String>(), AroundDelays.sharedLineModes(listOf(viaVictoria, TripRoute(listOf(walk(0, 40)))), TripModes.DEFAULT))
+        // Its group already off: nothing left to leave out.
+        assertEquals(emptySet<String>(), AroundDelays.sharedLineModes(listOf(viaVictoria, viaVictoriaLater), TripModes(setOf("tube"))))
+    }
 }
