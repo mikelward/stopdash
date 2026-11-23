@@ -510,8 +510,8 @@ internal fun widgetSizesSummary(rowsBySize: Map<DpSize, Int>): String =
  * countdown actually changes, not on the clock's whole minute (Codex on #612).
  */
 internal fun nextCountdownChange(departures: List<app.stopdash.domain.Departure>, now: Instant): Instant? =
-    departures.mapNotNull { departure ->
-        val due = departure.expectedArrival
+    // A range ("0–2 min") changes at its latest's minutes too ([Countdown.changesAt]).
+    departures.flatMap { app.stopdash.domain.Countdown.changesAt(it) }.mapNotNull { due ->
         if (due <= now) return@mapNotNull null
         // The latest tick (due - k minutes + 1 ms) still after now, else the departure itself.
         val left = JavaDuration.between(now, due).plusMillis(1).toMillis()

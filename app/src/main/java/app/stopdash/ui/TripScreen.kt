@@ -3387,7 +3387,7 @@ private fun trainTimes(shown: List<Pair<Departure, Boolean>>, now: Instant, load
     append(words.around.first)
     shown.forEachIndexed { i, (train, catchable) ->
         if (i > 0) append(words.between)
-        val minutes = Countdown.minutes(train.expectedArrival, now).toString()
+        val minutes = Countdown.timeText(train, now)
         if (catchable && !train.grayed) {
             append(minutes)
         } else {

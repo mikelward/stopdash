@@ -525,6 +525,9 @@ class KtorTflClientTest {
         trainSpacing: suspend () -> Boolean = { true },
         // The answer for each request, where it depends on the request; [body] otherwise.
         bodyFor: ((HttpRequestData) -> String)? = null,
+        locationTimings: app.stopdash.domain.LocationTimings = app.stopdash.domain.LocationTimings.EMPTY,
+        locatedTrains: app.stopdash.domain.LocatedTrains = app.stopdash.domain.LocatedTrains(),
+        logDoubtful: (String) -> Unit = {},
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
@@ -539,7 +542,8 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex, trainSpacing = trainSpacing)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex, trainSpacing = trainSpacing,
+            locationTimings = { locationTimings }, locatedTrains = locatedTrains, logDoubtful = logDoubtful)
     }
 
     @Test
@@ -1060,6 +1064,40 @@ class KtorTflClientTest {
                     assertTrue("$key", !java.time.Duration.between(a, b).minus(checkNotNull(SpacedTrains.gapFor(key.first))).isNegative)
                 }
             }
+    }
+
+    @Test
+    fun `a train due by TfL that its location says is still away is shown as a range`() = runTest {
+        val now = Instant.parse("2026-11-23T09:38:00Z")
+        // TfL says the first train is due now while it's still "Left Station A", where trains took 120 s to come;
+        // the second is due in 320 s from "Between Station A and B": its countdown hasn't stalled, so it stands.
+        val body = """
+            [{"lineId": "northern", "vehicleId": "001", "platformName": "Southbound - Platform 2", "modeName": "tube",
+              "destinationName": "Morden", "expectedArrival": "2026-11-23T09:38:00Z", "currentLocation": "Left Station A Platform 4",
+              "timestamp": "2026-11-23T09:37:58Z"},
+             {"lineId": "northern", "vehicleId": "002", "platformName": "Southbound - Platform 2", "modeName": "tube",
+              "destinationName": "Morden", "expectedArrival": "2026-11-23T09:43:20Z", "currentLocation": "Between Station A and B",
+              "timestamp": "2026-11-23T09:37:58Z"}]
+        """.trimIndent()
+        val timings = app.stopdash.domain.LocationTimings(
+            mapOf(
+                app.stopdash.domain.LocationTimings.key("940GZZLUHGT", "northern", "2", "left station a") to mapOf(0 to 120),
+                app.stopdash.domain.LocationTimings.key("940GZZLUHGT", "northern", "2", "between station a and b") to mapOf(0 to 600),
+            ),
+        )
+        val logged = mutableListOf<String>()
+        val departures = client(body, clock = { now }, locationTimings = timings, logDoubtful = { logged += it }).arrivals("940GZZLUHGT")
+        val first = departures.single { it.vehicleId == "001" }
+        // TfL's own time kept, the location's as its latest: "0–2 min", not grayed.
+        assertEquals(now, first.expectedArrival)
+        assertEquals(now.plusSeconds(120), first.upTo)
+        assertFalse(first.grayed)
+        assertEquals(null, departures.single { it.vehicleId == "002" }.upTo)
+        // The log names the train and how much later its latest is, never a rider.
+        assertTrue(logged.any { "located at 940GZZLUHGT: northern P2 001 +120s" in it })
+        // With spacing turned off in Settings, TfL's own times alone, as for spacing.
+        val raw = client(body, clock = { now }, locationTimings = timings, trainSpacing = { false }).arrivals("940GZZLUHGT")
+        assertEquals(null, raw.single { it.vehicleId == "001" }.upTo)
     }
 
     @Test

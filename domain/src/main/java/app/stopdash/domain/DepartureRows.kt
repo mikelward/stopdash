@@ -57,7 +57,7 @@ object DepartureRows {
         // covers a snapshot saved before it did.
         rowsOf(
             stopId, stopName,
-            inferDirections(departures).let { if (grace) Countdown.onBoard(it, now, lineModes) else Countdown.upcoming(it, now) },
+            inferDirections(departures).let { if (grace) Countdown.onBoard(it, now, lineModes) else Countdown.shown(it, now) },
             lineStatuses, fetchedAt,
             clusterId, stopLetter, bearing, towards, splitPlatforms, lineModes,
         )

@@ -615,7 +615,6 @@
     <string name="settings_wifi_places_summary">Langsamen oder falschen Standort zu Hause und bei der Arbeit beheben</string>
     <string name="settings_wifi_places_write_failed">Nicht gespeichert – wird beim Neustart von StopDash zurückgesetzt</string>
     <string name="settings_train_spacing_title">Zugabstände korrigieren</string>
-    <string name="settings_train_spacing_summary">Zeiten anpassen, wenn Züge unmöglich dicht folgen</string>
     <string name="settings_nearby_grouping_title">Abfahrten in der Nähe gruppieren</string>
     <string name="settings_nearby_grouping_platform">Nach Haltestelle/Gleis</string>
     <string name="settings_nearby_grouping_station">Nach Station</string>

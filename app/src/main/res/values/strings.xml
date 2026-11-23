@@ -711,6 +711,9 @@
     <string name="countdown_time_doubtful_description">%1$s min, may not be running</string>
     <!-- A train standing still while its predicted time slides later, shown grayed. -->
     <string name="countdown_time_held_description">%1$s min, held</string>
+    <!-- TODO: translate. A train TfL says is due that its location says may still be minutes away, shown as a
+         range ("0–2 min"), read aloud: its soonest and latest minutes. -->
+    <string name="countdown_time_range_description" tools:ignore="MissingTranslation">%1$s to %2$s min</string>
     <!-- A Tube train whose time has just passed, kept on the board a moment, shown grayed at "0". -->
     <string name="countdown_time_due_description">%1$s min, due</string>
     <!-- A countdown's minutes: %1$s is one or more numbers already joined ("3 · 7"), the unit written
@@ -1122,7 +1125,9 @@
          apart. On, each is shown no sooner than its line's gap after the one ahead; off shows TfL's
          own times. -->
     <string name="settings_train_spacing_title">Fix train spacing</string>
-    <string name="settings_train_spacing_summary">Adjust times when trains are impossibly close</string>
+    <!-- TODO: translate. Under "Fix train spacing": it also shows a stalled Tube countdown as a range (SPEC
+         *A stalled Tube countdown shows how late the train may still come*). -->
+    <string name="settings_train_times_summary" tools:ignore="MissingTranslation">Adjust times when trains are impossibly close or a countdown stalls</string>
     <!-- How the near-me list groups its departures: a card per bus stop or platform (the default), or
          one card per station under a heading that folds it. "Stop/platform" names both, as the two
          grouping settings share it: a bus boards at a stop, a train at a platform. -->

@@ -8283,7 +8283,7 @@ internal fun RouteDetailScreen(
     ) {
         goneFrom?.let { work ->
             work.copy(
-                departures = work.departures.filterNot { Countdown.hasDeparted(it, now) },
+                departures = work.departures.filterNot { Countdown.goneFromBoard(it, now) },
                 untimed = work.untimed.filter { Countdown.stillShown(it, now) },
             )
         }
@@ -8664,8 +8664,8 @@ internal fun RouteDetailScreen(
             } else if ((departures.isNotEmpty() || untimed.isNotEmpty()) && !stale) {
                 val entries = Countdown.entries(departures, untimed)
                 // A train with no time is read aloud in full ("delayed, no estimate"), as the card's
-                // is ([CountdownLabel]).
-                val spoken = if (untimed.isEmpty()) null else spokenCountdown(entries, now)
+                // is ([CountdownLabel]); so is a range ("0 to 2 min").
+                val spoken = if (untimed.isEmpty() && departures.none { Countdown.upToMinutes(it, now) != null }) null else spokenCountdown(entries, now)
                 Text(
                     text = Countdown.mergedLabel(
                         entries,
@@ -9465,13 +9465,15 @@ internal fun CountdownLabel(
     val last = entries.indexOfLast { it is Countdown.Entry.Timed }
     val parts = entries.map { entry ->
         when (entry) {
-            is Countdown.Entry.Timed -> Countdown.minutes(entry.departure.expectedArrival, now).toString()
+            is Countdown.Entry.Timed -> Countdown.timeText(entry.departure, now)
             is Countdown.Entry.Untimed -> if (entry.train.canceled) canceled else delayed
         }
     }
+    // A range ("0–2") is read as one ("0 to 2 min"), not as two numbers.
+    val ranged = entries.any { (it as? Countdown.Entry.Timed)?.let { t -> Countdown.upToMinutes(t.departure, now) } != null }
     // Gray alone doesn't reach a screen reader: each time too soon to catch, that may not run, or held, says
     // so, as a trip's list card says it of its trains.
-    val spoken = if (stale || ((early == null || early.none { it }) && grayed.none { it } && untimed.isEmpty())) null
+    val spoken = if (stale || ((early == null || early.none { it }) && grayed.none { it } && untimed.isEmpty() && !ranged)) null
     else spokenCountdown(entries, now, early)
     Text(
         text = when {
@@ -9516,21 +9518,24 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
     val doubtful = stringResource(R.string.countdown_time_doubtful_description)
     val held = stringResource(R.string.countdown_time_held_description)
     val due = stringResource(R.string.countdown_time_due_description)
+    val range = stringResource(R.string.countdown_time_range_description)
     val words = rememberCountdownWords()
     // Built once per change of the times, not on every recomposition.
-    return remember(parts, gray, plain, doubtful, held, due, words) {
+    return remember(parts, gray, plain, doubtful, held, due, range, words) {
         val text = buildAnnotatedString {
             if (parts.isNotEmpty()) append(words.around.first)
             parts.forEachIndexed { i, part ->
                 if (i > 0) append(words.between)
-                if (part.grayed) withStyle(SpanStyle(color = gray)) { append(part.minutes.toString()) } else append(part.minutes.toString())
+                if (part.grayed) withStyle(SpanStyle(color = gray)) { append(part.text) } else append(part.text)
             }
             if (parts.isNotEmpty()) append(words.around.second)
         }
-        val spoken = if (parts.none { it.grayed }) null
+        val spoken = if (parts.none { it.grayed || it.upTo != null }) null
         else parts.joinToString(", ") {
-            // Just past its time comes first, as [spokenCountdown] says it.
-            (if (it.pastDue) due else if (it.doubtful) doubtful else if (it.held) held else plain).format(it.minutes.toString())
+            // Just past its time comes first, as [spokenCountdown] says it; a range is read as one.
+            val upTo = it.upTo
+            if (upTo != null && !it.grayed) range.format(it.minutes.toString(), upTo.toString())
+            else (if (it.pastDue) due else if (it.doubtful) doubtful else if (it.held) held else plain).format(it.minutes.toString())
         }
         text to spoken
     }
@@ -9545,7 +9550,10 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
 internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early: List<Boolean>? = null): String =
     entries.mapIndexed { i, entry ->
         when (entry) {
-            is Countdown.Entry.Timed -> stringResource(
+            is Countdown.Entry.Timed -> Countdown.upToMinutes(entry.departure, now)
+                ?.takeIf { early?.getOrNull(i) != true && !entry.departure.grayed }
+                ?.let { latest -> stringResource(R.string.countdown_time_range_description, Countdown.minutes(entry.departure.expectedArrival, now).toString(), latest.toString()) }
+                ?: stringResource(
                 when {
                     early?.getOrNull(i) == true -> R.string.countdown_time_unusable_description
                     // Just past its time comes first: it's at "0" and leaves the board within the grace,

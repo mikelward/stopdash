@@ -3,6 +3,7 @@ package app.stopdash.wear
 import androidx.annotation.WorkerThread
 import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.toDomain
+import app.stopdash.domain.Countdown
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -229,8 +230,13 @@ object ComplicationTimeline {
             val branch = topology.grouping(chosen.lineId, stop.stopId, departure.destination, departure.branch).label
             val destination = if (branch != null) "$label/$branch" else label
             val content = ComplicationContent.Departure(code, lineName, destination, departure.expectedArrival, uncertain)
-            entries += ComplicationEntry(start, departure.expectedArrival, content)
-            start = departure.expectedArrival
+            // A train TfL says is due that its location says may still come ([Departure.upTo]) stays, at its own time's
+            // countdown, until the range's end, as on the tile and the phone, rather than leave "None" in its place. A
+            // face draws one time, so the range itself is the tile's and the phone's to show.
+            val end = maxOf(departure.expectedArrival, departure.upTo ?: departure.expectedArrival).coerceAtMost(boundary)
+            if (end <= start) continue
+            entries += ComplicationEntry(start, end, content)
+            start = end
         }
         if (start < boundary) entries += ComplicationEntry(start, boundary, ComplicationContent.Empty(code, lineName, uncertain))
         entries += ComplicationEntry(boundary, null, stale)
@@ -274,7 +280,7 @@ object ComplicationTimeline {
      */
     private fun upcoming(row: DepartureRow?, now: Instant, boundary: Instant) =
         row?.upcoming.orEmpty()
-            .filter { it.expectedArrival > now && it.expectedArrival < boundary }
+            .filter { !Countdown.goneFromBoard(it, now) && it.expectedArrival < boundary }
             .sortedBy { it.expectedArrival }
             .distinctBy { it.expectedArrival }
 

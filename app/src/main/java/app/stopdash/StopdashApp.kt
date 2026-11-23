@@ -15,6 +15,7 @@ import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.FavoriteRidesSetting
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.HubsStore
+import app.stopdash.data.LocationTimingsStore
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.NearbyLinesSetting
 import app.stopdash.data.RailApiKeySetting
@@ -371,6 +372,8 @@ open class StopdashApp : Application() {
         // The station model, from the bundle the app already reads (dev-docs/station-model.md); read by
         // nothing yet, loaded here so it's ready before anything asks.
         HubsStore.warm(this, applicationScope)
+        // The Tube location timings, read on first use by an arrivals fetch, off the main thread.
+        LocationTimingsStore.attach(this)
         UserApiKeySetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         RailApiKeySetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         HiddenModesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))

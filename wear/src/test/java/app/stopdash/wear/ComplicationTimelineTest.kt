@@ -70,6 +70,19 @@ class ComplicationTimelineTest {
     }
 
     @Test
+    fun `a train its location says may still come stays until its range ends, not None`() {
+        // TfL says due at 60 s; its location says it may come as late as 180 s; the next train is at 240 s.
+        val ranged = departure(60).copy(upTo = fetched.plusSeconds(180))
+        val entries = ComplicationTimeline.entries(envelope(stop("940GA", listOf(ranged, departure(240)))), fetched)
+        val during = entries.at(fetched.plusSeconds(120)) as ComplicationContent.Departure
+        assertEquals(fetched.plusSeconds(60), during.at)
+        assertEquals(fetched.plusSeconds(240), (entries.at(fetched.plusSeconds(200)) as ComplicationContent.Departure).at)
+        // Opened after TfL's time, inside the range: the train is still there.
+        val late = ComplicationTimeline.entries(envelope(stop("940GA", listOf(ranged, departure(240)))), fetched.plusSeconds(90))
+        assertEquals(fetched.plusSeconds(60), (late.at(fetched.plusSeconds(90)) as ComplicationContent.Departure).at)
+    }
+
+    @Test
     fun `the timeline is worked out on the worker, not the caller's thread`() {
         val env = envelope(stop("940GA", listOf(departure(60))))
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }

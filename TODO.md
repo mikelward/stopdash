@@ -5266,6 +5266,11 @@ and these carry the rest as their own PRs:
 - [x] **The same treatment for a stale near-me stop** (maintainer, 2026-10-16): its "21:14?" guesses
       fade and pulse while a refresh is fetching it, and stand as they are when nothing is in flight
       (offline, or after a failed fetch), so the animation never stands for work that isn't happening.
+- [ ] **Record the location timings again** (maintainer's report, 2026-11-23): the bundled
+      `stations/location_timings.json` is from one Monday afternoon of the whole Tube, timing about half of
+      TfL's predictions. Record a morning peak, a weekend and several days (`arrivals_recorder.py record --lines`),
+      check them out of sample (`timings`), and rebuild it with `table`, so more stalled countdowns read as a
+      range (SPEC *A stalled Tube countdown shows how late the train may still come*).
 - [ ] **Translations pass** (standing): once the maintainer has confirmed them on a device,
       translate the strings marked `TODO: translate` into every language (terms from
       `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*). Last run 2026-10-25

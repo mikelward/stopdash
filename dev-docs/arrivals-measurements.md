@@ -345,6 +345,35 @@ Each cell covers 110–600 trains at a stop.
 Numbers only: half an hour at the end of one morning peak, two-thirds of it Northern line trains
 and most of the rest Victoria, judged by TfL's own record; not yet run on the earlier recordings.
 
+## Timing a stalled countdown by location
+
+TfL's countdown can sit at a minute or less while a train is still minutes away: a rider in a ticket
+hall saw "0 min" for two minutes while the station's own board said 2, and the train came then. TfL's
+location text for the train still moves on ("Left …", "Between … and …", "Approaching …"). `arrivals_recorder.py
+timings` scores timing each train from its location, as long as it has said so, by how long trains already
+arrived took from there at that platform; `table` writes those times as the table the app bundles
+(`stations/location_timings.json`, `LocatedTrains`).
+
+**Whole Tube, a Monday afternoon** (2026-11-23, about two hours, `record --lines` every 20 s, all 267
+stations). Out of sample: a table from the first 70 minutes, scored on the rest (81,817 predictions).
+
+| | TfL's countdown | Location's time where TfL said ≤ 1 min | Later of the two |
+|---|---|---|---|
+| Shown due (≤ 1 min) while 2+ min away | 1,333 | 654 | 654 |
+| A train coming within 2 min shown 1+ min too late | 149 | 855 | 1,197 |
+
+Taking the location's time alone fixes about as many stalled countdowns as it makes trains that do come
+soon read a minute or more late, so the app shows neither alone: a train TfL says is due within a minute,
+whose location says at least a minute later, is shown as the range between the two ("0–2 min"). Of the
+3,110 such trains, 94% came within the range (to 30 s either side), 6% later than its end, and 5 sooner
+than TfL's own time; and 600 of the 1,176 trains shown due while 2+ minutes away were among them.
+
+Stalled countdowns are common: in the same hour, about 1 in 70 Tube predictions across the network said
+due within a minute for a train 2 or more minutes away.
+
+Not yet measured: a morning peak, a weekend, and a table from several days, which would time more
+locations (this one had an estimate for about half the predictions).
+
 ## Field reports
 
 Reports from a rider at a platform, against the board the app showed. The station isn't named
