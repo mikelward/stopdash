@@ -13,6 +13,14 @@ This tool measures that, and a fix for it, against what actually happened:
     pairs    from a recording, take each pair of trains TfL showed close together at one platform
              (as the app grays them, and a little further apart), and count which of the two left
              the board before it was due, and what the one that did looked like beforehand.
+    timings  from recordings, time each train from where TfL says it is ("Left East Finchley"), as
+             long as it has said so, learned from the trains that had already arrived, and score that
+             against TfL's own times, by rule (`RULES`): TfL's countdown can sit at a minute or less
+             while the train is minutes away, though its location moves on;
+    table    from recordings, write that location timing table as the app bundles it.
+
+`record --lines L1,L2` polls every stop on those lines at once (`/Line/{ids}/Arrivals`), one request a
+round, so a whole network fits a keyless limit; an --out ending .gz is written compressed.
 
 With --vehicles, `record` also asks TfL, once a round, for every call ahead of each tube train listed
 within a minute of another at one platform number, on any line and however far off, and appends
@@ -148,6 +156,25 @@ def fetch_json(path, opener=urllib.request.urlopen, timeout=30, deadline=None):
 
 def fetch_arrivals(stop, opener=urllib.request.urlopen):
     return fetch_json(f"/StopPoint/{urllib.parse.quote(stop)}/Arrivals", opener)
+
+
+def fetch_line_arrivals(lines, opener=urllib.request.urlopen):
+    """Every arrival on `lines` (TfL line ids), at every stop, in one request: a whole network's poll."""
+    return fetch_json(f"/Line/{urllib.parse.quote(','.join(lines))}/Arrivals", opener, timeout=60,
+                      deadline=time.monotonic() + 60)
+
+
+def by_stop(arrivals):
+    """One answer of many stops' arrivals split into {stop: [arrival]}, each keeping the answer's age and cache."""
+    stops = collections.defaultdict(lambda: Answer([]))
+    for arrival in arrivals:
+        stop = arrival.get("naptanId")
+        if stop:
+            stops[stop].append(arrival)
+    for answer in stops.values():
+        answer.age = getattr(arrivals, "age", None)
+        answer.cache = getattr(arrivals, "cache", None)
+    return dict(stops)
 
 
 def fetch_vehicles(ids, opener=urllib.request.urlopen, timeout=30):
@@ -315,6 +342,69 @@ def record(stops, interval, duration, out, fetch=fetch_arrivals, sleep=time.slee
         elapsed = (clock() - start).total_seconds()
         sleep(math.ceil(elapsed / interval + 1e-9) * interval - elapsed)
     return polls
+
+
+def record_lines(lines, interval, duration, out, fetch=fetch_line_arrivals, sleep=time.sleep, clock=None, per_minute=None):
+    """Polls every stop on `lines` at once every `interval` seconds for `duration`, writing each stop's
+    arrivals as `record` does: one request a round however many stops, so a whole network fits a keyless
+    limit. A round that fails costs that round's polls; the next resumes the series."""
+    clock = clock or (lambda: datetime.datetime.now(datetime.timezone.utc))
+    if per_minute is None:
+        per_minute = KEYED_PER_MINUTE if os.environ.get("TFL_APP_KEY") else KEYLESS_PER_MINUTE
+    # Through the one limiter stop recordings use, so a short interval still keeps under TfL's limit.
+    limiter = Limiter(per_minute, clock, sleep)
+    start = clock()
+    end = start + datetime.timedelta(seconds=duration)
+    polls = 0
+    # Every stop an answer has listed: one a later answer lists nothing at is written empty, as a stop poll
+    # would be, so a train gone from it reads as gone then, not as a gap in the recording.
+    seen = set()
+    while clock() < end:
+        limiter.take()
+        try:
+            answer = fetch(lines)
+        except (OSError, http.client.HTTPException, ValueError) as e:
+            print(f"{clock():%H:%M:%S} lines {','.join(lines)}: fetch failed: {failure(e)}", file=sys.stderr)
+        else:
+            polled_at = clock()
+            stops = by_stop(answer)
+            seen.update(stops)
+            for stop in sorted(seen):
+                arrivals = stops.get(stop)
+                if arrivals is None:
+                    arrivals = Answer([])
+                    arrivals.age, arrivals.cache = getattr(answer, "age", None), getattr(answer, "cache", None)
+                out.write(record_line(stop, polled_at, arrivals) + "\n")
+            out.flush()
+            polls += 1
+        elapsed = (clock() - start).total_seconds()
+        sleep(math.ceil(elapsed / interval + 1e-9) * interval - elapsed)
+    return polls
+
+
+def open_recording(path, mode="r"):
+    """A recording file, gzip-compressed where its name ends .gz: a whole network's hour is large."""
+    if path.endswith(".gz"):
+        import gzip
+        return gzip.open(path, mode + "t", encoding="utf-8")
+    return open(path, mode, encoding="utf-8")
+
+
+def read_recording(path):
+    """A recording's lines; a compressed one still being written is read up to where it's got to."""
+    lines = []
+    try:
+        with open_recording(path) as f:
+            for line in f:
+                lines.append(line)
+    except EOFError:
+        # A recording still being written ends mid-stream, and so does a damaged one: either way what came
+        # before is read, and it's said, so a cut-short recording is never scored as if whole.
+        print(f"{path}: ends mid-stream (still being written, or cut short); read {len(lines)} lines", file=sys.stderr)
+    # A last line cut off mid-write isn't a poll.
+    if lines and not lines[-1].endswith("\n"):
+        lines.pop()
+    return lines
 
 
 def vehicle_id(arrival):
@@ -1285,6 +1375,161 @@ def pair_report(found, out=None, two_lines=None):
             print(f"  {line:>18}{len(on):>10}{len(settled):>10}{sum(settled):>10}", file=out)
 
 
+# Timing a train from where TfL says it is ("Left East Finchley", "Between East Finchley and Highgate"):
+# TfL's own countdown can sit at a minute or less while a train is still minutes away (a rider's report,
+# 2026-11-23), while its location text still moves on. How long trains took to arrive from each location,
+# about as long into it, is learned from a recording (`location_samples`), scored against TfL (`score_timings`)
+# and written as the table the app bundles (`timing_table`).
+LOCATION_PLATFORM = re.compile(r"\s+platform\s+\w+$", re.IGNORECASE)
+# How finely the time a train has been at one location is told apart, in seconds.
+ELAPSED_STEP = 20
+# The fewest trains one estimate stands on.
+MIN_SAMPLES = 3
+# Each step's estimate pools the steps this near it, so a train timed a few seconds either side counts.
+POOLED_STEPS = 1
+
+
+def location_state(text):
+    """TfL's location text as a state: lower case, trimmed, without a trailing "Platform N" (TfL names
+    one place both with and without it), "" for none."""
+    return LOCATION_PLATFORM.sub("", (text or "").strip().lower()).rstrip(",").strip()
+
+
+def location_samples(lines, polls, max_gap, arrived_within=60, mode="tube", recording=""):
+    """Every poll of a train whose arrival at the platform is known (`platform_arrivals`), not yet
+    there: (polled_at, visit, platform, state, elapsed, remaining, tfl), where `elapsed` is how long
+    (seconds) TfL had said `state` by then, `remaining` how long the train actually took to arrive,
+    and `tfl` how long TfL said, both in seconds. Each visit is named with its `recording`, so trains
+    from several recordings, whose visits are numbered afresh in each, stay apart when combined."""
+    where = locations(lines, mode)
+    visit_of = visits(polls, max_gap)
+    arrived = platform_arrivals(polls, arrived_within, max_gap)
+    seen = collections.defaultdict(list)
+    for (i, platform, vehicle), visit in visit_of.items():
+        if visit not in arrived:
+            continue
+        polled_at = polls[i][0]
+        state = location_state(where.get((polled_at, platform, vehicle)))
+        expected = next((e for v, e in polls[i][2].get(platform, []) if v == vehicle), None)
+        if state and expected is not None:
+            seen[visit].append((polled_at, state, expected))
+    samples = []
+    for visit, sightings in seen.items():
+        entered, last = None, None
+        for polled_at, state, expected in sorted(sightings):
+            if state != last:
+                entered, last = polled_at, state
+            remaining = (arrived[visit] - polled_at).total_seconds()
+            if remaining < 0 or state.startswith("at platform"):
+                continue
+            samples.append((polled_at, (recording,) + visit, visit[0], state, (polled_at - entered).total_seconds(),
+                            remaining, max(0.0, (expected - polled_at).total_seconds())))
+    return samples
+
+
+def step_of(elapsed):
+    return int(elapsed // ELAPSED_STEP)
+
+
+def timing_table(samples):
+    """{(platform, state): {elapsed step: median seconds to arrival}}, where at least MIN_SAMPLES trains
+    stand behind a step."""
+    found = collections.defaultdict(lambda: collections.defaultdict(list))
+    for _, visit, platform, state, elapsed, remaining, _ in samples:
+        found[(platform, state)][step_of(elapsed)].append((visit, remaining))
+    table = {}
+    for key, steps in found.items():
+        kept = {}
+        # Every step a pooled estimate reaches, as `score_timings` makes them: a step with no train of its own
+        # still has its neighbors'.
+        for step in sorted({near for s in steps for near in range(max(0, s - POOLED_STEPS), s + POOLED_STEPS + 1)}):
+            rows = [row for near in range(step - POOLED_STEPS, step + POOLED_STEPS + 1) for row in steps.get(near, [])]
+            if len({v for v, _ in rows}) >= MIN_SAMPLES:
+                kept[step] = median([r for _, r in rows])
+        if kept:
+            table[key] = kept
+    return table
+
+
+def estimate(table, platform, state, elapsed):
+    """Seconds to arrival for a train at `platform` that has been at `state` for `elapsed` seconds, from
+    `table`; None where it has nothing that long into that state."""
+    return table.get((platform, state), {}).get(step_of(elapsed))
+
+
+RULES = ("tfl", "location", "stalled", "later")
+
+
+def apply_rule(rule, tfl, guess):
+    """The time a rule shows, from TfL's (`tfl`) and the location's (`guess`, None where it has none)."""
+    if guess is None or rule == "tfl":
+        return tfl
+    if rule == "location":
+        return guess
+    if rule == "stalled":
+        return guess if tfl <= 60 else tfl
+    return max(tfl, guess)
+
+
+def score_timings(samples):
+    """Each rule's errors (shown less actual, seconds), every estimate learned only from trains that had
+    reached their platform by the poll it's for, as the app would know them: {rule: [(error, actual,
+    tfl)]}."""
+    ordered = sorted(samples, key=lambda s: s[0])
+    arrivals = sorted((s[0] + datetime.timedelta(seconds=s[5]), s) for s in samples)
+    learned = collections.defaultdict(lambda: collections.defaultdict(dict))
+    k = 0
+    errors = {rule: [] for rule in RULES}
+    for polled_at, visit, platform, state, elapsed, remaining, tfl in ordered:
+        while k < len(arrivals) and arrivals[k][0] <= polled_at:
+            s = arrivals[k][1]
+            learned[(s[2], s[3])][step_of(s[4])].setdefault(s[1], []).append(s[5])
+            k += 1
+        steps = learned.get((platform, state), {})
+        rows = {}
+        for near in range(step_of(elapsed) - POOLED_STEPS, step_of(elapsed) + POOLED_STEPS + 1):
+            for v, rs in steps.get(near, {}).items():
+                rows.setdefault(v, []).extend(rs)
+        guess = median([r for rs in rows.values() for r in rs]) if len(rows) >= MIN_SAMPLES else None
+        for rule in RULES:
+            errors[rule].append((apply_rule(rule, tfl, guess) - remaining, remaining, tfl))
+    return errors
+
+
+def timings_report(errors, out=sys.stdout):
+    def line(label, rows):
+        if not rows:
+            return
+        absolute = [abs(e) for e, _, _ in rows]
+        print(f"  {label:<10} n={len(rows):6d}  mean abs {sum(absolute) / len(absolute):5.0f} s  median abs "
+              f"{median(absolute):4.0f} s  mean signed {sum(e for e, _, _ in rows) / len(rows):+5.0f} s", file=out)
+    cases = (
+        ("all", lambda actual, tfl: True),
+        ("under 1 min away", lambda actual, tfl: actual < 60),
+        ("1-3 min away", lambda actual, tfl: 60 <= actual < 180),
+        ("3-10 min away", lambda actual, tfl: 180 <= actual < 600),
+        ("stalled (TfL 1 min or less, 2+ min away)", lambda actual, tfl: tfl <= 60 and actual >= 120),
+    )
+    for name, keep in cases:
+        print(name, file=out)
+        for rule in RULES:
+            line(rule, [r for r in errors[rule] if keep(r[1], r[2])])
+
+
+# The table format the app reads (`LocationTimingsStore`); a change it can't read gets a new number.
+TABLE_VERSION = 1
+
+
+def table_json(table):
+    """`timing_table` as the app reads it: {"version", "stops": {stop: {line: {platform number: {state:
+    [[step, seconds]...]}}}}}."""
+    out = {}
+    for ((stop, line, number), state), steps in sorted(table.items()):
+        out.setdefault(stop, {}).setdefault(line, {}).setdefault(number, {})[state] = [
+            [step, round(seconds)] for step, seconds in sorted(steps.items())]
+    return {"version": TABLE_VERSION, "stops": out}
+
+
 def report(result, gaps_by_platform, out=sys.stdout, lines=None):
     def label(h):
         low, high = h
@@ -1336,7 +1581,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     rec = sub.add_parser("record", help="poll arrivals into a JSON-lines file")
-    rec.add_argument("stops", nargs="+", help="StopPoint ids, e.g. 940GZZLUEUS")
+    rec.add_argument("stops", nargs="*", help="StopPoint ids, e.g. 940GZZLUEUS")
+    rec.add_argument("--lines", help="poll every stop on these TfL line ids at once, e.g. northern,victoria, instead of stops")
     rec.add_argument("--interval", type=float, default=20, help="seconds between polls (default 20)")
     rec.add_argument("--duration", type=float, default=3600, help="seconds to record (default 3600)")
     rec.add_argument("--out", required=True, help="file to append to")
@@ -1358,6 +1604,15 @@ def main(argv=None):
     pa.add_argument("--arrived-within", type=float, default=60,
                     help="a train last listed further past its time is left unsettled (default 60 s)")
     pa.add_argument("--mode", default="tube")
+    ti = sub.add_parser("timings", help="score timing trains from TfL's location text against TfL's times")
+    ti.add_argument("recording", nargs="+")
+    ti.add_argument("--max-gap", type=float, default=90,
+                    help="a stop's polls further apart than this break its coverage (default 90 s)")
+    tb = sub.add_parser("table", help="write the location timing table the app bundles, from recordings")
+    tb.add_argument("recording", nargs="+")
+    tb.add_argument("--out", required=True)
+    tb.add_argument("--max-gap", type=float, default=90,
+                    help="a stop's polls further apart than this break its coverage (default 90 s)")
     args = parser.parse_args(argv)
     if args.command == "record":
         # Asking after vehicles as well as stops needs a key's limit: keyless, 50 a minute leaves
@@ -1367,15 +1622,33 @@ def main(argv=None):
         # One file holding both would interleave polls with vehicle calls, and neither could be read.
         if args.vehicles and same_file(args.vehicles, args.out):
             parser.error("--vehicles needs a file of its own, not --out")
-        with open(args.out, "a", encoding="utf-8") as out:
+        if bool(args.lines) == bool(args.stops):
+            parser.error("give stops or --lines, not both")
+        if args.lines and args.vehicles:
+            parser.error("--vehicles needs stops, not --lines")
+        if args.lines:
+            with open_recording(args.out, "a") as out:
+                record_lines([l for l in args.lines.split(",") if l], args.interval, args.duration, out)
+            return 0
+        with open_recording(args.out, "a") as out:
             if args.vehicles:
                 with open(args.vehicles, "a", encoding="utf-8") as vehicles_out:
                     record(args.stops, args.interval, args.duration, out, vehicles_out=vehicles_out)
             else:
                 record(args.stops, args.interval, args.duration, out)
         return 0
-    with open(args.recording, encoding="utf-8") as f:
-        lines = f.readlines()
+    if args.command in ("timings", "table"):
+        samples = []
+        for path in args.recording:
+            lines = read_recording(path)
+            samples += location_samples(lines, load(lines), args.max_gap, recording=path)
+        if args.command == "timings":
+            timings_report(score_timings(samples))
+            return 0
+        with open(args.out, "w", encoding="utf-8") as out:
+            json.dump(table_json(timing_table(samples)), out, separators=(",", ":"), sort_keys=True)
+        return 0
+    lines = read_recording(args.recording)
     polls = load(lines, args.mode)
     if not polls:
         print(f"{args.recording}: no polls", file=sys.stderr)
