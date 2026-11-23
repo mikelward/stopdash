@@ -1272,6 +1272,164 @@ class FailureTest(unittest.TestCase):
         self.assertIn("ValueError: not JSON", line)
 
 
+def location_runs(count=4, every=300):
+    """`count` trains, one every `every` s, each "Left East Finchley Platform 4" for 100 s while TfL says it's
+    due 60 s after it first shows (a stalled countdown), then "Approaching Highgate" for 60 s, then "At
+    Platform" at 180 s for 20 s. Polled every 20 s throughout, so each arrives at 170 s, halfway between
+    the poll before and the one that first says so."""
+    lines = []
+    for t in range(0, count * every + 1, 20):
+        listed = []
+        for k in range(count):
+            start = k * every
+            into = t - start
+            vehicle = f"T{k}"
+            if 0 <= into < 120:
+                listed.append(train(vehicle, max(t, start + 60), t, location="Left East Finchley Platform 4"))
+            elif 120 <= into < 180:
+                listed.append(train(vehicle, t + 20, t, location="Approaching Highgate"))
+            elif 180 <= into < 200:
+                listed.append(standing(vehicle, t, t))
+        lines.append(poll(t, *listed))
+    return lines
+
+
+class LocationTimingTest(unittest.TestCase):
+    def samples(self, lines=None):
+        lines = lines or location_runs()
+        return ar.location_samples(lines, ar.load(lines), GAP)
+
+    def test_a_location_is_its_text_without_a_platform(self):
+        self.assertEqual("left east finchley", ar.location_state("Left East Finchley Platform 4"))
+        self.assertEqual("at east finchley", ar.location_state("At East Finchley,"))
+        self.assertEqual("", ar.location_state(None))
+
+    def test_each_poll_says_how_long_the_train_has_been_there_and_how_long_it_took(self):
+        first = sorted((s for s in self.samples() if s[1][3] == "T0"), key=lambda s: s[0])
+        # (state, seconds at it, seconds to arrival, TfL's seconds): it arrived at 170.
+        self.assertEqual(
+            [("left east finchley", 0, 170, 60), ("left east finchley", 20, 150, 40),
+             ("left east finchley", 40, 130, 20), ("left east finchley", 60, 110, 0),
+             ("left east finchley", 80, 90, 0), ("left east finchley", 100, 70, 0),
+             ("approaching highgate", 0, 50, 20), ("approaching highgate", 20, 30, 20),
+             ("approaching highgate", 40, 10, 20)],
+            [(state, elapsed, remaining, tfl) for _, _, _, state, elapsed, remaining, tfl in first])
+
+    def test_the_table_takes_a_median_from_enough_trains_pooling_steps_either_side(self):
+        table = ar.timing_table(self.samples())
+        steps = table[(KEY, "left east finchley")]
+        # Four trains alike: the 60 s step pools 40-80 s in, whose median is 110 s.
+        self.assertEqual(110, steps[ar.step_of(60)])
+        self.assertEqual(110, ar.estimate(table, KEY, "left east finchley", 65))
+        self.assertIsNone(ar.estimate(table, KEY, "left east finchley", 400))
+        # Fewer trains than it stands on: no estimate.
+        self.assertEqual({}, ar.timing_table(self.samples(location_runs(count=2))))
+        # A step no train was polled at still has its neighbors' estimate, as scoring pools them: polled
+        # every 20 s up to 100 s in, 120 s in pools only the 100 s step.
+        self.assertEqual(70, ar.estimate(table, KEY, "left east finchley", 125))
+
+    def test_trains_from_several_recordings_are_told_apart(self):
+        lines = location_runs(count=1)
+        polls = ar.load(lines)
+        # One train in each of three recordings: three trains, enough for an estimate.
+        samples = [s for name in ("a", "b", "c") for s in ar.location_samples(lines, polls, GAP, recording=name)]
+        self.assertEqual(3, len({s[1] for s in samples}))
+        self.assertEqual(110, ar.estimate(ar.timing_table(samples), KEY, "left east finchley", 60))
+
+    def test_the_rules_only_one_moves_a_time_sooner(self):
+        self.assertEqual(30, ar.apply_rule("tfl", 30, 120))
+        self.assertEqual(120, ar.apply_rule("later", 30, 120))
+        self.assertEqual(200, ar.apply_rule("later", 200, 120))
+        self.assertEqual(120, ar.apply_rule("location", 200, 120))
+        self.assertEqual(200, ar.apply_rule("stalled", 200, 120))
+        self.assertEqual(120, ar.apply_rule("stalled", 60, 120))
+        self.assertEqual(60, ar.apply_rule("later", 60, None))
+
+    def test_a_stalled_countdown_is_timed_from_trains_already_arrived(self):
+        errors = ar.score_timings(self.samples(location_runs(count=6)))
+        # TfL said 0 for a train still 110 s away; once three trains alike had arrived, the location says 110.
+        stalled_tfl = [e for e, actual, tfl in errors["tfl"] if tfl == 0 and actual == 110]
+        stalled_later = [e for e, actual, tfl in errors["later"] if tfl == 0 and actual == 110]
+        self.assertEqual([-110] * 6, stalled_tfl)
+        self.assertEqual([-110] * 3 + [0] * 3, stalled_later)
+
+    def test_the_table_is_written_by_stop_line_platform_and_location(self):
+        written = ar.table_json({(KEY, "approaching highgate"): {0: 50.4, 1: 30}})
+        self.assertEqual({"version": 1, "stops": {STOP: {"northern": {"2": {"approaching highgate": [[0, 50], [1, 30]]}}}}},
+                         written)
+
+
+class RecordLinesTest(unittest.TestCase):
+    def test_one_request_a_round_writes_each_stop_as_a_stop_poll_would(self):
+        time_ = FakeTime()
+        asked = []
+
+        def fetch(lines):
+            asked.append(lines)
+            time_.take(1)
+            if len(asked) == 2:
+                raise OSError("reset")
+            listed = [dict(train("A", 100, 0), naptanId="S2"), dict(train("B", 60, 0), naptanId="S1"),
+                      dict(train("C", 90, 0), naptanId="S1")]
+            # The last round lists nothing at S2.
+            answer = ar.Answer(listed if len(asked) < 3 else listed[1:])
+            answer.age = 5
+            return answer
+
+        out = io.StringIO()
+        with unittest.mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            polls = ar.record_lines(["northern", "victoria"], 20, 60, out, fetch=fetch, sleep=time_.sleep, clock=time_.clock)
+        self.assertIn("fetch failed", err.getvalue())
+        self.assertEqual([["northern", "victoria"]] * 3, asked)
+        self.assertEqual(2, polls)
+        written = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual(["S1", "S2", "S1", "S2"], [w["stop"] for w in written])
+        # A stop listed before and now empty is written empty, so a train gone from it reads as gone.
+        self.assertEqual([], written[3]["arrivals"])
+        self.assertEqual(5, written[3]["age"])
+        self.assertEqual([["B", "C"], ["A"]], [[a["vehicleId"] for a in w["arrivals"]] for w in written[:2]])
+        self.assertEqual(5, written[0]["age"])
+
+    def test_whole_line_rounds_keep_under_the_rate_limit(self):
+        time_ = FakeTime()
+        asked = []
+
+        def fetch(lines):
+            asked.append(time_.clock())
+            return ar.Answer([])
+
+        ar.record_lines(["northern"], 0.5, 90, io.StringIO(), fetch=fetch, sleep=time_.sleep, clock=time_.clock, per_minute=50)
+        # Asked every half second, the limiter holds any minute to 50 requests.
+        for i, at_ in enumerate(asked):
+            self.assertLessEqual(sum(1 for a in asked[i:] if a < at_ + datetime.timedelta(minutes=1)), 50)
+        self.assertGreater(len(asked), 50)
+
+    def test_a_stop_recording_named_gz_is_written_compressed(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "stops.jsonl.gz")
+            fetch = lambda stop: ar.Answer([train("A", 60, 0)])
+            with unittest.mock.patch.object(ar, "record", lambda stops, interval, duration, out, **kw: out.write(poll(0) + "\n")):
+                self.assertEqual(0, ar.main(["record", "S1", "--out", path, "--duration", "1"]))
+            self.assertEqual([poll(0) + "\n"], ar.read_recording(path))
+
+    def test_a_compressed_recording_still_being_written_is_read_up_to_where_it_got(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "r.jsonl.gz")
+            with ar.open_recording(path, "a") as f:
+                f.write(poll(0) + "\n" + poll(20) + "\n")
+            with open(path, "rb") as f:
+                whole = f.read()
+            with open(path, "wb") as f:
+                f.write(whole[:-4])
+            with unittest.mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                self.assertLessEqual(len(ar.read_recording(path)), 2)
+            self.assertIn("ends mid-stream", err.getvalue())
+            with open(path, "wb") as f:
+                f.write(gzip.compress((poll(0) + "\n" + poll(20)).encode()))
+            self.assertEqual([poll(0) + "\n"], ar.read_recording(path))
+
+
 class FakeResponse(io.BytesIO):
     def __init__(self, body, headers):
         super().__init__(json.dumps(body).encode())
