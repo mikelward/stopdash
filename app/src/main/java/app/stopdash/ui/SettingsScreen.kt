@@ -419,7 +419,7 @@ fun SettingsScreen(
                 // Under what's hidden and avoided: like them, it decides what the boards show.
                 SettingSwitchRow(
                     title = stringResource(R.string.settings_train_spacing_title),
-                    summary = stringResource(R.string.settings_train_spacing_summary),
+                    summary = stringResource(R.string.settings_train_times_summary),
                     checked = trainSpacing == true,
                     onCheckedChange = onTrainSpacingChange,
                     enabled = trainSpacing != null,

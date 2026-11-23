@@ -314,6 +314,21 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a train TfL says is due that its location says may still be minutes away reads as a range`() {
+        // TfL says due now; where it is, trains took up to 2 minutes more ([LocatedTrains]).
+        val trains = listOf(
+            dep("northern", "Northern", "inbound", "Morden", 0, "Southbound - Platform 2").copy(upTo = now.plusSeconds(150)),
+            dep("northern", "Northern", "inbound", "Morden", 420, "Southbound - Platform 2"),
+        )
+        val euston = StopArrivals("940GZZLUEUS", "Euston", trains, fetchedAt = now, clusterId = "940GZZLUEUS")
+        capture("main-located-range.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(euston), now), now, {})
+        }
+        composeRule.onNodeWithText("0\u20132 · 7 min").assertExists()
+        composeRule.onNodeWithContentDescription("0 to 2 min, 7 min").assertExists()
+    }
+
+    @Test
     fun `a train just past its time is said to be due, whatever else is said of it`() {
         // Due 10 s ago and also one of a close pair (may not run): heard as due, as it's at 0 and leaving.
         val trains = listOf(

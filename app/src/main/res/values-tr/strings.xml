@@ -615,7 +615,6 @@
     <string name="settings_wifi_places_summary">Evde ve işte yavaş veya yanlış konumu düzeltir</string>
     <string name="settings_wifi_places_write_failed">Kaydedilemedi; StopDash yeniden başlatılınca sıfırlanır</string>
     <string name="settings_train_spacing_title">Tren aralıklarını düzelt</string>
-    <string name="settings_train_spacing_summary">Trenler imkânsız derecede yakınsa saatleri ayarla</string>
     <string name="settings_nearby_grouping_title">Yakındaki kalkışları grupla</string>
     <string name="settings_nearby_grouping_platform">Durağa/perona göre</string>
     <string name="settings_nearby_grouping_station">İstasyona göre</string>

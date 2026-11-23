@@ -25,6 +25,8 @@ import app.stopdash.domain.RailIncidentCache
 import app.stopdash.domain.RailIncidents
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.SpacedTrains
+import app.stopdash.domain.LocationTimings
+import app.stopdash.domain.LocatedTrains
 import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -165,6 +167,10 @@ class KtorTflClient(
     // Tube trains standing still while their time slides, grayed as held ([HeldTrains]). Shared like
     // [newestArrivals] ([HeldTrains.SHARED]), since a train is followed across answers; a test keeps its own.
     private val heldTrains: HeldTrains = HeldTrains(),
+    // Tube trains due by TfL that their location says are still well away, given a range ([LocatedTrains]): the bundled table,
+    // and each train's location as first seen, shared by every client.
+    private val locationTimings: () -> LocationTimings = LocationTimingsStore::current,
+    private val locatedTrains: LocatedTrains = LocatedTrains.SHARED,
     // Where each request's answer is read: decoding a route's sequence (~600 KB for a National Rail
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
@@ -611,10 +617,10 @@ class KtorTflClient(
                 // Already on the decode dispatcher; the hop names it here, where lint can see it.
                 .let { answer ->
                     withContext(decodeDispatcher) {
-                        val newest = withNewest(stopId, answer)
+                        val (newest, located) = withNewest(stopId, answer)
                         val marked = withDoubtfulMarked(stopId, Turnback.relabel(newest, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
                         // Turned off in Settings: TfL's own times, the doubtful marks kept.
-                        if (trainSpacing()) withSpacing(stopId, marked) else marked
+                        if (trainSpacing()) withSpacing(stopId, withLocations(stopId, marked, located)) else marked
                     }
                 }
                 .let(DepartureRows::inferDirections)
@@ -623,7 +629,7 @@ class KtorTflClient(
     // The answer's departures, or the stop's last answer's when this one is an older cache copy, and said
     // so with how much older: a stop stepping back in time is what the debug log should show.
     @WorkerThread
-    private fun withNewest(stopId: String, answer: List<TflArrivalDto>): List<Departure> {
+    private fun withNewest(stopId: String, answer: List<TflArrivalDto>): Pair<List<Departure>, Map<String, String>?> {
         val madeAt = answer.mapNotNull { dto ->
             dto.timestamp?.let { stamp ->
                 try {
@@ -656,7 +662,29 @@ class KtorTflClient(
                 logDoubtful("held at $stopId: " + located.joinToString { (d, at) -> "${d.lineId} ${d.vehicleId} ($at)" })
             }
         }
-        return held
+        // Where TfL had each train, for timing it from there ([withLocations]), by its line, id and platform, which
+        // the stages after keep; none for an older copy set aside, whose trains' places aren't now's.
+        val located = if (fresh) held.indices.associate { i -> locatedKey(held[i]) to answer[i].currentLocation.orEmpty() } else null
+        return held to located
+    }
+
+    private fun locatedKey(d: Departure) = "${d.lineId}|${d.vehicleId}|${d.platform}"
+
+    // Tube trains due by TfL that their location says are still well away given a range ([LocatedTrains]), on TfL's
+    // times as marked above and before spacing, and each said so with how much later its latest is.
+    @WorkerThread
+    private fun withLocations(stopId: String, departures: List<Departure>, located: Map<String, String>?): List<Departure> {
+        // An older copy set aside: its trains keep the latest the newest answer gave them.
+        located ?: return locatedTrains.kept(stopId, clock(), departures)
+        val result = locatedTrains.retime(stopId, clock(), departures, departures.map { located[locatedKey(it)].orEmpty() }, locationTimings())
+        if (result.moved.isNotEmpty()) {
+            logDoubtful(
+                "located at $stopId: " + result.moved.joinToString { (d, by) ->
+                    "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId} +${by.seconds}s"
+                },
+            )
+        }
+        return result.departures
     }
 
     // A train TfL may be tracking twice is marked, and said so: what the feed looked like each time is

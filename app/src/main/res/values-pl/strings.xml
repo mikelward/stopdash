@@ -635,7 +635,6 @@
     <string name="settings_wifi_places_summary">Poprawia wolną lub błędną lokalizację w domu i w pracy</string>
     <string name="settings_wifi_places_write_failed">Nie udało się zapisać. Zmiana zostanie cofnięta po ponownym uruchomieniu StopDash.</string>
     <string name="settings_train_spacing_title">Popraw odstępy pociągów</string>
-    <string name="settings_train_spacing_summary">Popraw godziny, gdy pociągi są nierealnie blisko</string>
     <string name="settings_nearby_grouping_title">Grupuj odjazdy w pobliżu</string>
     <string name="settings_nearby_grouping_platform">Według przystanku/peronu</string>
     <string name="settings_nearby_grouping_station">Według stacji</string>

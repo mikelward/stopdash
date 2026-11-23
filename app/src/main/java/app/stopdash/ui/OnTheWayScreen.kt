@@ -1686,7 +1686,7 @@ private fun OffPlanCard(
                             Text(
                                 stringResource(
                                     R.string.on_the_way_off_plan_times,
-                                    row.trains.joinToString(" · ") { Countdown.minutes(it.expectedArrival, now).toString() },
+                                    row.trains.joinToString(" · ") { Countdown.timeText(it, now) },
                                 ),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,

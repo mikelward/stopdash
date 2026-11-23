@@ -621,7 +621,6 @@
     <string name="settings_wifi_places_summary">Correggi la posizione lenta o errata a casa e al lavoro</string>
     <string name="settings_wifi_places_write_failed">Impossibile salvare: la modifica si annullerà al riavvio di StopDash</string>
     <string name="settings_train_spacing_title">Correggi la distanza tra i treni</string>
-    <string name="settings_train_spacing_summary">Regola gli orari quando i treni sono troppo ravvicinati</string>
     <string name="settings_nearby_grouping_title">Raggruppa le partenze vicine</string>
     <string name="settings_nearby_grouping_platform">Per fermata/binario</string>
     <string name="settings_nearby_grouping_station">Per stazione</string>

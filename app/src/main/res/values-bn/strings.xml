@@ -615,7 +615,6 @@
     <string name="settings_wifi_places_summary">বাড়িতে ও কর্মস্থলে ধীর বা ভুল লোকেশন ঠিক করুন</string>
     <string name="settings_wifi_places_write_failed">সেভ করা যায়নি; StopDash রিস্টার্ট হলে এটি রিসেট হবে</string>
     <string name="settings_train_spacing_title">ট্রেনের ব্যবধান ঠিক করুন</string>
-    <string name="settings_train_spacing_summary">ট্রেন অসম্ভব কাছাকাছি দেখালে সময় ঠিক করুন</string>
     <string name="settings_nearby_grouping_title">কাছাকাছি প্রস্থান গোষ্ঠীভুক্ত করুন</string>
     <string name="settings_nearby_grouping_platform">স্টপ/প্ল্যাটফর্ম অনুযায়ী</string>
     <string name="settings_nearby_grouping_station">স্টেশন অনুযায়ী</string>

@@ -127,7 +127,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Fix train spacing").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Adjust times when trains are impossibly close").assertIsDisplayed()
+        composeRule.onNodeWithText("Adjust times when trains are impossibly close or a countdown stalls").assertIsDisplayed()
         captureSnapshot("settings-train-spacing.png")
         composeRule.onNodeWithTag("trainSpacingSwitch").assertIsOn().performClick()
         assertEquals(listOf(false), chosen)

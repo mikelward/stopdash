@@ -61,6 +61,16 @@ class PersistedSnapshotTest {
     }
 
     @Test
+    fun `a train shown as a range keeps its latest through a restore`() {
+        val snapshot = sample()
+        val stop = snapshot.stops.first()
+        val ranged = snapshot.copy(
+            stops = listOf(stop.copy(departures = stop.departures.map { it.copy(expectedArrival = now, upTo = now.plusSeconds(150)) })) + snapshot.stops.drop(1),
+        )
+        assertEquals(now.plusSeconds(150), ranged.toPersisted().toDomain()!!.stops.first().departures.single().upTo)
+    }
+
+    @Test
     fun `stop disruptions are not persisted, since a closure cannot be safely aged`() {
         val closed = DeparturesSnapshot(
             stops = listOf(

@@ -807,6 +807,25 @@ shown stay until they go stale, as after any failed refresh; and a widget or wat
 list behind it may keep its saved times until they're past reuse (under a minute) before fetching
 under the new choice.
 
+**A stalled Tube countdown shows how late the train may still come** (maintainer, 2026-11-23). TfL's
+countdown can sit at a minute or less while a train is still minutes away: a rider in a ticket hall saw
+"0 min" for two minutes and didn't run, while the station's own board said 2 min, and the train came then.
+TfL's location text for the train ("Left East Finchley", "Between East Finchley and Highgate") still moves
+on when its countdown doesn't, and how long trains took to arrive from each location, at each platform,
+about as long into it, is recorded from the whole Tube and bundled with the app
+(`dev-docs/arrivals-measurements.md`). A Tube train TfL says is due within a minute, whose location says it
+will come at least a minute later than that, is shown as a **range** from TfL's minutes to the location's:
+"0–2 min", read aloud as "0 to 2 min". Neither time is shown alone: recorded, taking the location's in
+place of TfL's halved the trains shown due while still 2 or more minutes away, but put about as many trains
+that did come soon a minute or more too late, and a missed train is no better than one given up on. The
+range never says a train due now isn't, only that it may still be coming, so the train stays on the board as
+one still to come, not grayed as just past its time, until the range's end. It's on every surface, the widget
+and watch and a restored board included, not grayed, and each one is noted in the debug log with how much
+later its latest is. It runs before spacing and under the same switch, **Fix train spacing** ("Adjust times
+when trains are impossibly close or a countdown stalls"): off, TfL's own times alone. How long a train has
+been at its location is counted from when the app first saw it there. The bundled timings are recorded again
+as timetables change.
+
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is
 headed by a **single title-case line** naming the place and that platform/pole, and holds

@@ -101,6 +101,9 @@ data class Departure(
     val held: Boolean = false,
     val pastDue: Boolean = false,
     val suspended: Boolean = false,
+    // The latest this Tube train may come by where TfL says it is ([LocatedTrains]), where that's well after its
+    // own time, which has stalled at due: shown as a range from its time to this ("0–2 min"). Null for most trains.
+    val upTo: Instant? = null,
 ) {
     /**
      * Either of a close pair, a train on two lines ([paired]), or one headed into a stretch with no

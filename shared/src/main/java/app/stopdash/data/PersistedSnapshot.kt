@@ -501,6 +501,9 @@ data class PersistedDeparture(
     // A tube train held where it stands ([HeldTrains]), so a restored board still grays it. Defaulted
     // false for an older snapshot.
     val held: Boolean = false,
+    // The latest a train due now may come by where TfL said it was ([Departure.upTo]), so a restored board, the
+    // widget and the watch show its range too. Defaulted null for an older snapshot.
+    val upToMillis: Long? = null,
 )
 
 @Serializable
@@ -615,6 +618,7 @@ private fun Departure.toPersisted(): PersistedDeparture =
         doubtful = doubtful,
         paired = paired,
         held = held,
+        upToMillis = upTo?.toEpochMilli(),
     )
 
 internal fun PersistedDeparture.toDomain(): Departure =
@@ -637,4 +641,5 @@ internal fun PersistedDeparture.toDomain(): Departure =
         doubtful = doubtful && paired,
         paired = paired,
         held = held,
+        upTo = upToMillis?.let(Instant::ofEpochMilli),
     )

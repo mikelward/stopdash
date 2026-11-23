@@ -621,7 +621,6 @@
     <string name="settings_wifi_places_summary">Corectează localizarea lentă sau greșită acasă și la serviciu</string>
     <string name="settings_wifi_places_write_failed">Nu s-a putut salva; se resetează când StopDash repornește</string>
     <string name="settings_train_spacing_title">Corectați distanța dintre trenuri</string>
-    <string name="settings_train_spacing_summary">Ajustați orele când trenurile sunt imposibil de apropiate</string>
     <string name="settings_nearby_grouping_title">Grupați plecările din apropiere</string>
     <string name="settings_nearby_grouping_platform">După punct de oprire</string>
     <string name="settings_nearby_grouping_station">După stație</string>

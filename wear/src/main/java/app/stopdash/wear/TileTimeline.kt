@@ -458,7 +458,8 @@ object TileTimeline {
             }
             for (departure in stop.departures) {
                 if (HiddenModes.isHidden(departure.mode, departure.lineId, hidden)) continue
-                val arrival = departure.expectedArrival
+                // A range ("0–2 min") changes at its latest's minutes too ([Countdown.changesAt]).
+                for (arrival in Countdown.changesAt(departure)) {
                 if (arrival <= now) continue
                 // It drops off the moment it departs; before that, its minute count goes down just
                 // after each whole minute left (at exactly 2:00 left it still reads "2 min"). Only
@@ -471,6 +472,7 @@ object TileTimeline {
                     add(tick)
                     k++
                     tick = arrival.minusSeconds(60 * k).plusMillis(1)
+                }
                 }
             }
         }

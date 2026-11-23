@@ -60,15 +60,37 @@ object Countdown {
     fun mergedLabel(departures: List<Departure>, now: Instant, words: CountdownWords = CountdownWords.ENGLISH): String {
         if (departures.isEmpty()) return ""
         // Every entry is a number, so the "min" unit always belongs at the end.
-        return words.minutes(departures.joinToString(words.between) { minutes(it.expectedArrival, now).toString() })
+        return words.minutes(departures.joinToString(words.between) { timeText(it, now) })
     }
+
+    /**
+     * The latest minutes a train may come in, where its location says well after its own time ([Departure.upTo]);
+     * null where it says nothing later than the train's own minutes.
+     */
+    fun upToMinutes(departure: Departure, now: Instant): Long? {
+        val upTo = departure.upTo ?: return null
+        val latest = minutes(upTo, now)
+        return latest.takeIf { it > minutes(departure.expectedArrival, now) }
+    }
+
+    /** One train's time in a countdown: its minutes ("0"), or the range to [upToMinutes] ("0–2"). */
+    fun timeText(departure: Departure, now: Instant): String {
+        val soonest = minutes(departure.expectedArrival, now)
+        return upToMinutes(departure, now)?.let { "$soonest$RANGE$it" } ?: soonest.toString()
+    }
+
+    /** Between a range's two ends: an en dash, as a range is written. */
+    const val RANGE = "\u2013"
 
     /**
      * One train's minutes in a merged countdown ([minutes]), whether it may not run ([Departure.mayNotRun]),
      * and whether it's [held] ([Departure.held]).
      */
-    data class Part(val minutes: Long, val doubtful: Boolean, val held: Boolean = false, val pastDue: Boolean = false) {
+    data class Part(val minutes: Long, val doubtful: Boolean, val held: Boolean = false, val pastDue: Boolean = false, val upTo: Long? = null) {
         val grayed: Boolean get() = doubtful || held || pastDue
+
+        /** As a countdown writes it: the minutes, or the range to [upTo]. */
+        val text: String get() = upTo?.let { "$minutes$RANGE$it" } ?: minutes.toString()
     }
 
     /**
@@ -76,7 +98,7 @@ object Countdown {
      * those; read as [mergedLabel] reads them.
      */
     fun parts(departures: List<Departure>, now: Instant): List<Part> =
-        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun, it.held, it.pastDue) }
+        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun, it.held, it.pastDue, upToMinutes(it, now)) }
 
     /**
      * One time in a merged countdown: a train's [Timed] minutes, or a train its board lists with no
@@ -113,7 +135,7 @@ object Countdown {
         val last = entries.indexOfLast { it is Entry.Timed }
         return entries.mapIndexed { i, entry ->
             when (entry) {
-                is Entry.Timed -> minutes(entry.departure.expectedArrival, now).toString().let { if (i == last) words.minutes(it) else it }
+                is Entry.Timed -> timeText(entry.departure, now).let { if (i == last) words.minutes(it) else it }
                 is Entry.Untimed -> if (entry.train.canceled) canceled else delayed
             }
         }.joinToString(words.between)
@@ -167,11 +189,34 @@ object Countdown {
         return departures.mapNotNull { d ->
             when {
                 !hasDeparted(d, now) -> d
+                // TfL's time stalled at due while its location says it may still be coming ([Departure.upTo]): it
+                // stays, "0–2", as a train still to come, until its latest.
+                stillRanged(d, now) -> d
                 inGrace(d, now, lineMode) -> d.copy(pastDue = true)
                 else -> null
             }
         }.sortedWith(compareBy({ it.expectedArrival }, { it.lineName }))
     }
+
+    /** Whether a board still shows [departure] at [now]: before its time, or before the latest its location gives. */
+    fun stillRanged(departure: Departure, now: Instant): Boolean = departure.upTo?.isAfter(now) == true
+
+    /**
+     * [departures] a surface with no grace shows at [now] (the widget, the watch): those still to come
+     * ([upcoming]), and a train past its time while its location says it may still come ([stillRanged]),
+     * soonest first, so "0–2 min" stays on every surface alike.
+     */
+    fun shown(departures: List<Departure>, now: Instant): List<Departure> =
+        departures.filterNot { goneFromBoard(it, now) }.sortedWith(compareBy({ it.expectedArrival }, { it.lineName }))
+
+    /**
+     * The instants a [departure]'s countdown text can next change at: its time, and the latest its location
+     * gives ([Departure.upTo]), each of whose minute counts goes down as the clock passes it.
+     */
+    fun changesAt(departure: Departure): List<Instant> = listOfNotNull(departure.expectedArrival, departure.upTo)
+
+    /** Whether a board has let [departure] go by [now] ([onBoard]'s rule for a train past its time, less the grace). */
+    fun goneFromBoard(departure: Departure, now: Instant): Boolean = hasDeparted(departure, now) && !stillRanged(departure, now)
 
     private fun inGrace(d: Departure, now: Instant, lineMode: Map<String, String>): Boolean =
         d.mode.ifBlank { lineMode[d.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
