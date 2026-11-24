@@ -63,6 +63,11 @@ class ParseTest(unittest.TestCase):
         self.assertEqual("STP", table["codes"]["STPX"])
         self.assertNotIn("SPL", table["codes"].values())
 
+    def test_heathrow_terminals_2_and_3_takes_its_own_station_code_not_the_airports(self):
+        stops = [stop(f"9100S{i:04d}", f"{chr(65 + i % 26)}{chr(65 + i // 26 % 26)}{chr(65 + i // 676 % 26)}") for i in range(2100)]
+        table = build_crs_index.build(xml(*stops, stop("9100HTRWAPT", "LHR")))
+        self.assertEqual("HXX", table["codes"]["HTRWAPT"])
+
     def test_the_table_is_sorted_and_versioned(self):
         stops = [stop(f"9100S{i:04d}", f"{chr(65 + i % 26)}{chr(65 + i // 26 % 26)}{chr(65 + i // 676 % 26)}") for i in range(2100)]
         table = build_crs_index.build(xml(*reversed(stops)))

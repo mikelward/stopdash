@@ -31,7 +31,9 @@ FORMAT_VERSION = 1
 # Codes the departure-board service refuses, each with the code whose board carries its trains:
 # St Pancras low level (SPL) answers HTTP 400, and its Thameslink trains come on St Pancras's own
 # board (STP). So a train boarding there is timed from STP's board, never a failing request.
-BOARD_OF = {"SPL": "STP"}
+# NaPTAN gives Heathrow Terminals 2 & 3 (HTRWAPT) the airport's code, LHR, which the board service
+# refuses too (HTTP 400, a rider's report, 2026-11-24): its own station code is HXX.
+BOARD_OF = {"SPL": "STP", "LHR": "HXX"}
 RETRY_DELAYS = (5, 15, 45)
 
 
