@@ -104,6 +104,9 @@ data class Departure(
     // The latest this Tube train may come by where TfL says it is ([LocatedTrains]), where that's well after its
     // own time, which has stalled at due: shown as a range from its time to this ("0–2 min"). Null for most trains.
     val upTo: Instant? = null,
+    // TfL places this Tube train "At Platform" at this stop, in the answer it came in: it holds the platform, so a
+    // train behind it can't come until it's gone ([SpacedTrains]). Not saved: spacing is worked out as it comes.
+    val atPlatform: Boolean = false,
 ) {
     /**
      * Either of a close pair, a train on two lines ([paired]), or one headed into a stretch with no

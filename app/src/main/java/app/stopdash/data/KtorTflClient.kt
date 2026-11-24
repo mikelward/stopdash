@@ -641,7 +641,13 @@ class KtorTflClient(
                 }
             }
         }.maxOrNull()
-        val departures = answer.map { it.toDeparture() }
+        // A train TfL places at the platform holds it, so spacing times the one behind from it ([SpacedTrains]): marked
+        // before the newest answer is kept, so an older copy set aside later reuses it marked.
+        val departures = answer.map { dto ->
+            dto.toDeparture().let { d ->
+                if (dto.currentLocation.orEmpty().trim().startsWith("At Platform", ignoreCase = true)) d.copy(atPlatform = true) else d
+            }
+        }
         // Picked and marked as one step, so two answers for a stop finishing together can't cross: an older
         // copy set aside, then marked before the newer answer it lost to, would read as fresh and wipe the
         // history that answer was about to build on. [heldTrains] is shared wherever [newestArrivals] is.
