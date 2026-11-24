@@ -53,16 +53,24 @@ object SpacedTrains {
                 it.mode.ifBlank { lineMode[it.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
                 PlatformDirection.knownPlatformNumber(it.platform) != null &&
                 // A train TfL still lists after it was due has gone (it's dropped as the board is drawn),
-                // so it holds nothing back.
-                !Countdown.hasDeparted(it, now)
+                // so it holds nothing back, unless TfL places it at the platform: it's there, holding the platform,
+                // as the recordings the gaps were measured on take it (`arrivals_recorder.py upcoming`), so the
+                // train behind it isn't shown due at once too (a rider's report, 2026-11-24: "0" and "0" at one
+                // platform).
+                (!Countdown.hasDeparted(it, now) || it.atPlatform)
         }
             // By the platform's number, not TfL's label: it names one platform both with and without its
             // direction ("Platform 2", "Southbound - Platform 2"). "Platform Unknown" is no platform.
             .groupBy { it.lineId to PlatformDirection.knownPlatformNumber(it.platform) }
             .forEach { (key, atPlatform) ->
                 val gap = gapFor(key.first) ?: return@forEach
-                var previous: Instant? = null
-                for (train in atPlatform.sortedBy { it.expectedArrival }) {
+                // The train at the platform leads, whatever TfL's times say of the trains behind it, from its own time or
+                // now, whichever is sooner, and isn't moved, as the recorder takes it; the rest queue behind it in order.
+                val front = atPlatform.filter { it.atPlatform }.minByOrNull { it.expectedArrival }
+                var previous: Instant? = front?.let { minOf(it.expectedArrival, now) }
+                // One platform holds one train: any other TfL also places there is a copy, or a listing it hasn't dropped
+                // yet ([DoubtfulTrains]), left as TfL gives it, neither queued nor moved, as the recorder leaves it out.
+                for (train in atPlatform.filter { it !== front && !it.atPlatform }.sortedBy { it.expectedArrival }) {
                     val earliest = previous?.plus(gap)
                     val at = if (earliest != null && earliest.isAfter(train.expectedArrival)) earliest else train.expectedArrival
                     if (at != train.expectedArrival) shifts[train] = at

@@ -40,6 +40,27 @@ class SpacedTrainsTest {
     }
 
     @Test
+    fun `a train standing at the platform past its time holds back the one behind it`() {
+        // TfL places the first at the platform, 13 s past its time; the next is due 33 s from now: both would read "0".
+        val standing = train(-13, "1", line = "northern").copy(atPlatform = true)
+        val behind = train(33, "2", line = "northern")
+        // Measured as the recorder takes it: the next no sooner than the Northern line's 100 s after the one there.
+        assertEquals(listOf(-13L, 87L), secondsOf(listOf(standing, behind)))
+        // Not at the platform by TfL's word, a train past its time has gone, and holds nothing back.
+        assertEquals(listOf(-13L, 33L), secondsOf(listOf(train(-13, "1", line = "northern"), behind)))
+        // At the platform though TfL times it after one still approaching: it still leads, unmoved, the other behind it.
+        assertEquals(listOf(30L, 100L), secondsOf(listOf(train(30, "1", line = "northern").copy(atPlatform = true), train(20, "2", line = "northern"))))
+        // Two TfL places at the platform, both past their time: one is there, the other a copy left as it is, and the
+        // train behind is held back by the one only.
+        assertEquals(
+            listOf(-20L, -10L, 80L),
+            secondsOf(listOf(train(-20, "1", line = "northern").copy(atPlatform = true), train(-10, "2", line = "northern").copy(atPlatform = true), train(30, "3", line = "northern"))),
+        )
+        // At the platform and still before its time, it leads from now.
+        assertEquals(listOf(30L, 100L), secondsOf(listOf(train(30, "1", line = "northern").copy(atPlatform = true), train(40, "2", line = "northern"))))
+    }
+
+    @Test
     fun `a train already a gap behind keeps its time`() {
         val board = listOf(train(30, "1"), train(130, "2"), train(400, "3"))
         val result = SpacedTrains.space(board, now)

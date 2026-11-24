@@ -1101,6 +1101,32 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a train TfL places at the platform past its time holds back the one behind it`() = runTest {
+        val now = Instant.parse("2026-11-24T10:35:01Z")
+        // TfL's answer is 47 s old: the train at the platform is 13 s past its time, the next due in 33 s.
+        val body = """
+            [{"lineId": "northern", "vehicleId": "100", "platformName": "Southbound - Platform 2", "modeName": "tube",
+              "destinationName": "Battersea", "expectedArrival": "2026-11-24T10:34:48Z", "currentLocation": "At Platform",
+              "timestamp": "2026-11-24T10:34:14Z"},
+             {"lineId": "northern", "vehicleId": "051", "platformName": "Southbound - Platform 2", "modeName": "tube",
+              "destinationName": "Morden", "expectedArrival": "2026-11-24T10:35:34Z", "currentLocation": "Between Station A and B",
+              "timestamp": "2026-11-24T10:34:14Z"}]
+        """.trimIndent()
+        val departures = client(body, clock = { now }).arrivals("940GZZLUHGT")
+        // The next comes no sooner than the Northern line's 100 s after the one there: "1 min", not a second "0".
+        assertEquals(Instant.parse("2026-11-24T10:36:28Z"), departures.single { it.vehicleId == "051" }.expectedArrival)
+        assertEquals(Instant.parse("2026-11-24T10:34:48Z"), departures.single { it.vehicleId == "100" }.expectedArrival)
+        // An older copy of the answer next, set aside for the one above: its trains are that one's, still marked, so
+        // the train behind is still held back.
+        var answer = body
+        val older = body.replace("10:34:14Z", "10:33:50Z")
+        val twice = client(body, clock = { now }, bodyFor = { answer })
+        twice.arrivals("940GZZLUHGT")
+        answer = older
+        assertEquals(Instant.parse("2026-11-24T10:36:28Z"), twice.arrivals("940GZZLUHGT").single { it.vehicleId == "051" }.expectedArrival)
+    }
+
+    @Test
     fun `with spacing turned off, trains come back at TfL's own times, the pair still grayed`() = runTest {
         val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_euston.json")).readText()
         val now = Instant.parse("2026-10-09T12:24:44Z")

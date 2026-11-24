@@ -790,7 +790,9 @@ numbered platform is shown no sooner than its line's gap after the one ahead of 
 shown: **100 seconds** on the Victoria, Northern and Central lines, **90 seconds** on the Piccadilly,
 Bakerloo, Circle and Hammersmith & City. Those are what a day of recordings at hubs supported; the
 Jubilee's times already run late and spacing made them later, and the other lines weren't measured,
-so theirs stay as TfL gives them. Spacing judges TfL's own order, never moves a time earlier, and
+so theirs stay as TfL gives them. A train TfL places at the platform holds it even once its time has passed,
+as the recordings take it, so the one behind is timed from it and the board never shows two "0"s at one
+platform (a rider's report, 2026-11-24). Spacing judges TfL's own order, never moves a time earlier, and
 takes the doubtful rule above on TfL's times before it moves any. The moved times are what every
 surface shows, the widget and watch included, in the same color as any other (maintainer,
 2026-10-14): a spaced time is a better guess than TfL's own, not a worse one, so it isn't grayed.
