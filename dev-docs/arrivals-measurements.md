@@ -374,6 +374,16 @@ due within a minute for a train 2 or more minutes away.
 Not yet measured: a morning peak, a weekend, and a table from several days, which would time more
 locations (this one had an estimate for about half the predictions).
 
+## One train listed twice at one platform
+
+TfL can list one Tube train twice at one platform, under one id with two times: at Heathrow Terminals 2 & 3
+on 2026-11-24 every Piccadilly line train was ("0 · 1" for each of two trains). In the whole-Tube recording
+(*Timing a stalled countdown by location*), 4,553 polls listed a train twice at one platform with neither
+listing "At Platform": 3,661 on the Piccadilly line, then the Jubilee (386) and District (216), spread over
+many stations. The two times were a median 210 s apart (10th to 90th percentile 60 to 840 s). Where the train
+was then seen to arrive (1,488 of them), its earlier listing was the nearer 1,090 times, the later 398. The
+app keeps the earlier (`TwiceListed`).
+
 ## Field reports
 
 Reports from a rider at a platform, against the board the app showed. The station isn't named
