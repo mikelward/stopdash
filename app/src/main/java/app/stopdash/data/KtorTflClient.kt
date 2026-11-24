@@ -25,6 +25,7 @@ import app.stopdash.domain.RailIncidentCache
 import app.stopdash.domain.RailIncidents
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.SpacedTrains
+import app.stopdash.domain.TwiceListed
 import app.stopdash.domain.LocationTimings
 import app.stopdash.domain.LocatedTrains
 import app.stopdash.domain.StationFacts
@@ -618,7 +619,7 @@ class KtorTflClient(
                 .let { answer ->
                     withContext(decodeDispatcher) {
                         val (newest, located) = withNewest(stopId, answer)
-                        val marked = withDoubtfulMarked(stopId, Turnback.relabel(newest, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
+                        val marked = withDoubtfulMarked(stopId, Turnback.relabel(withoutTwiceListed(stopId, newest), stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
                         // Turned off in Settings: TfL's own times, the doubtful marks kept.
                         if (trainSpacing()) withSpacing(stopId, withLocations(stopId, marked, located)) else marked
                     }
@@ -675,6 +676,21 @@ class KtorTflClient(
     }
 
     private fun locatedKey(d: Departure) = "${d.lineId}|${d.vehicleId}|${d.platform}"
+
+    // A Tube train TfL lists twice at one platform shown once ([TwiceListed]), whatever the spacing switch: a train
+    // comes once. Each listing dropped is said, so the log shows what the feed gave.
+    @WorkerThread
+    private fun withoutTwiceListed(stopId: String, departures: List<Departure>): List<Departure> {
+        val result = TwiceListed.drop(departures)
+        if (result.dropped.isNotEmpty()) {
+            logDoubtful(
+                "listed twice at $stopId: " + result.dropped.joinToString { d ->
+                    "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId} (later copy dropped)"
+                },
+            )
+        }
+        return result.departures
+    }
 
     // Tube trains due by TfL that their location says are still well away given a range ([LocatedTrains]), on TfL's
     // times as marked above and before spacing, and each said so with how much later its latest is.
