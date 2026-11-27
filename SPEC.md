@@ -1488,7 +1488,10 @@ with no row of its own included), its notices, the widget's and the watch's head
 (a bus stop), or every stop where it's unavailable, keeps TfL's cluster. A train two records both list shows once,
 under the nearer, and a line's row with no trains (a status or "?" row) goes where another record of the station
 shows that line: the one National Rail board a station's records share is shown under one of them, so the other's
-empty "No data" row added a second heading of the same name. Everything the list keys by
+empty "No data" row added a second heading of the same name. A station is headed by the shortest name its
+records give for that mode, shortened as a station's name is everywhere else ("Intl"; maintainer, 2026-10-30): St
+Pancras reads as the station, not its low-level platforms, while National Rail keeps its own "London Waterloo" beside
+the Underground's "Waterloo". Everything the list keys by
 station goes by its mode too: a departure, a ride and its trains, a notice (under its own stop's station) and
 the distance (its own mode's nearest stop), so nothing shows under another mode's heading. A ride under its station's heading never repeats a notice the station already shows: one TfL files against every pole of a place heads the place once, whichever pole the ride boards from (bug report, 2026-11-10). It shows how far
 its nearest stop is (where the list measures it: not a searched station's page) and a chevron, over **one card**
