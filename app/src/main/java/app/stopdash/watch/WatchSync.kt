@@ -11,6 +11,7 @@ import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchComplicationRows
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.HiddenModesSetting
+import app.stopdash.data.HubsStore
 import app.stopdash.data.NearbyGroupingSetting
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.WatchPayload
@@ -299,6 +300,8 @@ object WatchSync {
                 force = force,
                 emptyIfNone = emptyIfNone,
                 nearbyByStation = NearbyGroupingSetting.loaded() == NearbyGrouping.STATION,
+                // As the widget reads it: the watch shows once what a station's records repeat.
+                stationCodeOf = HubsStore.ready()?.let { it::stationCodeOf },
             )
         }
     }

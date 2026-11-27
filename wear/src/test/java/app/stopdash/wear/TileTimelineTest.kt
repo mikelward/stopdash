@@ -238,6 +238,21 @@ class TileTimelineTest {
     }
 
     @Test
+    fun `a station's two records show what they repeat once, as on the widget`() {
+        // Two records of one station, both listing one Elizabeth line train, as Paddington's do.
+        val train = departure(60, line = "elizabeth", destination = "Abbey Wood").copy(vehicleId = "v1")
+        val a = stop("910GA", listOf(train), line = "elizabeth")
+        val b = stop("910GB", listOf(train, departure(300, line = "elizabeth", destination = "Shenfield")), line = "elizabeth")
+        val apart = rows(TileTimeline.frame(envelope(a, b), fetched))
+        val codes = envelope(a, b).copy(stationCodes = mapOf("910GA" to "1009001", "910GB" to "1009001"))
+        val together = rows(TileTimeline.frame(codes, fetched))
+        // Apart, the one train shows twice, under each record.
+        assertEquals(listOf("Abbey Wood" to "1 min", "Abbey Wood" to "1 min"), apart.map { it.label to it.countdown })
+        // Together, once, and the room it took shows the station's next train.
+        assertEquals(listOf("Abbey Wood" to "1 min", "Shenfield" to "5 min"), together.map { it.label to it.countdown })
+    }
+
+    @Test
     fun `a line two nearby stops serve shows once, from the nearer, as on the widget`() {
         val a = stop("940GA", listOf(departure(60)))
         val b = stop("940GB", listOf(departure(120)))
